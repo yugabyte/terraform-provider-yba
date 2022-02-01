@@ -23,18 +23,18 @@ func init() {
 	// }
 }
 
-func New(version string) func() *schema.Provider {
+func New() func() *schema.Provider {
 	return func() *schema.Provider {
 		p := &schema.Provider{
 			DataSourcesMap: map[string]*schema.Resource{
-				"scaffolding_data_source": dataSourceScaffolding(),
+				"yb_customer": dataSourceCustomer(),
 			},
 			ResourcesMap: map[string]*schema.Resource{
 				"scaffolding_resource": resourceScaffolding(),
 			},
 		}
 
-		p.ConfigureContextFunc = configure(version, p)
+		//p.ConfigureContextFunc = configure(version, p)
 
 		return p
 	}
