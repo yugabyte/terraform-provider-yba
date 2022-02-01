@@ -3,7 +3,6 @@ package provider
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -31,21 +30,10 @@ func dataSourceCustomer() *schema.Resource {
 }
 
 func dataSourceCustomerRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	// use the meta value to retrieve your client from the provider configure method
-	// client := meta.(*apiClient)
-
 	var diags diag.Diagnostics
 
-	client := &http.Client{Timeout: 10 * time.Second}
-	req, err := http.NewRequest("GET", fmt.Sprintf("%s/api/v1/session_info", "http://localhost:9000"), nil)
-	if err != nil {
-		return diag.FromErr(err)
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-AUTH-YW-API-TOKEN", "1e336712-3660-46bb-892f-d727c7785570")
-
-	r, err := client.Do(req)
+	c := meta.(*ApiClient)
+	r, err := c.MakeRequest(http.MethodGet, "api/v1/session_info", nil)
 	if err != nil {
 		return diag.FromErr(err)
 	}

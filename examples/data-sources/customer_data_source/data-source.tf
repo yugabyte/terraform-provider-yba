@@ -9,6 +9,6 @@ terraform {
 
 data "yb_customer" "customer" {}
 
-output "customer_uuid" {
+output "customer" {
   value = data.yb_customer.customer
 }
