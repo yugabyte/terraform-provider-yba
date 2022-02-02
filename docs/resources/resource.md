@@ -12,7 +12,7 @@ Sample resource in the Terraform provider scaffolding.
 ## Example Usage
 
 ```terraform
-resource "scaffolding_resource" "example" {
+resource "cloud_provider_resource" "example" {
   sample_attribute = "foo"
 }
 ```

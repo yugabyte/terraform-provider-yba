@@ -30,7 +30,7 @@ func init() {
 
 func New() func() *schema.Provider {
 	return func() *schema.Provider {
-		p := &schema.Provider{
+		return &schema.Provider{
 			Schema: map[string]*schema.Schema{
 				"apikey": {
 					Type:        schema.TypeString,
@@ -48,14 +48,10 @@ func New() func() *schema.Provider {
 				"yb_customer": dataSourceCustomer(),
 			},
 			ResourcesMap: map[string]*schema.Resource{
-				"scaffolding_resource": resourceScaffolding(),
+				"yb_cloud_provider": resourceCloudProvider(),
 			},
 			ConfigureContextFunc: providerConfigure,
 		}
-
-		//p.ConfigureContextFunc = configure(version, p)
-
-		return p
 	}
 }
 
