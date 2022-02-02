@@ -268,19 +268,31 @@ func buildZones(zones []interface{}) []map[string]interface{} {
 func resourceCloudProviderRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	// use the meta value to retrieve your client from the provider configure method
 	// client := meta.(*apiClient)
-	return diag.Errorf("not implemented")
+	var diags diag.Diagnostics
+
+	return diags
 }
 
 func resourceCloudProviderUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	// use the meta value to retrieve your client from the provider configure method
 	// client := meta.(*apiClient)
+	var diags diag.Diagnostics
 
-	return diag.Errorf("not implemented")
+	return diags
 }
 
 func resourceCloudProviderDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	// use the meta value to retrieve your client from the provider configure method
-	// client := meta.(*apiClient)
+	var diags diag.Diagnostics
 
-	return diag.Errorf("not implemented")
+	c := meta.(*ApiClient)
+	cUUID := d.Get("customer_id").(string)
+	pUUID := d.Id()
+	r, err := c.MakeRequest(http.MethodDelete, fmt.Sprintf("api/v1/customers/%s/providers/%s", cUUID, pUUID), nil)
+	if err != nil {
+		return diag.FromErr(err)
+	}
+	defer r.Body.Close()
+
+	d.SetId("")
+	return diags
 }
