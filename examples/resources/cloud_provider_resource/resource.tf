@@ -43,7 +43,3 @@ resource "yb_cloud_provider" "gcp" {
 output "provider_uuid" {
   value = yb_cloud_provider.gcp.id
 }
-
-output "task_uuid" {
-  value = yb_cloud_provider.gcp.task_uuid
-}
