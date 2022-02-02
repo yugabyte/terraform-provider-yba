@@ -4,11 +4,16 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	utils "github.com/yugabyte/terraform-provider-yugabyte-platform/internal"
+	"log"
 	"net/http"
+	"strconv"
+	"time"
 )
 
 func resourceCloudProvider() *schema.Resource {
@@ -161,10 +166,6 @@ func resourceCloudProvider() *schema.Resource {
 				Optional: true,
 				ForceNew: true,
 			},
-			"task_uuid": {
-				Type:     schema.TypeString,
-				Computed: true,
-			},
 		},
 	}
 }
@@ -192,10 +193,57 @@ func resourceCloudProviderCreate(ctx context.Context, d *schema.ResourceData, me
 	}
 
 	d.SetId(res["resourceUUID"].(string))
-	if err = d.Set("task_uuid", res["taskUUID"].(string)); err != nil {
+
+	err = waitForProviderToBeActive(ctx, cUUID, d.Id(), c)
+	if err != nil {
 		return diag.FromErr(err)
 	}
+
 	return diags
+}
+
+func waitForProviderToBeActive(ctx context.Context, cUUID string, pUUID string, c *ApiClient) error {
+	wait := &resource.StateChangeConf{
+		Delay:   1 * time.Second,
+		Pending: []string{"false"},
+		Target:  []string{"true"},
+		Timeout: 1 * time.Minute,
+
+		Refresh: func() (result interface{}, state string, err error) {
+			log.Printf("[DEBUG] Waiting for provider %d to be active", pUUID)
+			r, err := c.MakeRequest(http.MethodGet, fmt.Sprintf("api/v1/customers/%s/providers", cUUID), nil)
+			if err != nil {
+				return nil, "", err
+			}
+			defer r.Body.Close()
+
+			var providers []map[string]interface{}
+			if err = json.NewDecoder(r.Body).Decode(&providers); err != nil {
+				return nil, "", err
+			}
+			p, err := findProvider(providers, pUUID)
+			if err != nil {
+				return nil, "", err
+			}
+			s := strconv.FormatBool(p["active"].(bool))
+			return s, s, nil
+		},
+	}
+
+	if _, err := wait.WaitForStateContext(ctx); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func findProvider(providers []map[string]interface{}, pUUID string) (map[string]interface{}, error) {
+	for _, p := range providers {
+		if p["uuid"] == pUUID {
+			return p, nil
+		}
+	}
+	return nil, errors.New(fmt.Sprintf("could not find provider %s", pUUID))
 }
 
 func buildCloudProvider(d *schema.ResourceData) map[string]interface{} {
