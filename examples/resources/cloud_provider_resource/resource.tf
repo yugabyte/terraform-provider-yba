@@ -40,6 +40,7 @@ resource "yb_cloud_provider" "gcp" {
   air_gap_install = false
 }
 
-output "provider_uuid" {
-  value = yb_cloud_provider.gcp.id
+output "provider" {
+  value = yb_cloud_provider.gcp
+  sensitive = true
 }
