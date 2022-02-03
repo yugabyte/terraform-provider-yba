@@ -458,11 +458,26 @@ func flattenZones(zones []interface{}) []map[string]interface{} {
 }
 
 func resourceCloudProviderUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	// use the meta value to retrieve your client from the provider configure method
-	// client := meta.(*apiClient)
-	var diags diag.Diagnostics
+	// update provider API in platform has very limited functionality
+	// most likely that the provider will be recreated
+	m := make(map[string]interface{})
+	utils.ResourceSetIfExists(m, d, "hostedZoneId", "hosted_zone_id")
+	utils.ResourceSetIfExists(m, d, "config", "config")
+	body, err := json.Marshal(m)
+	if err != nil {
+		return diag.FromErr(err)
+	}
 
-	return diags
+	c := meta.(*ApiClient)
+	cUUID := d.Get("customer_id").(string)
+	pUUID := d.Id()
+	r, err := c.MakeRequest(http.MethodPut, fmt.Sprintf("api/v1/customers/%s/providers/%s/edit", cUUID, pUUID), bytes.NewBuffer(body))
+	if err != nil {
+		return diag.FromErr(err)
+	}
+	defer r.Body.Close()
+
+	return resourceCloudProviderRead(ctx, d, meta)
 }
 
 func resourceCloudProviderDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
