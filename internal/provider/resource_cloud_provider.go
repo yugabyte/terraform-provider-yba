@@ -6,11 +6,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	utils "github.com/yugabyte/terraform-provider-yugabyte-platform/internal"
-	"log"
 	"net/http"
 	"strconv"
 	"time"
@@ -238,7 +238,7 @@ func waitForProviderToBeActive(ctx context.Context, cUUID string, pUUID string, 
 		Timeout: 1 * time.Minute,
 
 		Refresh: func() (result interface{}, state string, err error) {
-			log.Printf("[DEBUG] Waiting for provider %d to be active", pUUID)
+			tflog.Debug(ctx, fmt.Sprintf("Waiting for provider %s to be active", pUUID))
 			r, err := c.MakeRequest(http.MethodGet, fmt.Sprintf("api/v1/customers/%s/providers", cUUID), nil)
 			if err != nil {
 				return nil, "", err

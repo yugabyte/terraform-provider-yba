@@ -49,6 +49,7 @@ func New() func() *schema.Provider {
 			},
 			ResourcesMap: map[string]*schema.Resource{
 				"yb_cloud_provider": resourceCloudProvider(),
+				"yb_universe":       resourceUniverse(),
 			},
 			ConfigureContextFunc: providerConfigure,
 		}
