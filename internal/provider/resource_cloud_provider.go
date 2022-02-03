@@ -31,8 +31,12 @@ func resourceCloudProvider() *schema.Resource {
 				Required: true,
 				ForceNew: true,
 			},
+			"active": {
+				Type:     schema.TypeBool,
+				Computed: true,
+			},
 			"air_gap_install": {
-				Type:     schema.TypeString,
+				Type:     schema.TypeBool,
 				Optional: true,
 				ForceNew: true,
 			},
@@ -42,9 +46,10 @@ func resourceCloudProvider() *schema.Resource {
 				ForceNew: true,
 			},
 			"config": {
-				Type:     schema.TypeMap,
-				Elem:     schema.TypeString,
-				Optional: true,
+				Type:      schema.TypeMap,
+				Elem:      schema.TypeString,
+				Optional:  true,
+				Sensitive: true,
 			},
 			"custom_host_cidrs": {
 				Type: schema.TypeList,
@@ -94,10 +99,26 @@ func resourceCloudProvider() *schema.Resource {
 				ForceNew: true,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
+						"uuid": {
+							Type:     schema.TypeString,
+							Computed: true,
+						},
+						"code": {
+							Type:     schema.TypeString,
+							Optional: true,
+						},
 						"config": {
 							Type:     schema.TypeMap,
 							Elem:     schema.TypeString,
 							Optional: true,
+						},
+						"latitude": {
+							Type:     schema.TypeString,
+							Computed: true,
+						},
+						"longitude": {
+							Type:     schema.TypeString,
+							Computed: true,
 						},
 						"name": {
 							Type:     schema.TypeString,
@@ -115,15 +136,19 @@ func resourceCloudProvider() *schema.Resource {
 							Type:     schema.TypeString,
 							Optional: true,
 						},
-						"code": {
-							Type:     schema.TypeString,
-							Optional: true,
-						},
 						"zones": {
 							Type:     schema.TypeList,
 							Optional: true,
 							Elem: &schema.Resource{
 								Schema: map[string]*schema.Schema{
+									"uuid": {
+										Type:     schema.TypeBool,
+										Computed: true,
+									},
+									"active": {
+										Type:     schema.TypeBool,
+										Computed: true,
+									},
 									"code": {
 										Type:     schema.TypeString,
 										Optional: true,
@@ -132,6 +157,10 @@ func resourceCloudProvider() *schema.Resource {
 										Type:     schema.TypeMap,
 										Elem:     schema.TypeString,
 										Optional: true,
+									},
+									"kube_config_path": {
+										Type:     schema.TypeBool,
+										Computed: true,
 									},
 									"name": {
 										Type:     schema.TypeString,
@@ -157,9 +186,10 @@ func resourceCloudProvider() *schema.Resource {
 				ForceNew: true,
 			},
 			"ssh_private_key_content": {
-				Type:     schema.TypeString,
-				Optional: true,
-				ForceNew: true,
+				Type:      schema.TypeString,
+				Optional:  true,
+				ForceNew:  true,
+				Sensitive: true,
 			},
 			"ssh_user": {
 				Type:     schema.TypeString,
@@ -171,8 +201,6 @@ func resourceCloudProvider() *schema.Resource {
 }
 
 func resourceCloudProviderCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	var diags diag.Diagnostics
-
 	p := buildCloudProvider(d)
 	body, err := json.Marshal(p)
 	if err != nil {
@@ -199,7 +227,7 @@ func resourceCloudProviderCreate(ctx context.Context, d *schema.ResourceData, me
 		return diag.FromErr(err)
 	}
 
-	return diags
+	return resourceCloudProviderRead(ctx, d, meta)
 }
 
 func waitForProviderToBeActive(ctx context.Context, cUUID string, pUUID string, c *ApiClient) error {
@@ -314,11 +342,119 @@ func buildZones(zones []interface{}) []map[string]interface{} {
 }
 
 func resourceCloudProviderRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	// use the meta value to retrieve your client from the provider configure method
-	// client := meta.(*apiClient)
 	var diags diag.Diagnostics
 
+	c := meta.(*ApiClient)
+
+	cUUID := d.Get("customer_id").(string)
+	pUUID := d.Id()
+	r, err := c.MakeRequest(http.MethodGet, fmt.Sprintf("api/v1/customers/%s/providers", cUUID), nil)
+	if err != nil {
+		return diag.FromErr(err)
+	}
+	defer r.Body.Close()
+
+	var providers []map[string]interface{}
+	if err = json.NewDecoder(r.Body).Decode(&providers); err != nil {
+		return diag.FromErr(err)
+	}
+	p, err := findProvider(providers, pUUID)
+
+	if err = utils.SetInResourceIfExists(d, p, "active", "active"); err != nil {
+		return diag.FromErr(err)
+	}
+	if err = utils.SetInResourceIfExists(d, p, "airGapInstall", "air_gap_install"); err != nil {
+		return diag.FromErr(err)
+	}
+	if err = utils.SetInResourceIfExists(d, p, "code", "code"); err != nil {
+		return diag.FromErr(err)
+	}
+	if err = utils.SetInResourceIfExists(d, p, "config", "config"); err != nil {
+		return diag.FromErr(err)
+	}
+	if err = utils.SetInResourceIfExists(d, p, "customHostCidrs", "custom_host_cidrs"); err != nil {
+		return diag.FromErr(err)
+	}
+	if err = utils.SetInResourceIfExists(d, p, "destVpcId", "dest_vpc_id"); err != nil {
+		return diag.FromErr(err)
+	}
+	if err = utils.SetInResourceIfExists(d, p, "hostVpcId", "host_vpc_id"); err != nil {
+		return diag.FromErr(err)
+	}
+	if err = utils.SetInResourceIfExists(d, p, "hostVpcRegion", "host_vpc_region"); err != nil {
+		return diag.FromErr(err)
+	}
+	if err = utils.SetInResourceIfExists(d, p, "hostedZoneId", "hosted_zone_id"); err != nil {
+		return diag.FromErr(err)
+	}
+	if err = utils.SetInResourceIfExists(d, p, "hostedZoneName", "hosted_zone_name"); err != nil {
+		return diag.FromErr(err)
+	}
+	if err = utils.SetInResourceIfExists(d, p, "keyPairName", "key_pair_name"); err != nil {
+		return diag.FromErr(err)
+	}
+	if err = utils.SetInResourceIfExists(d, p, "name", "name"); err != nil {
+		return diag.FromErr(err)
+	}
+	if err = utils.SetInResourceIfExists(d, p, "sshPort", "ssh_port"); err != nil {
+		return diag.FromErr(err)
+	}
+	if err = utils.SetInResourceIfExists(d, p, "sshPrivateKeyContent", "ssh_private_key_content"); err != nil {
+		return diag.FromErr(err)
+	}
+	if err = utils.SetInResourceIfExists(d, p, "sshUser", "ssh_user"); err != nil {
+		return diag.FromErr(err)
+	}
+
+	regions, err := flattenRegions(p["regions"].([]interface{}))
+	if err != nil {
+		return diag.FromErr(err)
+	}
+	if err = d.Set("regions", regions); err != nil {
+		return diag.FromErr(err)
+	}
 	return diags
+}
+
+func flattenRegions(regions []interface{}) ([]map[string]interface{}, error) {
+	var result []map[string]interface{}
+	for _, x := range regions {
+		region := x.(map[string]interface{})
+		r := make(map[string]interface{})
+
+		utils.MapSetIfExists(r, region, "uuid", "uuid")
+		utils.MapSetIfExists(r, region, "code", "code")
+		utils.MapSetIfExists(r, region, "config", "config")
+		utils.MapSetIfExists(r, region, "latitude", "latitude")
+		utils.MapSetIfExists(r, region, "longitude", "longitude")
+		utils.MapSetIfExists(r, region, "name", "name")
+		utils.MapSetIfExists(r, region, "SecurityGroupId", "security_group_id")
+		utils.MapSetIfExists(r, region, "vnetName", "vnet_name")
+		utils.MapSetIfExists(r, region, "ybImage", "yb_image")
+
+		r["zones"] = flattenZones(region["zones"].([]interface{}))
+		result = append(result, r)
+	}
+	return result, nil
+}
+
+func flattenZones(zones []interface{}) []map[string]interface{} {
+	var result []map[string]interface{}
+	for _, x := range zones {
+		zone := x.(map[string]interface{})
+		z := make(map[string]interface{})
+
+		utils.MapSetIfExists(z, zone, "uuid", "uuid")
+		utils.MapSetIfExists(z, zone, "active", "active")
+		utils.MapSetIfExists(z, zone, "code", "code")
+		utils.MapSetIfExists(z, zone, "config", "config")
+		utils.MapSetIfExists(z, zone, "kubeConfigPath", "kube_config_path")
+		utils.MapSetIfExists(z, zone, "secondarySubnet", "secondary_subnet")
+		utils.MapSetIfExists(z, zone, "subnet", "subnet")
+
+		result = append(result, z)
+	}
+	return result
 }
 
 func resourceCloudProviderUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {

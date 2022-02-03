@@ -13,3 +13,12 @@ func MapSetIfExists(dest map[string]interface{}, src map[string]interface{}, get
 		dest[setKey] = v
 	}
 }
+
+func SetInResourceIfExists(dest *schema.ResourceData, src map[string]interface{}, getKey string, setKey string) error {
+	if v, exists := src[getKey]; exists {
+		if err := dest.Set(setKey, v); err != nil {
+			return err
+		}
+	}
+	return nil
+}
