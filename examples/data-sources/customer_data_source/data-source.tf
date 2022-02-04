@@ -7,6 +7,11 @@ terraform {
   }
 }
 
+provider "yb" {
+  apikey = "***REMOVED***"
+  host = "portal.dev.yugabyte.com"
+}
+
 data "yb_customer" "customer" {}
 
 output "customer" {

@@ -9,7 +9,7 @@ terraform {
 
 provider "yb" {
   apikey = "***REMOVED***"
-  host = "http://portal.dev.yugabyte.com"
+  host = "portal.dev.yugabyte.com"
 }
 
 data "yb_customer" "customer" {}
