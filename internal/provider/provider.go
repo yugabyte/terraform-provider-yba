@@ -4,12 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
-	"net/http"
-	"time"
-
+	"github.com/go-logr/zapr"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/yugabyte/yb-tools/yugaware-client/pkg/client"
+	"go.uber.org/zap"
+	"io"
+	"net/http"
 )
 
 func init() {
@@ -41,7 +42,7 @@ func New() func() *schema.Provider {
 				"host": {
 					Type:        schema.TypeString,
 					Optional:    true,
-					DefaultFunc: schema.EnvDefaultFunc("YB_HOST", "http://localhost:9000"),
+					DefaultFunc: schema.EnvDefaultFunc("YB_HOST", "localhost:9000"),
 				},
 			},
 			DataSourcesMap: map[string]*schema.Resource{
@@ -91,10 +92,20 @@ func providerConfigure(ctx context.Context, d *schema.ResourceData) (interface{}
 		return nil, diag.FromErr(errors.New("yugabyte platform API key is required"))
 	}
 
-	c := &ApiClient{
-		Client: &http.Client{Timeout: 10 * time.Second},
-		ApiKey: key,
-		Host:   host,
+	//c := &ApiClient{
+	//	Client: &http.Client{Timeout: 10 * time.Second},
+	//	ApiKey: key,
+	//	Host:   host,
+	//}
+
+	zapLog, err := zap.NewDevelopment()
+	if err != nil {
+		return nil, diag.FromErr(err)
+	}
+	log := zapr.NewLogger(zapLog)
+	c, err := client.New(ctx, log, host).APIToken(key).TimeoutSeconds(10).Connect()
+	if err != nil {
+		return nil, diag.FromErr(err)
 	}
 
 	return c, diags

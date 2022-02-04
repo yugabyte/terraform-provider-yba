@@ -64,8 +64,9 @@ func userIntentSchema() *schema.Resource {
 				Optional: true,
 			},
 			"region_list": {
-				Type: schema.TypeList,
-				Elem: schema.TypeString,
+				Type:     schema.TypeList,
+				Elem:     schema.TypeString,
+				Optional: true,
 			},
 			"num_nodes": {
 				Type:     schema.TypeInt,
