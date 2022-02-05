@@ -3,14 +3,11 @@ package provider
 import (
 	"context"
 	"errors"
-	"fmt"
 	"github.com/go-logr/zapr"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/yugabyte/yb-tools/yugaware-client/pkg/client"
 	"go.uber.org/zap"
-	"io"
-	"net/http"
 )
 
 func init() {
@@ -57,28 +54,6 @@ func New() func() *schema.Provider {
 	}
 }
 
-type ApiClient struct {
-	Client *http.Client
-	ApiKey string
-	Host   string
-}
-
-func (c ApiClient) MakeRequest(method string, url string, body io.Reader) (*http.Response, error) {
-	req, err := http.NewRequest(method, fmt.Sprintf("%s/%s", c.Host, url), body)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-AUTH-YW-API-TOKEN", c.ApiKey)
-
-	r, err := c.Client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	return r, err
-}
-
 func providerConfigure(ctx context.Context, d *schema.ResourceData) (interface{}, diag.Diagnostics) {
 	// Setup a User-Agent for your API client (replace the provider name for yours):
 	// userAgent := p.UserAgent("terraform-provider-scaffolding", version)
@@ -91,12 +66,6 @@ func providerConfigure(ctx context.Context, d *schema.ResourceData) (interface{}
 	if key == "" {
 		return nil, diag.FromErr(errors.New("yugabyte platform API key is required"))
 	}
-
-	//c := &ApiClient{
-	//	Client: &http.Client{Timeout: 10 * time.Second},
-	//	ApiKey: key,
-	//	Host:   host,
-	//}
 
 	zapLog, err := zap.NewDevelopment()
 	if err != nil {
