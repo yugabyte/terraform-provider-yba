@@ -12,10 +12,7 @@ provider "yb" {
   host = "portal.dev.yugabyte.com"
 }
 
-data "yb_customer" "customer" {}
-
 resource "yb_cloud_provider" "gcp" {
-  customer_id = data.yb_customer.customer.id
   code = "gcp"
   config = {
     type = "service_account"
@@ -31,7 +28,7 @@ resource "yb_cloud_provider" "gcp" {
     YB_FIREWALL_TAGS = "cluster-server"
   }
   dest_vpc_id = "yugabyte-network"
-  name = "my-gcp-provider"
+  name = "sdu-test-gcp-provider"
   regions {
     code = "us-central1"
     name = "us-central1"
@@ -42,5 +39,4 @@ resource "yb_cloud_provider" "gcp" {
 
 output "provider" {
   value = yb_cloud_provider.gcp
-  sensitive = true
 }
