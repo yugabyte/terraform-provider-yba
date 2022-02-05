@@ -1,18 +1,19 @@
 package provider
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/go-openapi/strfmt"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	utils "github.com/yugabyte/terraform-provider-yugabyte-platform/internal"
-	"net/http"
-	"strconv"
+	"github.com/yugabyte/yb-tools/yugaware-client/pkg/client"
+	"github.com/yugabyte/yb-tools/yugaware-client/pkg/client/swagger/client/cloud_providers"
+	"github.com/yugabyte/yb-tools/yugaware-client/pkg/client/swagger/client/customer_tasks"
+	"github.com/yugabyte/yb-tools/yugaware-client/pkg/client/swagger/models"
 	"time"
 )
 
@@ -201,28 +202,23 @@ func resourceCloudProvider() *schema.Resource {
 }
 
 func resourceCloudProviderCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	p := buildCloudProvider(d)
-	body, err := json.Marshal(p)
+	c := meta.(*client.YugawareClient)
+	req := buildCloudProvider(d)
+	p, err := c.PlatformAPIs.CloudProviders.CreateProviders(&cloud_providers.CreateProvidersParams{
+		CreateProviderRequest: req,
+		CUUID:                 c.CustomerUUID(),
+		Context:               ctx,
+		HTTPClient:            c.Session(),
+	},
+		c.SwaggerAuth,
+	)
 	if err != nil {
 		return diag.FromErr(err)
 	}
 
-	c := meta.(*ApiClient)
-	cUUID := d.Get("customer_id").(string)
-	r, err := c.MakeRequest(http.MethodPost, fmt.Sprintf("api/v1/customers/%s/providers", cUUID), bytes.NewBuffer(body))
-	if err != nil {
-		return diag.FromErr(err)
-	}
-	defer r.Body.Close()
-
-	res := make(map[string]interface{})
-	if err = json.NewDecoder(r.Body).Decode(&res); err != nil {
-		return diag.FromErr(err)
-	}
-
-	d.SetId(res["resourceUUID"].(string))
-
-	err = waitForProviderToBeActive(ctx, cUUID, d.Id(), c)
+	d.SetId(string(p.Payload.ResourceUUID))
+	tflog.Debug(ctx, fmt.Sprintf("Waiting for provider %s to be active", d.Id()))
+	err = waitForProviderToBeActive(ctx, p.Payload.TaskUUID, c)
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -230,30 +226,27 @@ func resourceCloudProviderCreate(ctx context.Context, d *schema.ResourceData, me
 	return resourceCloudProviderRead(ctx, d, meta)
 }
 
-func waitForProviderToBeActive(ctx context.Context, cUUID string, pUUID string, c *ApiClient) error {
+func waitForProviderToBeActive(ctx context.Context, tUUID strfmt.UUID, c *client.YugawareClient) error {
 	wait := &resource.StateChangeConf{
 		Delay:   1 * time.Second,
-		Pending: []string{"false"},
-		Target:  []string{"true"},
+		Pending: utils.PendingTaskStates,
+		Target:  utils.SuccessTaskStates,
 		Timeout: 1 * time.Minute,
 
 		Refresh: func() (result interface{}, state string, err error) {
-			tflog.Debug(ctx, fmt.Sprintf("Waiting for provider %s to be active", pUUID))
-			r, err := c.MakeRequest(http.MethodGet, fmt.Sprintf("api/v1/customers/%s/providers", cUUID), nil)
+			r, err := c.PlatformAPIs.CustomerTasks.TaskStatus(&customer_tasks.TaskStatusParams{
+				CUUID:      c.CustomerUUID(),
+				TUUID:      tUUID,
+				Context:    ctx,
+				HTTPClient: c.Session(),
+			},
+				c.SwaggerAuth,
+			)
 			if err != nil {
 				return nil, "", err
 			}
-			defer r.Body.Close()
 
-			var providers []map[string]interface{}
-			if err = json.NewDecoder(r.Body).Decode(&providers); err != nil {
-				return nil, "", err
-			}
-			p, err := findProvider(providers, pUUID)
-			if err != nil {
-				return nil, "", err
-			}
-			s := strconv.FormatBool(p["active"].(bool))
+			s := r.Payload["status"].(string)
 			return s, s, nil
 		},
 	}
@@ -265,233 +258,201 @@ func waitForProviderToBeActive(ctx context.Context, cUUID string, pUUID string, 
 	return nil
 }
 
-func findProvider(providers []map[string]interface{}, pUUID string) (map[string]interface{}, error) {
+func buildCloudProvider(d *schema.ResourceData) *models.Provider {
+	p := models.Provider{
+		AirGapInstall:        d.Get("air_gap_install").(bool),
+		Code:                 d.Get("code").(string),
+		Config:               d.Get("config").(map[string]string),
+		CustomHostCidrs:      d.Get("custom_host_cidrs").([]string),
+		DestVpcID:            d.Get("dest_vpc_id").(string),
+		HostVpcID:            d.Get("host_vpc_id").(string),
+		HostVpcRegion:        d.Get("host_vpc_region").(string),
+		HostedZoneID:         d.Get("hosted_zone_id").(string),
+		HostedZoneName:       d.Get("hosted_zone_name").(string),
+		KeyPairName:          d.Get("key_pair_name").(string),
+		Name:                 d.Get("name").(string),
+		SSHPort:              d.Get("ssh_port").(int32),
+		SSHPrivateKeyContent: d.Get("ssh_private_key_content").(string),
+		SSHUser:              d.Get("ssh_user").(string),
+	}
+
+	p.Regions = buildRegions(d.Get("regions").([]interface{}))
+	return &p
+}
+
+func buildRegions(regions []interface{}) (res []*models.Region) {
+	for _, v := range regions {
+		region := v.(map[string]interface{})
+		r := &models.Region{
+			Config:          region["config"].(map[string]string),
+			Name:            region["name"].(string),
+			SecurityGroupID: region["security_group_id"].(string),
+			VnetName:        region["vnet_name"].(string),
+			YbImage:         region["yb_image"].(string),
+			Code:            region["code"].(string),
+		}
+		r.Zones = buildZones(region["zones"].([]interface{}))
+		res = append(res, r)
+	}
+	return res
+}
+
+func buildZones(zones []interface{}) (res []*models.AvailabilityZone) {
+	for _, v := range zones {
+		zone := v.(map[string]interface{})
+		z := &models.AvailabilityZone{
+			Code:            zone["code"].(string),
+			Config:          zone["config"].(map[string]string),
+			Name:            zone["name"].(*string),
+			SecondarySubnet: zone["secondary_subnet"].(string),
+			Subnet:          zone["subnet"].(string),
+		}
+		res = append(res, z)
+	}
+	return res
+}
+
+func findProvider(providers []*models.Provider, uuid strfmt.UUID) (*models.Provider, error) {
 	for _, p := range providers {
-		if p["uuid"] == pUUID {
+		if p.UUID == uuid {
 			return p, nil
 		}
 	}
-	return nil, errors.New(fmt.Sprintf("could not find provider %s", pUUID))
-}
-
-func buildCloudProvider(d *schema.ResourceData) map[string]interface{} {
-	p := make(map[string]interface{})
-
-	utils.ResourceSetIfExists(p, d, "air_gap_install", "airGapInstall")
-	utils.ResourceSetIfExists(p, d, "code", "code")
-	utils.ResourceSetIfExists(p, d, "custom_host_cidrs", "customHostCidrs")
-	utils.ResourceSetIfExists(p, d, "dest_vpc_id", "destVpcId")
-	utils.ResourceSetIfExists(p, d, "host_vpc_id", "hostVpcId")
-	utils.ResourceSetIfExists(p, d, "host_vpc_region", "hostVpcRegion")
-	utils.ResourceSetIfExists(p, d, "hosted_zone_id", "hostedZoneId")
-	utils.ResourceSetIfExists(p, d, "hosted_zone_name", "hostedZoneName")
-	utils.ResourceSetIfExists(p, d, "key_pair_name", "keyPairName")
-	utils.ResourceSetIfExists(p, d, "name", "name")
-	utils.ResourceSetIfExists(p, d, "ssh_port", "sshPort")
-	utils.ResourceSetIfExists(p, d, "ssh_private_key_content", "sshPrivateKeyContent")
-	utils.ResourceSetIfExists(p, d, "ssh_user", "sshUser")
-
-	if v, exists := d.GetOk("regions"); exists {
-		p["regions"] = buildRegions(v.([]interface{}))
-	}
-
-	return p
-}
-
-func buildRegions(regions []interface{}) []map[string]interface{} {
-	var res []map[string]interface{}
-
-	for _, v := range regions {
-		region := v.(map[string]interface{})
-		r := make(map[string]interface{})
-
-		utils.MapSetIfExists(r, region, "config", "config")
-		utils.MapSetIfExists(r, region, "name", "name")
-		utils.MapSetIfExists(r, region, "security_group_id", "securityGroupId")
-		utils.MapSetIfExists(r, region, "vnet_name", "vnetName")
-		utils.MapSetIfExists(r, region, "yb_image", "ybImage")
-		utils.MapSetIfExists(r, region, "code", "code")
-
-		if w, exists := region["zones"]; exists {
-			r["zones"] = buildZones(w.([]interface{}))
-		} else {
-			r["zones"] = []interface{}{}
-		}
-	}
-
-	return res
-}
-
-func buildZones(zones []interface{}) []map[string]interface{} {
-	var res []map[string]interface{}
-
-	for _, v := range zones {
-		zone := v.(map[string]interface{})
-		z := make(map[string]interface{})
-
-		utils.MapSetIfExists(z, zone, "code", "code")
-		utils.MapSetIfExists(z, zone, "config", "config")
-		utils.MapSetIfExists(z, zone, "name", "name")
-		utils.MapSetIfExists(z, zone, "secondary_subnet", "secondarySubnet")
-		utils.MapSetIfExists(z, zone, "subnet", "subnet")
-
-		res = append(res, z)
-	}
-
-	return res
+	return nil, errors.New(fmt.Sprintf("could not find provider %s", uuid))
 }
 
 func resourceCloudProviderRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	var diags diag.Diagnostics
 
-	c := meta.(*ApiClient)
-
-	cUUID := d.Get("customer_id").(string)
-	pUUID := d.Id()
-	r, err := c.MakeRequest(http.MethodGet, fmt.Sprintf("api/v1/customers/%s/providers", cUUID), nil)
+	c := meta.(*client.YugawareClient)
+	r, err := c.PlatformAPIs.CloudProviders.GetListOfProviders(&cloud_providers.GetListOfProvidersParams{
+		CUUID:      c.CustomerUUID(),
+		Context:    ctx,
+		HTTPClient: c.Session(),
+	},
+		c.SwaggerAuth,
+	)
 	if err != nil {
 		return diag.FromErr(err)
 	}
-	defer r.Body.Close()
 
-	var providers []map[string]interface{}
-	if err = json.NewDecoder(r.Body).Decode(&providers); err != nil {
-		return diag.FromErr(err)
-	}
-	p, err := findProvider(providers, pUUID)
-
-	if err = utils.SetInResourceIfExists(d, p, "active", "active"); err != nil {
-		return diag.FromErr(err)
-	}
-	if err = utils.SetInResourceIfExists(d, p, "airGapInstall", "air_gap_install"); err != nil {
-		return diag.FromErr(err)
-	}
-	if err = utils.SetInResourceIfExists(d, p, "code", "code"); err != nil {
-		return diag.FromErr(err)
-	}
-	if err = utils.SetInResourceIfExists(d, p, "config", "config"); err != nil {
-		return diag.FromErr(err)
-	}
-	if err = utils.SetInResourceIfExists(d, p, "customHostCidrs", "custom_host_cidrs"); err != nil {
-		return diag.FromErr(err)
-	}
-	if err = utils.SetInResourceIfExists(d, p, "destVpcId", "dest_vpc_id"); err != nil {
-		return diag.FromErr(err)
-	}
-	if err = utils.SetInResourceIfExists(d, p, "hostVpcId", "host_vpc_id"); err != nil {
-		return diag.FromErr(err)
-	}
-	if err = utils.SetInResourceIfExists(d, p, "hostVpcRegion", "host_vpc_region"); err != nil {
-		return diag.FromErr(err)
-	}
-	if err = utils.SetInResourceIfExists(d, p, "hostedZoneId", "hosted_zone_id"); err != nil {
-		return diag.FromErr(err)
-	}
-	if err = utils.SetInResourceIfExists(d, p, "hostedZoneName", "hosted_zone_name"); err != nil {
-		return diag.FromErr(err)
-	}
-	if err = utils.SetInResourceIfExists(d, p, "keyPairName", "key_pair_name"); err != nil {
-		return diag.FromErr(err)
-	}
-	if err = utils.SetInResourceIfExists(d, p, "name", "name"); err != nil {
-		return diag.FromErr(err)
-	}
-	if err = utils.SetInResourceIfExists(d, p, "sshPort", "ssh_port"); err != nil {
-		return diag.FromErr(err)
-	}
-	if err = utils.SetInResourceIfExists(d, p, "sshPrivateKeyContent", "ssh_private_key_content"); err != nil {
-		return diag.FromErr(err)
-	}
-	if err = utils.SetInResourceIfExists(d, p, "sshUser", "ssh_user"); err != nil {
-		return diag.FromErr(err)
-	}
-
-	regions, err := flattenRegions(p["regions"].([]interface{}))
+	p, err := findProvider(r.Payload, strfmt.UUID(d.Id()))
 	if err != nil {
 		return diag.FromErr(err)
 	}
-	if err = d.Set("regions", regions); err != nil {
+
+	if err = d.Set("active", p.Active); err != nil {
+		return diag.FromErr(err)
+	}
+	if err = d.Set("air_gap_install", p.AirGapInstall); err != nil {
+		return diag.FromErr(err)
+	}
+	if err = d.Set("code", p.Code); err != nil {
+		return diag.FromErr(err)
+	}
+	if err = d.Set("config", p.Config); err != nil {
+		return diag.FromErr(err)
+	}
+	if err = d.Set("custom_host_cidrs", p.CustomHostCidrs); err != nil {
+		return diag.FromErr(err)
+	}
+	if err = d.Set("dest_vpc_id", p.DestVpcID); err != nil {
+		return diag.FromErr(err)
+	}
+	if err = d.Set("host_vpc_id", p.HostVpcID); err != nil {
+		return diag.FromErr(err)
+	}
+	if err = d.Set("host_vpc_region", p.HostVpcRegion); err != nil {
+		return diag.FromErr(err)
+	}
+	if err = d.Set("hosted_zone_id", p.HostedZoneID); err != nil {
+		return diag.FromErr(err)
+	}
+	if err = d.Set("active", p.Active); err != nil {
+		return diag.FromErr(err)
+	}
+	if err = d.Set("hosted_zone_name", p.HostedZoneName); err != nil {
+		return diag.FromErr(err)
+	}
+	if err = d.Set("key_pair_name", p.KeyPairName); err != nil {
+		return diag.FromErr(err)
+	}
+	if err = d.Set("name", p.Name); err != nil {
+		return diag.FromErr(err)
+	}
+	if err = d.Set("ssh_port", p.SSHPort); err != nil {
+		return diag.FromErr(err)
+	}
+	if err = d.Set("ssh_private_key_content", p.SSHPrivateKeyContent); err != nil {
+		return diag.FromErr(err)
+	}
+	if err = d.Set("ssh_user", p.SSHUser); err != nil {
+		return diag.FromErr(err)
+	}
+	if err = d.Set("regions", flattenRegions(p.Regions)); err != nil {
 		return diag.FromErr(err)
 	}
 	return diags
 }
 
-func flattenRegions(regions []interface{}) ([]map[string]interface{}, error) {
-	var result []map[string]interface{}
-	for _, x := range regions {
-		region := x.(map[string]interface{})
+func flattenRegions(regions []*models.Region) (res []map[string]interface{}) {
+	for _, region := range regions {
 		r := make(map[string]interface{})
-
-		utils.MapSetIfExists(r, region, "uuid", "uuid")
-		utils.MapSetIfExists(r, region, "code", "code")
-		utils.MapSetIfExists(r, region, "config", "config")
-		utils.MapSetIfExists(r, region, "latitude", "latitude")
-		utils.MapSetIfExists(r, region, "longitude", "longitude")
-		utils.MapSetIfExists(r, region, "name", "name")
-		utils.MapSetIfExists(r, region, "SecurityGroupId", "security_group_id")
-		utils.MapSetIfExists(r, region, "vnetName", "vnet_name")
-		utils.MapSetIfExists(r, region, "ybImage", "yb_image")
-
-		r["zones"] = flattenZones(region["zones"].([]interface{}))
-		result = append(result, r)
+		r["uuid"] = region.UUID
+		r["code"] = region.Code
+		r["config"] = region.Config
+		r["latitude"] = region.Latitude
+		r["longitude"] = region.Longitude
+		r["name"] = region.Name
+		r["security_group_id"] = region.SecurityGroupID
+		r["vnet_name"] = region.VnetName
+		r["yb_image"] = region.YbImage
+		r["zones"] = flattenZones(region.Zones)
+		res = append(res, r)
 	}
-	return result, nil
+	return res
 }
 
-func flattenZones(zones []interface{}) []map[string]interface{} {
-	var result []map[string]interface{}
-	for _, x := range zones {
-		zone := x.(map[string]interface{})
+func flattenZones(zones []*models.AvailabilityZone) (res []map[string]interface{}) {
+	for _, zone := range zones {
 		z := make(map[string]interface{})
-
-		utils.MapSetIfExists(z, zone, "uuid", "uuid")
-		utils.MapSetIfExists(z, zone, "active", "active")
-		utils.MapSetIfExists(z, zone, "code", "code")
-		utils.MapSetIfExists(z, zone, "config", "config")
-		utils.MapSetIfExists(z, zone, "kubeConfigPath", "kube_config_path")
-		utils.MapSetIfExists(z, zone, "secondarySubnet", "secondary_subnet")
-		utils.MapSetIfExists(z, zone, "subnet", "subnet")
-
-		result = append(result, z)
+		z["uuid"] = zone.UUID
+		z["active"] = zone.Active
+		z["code"] = zone.Code
+		z["config"] = zone.Config
+		z["kube_config_path"] = zone.KubeconfigPath
+		z["secondary_subnet"] = zone.SecondarySubnet
+		z["subnet"] = zone.Subnet
+		res = append(res, z)
 	}
-	return result
+	return res
 }
 
 func resourceCloudProviderUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	// update provider API in platform has very limited functionality
 	// most likely that the provider will be recreated
-	m := make(map[string]interface{})
-	utils.ResourceSetIfExists(m, d, "hostedZoneId", "hosted_zone_id")
-	utils.ResourceSetIfExists(m, d, "config", "config")
-	body, err := json.Marshal(m)
-	if err != nil {
-		return diag.FromErr(err)
-	}
 
-	c := meta.(*ApiClient)
-	cUUID := d.Get("customer_id").(string)
-	pUUID := d.Id()
-	r, err := c.MakeRequest(http.MethodPut, fmt.Sprintf("api/v1/customers/%s/providers/%s/edit", cUUID, pUUID), bytes.NewBuffer(body))
+	c := meta.(*client.YugawareClient)
+	_, err := c.PlatformAPIs.CloudProviders.EditProvider(&cloud_providers.EditProviderParams{
+		EditProviderFormData: &models.EditProviderRequest{
+			Config:       d.Get("config").(map[string]string),
+			HostedZoneID: d.Get("hosted_zone_id").(*string),
+		},
+		CUUID:      c.CustomerUUID(),
+		PUUID:      strfmt.UUID(d.Id()),
+		Context:    ctx,
+		HTTPClient: c.Session(),
+	},
+		c.SwaggerAuth,
+	)
 	if err != nil {
 		return diag.FromErr(err)
 	}
-	defer r.Body.Close()
 
 	return resourceCloudProviderRead(ctx, d, meta)
 }
 
 func resourceCloudProviderDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	var diags diag.Diagnostics
-
-	c := meta.(*ApiClient)
-	cUUID := d.Get("customer_id").(string)
-	pUUID := d.Id()
-	r, err := c.MakeRequest(http.MethodDelete, fmt.Sprintf("api/v1/customers/%s/providers/%s", cUUID, pUUID), nil)
-	if err != nil {
-		return diag.FromErr(err)
-	}
-	defer r.Body.Close()
-
-	d.SetId("")
-	return diags
+	// Do nothing; current delete API is not public and only marks the resource as non-active
+	return diag.Diagnostics{}
 }
