@@ -27,11 +27,6 @@ func resourceCloudProvider() *schema.Resource {
 		DeleteContext: resourceCloudProviderDelete,
 
 		Schema: map[string]*schema.Schema{
-			"customer_id": {
-				Type:     schema.TypeString,
-				Required: true,
-				ForceNew: true,
-			},
 			"active": {
 				Type:     schema.TypeBool,
 				Computed: true,
@@ -47,10 +42,9 @@ func resourceCloudProvider() *schema.Resource {
 				ForceNew: true,
 			},
 			"config": {
-				Type:      schema.TypeMap,
-				Elem:      schema.TypeString,
-				Optional:  true,
-				Sensitive: true,
+				Type:     schema.TypeMap,
+				Elem:     schema.TypeString,
+				Optional: true,
 			},
 			"custom_host_cidrs": {
 				Type: schema.TypeList,
@@ -114,11 +108,11 @@ func resourceCloudProvider() *schema.Resource {
 							Optional: true,
 						},
 						"latitude": {
-							Type:     schema.TypeString,
+							Type:     schema.TypeFloat,
 							Computed: true,
 						},
 						"longitude": {
-							Type:     schema.TypeString,
+							Type:     schema.TypeFloat,
 							Computed: true,
 						},
 						"name": {
@@ -143,7 +137,7 @@ func resourceCloudProvider() *schema.Resource {
 							Elem: &schema.Resource{
 								Schema: map[string]*schema.Schema{
 									"uuid": {
-										Type:     schema.TypeBool,
+										Type:     schema.TypeString,
 										Computed: true,
 									},
 									"active": {
@@ -160,7 +154,7 @@ func resourceCloudProvider() *schema.Resource {
 										Optional: true,
 									},
 									"kube_config_path": {
-										Type:     schema.TypeBool,
+										Type:     schema.TypeString,
 										Computed: true,
 									},
 									"name": {
@@ -187,10 +181,9 @@ func resourceCloudProvider() *schema.Resource {
 				ForceNew: true,
 			},
 			"ssh_private_key_content": {
-				Type:      schema.TypeString,
-				Optional:  true,
-				ForceNew:  true,
-				Sensitive: true,
+				Type:     schema.TypeString,
+				Optional: true,
+				ForceNew: true,
 			},
 			"ssh_user": {
 				Type:     schema.TypeString,
@@ -262,8 +255,8 @@ func buildCloudProvider(d *schema.ResourceData) *models.Provider {
 	p := models.Provider{
 		AirGapInstall:        d.Get("air_gap_install").(bool),
 		Code:                 d.Get("code").(string),
-		Config:               d.Get("config").(map[string]string),
-		CustomHostCidrs:      d.Get("custom_host_cidrs").([]string),
+		Config:               utils.StringMap(d.Get("config").(map[string]interface{})),
+		CustomHostCidrs:      utils.StringSlice(d.Get("custom_host_cidrs").([]interface{})),
 		DestVpcID:            d.Get("dest_vpc_id").(string),
 		HostVpcID:            d.Get("host_vpc_id").(string),
 		HostVpcRegion:        d.Get("host_vpc_region").(string),
@@ -271,7 +264,7 @@ func buildCloudProvider(d *schema.ResourceData) *models.Provider {
 		HostedZoneName:       d.Get("hosted_zone_name").(string),
 		KeyPairName:          d.Get("key_pair_name").(string),
 		Name:                 d.Get("name").(string),
-		SSHPort:              d.Get("ssh_port").(int32),
+		SSHPort:              int32(d.Get("ssh_port").(int)),
 		SSHPrivateKeyContent: d.Get("ssh_private_key_content").(string),
 		SSHUser:              d.Get("ssh_user").(string),
 	}
@@ -284,7 +277,7 @@ func buildRegions(regions []interface{}) (res []*models.Region) {
 	for _, v := range regions {
 		region := v.(map[string]interface{})
 		r := &models.Region{
-			Config:          region["config"].(map[string]string),
+			Config:          utils.StringMap(region["config"].(map[string]interface{})),
 			Name:            region["name"].(string),
 			SecurityGroupID: region["security_group_id"].(string),
 			VnetName:        region["vnet_name"].(string),
@@ -302,7 +295,7 @@ func buildZones(zones []interface{}) (res []*models.AvailabilityZone) {
 		zone := v.(map[string]interface{})
 		z := &models.AvailabilityZone{
 			Code:            zone["code"].(string),
-			Config:          zone["config"].(map[string]string),
+			Config:          utils.StringMap(zone["config"].(map[string]interface{})),
 			Name:            zone["name"].(*string),
 			SecondarySubnet: zone["secondary_subnet"].(string),
 			Subnet:          zone["subnet"].(string),
@@ -397,6 +390,7 @@ func resourceCloudProviderRead(ctx context.Context, d *schema.ResourceData, meta
 
 func flattenRegions(regions []*models.Region) (res []map[string]interface{}) {
 	for _, region := range regions {
+
 		r := make(map[string]interface{})
 		r["uuid"] = region.UUID
 		r["code"] = region.Code
