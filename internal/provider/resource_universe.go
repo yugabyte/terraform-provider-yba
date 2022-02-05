@@ -1,12 +1,7 @@
 package provider
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
-	"fmt"
-	"net/http"
-
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 )
@@ -152,31 +147,7 @@ func userIntentSchema() *schema.Resource {
 }
 
 func resourceUniverseCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	p := buildUniverse(d)
-	body, err := json.Marshal(p)
-	if err != nil {
-		return diag.FromErr(err)
-	}
-
-	c := meta.(*ApiClient)
-	cUUID := d.Get("customer_id").(string)
-	r, err := c.MakeRequest(http.MethodPost, fmt.Sprintf("api/v1/customers/%s/universes/clusters", cUUID), bytes.NewBuffer(body))
-	if err != nil {
-		return diag.FromErr(err)
-	}
-	defer r.Body.Close()
-
-	res := make(map[string]interface{})
-	if err = json.NewDecoder(r.Body).Decode(&res); err != nil {
-		return diag.FromErr(err)
-	}
-
-	//err = waitForUniverseToBeActive(ctx, cUUID, d.Id(), c)
-	//if err != nil {
-	//	return diag.FromErr(err)
-	//}
-
-	d.SetId(res["resourceUUID"].(string))
+	//d.SetId(res["resourceUUID"].(string))
 	return resourceUniverseRead(ctx, d, meta)
 }
 
@@ -201,15 +172,6 @@ func resourceUniverseUpdate(ctx context.Context, d *schema.ResourceData, meta in
 
 func resourceUniverseDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	var diags diag.Diagnostics
-
-	c := meta.(*ApiClient)
-	cUUID := d.Get("customer_id").(string)
-	uUUID := d.Id()
-	r, err := c.MakeRequest(http.MethodDelete, fmt.Sprintf("api/v1/customers/%s/universes/%s", cUUID, uUUID), nil)
-	if err != nil {
-		return diag.FromErr(err)
-	}
-	defer r.Body.Close()
 
 	d.SetId("")
 	return diags
