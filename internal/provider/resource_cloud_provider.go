@@ -7,12 +7,9 @@ import (
 	"github.com/go-openapi/strfmt"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	utils "github.com/yugabyte/terraform-provider-yugabyte-platform/internal"
-	"github.com/yugabyte/yb-tools/yugaware-client/pkg/client"
 	"github.com/yugabyte/yb-tools/yugaware-client/pkg/client/swagger/client/cloud_providers"
-	"github.com/yugabyte/yb-tools/yugaware-client/pkg/client/swagger/client/customer_tasks"
 	"github.com/yugabyte/yb-tools/yugaware-client/pkg/client/swagger/models"
 	"net/http"
 	"time"
@@ -212,44 +209,12 @@ func resourceCloudProviderCreate(ctx context.Context, d *schema.ResourceData, me
 
 	d.SetId(string(p.Payload.ResourceUUID))
 	tflog.Debug(ctx, fmt.Sprintf("Waiting for provider %s to be active", d.Id()))
-	err = waitForProviderToBeActive(ctx, p.Payload.TaskUUID, c)
+	err = utils.WaitForTask(ctx, p.Payload.TaskUUID, c, time.Minute)
 	if err != nil {
 		return diag.FromErr(err)
 	}
 
 	return resourceCloudProviderRead(ctx, d, meta)
-}
-
-func waitForProviderToBeActive(ctx context.Context, tUUID strfmt.UUID, c *client.YugawareClient) error {
-	wait := &resource.StateChangeConf{
-		Delay:   1 * time.Second,
-		Pending: utils.PendingTaskStates,
-		Target:  utils.SuccessTaskStates,
-		Timeout: 1 * time.Minute,
-
-		Refresh: func() (result interface{}, state string, err error) {
-			r, err := c.PlatformAPIs.CustomerTasks.TaskStatus(&customer_tasks.TaskStatusParams{
-				CUUID:      c.CustomerUUID(),
-				TUUID:      tUUID,
-				Context:    ctx,
-				HTTPClient: c.Session(),
-			},
-				c.SwaggerAuth,
-			)
-			if err != nil {
-				return nil, "", err
-			}
-
-			s := r.Payload["status"].(string)
-			return s, s, nil
-		},
-	}
-
-	if _, err := wait.WaitForStateContext(ctx); err != nil {
-		return err
-	}
-
-	return nil
 }
 
 func buildCloudProvider(d *schema.ResourceData) *models.Provider {
@@ -268,9 +233,8 @@ func buildCloudProvider(d *schema.ResourceData) *models.Provider {
 		SSHPort:              int32(d.Get("ssh_port").(int)),
 		SSHPrivateKeyContent: d.Get("ssh_private_key_content").(string),
 		SSHUser:              d.Get("ssh_user").(string),
+		Regions:              buildRegions(d.Get("regions").([]interface{})),
 	}
-
-	p.Regions = buildRegions(d.Get("regions").([]interface{}))
 	return &p
 }
 
@@ -284,8 +248,8 @@ func buildRegions(regions []interface{}) (res []*models.Region) {
 			VnetName:        region["vnet_name"].(string),
 			YbImage:         region["yb_image"].(string),
 			Code:            region["code"].(string),
+			Zones:           buildZones(region["zones"].([]interface{})),
 		}
-		r.Zones = buildZones(region["zones"].([]interface{}))
 		res = append(res, r)
 	}
 	return res
@@ -391,18 +355,18 @@ func resourceCloudProviderRead(ctx context.Context, d *schema.ResourceData, meta
 
 func flattenRegions(regions []*models.Region) (res []map[string]interface{}) {
 	for _, region := range regions {
-
-		r := make(map[string]interface{})
-		r["uuid"] = region.UUID
-		r["code"] = region.Code
-		r["config"] = region.Config
-		r["latitude"] = region.Latitude
-		r["longitude"] = region.Longitude
-		r["name"] = region.Name
-		r["security_group_id"] = region.SecurityGroupID
-		r["vnet_name"] = region.VnetName
-		r["yb_image"] = region.YbImage
-		r["zones"] = flattenZones(region.Zones)
+		r := map[string]interface{}{
+			"uuid":              region.UUID,
+			"code":              region.Code,
+			"config":            region.Config,
+			"latitude":          region.Latitude,
+			"longitude":         region.Longitude,
+			"name":              region.Name,
+			"security_group_id": region.SecurityGroupID,
+			"vnet_name":         region.VnetName,
+			"yb_image":          region.YbImage,
+			"zones":             flattenZones(region.Zones),
+		}
 		res = append(res, r)
 	}
 	return res
@@ -410,14 +374,15 @@ func flattenRegions(regions []*models.Region) (res []map[string]interface{}) {
 
 func flattenZones(zones []*models.AvailabilityZone) (res []map[string]interface{}) {
 	for _, zone := range zones {
-		z := make(map[string]interface{})
-		z["uuid"] = zone.UUID
-		z["active"] = zone.Active
-		z["code"] = zone.Code
-		z["config"] = zone.Config
-		z["kube_config_path"] = zone.KubeconfigPath
-		z["secondary_subnet"] = zone.SecondarySubnet
-		z["subnet"] = zone.Subnet
+		z := map[string]interface{}{
+			"uuid":             zone.UUID,
+			"active":           zone.Active,
+			"code":             zone.Code,
+			"config":           zone.Config,
+			"kube_config_path": zone.KubeconfigPath,
+			"secondary_subnet": zone.SecondarySubnet,
+			"subnet":           zone.Subnet,
+		}
 		res = append(res, z)
 	}
 	return res
