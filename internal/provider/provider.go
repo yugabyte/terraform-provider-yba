@@ -47,7 +47,8 @@ func New() func() *schema.Provider {
 				},
 			},
 			DataSourcesMap: map[string]*schema.Resource{
-				"yb_customer": dataSourceCustomer(),
+				"yb_customer":     dataSourceCustomer(),
+				"yb_provider_key": dataSourceProviderKey(),
 			},
 			ResourcesMap: map[string]*schema.Resource{
 				"yb_cloud_provider": resourceCloudProvider(),
