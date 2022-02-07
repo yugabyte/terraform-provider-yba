@@ -3,9 +3,8 @@ module github.com/yugabyte/terraform-provider-yugabyte-platform
 go 1.15
 
 require (
-	github.com/go-logr/logr v1.1.0 // indirect
-	github.com/go-logr/zapr v1.1.0
-	github.com/go-openapi/strfmt v0.20.3 // indirect
+	github.com/go-logr/zapr v1.2.2
+	github.com/go-openapi/strfmt v0.20.3
 	github.com/hashicorp/terraform-plugin-docs v0.5.1
 	github.com/hashicorp/terraform-plugin-log v0.2.1
 	github.com/hashicorp/terraform-plugin-sdk/v2 v2.10.1
