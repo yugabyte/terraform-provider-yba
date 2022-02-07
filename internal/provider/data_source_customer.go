@@ -4,7 +4,6 @@ import (
 	"context"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	"github.com/yugabyte/yb-tools/yugaware-client/pkg/client"
 )
 
 func dataSourceCustomer() *schema.Resource {
@@ -20,7 +19,7 @@ func dataSourceCustomer() *schema.Resource {
 func dataSourceCustomerRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	var diags diag.Diagnostics
 
-	c := meta.(*client.YugawareClient)
+	c := meta.(*ApiClient).YugawareClient
 	d.SetId(string(c.CustomerUUID()))
 
 	return diags
