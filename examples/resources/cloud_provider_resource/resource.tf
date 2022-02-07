@@ -8,7 +8,7 @@ terraform {
 }
 
 provider "yb" {
-  apikey = "039254ed-3997-435e-a86c-73af260b637a"
+  apikey = "a1390c4b-5699-4013-9d30-e71746db2e98"
   host = "portal.dev.yugabyte.com"
 }
 
