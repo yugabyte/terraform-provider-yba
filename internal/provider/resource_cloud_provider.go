@@ -14,6 +14,7 @@ import (
 	"github.com/yugabyte/yb-tools/yugaware-client/pkg/client/swagger/client/cloud_providers"
 	"github.com/yugabyte/yb-tools/yugaware-client/pkg/client/swagger/client/customer_tasks"
 	"github.com/yugabyte/yb-tools/yugaware-client/pkg/client/swagger/models"
+	"net/http"
 	"time"
 )
 
@@ -195,7 +196,7 @@ func resourceCloudProvider() *schema.Resource {
 }
 
 func resourceCloudProviderCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	c := meta.(*client.YugawareClient)
+	c := meta.(*ApiClient).YugawareClient
 	req := buildCloudProvider(d)
 	p, err := c.PlatformAPIs.CloudProviders.CreateProviders(&cloud_providers.CreateProvidersParams{
 		CreateProviderRequest: req,
@@ -317,7 +318,7 @@ func findProvider(providers []*models.Provider, uuid strfmt.UUID) (*models.Provi
 func resourceCloudProviderRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	var diags diag.Diagnostics
 
-	c := meta.(*client.YugawareClient)
+	c := meta.(*ApiClient).YugawareClient
 	r, err := c.PlatformAPIs.CloudProviders.GetListOfProviders(&cloud_providers.GetListOfProvidersParams{
 		CUUID:      c.CustomerUUID(),
 		Context:    ctx,
@@ -426,7 +427,7 @@ func resourceCloudProviderUpdate(ctx context.Context, d *schema.ResourceData, me
 	// update provider API in platform has very limited functionality
 	// most likely that the provider will be recreated
 
-	c := meta.(*client.YugawareClient)
+	c := meta.(*ApiClient).YugawareClient
 	_, err := c.PlatformAPIs.CloudProviders.EditProvider(&cloud_providers.EditProviderParams{
 		EditProviderFormData: &models.EditProviderRequest{
 			Config:       d.Get("config").(map[string]string),
@@ -447,6 +448,17 @@ func resourceCloudProviderUpdate(ctx context.Context, d *schema.ResourceData, me
 }
 
 func resourceCloudProviderDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	// Do nothing; current delete API is not public and only marks the resource as non-active
-	return diag.Diagnostics{}
+	// TODO: this uses a non-public API
+	var diags diag.Diagnostics
+
+	vc := meta.(*ApiClient).VanillaClient
+	ywc := meta.(*ApiClient).YugawareClient
+	pUUID := d.Id()
+	_, err := vc.MakeRequest(http.MethodDelete, fmt.Sprintf("api/v1/customers/%s/providers/%s", ywc.CustomerUUID(), pUUID), nil)
+	if err != nil {
+		return diag.FromErr(err)
+	}
+
+	d.SetId("")
+	return diags
 }
