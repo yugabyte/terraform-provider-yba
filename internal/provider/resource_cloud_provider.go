@@ -49,7 +49,7 @@ func resourceCloudProvider() *schema.Resource {
 				Elem: &schema.Schema{
 					Type: schema.TypeString,
 				},
-				Optional: true,
+				Required: true,
 				ForceNew: true,
 			},
 			"dest_vpc_id": {
@@ -314,15 +314,6 @@ func resourceCloudProviderRead(ctx context.Context, d *schema.ResourceData, meta
 	if err = d.Set("custom_host_cidrs", p.CustomHostCidrs); err != nil {
 		return diag.FromErr(err)
 	}
-	if err = d.Set("dest_vpc_id", p.DestVpcID); err != nil {
-		return diag.FromErr(err)
-	}
-	if err = d.Set("host_vpc_id", p.HostVpcID); err != nil {
-		return diag.FromErr(err)
-	}
-	if err = d.Set("host_vpc_region", p.HostVpcRegion); err != nil {
-		return diag.FromErr(err)
-	}
 	if err = d.Set("hosted_zone_id", p.HostedZoneID); err != nil {
 		return diag.FromErr(err)
 	}
@@ -330,9 +321,6 @@ func resourceCloudProviderRead(ctx context.Context, d *schema.ResourceData, meta
 		return diag.FromErr(err)
 	}
 	if err = d.Set("hosted_zone_name", p.HostedZoneName); err != nil {
-		return diag.FromErr(err)
-	}
-	if err = d.Set("key_pair_name", p.KeyPairName); err != nil {
 		return diag.FromErr(err)
 	}
 	if err = d.Set("name", p.Name); err != nil {
@@ -395,7 +383,7 @@ func resourceCloudProviderUpdate(ctx context.Context, d *schema.ResourceData, me
 	c := meta.(*ApiClient).YugawareClient
 	_, err := c.PlatformAPIs.CloudProviders.EditProvider(&cloud_providers.EditProviderParams{
 		EditProviderFormData: &models.EditProviderRequest{
-			Config:       d.Get("config").(map[string]string),
+			Config:       utils.StringMap(d.Get("config").(map[string]interface{})),
 			HostedZoneID: utils.GetStringPointer(d.Get("hosted_zone_id").(string)),
 		},
 		CUUID:      c.CustomerUUID(),
@@ -405,6 +393,8 @@ func resourceCloudProviderUpdate(ctx context.Context, d *schema.ResourceData, me
 	},
 		c.SwaggerAuth,
 	)
+
+	// TODO: update regions
 	if err != nil {
 		return diag.FromErr(err)
 	}

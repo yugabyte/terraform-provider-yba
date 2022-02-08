@@ -46,6 +46,10 @@ func GetStringPointer(in string) *string {
 	return &in
 }
 
+func CreateSingletonList(in interface{}) []interface{} {
+	return []interface{}{in}
+}
+
 var PendingTaskStates = []string{"Created", "Initializing", "Running"}
 var SuccessTaskStates = []string{"Success"}
 
