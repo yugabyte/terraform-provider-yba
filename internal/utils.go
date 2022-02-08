@@ -31,6 +31,21 @@ func StringMap(in map[string]interface{}) map[string]string {
 	return out
 }
 
+func MapFromSingletonList(in []interface{}) map[string]interface{} {
+	if len(in) == 0 {
+		return make(map[string]interface{})
+	}
+	return in[0].(map[string]interface{})
+}
+
+func GetBoolPointer(in bool) *bool {
+	return &in
+}
+
+func GetStringPointer(in string) *string {
+	return &in
+}
+
 var PendingTaskStates = []string{"Created", "Initializing", "Running"}
 var SuccessTaskStates = []string{"Success"}
 
