@@ -77,8 +77,10 @@ func userIntentSchema() *schema.Resource {
 				Optional: true,
 			},
 			"region_list": {
-				Type:     schema.TypeList,
-				Elem:     schema.TypeString,
+				Type: schema.TypeList,
+				Elem: &schema.Schema{
+					Type: schema.TypeString,
+				},
 				Optional: true,
 			},
 			"num_nodes": {
@@ -200,8 +202,8 @@ func buildClusters(clusters []interface{}) (res []*models.Cluster) {
 	for _, v := range clusters {
 		cluster := v.(map[string]interface{})
 		c := &models.Cluster{
-			ClusterType: cluster["cluster_type"].(*string),
-			UserIntent:  buildUserIntent(cluster["user_intent"].(map[string]interface{})),
+			ClusterType: utils.GetStringPointer(cluster["cluster_type"].(string)),
+			UserIntent:  buildUserIntent(utils.MapFromSingletonList(cluster["user_intent"].([]interface{}))),
 		}
 		res = append(res, c)
 	}
@@ -217,7 +219,7 @@ func buildUserIntent(ui map[string]interface{}) *models.UserIntent {
 		NumNodes:                  int32(ui["num_nodes"].(int)),
 		ReplicationFactor:         int32(ui["replication_factor"].(int)),
 		InstanceType:              ui["instance_type"].(string),
-		DeviceInfo:                buildDeviceInfo(ui["device_info"].(map[string]interface{})),
+		DeviceInfo:                buildDeviceInfo(utils.MapFromSingletonList(ui["device_info"].([]interface{}))),
 		AssignPublicIP:            ui["assign_public_ip"].(bool),
 		UseTimeSync:               ui["use_time_sync"].(bool),
 		EnableYSQL:                ui["enable_ysql"].(bool),
@@ -228,7 +230,7 @@ func buildUserIntent(ui map[string]interface{}) *models.UserIntent {
 		YbSoftwareVersion:         ui["yb_software_version"].(string),
 		AccessKeyCode:             ui["access_key_code"].(string),
 		TserverGFlags:             utils.StringMap(ui["tserver_gflags"].(map[string]interface{})),
-		MasterGFlags:              utils.StringMap(ui["master_glflags"].(map[string]interface{})),
+		MasterGFlags:              utils.StringMap(ui["master_gflags"].(map[string]interface{})),
 	}
 }
 
@@ -236,7 +238,7 @@ func buildDeviceInfo(di map[string]interface{}) *models.DeviceInfo {
 	return &models.DeviceInfo{
 		NumVolumes:  int32(di["num_volumes"].(int)),
 		VolumeSize:  int32(di["volume_size"].(int)),
-		StorageType: di["storage_size"].(string),
+		StorageType: di["storage_type"].(string),
 	}
 }
 
@@ -362,9 +364,9 @@ func resourceUniverseDelete(ctx context.Context, d *schema.ResourceData, meta in
 	c := meta.(*ApiClient).YugawareClient
 	r, err := c.PlatformAPIs.UniverseManagement.DeleteUniverse(&universe_management.DeleteUniverseParams{
 		CUUID:                   c.CustomerUUID(),
-		IsForceDelete:           d.Get("force_delete").(*bool),
-		IsDeleteBackups:         d.Get("delete_backups").(*bool),
-		IsDeleteAssociatedCerts: d.Get("delete_certs").(*bool),
+		IsForceDelete:           utils.GetBoolPointer(d.Get("force_delete").(bool)),
+		IsDeleteBackups:         utils.GetBoolPointer(d.Get("delete_backups").(bool)),
+		IsDeleteAssociatedCerts: utils.GetBoolPointer(d.Get("delete_certs").(bool)),
 		UniUUID:                 strfmt.UUID(d.Id()),
 		Context:                 ctx,
 		HTTPClient:              c.Session(),
