@@ -276,15 +276,15 @@ func flattenClusters(clusters []*models.Cluster) (res []map[string]interface{}) 
 	return res
 }
 
-func flattenUserIntent(ui *models.UserIntent) map[string]interface{} {
-	return map[string]interface{}{
+func flattenUserIntent(ui *models.UserIntent) []interface{} {
+	v := map[string]interface{}{
 		"universe_name":                 ui.UniverseName,
 		"provider_type":                 ui.ProviderType,
 		"provider":                      ui.Provider,
 		"region_list":                   ui.RegionList,
 		"num_nodes":                     ui.NumNodes,
 		"replication_factor":            ui.ReplicationFactor,
-		"instance_types":                ui.InstanceType,
+		"instance_type":                 ui.InstanceType,
 		"device_info":                   flattenDeviceInfo(ui.DeviceInfo),
 		"assign_public_ip":              ui.AssignPublicIP,
 		"use_time_sync":                 ui.UseTimeSync,
@@ -298,14 +298,16 @@ func flattenUserIntent(ui *models.UserIntent) map[string]interface{} {
 		"tserver_gflags":                ui.TserverGFlags,
 		"master_gflags":                 ui.MasterGFlags,
 	}
+	return utils.CreateSingletonList(v)
 }
 
-func flattenDeviceInfo(di *models.DeviceInfo) map[string]interface{} {
-	return map[string]interface{}{
+func flattenDeviceInfo(di *models.DeviceInfo) []interface{} {
+	v := map[string]interface{}{
 		"num_volumes":  di.NumVolumes,
 		"volume_size":  di.VolumeSize,
 		"storage_type": di.StorageType,
 	}
+	return utils.CreateSingletonList(v)
 }
 
 func resourceUniverseUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
