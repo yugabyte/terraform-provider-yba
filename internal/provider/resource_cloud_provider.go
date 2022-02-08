@@ -261,7 +261,7 @@ func buildZones(zones []interface{}) (res []*models.AvailabilityZone) {
 		z := &models.AvailabilityZone{
 			Code:            zone["code"].(string),
 			Config:          utils.StringMap(zone["config"].(map[string]interface{})),
-			Name:            zone["name"].(*string),
+			Name:            utils.GetStringPointer(zone["name"].(string)),
 			SecondarySubnet: zone["secondary_subnet"].(string),
 			Subnet:          zone["subnet"].(string),
 		}
@@ -396,7 +396,7 @@ func resourceCloudProviderUpdate(ctx context.Context, d *schema.ResourceData, me
 	_, err := c.PlatformAPIs.CloudProviders.EditProvider(&cloud_providers.EditProviderParams{
 		EditProviderFormData: &models.EditProviderRequest{
 			Config:       d.Get("config").(map[string]string),
-			HostedZoneID: d.Get("hosted_zone_id").(*string),
+			HostedZoneID: utils.GetStringPointer(d.Get("hosted_zone_id").(string)),
 		},
 		CUUID:      c.CustomerUUID(),
 		PUUID:      strfmt.UUID(d.Id()),

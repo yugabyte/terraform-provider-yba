@@ -37,23 +37,36 @@ resource "yb_cloud_provider" "gcp" {
   air_gap_install = false
 }
 
-data "yb_provider_key" "gcp-key" {}
+data "yb_provider_key" "gcp-key" {
+  provider_id = yb_cloud_provider.gcp.id
+}
+
+locals {
+  region_list = yb_cloud_provider.gcp.regions[*].uuid
+  provider_id = yb_cloud_provider.gcp.id
+  provider_key = data.yb_provider_key.gcp-key.id
+}
+
+output "region_list" {
+  value = local.region_list
+}
 
 resource "yb_universe" "gcp_universe" {
+  depends_on = [yb_cloud_provider.gcp]
   clusters {
     cluster_type = "PRIMARY"
     user_intent {
       universe_name = "sdu-test-gcp-universe"
-      provider_type = "aws"
-      provider = yb_cloud_provider.gcp.id
-      region_list = [for r in yb_cloud_provider.gcp.regions : r.uuid]
+      provider_type = "gcp"
+      provider = local.provider_id
+      region_list = local.region_list
       num_nodes = 3
       replication_factor = 3
-      instance_type = "c5.large"
+      instance_type = "n1-standard-1"
       device_info {
         num_volumes = 1
-        volume_size = 250
-        storage_type = "GP2"
+        volume_size = 375
+        storage_type = "Persistent"
       }
       assign_public_ip = true
       use_time_sync = true
@@ -61,11 +74,9 @@ resource "yb_universe" "gcp_universe" {
       enable_node_to_node_encrypt = true
       enable_client_to_node_encrypt = true
       yb_software_version = "2.7.3.0-b80"
-      access_key_code = data.yb_provider_key.gcp-key.id
+      access_key_code = local.provider_key
     }
   }
 }
 
-output "provider" {
-  value = yb_cloud_provider.gcp
-}
+
