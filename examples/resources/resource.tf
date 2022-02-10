@@ -8,7 +8,7 @@ terraform {
 }
 
 provider "yb" {
-  apikey = "2acefa8e-b094-44d8-ad46-5c8276c7e22a"
+  apikey = "e007de9f-835c-46f0-9e0d-9e8422c93c89"
   host = "portal.dev.yugabyte.com"
 }
 
@@ -48,8 +48,8 @@ locals {
   provider_key = data.yb_provider_key.gcp-key.id
 }
 
-output "region_list" {
-  value = local.region_list
+output "provider" {
+  value = yb_cloud_provider.gcp
 }
 
 #resource "yb_universe" "gcp_universe" {
