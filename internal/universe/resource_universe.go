@@ -1,4 +1,4 @@
-package provider
+package universe
 
 import (
 	"context"
@@ -7,14 +7,15 @@ import (
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	utils "github.com/yugabyte/terraform-provider-yugabyte-platform/internal"
+	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/api"
+	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/utils"
 	"github.com/yugabyte/yb-tools/yugaware-client/pkg/client/swagger/client/universe_cluster_mutations"
 	"github.com/yugabyte/yb-tools/yugaware-client/pkg/client/swagger/client/universe_management"
 	"github.com/yugabyte/yb-tools/yugaware-client/pkg/client/swagger/models"
 	"time"
 )
 
-func resourceUniverse() *schema.Resource {
+func ResourceUniverse() *schema.Resource {
 	return &schema.Resource{
 		Description: "Universe Resource",
 
@@ -167,7 +168,7 @@ func userIntentSchema() *schema.Resource {
 }
 
 func resourceUniverseCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	c := meta.(*ApiClient).YugawareClient
+	c := meta.(*api.ApiClient).YugawareClient
 	req := buildUniverse(d)
 	u, err := c.PlatformAPIs.UniverseClusterMutations.CreateAllClusters(&universe_cluster_mutations.CreateAllClustersParams{
 		UniverseConfigureTaskParams: req,
@@ -245,7 +246,7 @@ func buildDeviceInfo(di map[string]interface{}) *models.DeviceInfo {
 func resourceUniverseRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	var diags diag.Diagnostics
 
-	c := meta.(*ApiClient).YugawareClient
+	c := meta.(*api.ApiClient).YugawareClient
 	r, err := c.PlatformAPIs.UniverseManagement.GetUniverse(&universe_management.GetUniverseParams{
 		CUUID:      c.CustomerUUID(),
 		UniUUID:    strfmt.UUID(d.Id()),
@@ -311,7 +312,7 @@ func flattenDeviceInfo(di *models.DeviceInfo) []interface{} {
 }
 
 func resourceUniverseUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	c := meta.(*ApiClient).YugawareClient
+	c := meta.(*api.ApiClient).YugawareClient
 	if d.HasChanges("clusters") {
 		var taskIds []strfmt.UUID
 		clusters := d.Get("clusters").([]interface{})
@@ -363,7 +364,7 @@ func resourceUniverseUpdate(ctx context.Context, d *schema.ResourceData, meta in
 func resourceUniverseDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	var diags diag.Diagnostics
 
-	c := meta.(*ApiClient).YugawareClient
+	c := meta.(*api.ApiClient).YugawareClient
 	r, err := c.PlatformAPIs.UniverseManagement.DeleteUniverse(&universe_management.DeleteUniverseParams{
 		CUUID:                   c.CustomerUUID(),
 		IsForceDelete:           utils.GetBoolPointer(d.Get("force_delete").(bool)),

@@ -1,4 +1,4 @@
-package provider
+package cloud_provider
 
 import (
 	"context"
@@ -8,14 +8,15 @@ import (
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	utils "github.com/yugabyte/terraform-provider-yugabyte-platform/internal"
+	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/api"
+	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/utils"
 	"github.com/yugabyte/yb-tools/yugaware-client/pkg/client/swagger/client/cloud_providers"
 	"github.com/yugabyte/yb-tools/yugaware-client/pkg/client/swagger/models"
 	"net/http"
 	"time"
 )
 
-func resourceCloudProvider() *schema.Resource {
+func ResourceCloudProvider() *schema.Resource {
 	return &schema.Resource{
 		Description: "Cloud Provider Resource",
 
@@ -23,6 +24,8 @@ func resourceCloudProvider() *schema.Resource {
 		ReadContext:   resourceCloudProviderRead,
 		UpdateContext: resourceCloudProviderUpdate,
 		DeleteContext: resourceCloudProviderDelete,
+
+		//CustomizeDiff: customdiff.Sequence(),
 
 		Schema: map[string]*schema.Schema{
 			"active": {
@@ -39,16 +42,11 @@ func resourceCloudProvider() *schema.Resource {
 				Optional: true,
 				ForceNew: true,
 			},
-			"config": {
-				Type:     schema.TypeMap,
-				Elem:     schema.TypeString,
-				Optional: true,
-			},
+			"config":          ConfigSchema(),
+			"computed_config": ComputedConfigSchema(),
 			"custom_host_cidrs": {
-				Type: schema.TypeList,
-				Elem: &schema.Schema{
-					Type: schema.TypeString,
-				},
+				Type:     schema.TypeList,
+				Elem:     &schema.Schema{Type: schema.TypeString},
 				Required: true,
 				ForceNew: true,
 			},
@@ -193,7 +191,7 @@ func resourceCloudProvider() *schema.Resource {
 }
 
 func resourceCloudProviderCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	c := meta.(*ApiClient).YugawareClient
+	c := meta.(*api.ApiClient).YugawareClient
 	req := buildCloudProvider(d)
 	p, err := c.PlatformAPIs.CloudProviders.CreateProviders(&cloud_providers.CreateProvidersParams{
 		CreateProviderRequest: req,
@@ -282,7 +280,7 @@ func findProvider(providers []*models.Provider, uuid strfmt.UUID) (*models.Provi
 func resourceCloudProviderRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	var diags diag.Diagnostics
 
-	c := meta.(*ApiClient).YugawareClient
+	c := meta.(*api.ApiClient).YugawareClient
 	r, err := c.PlatformAPIs.CloudProviders.GetListOfProviders(&cloud_providers.GetListOfProvidersParams{
 		CUUID:      c.CustomerUUID(),
 		Context:    ctx,
@@ -308,7 +306,7 @@ func resourceCloudProviderRead(ctx context.Context, d *schema.ResourceData, meta
 	if err = d.Set("code", p.Code); err != nil {
 		return diag.FromErr(err)
 	}
-	if err = d.Set("config", p.Config); err != nil {
+	if err = d.Set("computed_config", p.Config); err != nil {
 		return diag.FromErr(err)
 	}
 	if err = d.Set("custom_host_cidrs", p.CustomHostCidrs); err != nil {
@@ -380,7 +378,7 @@ func resourceCloudProviderUpdate(ctx context.Context, d *schema.ResourceData, me
 	// update provider API in platform has very limited functionality
 	// most likely that the provider will be recreated
 
-	c := meta.(*ApiClient).YugawareClient
+	c := meta.(*api.ApiClient).YugawareClient
 	_, err := c.PlatformAPIs.CloudProviders.EditProvider(&cloud_providers.EditProviderParams{
 		EditProviderFormData: &models.EditProviderRequest{
 			Config:       utils.StringMap(d.Get("config").(map[string]interface{})),
@@ -406,8 +404,8 @@ func resourceCloudProviderDelete(ctx context.Context, d *schema.ResourceData, me
 	// TODO: this uses a non-public API
 	var diags diag.Diagnostics
 
-	vc := meta.(*ApiClient).VanillaClient
-	ywc := meta.(*ApiClient).YugawareClient
+	vc := meta.(*api.ApiClient).VanillaClient
+	ywc := meta.(*api.ApiClient).YugawareClient
 	pUUID := d.Id()
 	_, err := vc.MakeRequest(http.MethodDelete, fmt.Sprintf("api/v1/customers/%s/providers/%s", ywc.CustomerUUID(), pUUID), nil)
 	if err != nil {

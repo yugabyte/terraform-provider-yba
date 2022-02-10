@@ -48,8 +48,8 @@ locals {
   provider_key = data.yb_provider_key.gcp-key.id
 }
 
-output "region_list" {
-  value = local.region_list
+output "provider" {
+  value = yb_cloud_provider.gcp
 }
 
 #resource "yb_universe" "gcp_universe" {

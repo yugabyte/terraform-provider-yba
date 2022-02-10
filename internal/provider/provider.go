@@ -3,13 +3,15 @@ package provider
 import (
 	"context"
 	"errors"
-	"fmt"
 	"github.com/go-logr/zapr"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/api"
+	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/cloud_provider"
+	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/datasource"
+	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/universe"
 	"github.com/yugabyte/yb-tools/yugaware-client/pkg/client"
 	"go.uber.org/zap"
-	"io"
 	"net/http"
 	"time"
 )
@@ -47,44 +49,16 @@ func New() func() *schema.Provider {
 				},
 			},
 			DataSourcesMap: map[string]*schema.Resource{
-				"yb_customer":     dataSourceCustomer(),
-				"yb_provider_key": dataSourceProviderKey(),
+				"yb_customer":     datasource.Customer(),
+				"yb_provider_key": datasource.ProviderKey(),
 			},
 			ResourcesMap: map[string]*schema.Resource{
-				"yb_cloud_provider": resourceCloudProvider(),
-				"yb_universe":       resourceUniverse(),
+				"yb_cloud_provider": cloud_provider.ResourceCloudProvider(),
+				"yb_universe":       universe.ResourceUniverse(),
 			},
 			ConfigureContextFunc: providerConfigure,
 		}
 	}
-}
-
-type ApiClient struct {
-	VanillaClient  *VanillaClient
-	YugawareClient *client.YugawareClient
-}
-
-type VanillaClient struct {
-	// TODO: remove this client, used for accessing non-public APIs
-	Client *http.Client
-	ApiKey string
-	Host   string
-}
-
-func (c VanillaClient) MakeRequest(method string, url string, body io.Reader) (*http.Response, error) {
-	req, err := http.NewRequest(method, fmt.Sprintf("http://%s/%s", c.Host, url), body)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-AUTH-YW-API-TOKEN", c.ApiKey)
-
-	r, err := c.Client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	return r, err
 }
 
 func providerConfigure(ctx context.Context, d *schema.ResourceData) (interface{}, diag.Diagnostics) {
@@ -109,13 +83,13 @@ func providerConfigure(ctx context.Context, d *schema.ResourceData) (interface{}
 	if err != nil {
 		return nil, diag.FromErr(err)
 	}
-	vc := &VanillaClient{
+	vc := &api.VanillaClient{
 		Client: &http.Client{Timeout: 10 * time.Second},
 		ApiKey: key,
 		Host:   host,
 	}
 
-	return &ApiClient{
+	return &api.ApiClient{
 		YugawareClient: ybc,
 		VanillaClient:  vc,
 	}, diags
