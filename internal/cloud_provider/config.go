@@ -8,6 +8,7 @@ func ConfigSchema() *schema.Schema {
 	return &schema.Schema{
 		Type:     schema.TypeMap,
 		Elem:     &schema.Schema{Type: schema.TypeString},
+		ForceNew: true,
 		Optional: true,
 	}
 }
@@ -17,10 +18,7 @@ func ComputedConfigSchema() *schema.Schema {
 		Type:     schema.TypeMap,
 		Elem:     &schema.Schema{Type: schema.TypeString},
 		Optional: true,
+		ForceNew: true,
 		Computed: true,
 	}
 }
-
-//func ConfigDiff(_ context.Context, diff *schema.ResourceDiff, meta interface{}) error {
-//	oldConfig, newConfig := diff.GetChange("config")
-//}
