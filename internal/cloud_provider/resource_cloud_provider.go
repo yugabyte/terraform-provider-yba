@@ -7,6 +7,7 @@ import (
 	"github.com/go-openapi/strfmt"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/customdiff"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/api"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/utils"
@@ -25,7 +26,10 @@ func ResourceCloudProvider() *schema.Resource {
 		UpdateContext: resourceCloudProviderUpdate,
 		DeleteContext: resourceCloudProviderDelete,
 
-		//CustomizeDiff: customdiff.Sequence(),
+		CustomizeDiff: customdiff.Sequence(
+			utils.ComputedValueDiff("computed_config"),
+			utils.ComputedValueDiff("computed_regions"),
+		),
 
 		Schema: map[string]*schema.Schema{
 			"active": {
@@ -68,6 +72,7 @@ func ResourceCloudProvider() *schema.Resource {
 			"hosted_zone_id": {
 				Type:     schema.TypeString,
 				Optional: true,
+				ForceNew: true,
 			},
 			"hosted_zone_name": {
 				Type:     schema.TypeString,
@@ -84,93 +89,8 @@ func ResourceCloudProvider() *schema.Resource {
 				Optional: true,
 				ForceNew: true,
 			},
-			"regions": {
-				Type:     schema.TypeList,
-				Required: true,
-				ForceNew: true,
-				Elem: &schema.Resource{
-					Schema: map[string]*schema.Schema{
-						"uuid": {
-							Type:     schema.TypeString,
-							Computed: true,
-						},
-						"code": {
-							Type:     schema.TypeString,
-							Optional: true,
-						},
-						"config": {
-							Type:     schema.TypeMap,
-							Elem:     schema.TypeString,
-							Optional: true,
-						},
-						"latitude": {
-							Type:     schema.TypeFloat,
-							Computed: true,
-						},
-						"longitude": {
-							Type:     schema.TypeFloat,
-							Computed: true,
-						},
-						"name": {
-							Type:     schema.TypeString,
-							Optional: true,
-						},
-						"security_group_id": {
-							Type:     schema.TypeString,
-							Optional: true,
-						},
-						"vnet_name": {
-							Type:     schema.TypeString,
-							Optional: true,
-						},
-						"yb_image": {
-							Type:     schema.TypeString,
-							Optional: true,
-						},
-						"zones": {
-							Type:     schema.TypeList,
-							Optional: true,
-							Elem: &schema.Resource{
-								Schema: map[string]*schema.Schema{
-									"uuid": {
-										Type:     schema.TypeString,
-										Computed: true,
-									},
-									"active": {
-										Type:     schema.TypeBool,
-										Computed: true,
-									},
-									"code": {
-										Type:     schema.TypeString,
-										Optional: true,
-									},
-									"config": {
-										Type:     schema.TypeMap,
-										Elem:     schema.TypeString,
-										Optional: true,
-									},
-									"kube_config_path": {
-										Type:     schema.TypeString,
-										Computed: true,
-									},
-									"name": {
-										Type:     schema.TypeString,
-										Required: true,
-									},
-									"secondary_subnet": {
-										Type:     schema.TypeString,
-										Optional: true,
-									},
-									"subnet": {
-										Type:     schema.TypeString,
-										Optional: true,
-									},
-								},
-							},
-						},
-					},
-				},
-			},
+			"regions":          RegionsSchema(),
+			"computed_regions": ComputedRegionsSchema(),
 			"ssh_port": {
 				Type:     schema.TypeInt,
 				Optional: true,
@@ -192,7 +112,23 @@ func ResourceCloudProvider() *schema.Resource {
 
 func resourceCloudProviderCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	c := meta.(*api.ApiClient).YugawareClient
-	req := buildCloudProvider(d)
+	req := &models.Provider{
+		AirGapInstall:        d.Get("air_gap_install").(bool),
+		Code:                 d.Get("code").(string),
+		Config:               utils.StringMap(d.Get("config").(map[string]interface{})),
+		CustomHostCidrs:      utils.StringSlice(d.Get("custom_host_cidrs").([]interface{})),
+		DestVpcID:            d.Get("dest_vpc_id").(string),
+		HostVpcID:            d.Get("host_vpc_id").(string),
+		HostVpcRegion:        d.Get("host_vpc_region").(string),
+		HostedZoneID:         d.Get("hosted_zone_id").(string),
+		HostedZoneName:       d.Get("hosted_zone_name").(string),
+		KeyPairName:          d.Get("key_pair_name").(string),
+		Name:                 d.Get("name").(string),
+		SSHPort:              int32(d.Get("ssh_port").(int)),
+		SSHPrivateKeyContent: d.Get("ssh_private_key_content").(string),
+		SSHUser:              d.Get("ssh_user").(string),
+		Regions:              buildRegions(d.Get("regions").([]interface{})),
+	}
 	p, err := c.PlatformAPIs.CloudProviders.CreateProviders(&cloud_providers.CreateProvidersParams{
 		CreateProviderRequest: req,
 		CUUID:                 c.CustomerUUID(),
@@ -213,59 +149,6 @@ func resourceCloudProviderCreate(ctx context.Context, d *schema.ResourceData, me
 	}
 
 	return resourceCloudProviderRead(ctx, d, meta)
-}
-
-func buildCloudProvider(d *schema.ResourceData) *models.Provider {
-	p := models.Provider{
-		AirGapInstall:        d.Get("air_gap_install").(bool),
-		Code:                 d.Get("code").(string),
-		Config:               utils.StringMap(d.Get("config").(map[string]interface{})),
-		CustomHostCidrs:      utils.StringSlice(d.Get("custom_host_cidrs").([]interface{})),
-		DestVpcID:            d.Get("dest_vpc_id").(string),
-		HostVpcID:            d.Get("host_vpc_id").(string),
-		HostVpcRegion:        d.Get("host_vpc_region").(string),
-		HostedZoneID:         d.Get("hosted_zone_id").(string),
-		HostedZoneName:       d.Get("hosted_zone_name").(string),
-		KeyPairName:          d.Get("key_pair_name").(string),
-		Name:                 d.Get("name").(string),
-		SSHPort:              int32(d.Get("ssh_port").(int)),
-		SSHPrivateKeyContent: d.Get("ssh_private_key_content").(string),
-		SSHUser:              d.Get("ssh_user").(string),
-		Regions:              buildRegions(d.Get("regions").([]interface{})),
-	}
-	return &p
-}
-
-func buildRegions(regions []interface{}) (res []*models.Region) {
-	for _, v := range regions {
-		region := v.(map[string]interface{})
-		r := &models.Region{
-			Config:          utils.StringMap(region["config"].(map[string]interface{})),
-			Name:            region["name"].(string),
-			SecurityGroupID: region["security_group_id"].(string),
-			VnetName:        region["vnet_name"].(string),
-			YbImage:         region["yb_image"].(string),
-			Code:            region["code"].(string),
-			Zones:           buildZones(region["zones"].([]interface{})),
-		}
-		res = append(res, r)
-	}
-	return res
-}
-
-func buildZones(zones []interface{}) (res []*models.AvailabilityZone) {
-	for _, v := range zones {
-		zone := v.(map[string]interface{})
-		z := &models.AvailabilityZone{
-			Code:            zone["code"].(string),
-			Config:          utils.StringMap(zone["config"].(map[string]interface{})),
-			Name:            utils.GetStringPointer(zone["name"].(string)),
-			SecondarySubnet: zone["secondary_subnet"].(string),
-			Subnet:          zone["subnet"].(string),
-		}
-		res = append(res, z)
-	}
-	return res
 }
 
 func findProvider(providers []*models.Provider, uuid strfmt.UUID) (*models.Provider, error) {
@@ -333,51 +216,14 @@ func resourceCloudProviderRead(ctx context.Context, d *schema.ResourceData, meta
 	if err = d.Set("ssh_user", p.SSHUser); err != nil {
 		return diag.FromErr(err)
 	}
-	if err = d.Set("regions", flattenRegions(p.Regions)); err != nil {
+	if err = d.Set("computed_regions", flattenRegions(p.Regions)); err != nil {
 		return diag.FromErr(err)
 	}
 	return diags
 }
 
-func flattenRegions(regions []*models.Region) (res []map[string]interface{}) {
-	for _, region := range regions {
-		r := map[string]interface{}{
-			"uuid":              region.UUID,
-			"code":              region.Code,
-			"config":            region.Config,
-			"latitude":          region.Latitude,
-			"longitude":         region.Longitude,
-			"name":              region.Name,
-			"security_group_id": region.SecurityGroupID,
-			"vnet_name":         region.VnetName,
-			"yb_image":          region.YbImage,
-			"zones":             flattenZones(region.Zones),
-		}
-		res = append(res, r)
-	}
-	return res
-}
-
-func flattenZones(zones []*models.AvailabilityZone) (res []map[string]interface{}) {
-	for _, zone := range zones {
-		z := map[string]interface{}{
-			"uuid":             zone.UUID,
-			"active":           zone.Active,
-			"code":             zone.Code,
-			"config":           zone.Config,
-			"kube_config_path": zone.KubeconfigPath,
-			"secondary_subnet": zone.SecondarySubnet,
-			"subnet":           zone.Subnet,
-		}
-		res = append(res, z)
-	}
-	return res
-}
-
 func resourceCloudProviderUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	// update provider API in platform has very limited functionality
-	// most likely that the provider will be recreated
-
+	// this only updates the regions and zones; changes to other fields recreate the provider
 	c := meta.(*api.ApiClient).YugawareClient
 	_, err := c.PlatformAPIs.CloudProviders.EditProvider(&cloud_providers.EditProviderParams{
 		EditProviderFormData: &models.EditProviderRequest{
