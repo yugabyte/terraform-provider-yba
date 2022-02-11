@@ -7,97 +7,191 @@ import (
 )
 
 func RegionsSchema() *schema.Schema {
-	r := regionsSchema()
-	r.Required = true
-	return r
-}
-
-func ComputedRegionsSchema() *schema.Schema {
-	r := regionsSchema()
-	r.Computed = true
-	return r
-}
-
-func regionsSchema() *schema.Schema {
 	return &schema.Schema{
 		Type:     schema.TypeList,
 		ForceNew: true,
+		Required: true,
 		Elem: &schema.Resource{
 			Schema: map[string]*schema.Schema{
-				"uuid": {
-					Type:     schema.TypeString,
-					Computed: true,
-				},
 				"code": {
 					Type:     schema.TypeString,
 					Optional: true,
+					ForceNew: true,
 				},
 				"config": {
 					Type:     schema.TypeMap,
 					Elem:     schema.TypeString,
 					Optional: true,
-				},
-				"latitude": {
-					Type:     schema.TypeFloat,
-					Computed: true,
-				},
-				"longitude": {
-					Type:     schema.TypeFloat,
-					Computed: true,
+					ForceNew: true,
 				},
 				"name": {
 					Type:     schema.TypeString,
 					Optional: true,
+					ForceNew: true,
 				},
 				"security_group_id": {
 					Type:     schema.TypeString,
 					Optional: true,
+					ForceNew: true,
 				},
 				"vnet_name": {
 					Type:     schema.TypeString,
 					Optional: true,
+					ForceNew: true,
 				},
 				"yb_image": {
 					Type:     schema.TypeString,
 					Optional: true,
+					ForceNew: true,
 				},
 				"zones": {
 					Type:     schema.TypeList,
 					Optional: true,
 					Elem: &schema.Resource{
 						Schema: map[string]*schema.Schema{
-							"uuid": {
-								Type:     schema.TypeString,
-								Computed: true,
-							},
-							"active": {
-								Type:     schema.TypeBool,
-								Computed: true,
-							},
 							"code": {
 								Type:     schema.TypeString,
 								Optional: true,
+								ForceNew: true,
 							},
 							"config": {
 								Type:     schema.TypeMap,
 								Elem:     schema.TypeString,
 								Optional: true,
-							},
-							"kube_config_path": {
-								Type:     schema.TypeString,
-								Computed: true,
+								ForceNew: true,
 							},
 							"name": {
 								Type:     schema.TypeString,
 								Required: true,
+								ForceNew: true,
 							},
 							"secondary_subnet": {
 								Type:     schema.TypeString,
 								Optional: true,
+								ForceNew: true,
 							},
 							"subnet": {
 								Type:     schema.TypeString,
 								Optional: true,
+								ForceNew: true,
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+func ComputedRegionsSchema() *schema.Schema {
+	return &schema.Schema{
+		Type:     schema.TypeList,
+		Computed: true,
+		ForceNew: true,
+		Elem: &schema.Resource{
+			Schema: map[string]*schema.Schema{
+				"uuid": {
+					Type:     schema.TypeString,
+					Computed: true,
+					ForceNew: true,
+				},
+				"code": {
+					Type:     schema.TypeString,
+					Optional: true,
+					Computed: true,
+					ForceNew: true,
+				},
+				"config": {
+					Type:     schema.TypeMap,
+					Elem:     schema.TypeString,
+					Optional: true,
+					Computed: true,
+					ForceNew: true,
+				},
+				"latitude": {
+					Type:     schema.TypeFloat,
+					Computed: true,
+					ForceNew: true,
+				},
+				"longitude": {
+					Type:     schema.TypeFloat,
+					Computed: true,
+					ForceNew: true,
+				},
+				"name": {
+					Type:     schema.TypeString,
+					Optional: true,
+					Computed: true,
+					ForceNew: true,
+				},
+				"security_group_id": {
+					Type:     schema.TypeString,
+					Optional: true,
+					Computed: true,
+					ForceNew: true,
+				},
+				"vnet_name": {
+					Type:     schema.TypeString,
+					Optional: true,
+					Computed: true,
+					ForceNew: true,
+				},
+				"yb_image": {
+					Type:     schema.TypeString,
+					Optional: true,
+					Computed: true,
+					ForceNew: true,
+				},
+				"zones": {
+					Type:     schema.TypeList,
+					Optional: true,
+					ForceNew: true,
+					Elem: &schema.Resource{
+						Schema: map[string]*schema.Schema{
+							"uuid": {
+								Type:     schema.TypeString,
+								Computed: true,
+								ForceNew: true,
+							},
+							"active": {
+								Type:     schema.TypeBool,
+								Computed: true,
+								ForceNew: true,
+							},
+							"code": {
+								Type:     schema.TypeString,
+								Optional: true,
+								Computed: true,
+								ForceNew: true,
+							},
+							"config": {
+								Type:     schema.TypeMap,
+								Elem:     schema.TypeString,
+								Optional: true,
+								Computed: true,
+								ForceNew: true,
+							},
+							"kube_config_path": {
+								Type:     schema.TypeString,
+								Computed: true,
+								ForceNew: true,
+							},
+							"name": {
+								Type:     schema.TypeString,
+								Computed: true,
+								ForceNew: true,
+							},
+							"secondary_subnet": {
+								Type:     schema.TypeString,
+								Optional: true,
+								Computed: true,
+								ForceNew: true,
+							},
+							"subnet": {
+								Type:     schema.TypeString,
+								Optional: true,
+								Computed: true,
+								ForceNew: true,
 							},
 						},
 					},

@@ -8,8 +8,8 @@ import (
 
 func ComputedValueDiff(key string) schema.CustomizeDiffFunc {
 	return func(_ context.Context, diff *schema.ResourceDiff, _ interface{}) error {
-		oldConfig, newConfig := diff.GetChange(key)
-		if !reflect.DeepEqual(oldConfig, newConfig) {
+		o, n := diff.GetChange(key)
+		if !reflect.DeepEqual(o, n) {
 			if err := diff.SetNewComputed(key); err != nil {
 				return err
 			}

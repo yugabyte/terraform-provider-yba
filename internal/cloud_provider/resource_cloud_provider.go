@@ -7,7 +7,6 @@ import (
 	"github.com/go-openapi/strfmt"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/customdiff"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/api"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/utils"
@@ -23,13 +22,7 @@ func ResourceCloudProvider() *schema.Resource {
 
 		CreateContext: resourceCloudProviderCreate,
 		ReadContext:   resourceCloudProviderRead,
-		UpdateContext: resourceCloudProviderUpdate,
 		DeleteContext: resourceCloudProviderDelete,
-
-		CustomizeDiff: customdiff.Sequence(
-			utils.ComputedValueDiff("computed_config"),
-			utils.ComputedValueDiff("computed_regions"),
-		),
 
 		Schema: map[string]*schema.Schema{
 			"active": {
@@ -220,30 +213,6 @@ func resourceCloudProviderRead(ctx context.Context, d *schema.ResourceData, meta
 		return diag.FromErr(err)
 	}
 	return diags
-}
-
-func resourceCloudProviderUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	// this only updates the regions and zones; changes to other fields recreate the provider
-	c := meta.(*api.ApiClient).YugawareClient
-	_, err := c.PlatformAPIs.CloudProviders.EditProvider(&cloud_providers.EditProviderParams{
-		EditProviderFormData: &models.EditProviderRequest{
-			Config:       utils.StringMap(d.Get("config").(map[string]interface{})),
-			HostedZoneID: utils.GetStringPointer(d.Get("hosted_zone_id").(string)),
-		},
-		CUUID:      c.CustomerUUID(),
-		PUUID:      strfmt.UUID(d.Id()),
-		Context:    ctx,
-		HTTPClient: c.Session(),
-	},
-		c.SwaggerAuth,
-	)
-
-	// TODO: update regions
-	if err != nil {
-		return diag.FromErr(err)
-	}
-
-	return resourceCloudProviderRead(ctx, d, meta)
 }
 
 func resourceCloudProviderDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
