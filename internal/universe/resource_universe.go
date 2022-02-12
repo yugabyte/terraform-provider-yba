@@ -132,6 +132,7 @@ func userIntentSchema() *schema.Resource {
 			"enable_yedis": {
 				Type:     schema.TypeBool,
 				Optional: true,
+				Default:  true,
 			},
 			"enable_node_to_node_encrypt": {
 				Type:     schema.TypeBool,

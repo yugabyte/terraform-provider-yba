@@ -7,6 +7,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/api"
+	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/backups"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/cloud_provider"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/datasource"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/universe"
@@ -49,12 +50,14 @@ func New() func() *schema.Provider {
 				},
 			},
 			DataSourcesMap: map[string]*schema.Resource{
-				"yb_customer":     datasource.Customer(),
-				"yb_provider_key": datasource.ProviderKey(),
+				"yb_customer":        datasource.Customer(),
+				"yb_provider_key":    cloud_provider.ProviderKey(),
+				"yb_storage_configs": backups.StorageConfigs(),
 			},
 			ResourcesMap: map[string]*schema.Resource{
 				"yb_cloud_provider": cloud_provider.ResourceCloudProvider(),
 				"yb_universe":       universe.ResourceUniverse(),
+				"yb_backups":        backups.ResourceBackups(),
 			},
 			ConfigureContextFunc: providerConfigure,
 		}

@@ -1,4 +1,4 @@
-package datasource
+package cloud_provider
 
 import (
 	"context"
