@@ -50,6 +50,11 @@ func CreateSingletonList(in interface{}) []interface{} {
 	return []interface{}{in}
 }
 
+func GetUUIDPointer(in string) *strfmt.UUID {
+	out := strfmt.UUID(in)
+	return &out
+}
+
 var PendingTaskStates = []string{"Created", "Initializing", "Running"}
 var SuccessTaskStates = []string{"Success"}
 

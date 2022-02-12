@@ -8,6 +8,7 @@ terraform {
 }
 
 provider "yb" {
+  // these can be set as environment variables
   apikey = "***REMOVED***"
   host = "portal.dev.yugabyte.com"
 }
@@ -76,8 +77,24 @@ resource "yb_universe" "gcp_universe" {
       enable_client_to_node_encrypt = true
       yb_software_version = "2.7.3.0-b80"
       access_key_code = local.provider_key
+
     }
   }
+}
+
+data "yb_storage_configs" "configs" {}
+
+resource "yb_backups" "gcp_universe_backup" {
+  depends_on = [yb_universe.gcp_universe]
+  uni_uuid = yb_universe.gcp_universe.id
+  action_type = "CREATE"
+  keyspace = "postgres"
+  storage_config_uuid = data.yb_storage_configs.configs.uuid_list[0]
+  time_before_delete = 864000000
+  sse = false
+  transactional_backup = false
+  parallelism = 8
+  backup_type = "PGSQL_TABLE_TYPE"
 }
 
 
