@@ -39,6 +39,8 @@ resource "yb_cloud_provider" "gcp" {
   air_gap_install = false
 }
 
+resource "yb_cloud_provider" "import_gcp" {}
+
 data "yb_provider_key" "gcp-key" {
   provider_id = yb_cloud_provider.gcp.id
 }
@@ -47,10 +49,6 @@ locals {
   region_list = yb_cloud_provider.gcp.computed_regions[*].uuid
   provider_id = yb_cloud_provider.gcp.id
   provider_key = data.yb_provider_key.gcp-key.id
-}
-
-output "provider" {
-  value = yb_cloud_provider.gcp
 }
 
 resource "yb_universe" "gcp_universe" {
@@ -77,7 +75,6 @@ resource "yb_universe" "gcp_universe" {
       enable_client_to_node_encrypt = true
       yb_software_version = "2.7.3.0-b80"
       access_key_code = local.provider_key
-
     }
   }
 }

@@ -24,6 +24,10 @@ func ResourceUniverse() *schema.Resource {
 		UpdateContext: resourceUniverseUpdate,
 		DeleteContext: resourceUniverseDelete,
 
+		Importer: &schema.ResourceImporter{
+			StateContext: schema.ImportStatePassthroughContext,
+		},
+
 		Schema: map[string]*schema.Schema{
 			// Universe Delete Options
 			"delete_certs": {
