@@ -22,6 +22,10 @@ func ResourceBackups() *schema.Resource {
 		ReadContext:   resourceBackupsRead,
 		DeleteContext: resourceBackupsDelete,
 
+		Importer: &schema.ResourceImporter{
+			StateContext: schema.ImportStatePassthroughContext,
+		},
+
 		Schema: map[string]*schema.Schema{
 			"uni_uuid": {
 				Type:     schema.TypeString,

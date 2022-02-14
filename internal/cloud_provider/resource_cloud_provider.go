@@ -24,6 +24,10 @@ func ResourceCloudProvider() *schema.Resource {
 		ReadContext:   resourceCloudProviderRead,
 		DeleteContext: resourceCloudProviderDelete,
 
+		Importer: &schema.ResourceImporter{
+			StateContext: schema.ImportStatePassthroughContext,
+		},
+
 		Schema: map[string]*schema.Schema{
 			"active": {
 				Type:     schema.TypeBool,
