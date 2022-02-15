@@ -39,8 +39,6 @@ resource "yb_cloud_provider" "gcp" {
   air_gap_install = false
 }
 
-resource "yb_cloud_provider" "import_gcp" {}
-
 data "yb_provider_key" "gcp-key" {
   provider_id = yb_cloud_provider.gcp.id
 }
@@ -77,6 +75,7 @@ resource "yb_universe" "gcp_universe" {
       access_key_code = local.provider_key
     }
   }
+  communication_ports{}
 }
 
 #data "yb_storage_configs" "configs" {}

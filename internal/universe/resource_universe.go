@@ -51,6 +51,7 @@ func ResourceUniverse() *schema.Resource {
 			"capability": {
 				Type:     schema.TypeString,
 				Optional: true,
+				Default:  models.UniverseConfigureTaskParamsCapabilityEDITSALLOWED,
 			},
 			"client_root_ca": {
 				Type:     schema.TypeString,
@@ -84,58 +85,74 @@ func ResourceUniverse() *schema.Resource {
 							Optional: true,
 							Elem:     cloudListSchema(),
 						},
+						"computed_cloud_list": {
+							Type:     schema.TypeList,
+							Computed: true,
+							Elem:     cloudListSchema(),
+						},
 					},
 				},
 			},
 			"communication_ports": {
 				Type:     schema.TypeList,
-				Optional: true,
+				Required: true,
 				MaxItems: 1,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
 						"master_http_port": {
 							Type:     schema.TypeInt,
 							Optional: true,
+							Default:  7000,
 						},
 						"master_rpc_port": {
 							Type:     schema.TypeInt,
 							Optional: true,
+							Default:  7100,
 						},
 						"node_exporter_port": {
 							Type:     schema.TypeInt,
 							Optional: true,
+							Default:  9300,
 						},
 						"redis_server_http_port": {
 							Type:     schema.TypeInt,
 							Optional: true,
+							Default:  11000,
 						},
 						"redis_server_rpc_port": {
 							Type:     schema.TypeInt,
 							Optional: true,
+							Default:  6379,
 						},
 						"tserver_http_port": {
 							Type:     schema.TypeInt,
 							Optional: true,
+							Default:  9000,
 						},
 						"tserver_rpc_port": {
 							Type:     schema.TypeInt,
 							Optional: true,
+							Default:  9100,
 						},
 						"yql_server_http_port": {
 							Type:     schema.TypeInt,
 							Optional: true,
+							Default:  12000,
 						},
 						"yql_server_rpc_port": {
 							Type:     schema.TypeInt,
 							Optional: true,
+							Default:  9042,
 						},
 						"ysql_server_http_port": {
 							Type:     schema.TypeInt,
 							Optional: true,
+							Default:  13000,
 						},
 						"ysql_server_rpc_port": {
 							Type:     schema.TypeInt,
 							Optional: true,
+							Default:  5433,
 						},
 					},
 				},
@@ -225,6 +242,7 @@ func userIntentSchema() *schema.Resource {
 			"enable_exposing_service": {
 				Type:     schema.TypeString,
 				Optional: true,
+				Default:  models.UserIntentEnableExposingServiceUNEXPOSED,
 			},
 			"enable_ipv6": {
 				Type:     schema.TypeBool,
@@ -233,6 +251,7 @@ func userIntentSchema() *schema.Resource {
 			"enable_ycql": {
 				Type:     schema.TypeBool,
 				Optional: true,
+				Default:  true,
 			},
 			"enable_ycql_auth": {
 				Type:     schema.TypeBool,
@@ -601,10 +620,10 @@ func flattenCommunicationPorts(cp *models.CommunicationPorts) []interface{} {
 func flattenClusters(clusters []*models.Cluster) (res []map[string]interface{}) {
 	for _, cluster := range clusters {
 		c := map[string]interface{}{
-			"uuid":         cluster.UUID,
-			"cluster_type": cluster.ClusterType,
-			"user_intent":  flattenUserIntent(cluster.UserIntent),
-			"cloud_list":   flattenCloudList(cluster.PlacementInfo.CloudList),
+			"uuid":                cluster.UUID,
+			"cluster_type":        cluster.ClusterType,
+			"user_intent":         flattenUserIntent(cluster.UserIntent),
+			"computed_cloud_list": flattenCloudList(cluster.PlacementInfo.CloudList),
 		}
 		res = append(res, c)
 	}
