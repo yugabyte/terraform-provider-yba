@@ -11,6 +11,7 @@ import (
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/cloud_provider"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/datasource"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/universe"
+	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/user"
 	"github.com/yugabyte/yb-tools/yugaware-client/pkg/client"
 	"go.uber.org/zap"
 	"net/http"
@@ -58,6 +59,7 @@ func New() func() *schema.Provider {
 				"yb_cloud_provider": cloud_provider.ResourceCloudProvider(),
 				"yb_universe":       universe.ResourceUniverse(),
 				"yb_backups":        backups.ResourceBackups(),
+				"yb_user":           user.ResourceUser(),
 			},
 			ConfigureContextFunc: providerConfigure,
 		}
