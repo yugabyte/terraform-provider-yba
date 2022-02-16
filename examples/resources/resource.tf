@@ -80,10 +80,6 @@ resource "yb_universe" "gcp_universe" {
 
 data "yb_storage_configs" "configs" {}
 
-output "storage" {
-  value = data.yb_storage_configs.configs
-}
-
 #resource "yb_backups" "gcp_universe_backup" {
 #  depends_on = [yb_universe.gcp_universe]
 #  uni_uuid = yb_universe.gcp_universe.id
