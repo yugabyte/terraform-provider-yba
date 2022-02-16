@@ -2,6 +2,7 @@ package universe
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"github.com/go-openapi/strfmt"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
@@ -47,6 +48,7 @@ func ResourceUniverse() *schema.Resource {
 			"allow_insecure": {
 				Type:     schema.TypeBool,
 				Optional: true,
+				Default:  true,
 			},
 			"capability": {
 				Type:     schema.TypeString,
@@ -722,20 +724,34 @@ func flattenDeviceInfo(di *models.DeviceInfo) []interface{} {
 }
 
 func resourceUniverseUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+	// Only updates user intent for each cluster
 	c := meta.(*api.ApiClient).YugawareClient
 	if d.HasChanges("clusters") {
 		var taskIds []strfmt.UUID
 		clusters := d.Get("clusters").([]interface{})
-		for _, v := range clusters {
+		updateUni, err := c.GetUniverseByIdentifier(d.Id())
+		if err != nil || updateUni == nil {
+			return diag.FromErr(errors.New(fmt.Sprintf("Unable to find universe %s", d.Id())))
+		}
+		newUni := buildUniverse(d)
+
+		for i, v := range clusters {
+			if !d.HasChange(fmt.Sprintf("clusters.%d", i)) {
+				continue
+			}
 			cluster := v.(map[string]interface{})
+			updateUni.UniverseDetails.Clusters[i].UserIntent = newUni.Clusters[i].UserIntent
 			if cluster["cluster_type"] == "PRIMARY" {
 				r, err := c.PlatformAPIs.UniverseClusterMutations.UpdatePrimaryCluster(
 					&universe_cluster_mutations.UpdatePrimaryClusterParams{
-						UniverseConfigureTaskParams: buildUniverse(d),
-						CUUID:                       c.CustomerUUID(),
-						UniUUID:                     strfmt.UUID(d.Id()),
-						Context:                     ctx,
-						HTTPClient:                  c.Session(),
+						UniverseConfigureTaskParams: &models.UniverseConfigureTaskParams{
+							UniverseUUID: strfmt.UUID(d.Id()),
+							Clusters:     updateUni.UniverseDetails.Clusters,
+						},
+						CUUID:      c.CustomerUUID(),
+						UniUUID:    strfmt.UUID(d.Id()),
+						Context:    ctx,
+						HTTPClient: c.Session(),
 					},
 					c.SwaggerAuth,
 				)
@@ -746,11 +762,14 @@ func resourceUniverseUpdate(ctx context.Context, d *schema.ResourceData, meta in
 			} else {
 				r, err := c.PlatformAPIs.UniverseClusterMutations.UpdateReadOnlyCluster(
 					&universe_cluster_mutations.UpdateReadOnlyClusterParams{
-						UniverseConfigureTaskParams: buildUniverse(d),
-						CUUID:                       c.CustomerUUID(),
-						UniUUID:                     strfmt.UUID(d.Id()),
-						Context:                     ctx,
-						HTTPClient:                  c.Session(),
+						UniverseConfigureTaskParams: &models.UniverseConfigureTaskParams{
+							UniverseUUID: strfmt.UUID(d.Id()),
+							Clusters:     updateUni.UniverseDetails.Clusters,
+						},
+						CUUID:      c.CustomerUUID(),
+						UniUUID:    strfmt.UUID(d.Id()),
+						Context:    ctx,
+						HTTPClient: c.Session(),
 					},
 					c.SwaggerAuth,
 				)
