@@ -58,7 +58,7 @@ resource "yb_universe" "gcp_universe" {
       provider_type = "gcp"
       provider = local.provider_id
       region_list = local.region_list
-      num_nodes = 3
+      num_nodes = 4
       replication_factor = 3
       instance_type = "n1-standard-1"
       device_info {
@@ -78,8 +78,12 @@ resource "yb_universe" "gcp_universe" {
   communication_ports{}
 }
 
-#data "yb_storage_configs" "configs" {}
-#
+data "yb_storage_configs" "configs" {}
+
+output "storage" {
+  value = data.yb_storage_configs.configs
+}
+
 #resource "yb_backups" "gcp_universe_backup" {
 #  depends_on = [yb_universe.gcp_universe]
 #  uni_uuid = yb_universe.gcp_universe.id
