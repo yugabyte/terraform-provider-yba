@@ -11,9 +11,9 @@ import (
 	"github.com/yugabyte/yb-tools/yugaware-client/pkg/client/swagger/models"
 )
 
-func ResourceUniverse() *schema.Resource {
+func ResourceUser() *schema.Resource {
 	return &schema.Resource{
-		Description: "Universe Resource",
+		Description: "User Resource",
 
 		CreateContext: resourceUserCreate,
 		ReadContext:   resourceUserRead,
@@ -161,7 +161,7 @@ func resourceUserDelete(ctx context.Context, d *schema.ResourceData, meta interf
 	if err != nil {
 		return diag.FromErr(err)
 	}
-	
+
 	d.SetId("")
 	return diags
 }
