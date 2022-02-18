@@ -1,7 +1,7 @@
 variable "cluster_name" {
   description = "The name for the cluster (platform instance) being created."
   type        = string
-  default     = "sdu-test-yugaware"
+  default     = "yugaware"
 }
 variable "image_family" {
   description = "family for gcp compute image"

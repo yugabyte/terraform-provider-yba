@@ -10,6 +10,7 @@ resource "google_compute_firewall" "yugaware-firewall" {
     protocol = "tcp"
     ports = ["22", "8800", "80", "7000", "7100", "9000", "9100", "11000", "12000", "9300", "9042", "5433", "6379"]
   }
+  source_ranges = ["0.0.0.0/0"]
   target_tags = [var.cluster_name]
 }
 
@@ -37,7 +38,7 @@ resource "google_compute_instance" "yb_platform_node" {
   // replicated config
   provisioner "file" {
     source = var.replicated_filepath
-    destination ="/etc/replicated.conf"
+    destination ="/tmp/replicated.conf"
     connection {
       host = self.network_interface.0.access_config.0.nat_ip
       type = "ssh"
@@ -49,7 +50,7 @@ resource "google_compute_instance" "yb_platform_node" {
   // tls certificate
 #  provisioner "file" {
 #    source = var.tls_cert_filepath
-#    destination ="/etc/server.crt"
+#    destination ="/tmp/server.crt"
 #    connection {
 #      host = self.network_interface.0.access_config.0.nat_ip
 #      type = "ssh"
@@ -61,7 +62,7 @@ resource "google_compute_instance" "yb_platform_node" {
   // tls key
 #  provisioner "file" {
 #    source = var.tls_key_filepath
-#    destination ="/etc/server.key"
+#    destination ="/tmp/server.key"
 #    connection {
 #      host = self.network_interface.0.access_config.0.nat_ip
 #      type = "ssh"
@@ -73,7 +74,7 @@ resource "google_compute_instance" "yb_platform_node" {
   // license file
   provisioner "file" {
     source = var.license_filepath
-    destination ="/etc/license.rli"
+    destination ="/tmp/license.rli"
     connection {
       host = self.network_interface.0.access_config.0.nat_ip
       type = "ssh"
@@ -85,7 +86,7 @@ resource "google_compute_instance" "yb_platform_node" {
   // application settings
   provisioner "file" {
     source = var.application_settings_filepath
-    destination ="/etc/settings.conf"
+    destination ="/tmp/settings.conf"
     connection {
       host = self.network_interface.0.access_config.0.nat_ip
       type = "ssh"
@@ -97,7 +98,8 @@ resource "google_compute_instance" "yb_platform_node" {
   // install replicated
   provisioner "remote-exec" {
     inline = [
-      "curl -sSL https://get.replicated.com/docker | sudo bash",
+      "sudo mv /tmp/replicated.conf /etc/replicated.conf",
+#      "curl -sSL https://get.replicated.com/docker | sudo bash",
     ]
     connection {
       host = self.network_interface.0.access_config.0.nat_ip

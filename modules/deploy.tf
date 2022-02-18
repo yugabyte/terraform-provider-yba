@@ -4,20 +4,23 @@ locals {
 
 terraform {
   required_providers {
-    gcp = {
-      source = "hashicorp/gcp"
+    google = {
+      source = "hashicorp/google"
     }
   }
 }
 
-provider "gcp" {
-  project = "YugaByte"
+provider "google" {
+  credentials = "/Users/stevendu/.yugabyte/yugabyte-gce.json"
+  project = "yugabyte"
   region = "us-west1"
   zone = "us-west1-b"
 }
 
 module "gcp-platform" {
   source = "./gcp"
+
+  cluster_name = "sdu-test-yugaware"
   // files
   replicated_filepath = "${local.dir}/replicated.conf"
   license_filepath = "/Users/stevendu/.yugabyte/yw-dev.rli"
