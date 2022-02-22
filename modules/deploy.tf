@@ -7,6 +7,9 @@ terraform {
     google = {
       source = "hashicorp/google"
     }
+    aws = {
+      source  = "hashicorp/aws"
+    }
   }
 }
 
@@ -21,6 +24,7 @@ module "gcp-platform" {
   source = "./gcp"
 
   cluster_name = "sdu-test-yugaware"
+  ssh_user = "centos"
   // files
   replicated_filepath = "${local.dir}/replicated.conf"
   license_filepath = "/Users/stevendu/.yugabyte/yw-dev.rli"
@@ -29,5 +33,23 @@ module "gcp-platform" {
   application_settings_filepath = "${local.dir}/application_settings.conf"
   ssh_private_key = "/Users/stevendu/.ssh/yugaware-1-gcp"
   ssh_public_key = "/Users/stevendu/.ssh/yugaware-1-gcp.pub"
+}
+
+provider "aws" {
+  region = "us-west-2"
+}
+
+module "aws-platform" {
+  source = "./aws"
+
+  cluster_name = "sdu-test-yugaware"
   ssh_user = "centos"
+  ssh_keypair = "yb-dev-aws-2"
+  // files
+  replicated_filepath = "${local.dir}/replicated.conf"
+  license_filepath = "/Users/stevendu/.yugabyte/yw-dev.rli"
+  tls_cert_filepath = ""
+  tls_key_filepath = ""
+  application_settings_filepath = "${local.dir}/application_settings.conf"
+  ssh_private_key = "/Users/stevendu/.yugabyte/yb-dev-aws-2.pem"
 }
