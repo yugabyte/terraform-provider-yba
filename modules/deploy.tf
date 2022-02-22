@@ -1,5 +1,5 @@
 locals {
-  dir = "/Users/stevendu/code/terraform-provider-yugabyte-platform/modules/gcp"
+  dir = "/Users/stevendu/code/terraform-provider-yugabyte-platform/modules/resources"
 }
 
 terraform {
