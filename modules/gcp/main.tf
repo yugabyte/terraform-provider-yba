@@ -99,7 +99,7 @@ resource "google_compute_instance" "yb_platform_node" {
   provisioner "remote-exec" {
     inline = [
       "sudo mv /tmp/replicated.conf /etc/replicated.conf",
-#      "curl -sSL https://get.replicated.com/docker | sudo bash",
+      "curl -sSL https://get.replicated.com/docker | sudo bash",
     ]
     connection {
       host = self.network_interface.0.access_config.0.nat_ip
