@@ -43,8 +43,11 @@ module "aws-platform" {
   source = "./aws"
 
   cluster_name = "sdu-test-yugaware"
-  ssh_user = "centos"
+  ssh_user = "ubuntu"
   ssh_keypair = "yb-dev-aws-2"
+  security_group_name = "sdu_test_sg"
+  vpc_id = "***REMOVED***"
+  subnet_id = "***REMOVED***"
   // files
   replicated_filepath = "${local.dir}/replicated.conf"
   license_filepath = "/Users/stevendu/.yugabyte/yw-dev.rli"
