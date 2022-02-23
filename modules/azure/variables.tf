@@ -1,48 +1,34 @@
-variable "instance_type" {
-  description = "The instance type for the platform node"
-  type        = string
-  default     = "c5.xlarge"
-}
-variable "volume_size" {
-  description = "Volume size for platform node"
-  type        = string
-  default     = "100"
-}
 variable "cluster_name" {
   description = "Name for platform cluster"
   type        = string
   default     = "yugaware"
 }
-variable "ssh_keypair" {
-  description = "Name of existing AWS key pair"
+variable "region_name" {
+  description = "region to use for resources"
   type        = string
+}
+variable "vm_size" {
+  description = "vm specs"
+  type        = string
+  default     = "Standard_D4s_v3"
+}
+variable "disk_size" {
+  description = "disk size"
+  type        = string
+  default     = "100"
 }
 variable "ssh_user" {
-  description = "User name to ssh into platform node to configure cluster"
-  type        = string
-}
-variable "security_group_name" {
-  description = "Name for the created security group"
-  type        = string
-}
-variable "allowed_sources" {
-  description = "source ips to restrict traffic"
-  type        = list(string)
-  default     = ["0.0.0.0/0"]
-}
-variable "vpc_id" {
-  description = "VPC ID"
-  type        = string
-}
-variable "subnet_id" {
-  description = "ID of subnet in VPC"
+  description = "name of the ssh user"
   type        = string
 }
 
-
-// file-paths
+// files
 variable "ssh_private_key" {
   description = "Path to private key to use when connecting to the instances"
+  type        = string
+}
+variable "ssh_public_key" {
+  description = "Path to SSH public key to be use when creating the instances"
   type        = string
 }
 variable "replicated_filepath" {
@@ -64,4 +50,3 @@ variable "tls_key_filepath" {
 variable "application_settings_filepath" {
   description = "path to platform application settings"
   type        = string
-}

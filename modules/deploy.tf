@@ -8,31 +8,34 @@ terraform {
       source = "hashicorp/google"
     }
     aws = {
-      source  = "hashicorp/aws"
+      source = "hashicorp/aws"
+    }
+    azurerm = {
+      source = "hashicorp/azurerm"
     }
   }
 }
 
 provider "google" {
   credentials = "/Users/stevendu/.yugabyte/yugabyte-gce.json"
-  project = "yugabyte"
-  region = "us-west1"
-  zone = "us-west1-b"
+  project     = "yugabyte"
+  region      = "us-west1"
+  zone        = "us-west1-b"
 }
 
 module "gcp-platform" {
   source = "./gcp"
 
-  cluster_name = "sdu-test-yugaware"
-  ssh_user = "centos"
+  cluster_name                  = "sdu-test-yugaware"
+  ssh_user                      = "centos"
   // files
-  replicated_filepath = "${local.dir}/replicated.conf"
-  license_filepath = "/Users/stevendu/.yugabyte/yw-dev.rli"
-  tls_cert_filepath = ""
-  tls_key_filepath = ""
+  replicated_filepath           = "${local.dir}/replicated.conf"
+  license_filepath              = "/Users/stevendu/.yugabyte/yw-dev.rli"
+  tls_cert_filepath             = ""
+  tls_key_filepath              = ""
   application_settings_filepath = "${local.dir}/application_settings.conf"
-  ssh_private_key = "/Users/stevendu/.ssh/yugaware-1-gcp"
-  ssh_public_key = "/Users/stevendu/.ssh/yugaware-1-gcp.pub"
+  ssh_private_key               = "/Users/stevendu/.ssh/yugaware-1-gcp"
+  ssh_public_key                = "/Users/stevendu/.ssh/yugaware-1-gcp.pub"
 }
 
 provider "aws" {
@@ -42,17 +45,21 @@ provider "aws" {
 module "aws-platform" {
   source = "./aws"
 
-  cluster_name = "sdu-test-yugaware"
-  ssh_user = "ubuntu"
-  ssh_keypair = "yb-dev-aws-2"
-  security_group_name = "sdu_test_sg"
-  vpc_id = "***REMOVED***"
-  subnet_id = "***REMOVED***"
+  cluster_name                  = "sdu-test-yugaware"
+  ssh_user                      = "ubuntu"
+  ssh_keypair                   = "yb-dev-aws-2"
+  security_group_name           = "sdu_test_sg"
+  vpc_id                        = "***REMOVED***"
+  subnet_id                     = "***REMOVED***"
   // files
-  replicated_filepath = "${local.dir}/replicated.conf"
-  license_filepath = "/Users/stevendu/.yugabyte/yw-dev.rli"
-  tls_cert_filepath = ""
-  tls_key_filepath = ""
+  replicated_filepath           = "${local.dir}/replicated.conf"
+  license_filepath              = "/Users/stevendu/.yugabyte/yw-dev.rli"
+  tls_cert_filepath             = ""
+  tls_key_filepath              = ""
   application_settings_filepath = "${local.dir}/application_settings.conf"
-  ssh_private_key = "/Users/stevendu/.yugabyte/yb-dev-aws-2.pem"
+  ssh_private_key               = "/Users/stevendu/.yugabyte/yb-dev-aws-2.pem"
+}
+
+provider "azurerm" {
+  features {}
 }
