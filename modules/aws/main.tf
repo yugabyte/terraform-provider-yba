@@ -1,6 +1,6 @@
 data "aws_ami" "yb_ami" {
   most_recent = true
-  owners = ["aws-marketplace"]
+  owners      = ["aws-marketplace"]
 
   filter {
     name   = "name"
@@ -22,7 +22,7 @@ data "aws_ami" "yb_ami" {
 }
 
 resource "aws_security_group" "yb_security_group" {
-  name = var.security_group_name
+  name   = var.security_group_name
   vpc_id = var.vpc_id
   ingress {
     from_port   = 22
@@ -118,12 +118,12 @@ resource "aws_security_group" "yb_security_group" {
 }
 
 resource "aws_instance" "yb_platform_node" {
-  ami = data.aws_ami.yb_ami.id
-  instance_type = var.instance_type
+  ami                         = data.aws_ami.yb_ami.id
+  instance_type               = var.instance_type
   associate_public_ip_address = true
-  key_name = var.ssh_keypair
-  vpc_security_group_ids = [aws_security_group.yb_security_group.id]
-  subnet_id = var.subnet_id
+  key_name                    = var.ssh_keypair
+  vpc_security_group_ids      = [aws_security_group.yb_security_group.id]
+  subnet_id                   = var.subnet_id
 
   root_block_device {
     volume_size = var.volume_size
@@ -135,12 +135,12 @@ resource "aws_instance" "yb_platform_node" {
 
   // replicated config
   provisioner "file" {
-    source = var.replicated_filepath
-    destination ="/tmp/replicated.conf"
+    source      = var.replicated_filepath
+    destination = "/tmp/replicated.conf"
     connection {
-      host = self.public_ip
-      type = "ssh"
-      user = var.ssh_user
+      host        = self.public_ip
+      type        = "ssh"
+      user        = var.ssh_user
       private_key = file(var.ssh_private_key)
     }
   }
@@ -171,24 +171,24 @@ resource "aws_instance" "yb_platform_node" {
 
   // license file
   provisioner "file" {
-    source = var.license_filepath
-    destination ="/tmp/license.rli"
+    source      = var.license_filepath
+    destination = "/tmp/license.rli"
     connection {
-      host = self.public_ip
-      type = "ssh"
-      user = var.ssh_user
+      host        = self.public_ip
+      type        = "ssh"
+      user        = var.ssh_user
       private_key = file(var.ssh_private_key)
     }
   }
 
   // application settings
   provisioner "file" {
-    source = var.application_settings_filepath
-    destination ="/tmp/settings.conf"
+    source      = var.application_settings_filepath
+    destination = "/tmp/settings.conf"
     connection {
-      host = self.public_ip
-      type = "ssh"
-      user = var.ssh_user
+      host        = self.public_ip
+      type        = "ssh"
+      user        = var.ssh_user
       private_key = file(var.ssh_private_key)
     }
   }
@@ -200,9 +200,9 @@ resource "aws_instance" "yb_platform_node" {
       "curl -sSL https://get.replicated.com/docker | sudo bash",
     ]
     connection {
-      host = self.public_ip
-      type = "ssh"
-      user = var.ssh_user
+      host        = self.public_ip
+      type        = "ssh"
+      user        = var.ssh_user
       private_key = file(var.ssh_private_key)
     }
   }
