@@ -21,6 +21,24 @@ variable "ssh_user" {
   description = "User name to ssh into platform node to configure cluster"
   type        = string
 }
+variable "security_group_name" {
+  description = "Name for the created security group"
+  type        = string
+}
+variable "allowed_sources" {
+  description = "source ips to restrict traffic"
+  type        = list(string)
+  default     = ["0.0.0.0/0"]
+}
+variable "vpc_id" {
+  description = "VPC ID"
+  type        = string
+}
+variable "subnet_id" {
+  description = "ID of subnet in VPC"
+  type = string
+}
+
 
 // file-paths
 variable "ssh_private_key" {
