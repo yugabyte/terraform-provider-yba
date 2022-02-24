@@ -143,28 +143,28 @@ resource "azurerm_virtual_machine" "yb_platform_node" {
   }
 
   // tls certificate
-  #  provisioner "file" {
-  #    source = var.tls_cert_filepath
-  #    destination ="/tmp/server.crt"
-  #    connection {
-  #      host = azurerm_public_ip.yb_public_ip.ip_address
-  #      type = "ssh"
-  #      user = var.ssh_user
-  #      private_key = file(var.ssh_private_key)
-  #    }
-  #  }
+  provisioner "file" {
+    content = try(file(var.tls_cert_filepath), "")
+    destination = "/tmp/server.crt"
+    connection {
+      host = azurerm_public_ip.yb_public_ip.ip_address
+      type = "ssh"
+      user = var.ssh_user
+      private_key = file(var.ssh_private_key)
+    }
+  }
 
   // tls key
-  #  provisioner "file" {
-  #    source = var.tls_key_filepath
-  #    destination ="/tmp/server.key"
-  #    connection {
-  #      host = azurerm_public_ip.yb_public_ip.ip_address
-  #      type = "ssh"
-  #      user = var.ssh_user
-  #      private_key = file(var.ssh_private_key)
-  #    }
-  #  }
+  provisioner "file" {
+    content = try(file(var.tls_key_filepath), "")
+    destination = "/tmp/server.key"
+    connection {
+      host = azurerm_public_ip.yb_public_ip.ip_address
+      type = "ssh"
+      user = var.ssh_user
+      private_key = file(var.ssh_private_key)
+    }
+  }
 
   // license file
   provisioner "file" {
