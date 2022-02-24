@@ -48,7 +48,8 @@ func ResourceCloudProvider() *schema.Resource {
 			"custom_host_cidrs": {
 				Type:     schema.TypeList,
 				Elem:     &schema.Schema{Type: schema.TypeString},
-				Required: true,
+				Optional: true,
+				Computed: true,
 				ForceNew: true,
 			},
 			"dest_vpc_id": {
@@ -86,8 +87,7 @@ func ResourceCloudProvider() *schema.Resource {
 				Optional: true,
 				ForceNew: true,
 			},
-			"regions":          RegionsSchema(),
-			"computed_regions": ComputedRegionsSchema(),
+			"regions": RegionsSchema(),
 			"ssh_port": {
 				Type:     schema.TypeInt,
 				Optional: true,
@@ -213,7 +213,7 @@ func resourceCloudProviderRead(ctx context.Context, d *schema.ResourceData, meta
 	if err = d.Set("ssh_user", p.SSHUser); err != nil {
 		return diag.FromErr(err)
 	}
-	if err = d.Set("computed_regions", flattenRegions(p.Regions)); err != nil {
+	if err = d.Set("regions", flattenRegions(p.Regions)); err != nil {
 		return diag.FromErr(err)
 	}
 	return diags

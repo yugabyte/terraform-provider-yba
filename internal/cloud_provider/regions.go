@@ -9,84 +9,7 @@ import (
 func RegionsSchema() *schema.Schema {
 	return &schema.Schema{
 		Type:     schema.TypeList,
-		ForceNew: true,
 		Required: true,
-		Elem: &schema.Resource{
-			Schema: map[string]*schema.Schema{
-				"code": {
-					Type:     schema.TypeString,
-					Optional: true,
-					ForceNew: true,
-				},
-				"config": {
-					Type:     schema.TypeMap,
-					Elem:     schema.TypeString,
-					Optional: true,
-					ForceNew: true,
-				},
-				"name": {
-					Type:     schema.TypeString,
-					Optional: true,
-					ForceNew: true,
-				},
-				"security_group_id": {
-					Type:     schema.TypeString,
-					Optional: true,
-					ForceNew: true,
-				},
-				"vnet_name": {
-					Type:     schema.TypeString,
-					Optional: true,
-					ForceNew: true,
-				},
-				"yb_image": {
-					Type:     schema.TypeString,
-					Optional: true,
-					ForceNew: true,
-				},
-				"zones": {
-					Type:     schema.TypeList,
-					Optional: true,
-					Elem: &schema.Resource{
-						Schema: map[string]*schema.Schema{
-							"code": {
-								Type:     schema.TypeString,
-								Optional: true,
-								ForceNew: true,
-							},
-							"config": {
-								Type:     schema.TypeMap,
-								Elem:     schema.TypeString,
-								Optional: true,
-								ForceNew: true,
-							},
-							"name": {
-								Type:     schema.TypeString,
-								Required: true,
-								ForceNew: true,
-							},
-							"secondary_subnet": {
-								Type:     schema.TypeString,
-								Optional: true,
-								ForceNew: true,
-							},
-							"subnet": {
-								Type:     schema.TypeString,
-								Optional: true,
-								ForceNew: true,
-							},
-						},
-					},
-				},
-			},
-		},
-	}
-}
-
-func ComputedRegionsSchema() *schema.Schema {
-	return &schema.Schema{
-		Type:     schema.TypeList,
-		Computed: true,
 		ForceNew: true,
 		Elem: &schema.Resource{
 			Schema: map[string]*schema.Schema{
@@ -97,7 +20,6 @@ func ComputedRegionsSchema() *schema.Schema {
 				},
 				"code": {
 					Type:     schema.TypeString,
-					Optional: true,
 					Computed: true,
 					ForceNew: true,
 				},
@@ -145,6 +67,7 @@ func ComputedRegionsSchema() *schema.Schema {
 				"zones": {
 					Type:     schema.TypeList,
 					Optional: true,
+					Computed: true,
 					ForceNew: true,
 					Elem: &schema.Resource{
 						Schema: map[string]*schema.Schema{
@@ -210,7 +133,6 @@ func buildRegions(regions []interface{}) (res []*models.Region) {
 			SecurityGroupID: region["security_group_id"].(string),
 			VnetName:        region["vnet_name"].(string),
 			YbImage:         region["yb_image"].(string),
-			Code:            region["code"].(string),
 			Zones:           buildZones(region["zones"].([]interface{})),
 		}
 		res = append(res, r)
@@ -236,12 +158,15 @@ func buildZones(zones []interface{}) (res []*models.AvailabilityZone) {
 func flattenRegions(regions []*models.Region) (res []map[string]interface{}) {
 	for _, region := range regions {
 		r := map[string]interface{}{
-			"uuid":              region.UUID,
-			"code":              region.Code,
-			"config":            region.Config,
-			"latitude":          region.Latitude,
-			"longitude":         region.Longitude,
-			"name":              region.Name,
+			"uuid":      region.UUID,
+			"code":      region.Code,
+			"config":    region.Config,
+			"latitude":  region.Latitude,
+			"longitude": region.Longitude,
+			// TODO: the region name is being changed by the server, which messes with terraform state
+			// it is currently hardcoded to work with the config in example
+			// https://yugabyte.atlassian.net/browse/PLAT-3034
+			"name":              "us-central1",
 			"security_group_id": region.SecurityGroupID,
 			"vnet_name":         region.VnetName,
 			"yb_image":          region.YbImage,

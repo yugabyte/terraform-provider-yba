@@ -15,7 +15,6 @@ provider "yb" {
 
 resource "yb_cloud_provider" "gcp" {
   code = "gcp"
-  custom_host_cidrs = []
   config = {
     ***REMOVED***
     ***REMOVED***
@@ -32,7 +31,6 @@ resource "yb_cloud_provider" "gcp" {
   dest_vpc_id = "yugabyte-network"
   name = "sdu-test-gcp-provider"
   regions {
-    code = "us-central1"
     name = "us-central1"
   }
   ssh_port = 54422
@@ -44,7 +42,7 @@ data "yb_provider_key" "gcp-key" {
 }
 
 locals {
-  region_list = yb_cloud_provider.gcp.computed_regions[*].uuid
+  region_list = yb_cloud_provider.gcp.regions[*].uuid
   provider_id = yb_cloud_provider.gcp.id
   provider_key = data.yb_provider_key.gcp-key.id
 }
@@ -75,10 +73,10 @@ resource "yb_universe" "gcp_universe" {
       access_key_code = local.provider_key
     }
   }
-  communication_ports{}
+  communication_ports {}
 }
 
-data "yb_storage_configs" "configs" {}
+#data "yb_storage_configs" "configs" {}
 
 #resource "yb_backups" "gcp_universe_backup" {
 #  depends_on = [yb_universe.gcp_universe]
