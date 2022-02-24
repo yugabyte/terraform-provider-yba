@@ -48,12 +48,12 @@ func ResourceUniverse() *schema.Resource {
 			"allow_insecure": {
 				Type:     schema.TypeBool,
 				Optional: true,
-				Default:  true,
+				Computed: true,
 			},
 			"capability": {
 				Type:     schema.TypeString,
 				Optional: true,
-				Default:  models.UniverseConfigureTaskParamsCapabilityEDITSALLOWED,
+				Computed: true,
 			},
 			"client_root_ca": {
 				Type:     schema.TypeString,
@@ -87,74 +87,70 @@ func ResourceUniverse() *schema.Resource {
 							Optional: true,
 							Elem:     cloudListSchema(),
 						},
-						"computed_cloud_list": {
-							Type:     schema.TypeList,
-							Computed: true,
-							Elem:     cloudListSchema(),
-						},
 					},
 				},
 			},
 			"communication_ports": {
 				Type:     schema.TypeList,
-				Required: true,
+				Optional: true,
+				Computed: true,
 				MaxItems: 1,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
 						"master_http_port": {
 							Type:     schema.TypeInt,
 							Optional: true,
-							Default:  7000,
+							Computed: true,
 						},
 						"master_rpc_port": {
 							Type:     schema.TypeInt,
 							Optional: true,
-							Default:  7100,
+							Computed: true,
 						},
 						"node_exporter_port": {
 							Type:     schema.TypeInt,
 							Optional: true,
-							Default:  9300,
+							Computed: true,
 						},
 						"redis_server_http_port": {
 							Type:     schema.TypeInt,
 							Optional: true,
-							Default:  11000,
+							Computed: true,
 						},
 						"redis_server_rpc_port": {
 							Type:     schema.TypeInt,
 							Optional: true,
-							Default:  6379,
+							Computed: true,
 						},
 						"tserver_http_port": {
 							Type:     schema.TypeInt,
 							Optional: true,
-							Default:  9000,
+							Computed: true,
 						},
 						"tserver_rpc_port": {
 							Type:     schema.TypeInt,
 							Optional: true,
-							Default:  9100,
+							Computed: true,
 						},
 						"yql_server_http_port": {
 							Type:     schema.TypeInt,
 							Optional: true,
-							Default:  12000,
+							Computed: true,
 						},
 						"yql_server_rpc_port": {
 							Type:     schema.TypeInt,
 							Optional: true,
-							Default:  9042,
+							Computed: true,
 						},
 						"ysql_server_http_port": {
 							Type:     schema.TypeInt,
 							Optional: true,
-							Default:  13000,
+							Computed: true,
 						},
 						"ysql_server_rpc_port": {
 							Type:     schema.TypeInt,
 							Optional: true,
-							Default:  5433,
+							Computed: true,
 						},
 					},
 				},
@@ -244,7 +240,7 @@ func userIntentSchema() *schema.Resource {
 			"enable_exposing_service": {
 				Type:     schema.TypeString,
 				Optional: true,
-				Default:  models.UserIntentEnableExposingServiceUNEXPOSED,
+				Computed: true,
 			},
 			"enable_ipv6": {
 				Type:     schema.TypeBool,
@@ -253,7 +249,7 @@ func userIntentSchema() *schema.Resource {
 			"enable_ycql": {
 				Type:     schema.TypeBool,
 				Optional: true,
-				Default:  true,
+				Computed: true,
 			},
 			"enable_ycql_auth": {
 				Type:     schema.TypeBool,
@@ -367,11 +363,12 @@ func userIntentSchema() *schema.Resource {
 			"enable_ysql": {
 				Type:     schema.TypeBool,
 				Optional: true,
+				Computed: true,
 			},
 			"enable_yedis": {
 				Type:     schema.TypeBool,
 				Optional: true,
-				Default:  true,
+				Computed: true,
 			},
 			"enable_node_to_node_encrypt": {
 				Type:     schema.TypeBool,
@@ -445,6 +442,9 @@ func buildUniverse(d *schema.ResourceData) *models.UniverseConfigureTaskParams {
 }
 
 func buildCommunicationPorts(cp map[string]interface{}) *models.CommunicationPorts {
+	if len(cp) == 0 {
+		return &models.CommunicationPorts{}
+	}
 	return &models.CommunicationPorts{
 		MasterHTTPPort:      int32(cp["master_http_port"].(int)),
 		MasterRPCPort:       int32(cp["master_rpc_port"].(int)),
@@ -622,10 +622,10 @@ func flattenCommunicationPorts(cp *models.CommunicationPorts) []interface{} {
 func flattenClusters(clusters []*models.Cluster) (res []map[string]interface{}) {
 	for _, cluster := range clusters {
 		c := map[string]interface{}{
-			"uuid":                cluster.UUID,
-			"cluster_type":        cluster.ClusterType,
-			"user_intent":         flattenUserIntent(cluster.UserIntent),
-			"computed_cloud_list": flattenCloudList(cluster.PlacementInfo.CloudList),
+			"uuid":         cluster.UUID,
+			"cluster_type": cluster.ClusterType,
+			"user_intent":  flattenUserIntent(cluster.UserIntent),
+			"cloud_list":   flattenCloudList(cluster.PlacementInfo.CloudList),
 		}
 		res = append(res, c)
 	}

@@ -9,13 +9,12 @@ terraform {
 
 provider "yb" {
   // these can be set as environment variables
-  apikey = "e007de9f-835c-46f0-9e0d-9e8422c93c89"
+  apikey = "ae9eacef-db4f-4782-9722-3c37c2e5c584"
   host = "portal.dev.yugabyte.com"
 }
 
 resource "yb_cloud_provider" "gcp" {
   code = "gcp"
-  custom_host_cidrs = []
   config = {
     type = "service_account"
     project_id = "yugabyte"
@@ -32,7 +31,6 @@ resource "yb_cloud_provider" "gcp" {
   dest_vpc_id = "yugabyte-network"
   name = "sdu-test-gcp-provider"
   regions {
-    code = "us-central1"
     name = "us-central1"
   }
   ssh_port = 54422
@@ -44,7 +42,7 @@ data "yb_provider_key" "gcp-key" {
 }
 
 locals {
-  region_list = yb_cloud_provider.gcp.computed_regions[*].uuid
+  region_list = yb_cloud_provider.gcp.regions[*].uuid
   provider_id = yb_cloud_provider.gcp.id
   provider_key = data.yb_provider_key.gcp-key.id
 }
@@ -75,10 +73,10 @@ resource "yb_universe" "gcp_universe" {
       access_key_code = local.provider_key
     }
   }
-  communication_ports{}
+  communication_ports {}
 }
 
-data "yb_storage_configs" "configs" {}
+#data "yb_storage_configs" "configs" {}
 
 #resource "yb_backups" "gcp_universe_backup" {
 #  depends_on = [yb_universe.gcp_universe]
