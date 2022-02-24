@@ -85,6 +85,7 @@ func ResourceUniverse() *schema.Resource {
 						"cloud_list": {
 							Type:     schema.TypeList,
 							Optional: true,
+							Computed: true,
 							Elem:     cloudListSchema(),
 						},
 					},
@@ -169,10 +170,12 @@ func cloudListSchema() *schema.Resource {
 			"code": {
 				Type:     schema.TypeString,
 				Optional: true,
+				Computed: true,
 			},
 			"region_list": {
 				Type:     schema.TypeList,
 				Optional: true,
+				Computed: true,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
 						"uuid": {
@@ -182,15 +185,18 @@ func cloudListSchema() *schema.Resource {
 						"code": {
 							Type:     schema.TypeString,
 							Optional: true,
+							Computed: true,
 						},
 						"az_list": {
 							Type:     schema.TypeList,
 							Optional: true,
+							Computed: true,
 							Elem: &schema.Resource{
 								Schema: map[string]*schema.Schema{
 									"uuid": {
 										Type:     schema.TypeString,
 										Optional: true,
+										Computed: true,
 									},
 									"is_affinitized": {
 										Type:     schema.TypeBool,
@@ -199,22 +205,27 @@ func cloudListSchema() *schema.Resource {
 									"name": {
 										Type:     schema.TypeString,
 										Optional: true,
+										Computed: true,
 									},
 									"num_nodes": {
 										Type:     schema.TypeInt,
 										Optional: true,
+										Computed: true,
 									},
 									"replication_factor": {
 										Type:     schema.TypeInt,
 										Optional: true,
+										Computed: true,
 									},
 									"secondary_subnet": {
 										Type:     schema.TypeString,
 										Optional: true,
+										Computed: true,
 									},
 									"subnet": {
 										Type:     schema.TypeString,
 										Optional: true,
+										Computed: true,
 									},
 								},
 							},
@@ -466,10 +477,13 @@ func buildClusters(clusters []interface{}) (res []*models.Cluster) {
 		c := &models.Cluster{
 			ClusterType: utils.GetStringPointer(cluster["cluster_type"].(string)),
 			UserIntent:  buildUserIntent(utils.MapFromSingletonList(cluster["user_intent"].([]interface{}))),
-			PlacementInfo: &models.PlacementInfo{
-				CloudList: buildCloudList(cluster["cloud_list"].([]interface{})),
-			},
 		}
+		if len(cluster["cloud_list"].([]interface{})) > 0 {
+			c.PlacementInfo = &models.PlacementInfo{
+				CloudList: buildCloudList(cluster["cloud_list"].([]interface{})),
+			}
+		}
+
 		res = append(res, c)
 	}
 	return res
