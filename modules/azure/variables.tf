@@ -50,3 +50,4 @@ variable "tls_key_filepath" {
 variable "application_settings_filepath" {
   description = "path to platform application settings"
   type        = string
+}
