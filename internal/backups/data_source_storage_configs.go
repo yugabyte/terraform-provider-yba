@@ -5,7 +5,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/api"
-	"github.com/yugabyte/yb-tools/yugaware-client/pkg/client/swagger/client/customer_configuration"
 	"strconv"
 	"time"
 )
@@ -30,22 +29,17 @@ func dataSourceStorageConfigsRead(ctx context.Context, d *schema.ResourceData, m
 	var diags diag.Diagnostics
 
 	c := meta.(*api.ApiClient).YugawareClient
-	r, err := c.PlatformAPIs.CustomerConfiguration.GetListOfCustomerConfig(
-		&customer_configuration.GetListOfCustomerConfigParams{
-			CUUID:      c.CustomerUUID(),
-			Context:    ctx,
-			HTTPClient: c.Session(),
-		},
-		c.SwaggerAuth,
-	)
+
+	cUUID := meta.(*api.ApiClient).CustomerUUID
+	r, _, err := c.CustomerConfigurationApi.GetListOfCustomerConfig(ctx, cUUID).Execute()
 	if err != nil {
 		return diag.FromErr(err)
 	}
 
 	var ids []string
-	for _, config := range r.Payload {
-		if *config.Type == "STORAGE" {
-			ids = append(ids, string(config.ConfigUUID))
+	for _, config := range r {
+		if config.Type == "STORAGE" {
+			ids = append(ids, *config.ConfigUUID)
 		}
 	}
 	if err = d.Set("uuid_list", ids); err != nil {
