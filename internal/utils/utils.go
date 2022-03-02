@@ -38,18 +38,30 @@ func MapFromSingletonList(in []interface{}) map[string]interface{} {
 }
 
 func GetBoolPointer(in bool) *bool {
+	if !in {
+		return nil
+	}
 	return &in
 }
 
 func GetStringPointer(in string) *string {
+	if in == "" {
+		return nil
+	}
 	return &in
 }
 
 func GetInt32Pointer(in int32) *int32 {
+	if in == 0 {
+		return nil
+	}
 	return &in
 }
 
 func GetInt64Pointer(in int64) *int64 {
+	if in == 0 {
+		return nil
+	}
 	return &in
 }
 
