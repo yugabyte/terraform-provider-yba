@@ -28,8 +28,7 @@ func dataSourceProviderKeyRead(ctx context.Context, d *schema.ResourceData, meta
 	c := meta.(*api.ApiClient).YugawareClient
 
 	cUUID := meta.(*api.ApiClient).CustomerUUID
-	req := c.AccessKeysApi.List(ctx, cUUID, d.Get("provider_id").(string))
-	r, _, err := c.AccessKeysApi.ListExecute(req)
+	r, _, err := c.AccessKeysApi.List(ctx, cUUID, d.Get("provider_id").(string)).Execute()
 	if err != nil {
 		return diag.FromErr(err)
 	}
