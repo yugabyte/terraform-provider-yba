@@ -3,17 +3,15 @@ package provider
 import (
 	"context"
 	"errors"
-	"github.com/go-logr/zapr"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	client "github.com/yugabyte/platform-go-client"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/api"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/backups"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/cloud_provider"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/datasource"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/universe"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/user"
-	"github.com/yugabyte/yb-tools/yugaware-client/pkg/client"
-	"go.uber.org/zap"
 	"net/http"
 	"time"
 )
@@ -79,15 +77,20 @@ func providerConfigure(ctx context.Context, d *schema.ResourceData) (interface{}
 		return nil, diag.FromErr(errors.New("yugabyte platform API key is required"))
 	}
 
-	zapLog, err := zap.NewDevelopment()
+	// create swagger go client
+	cfg := client.NewConfiguration()
+	cfg.Host = host
+	cfg.DefaultHeader = map[string]string{"X-AUTH-YW-API-TOKEN": key}
+	ybc := client.NewAPIClient(cfg)
+
+	// get customer uuid
+	req := ybc.SessionManagementApi.GetSessionInfo(ctx)
+	r, _, err := ybc.SessionManagementApi.GetSessionInfoExecute(req)
 	if err != nil {
 		return nil, diag.FromErr(err)
 	}
-	log := zapr.NewLogger(zapLog)
-	ybc, err := client.New(ctx, log, host).APIToken(key).TimeoutSeconds(10).Connect()
-	if err != nil {
-		return nil, diag.FromErr(err)
-	}
+	cUUID := *r.CustomerUUID
+
 	vc := &api.VanillaClient{
 		Client: &http.Client{Timeout: 10 * time.Second},
 		ApiKey: key,
@@ -97,5 +100,6 @@ func providerConfigure(ctx context.Context, d *schema.ResourceData) (interface{}
 	return &api.ApiClient{
 		YugawareClient: ybc,
 		VanillaClient:  vc,
+		CustomerUUID:   cUUID,
 	}, diags
 }
