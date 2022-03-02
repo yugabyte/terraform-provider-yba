@@ -1072,6 +1072,8 @@ github.com/yudai/pp v2.0.1+incompatible/go.mod h1:PuxR/8QJ7cyCkFp/aUDS+JY727OFEZ
 github.com/yugabyte/gocql v0.0.0-20200602185649-ef3952a45ff4/go.mod h1:mC/V0yVNW3usiyx2B6pGS91emmmsbbBgazGS5Q2QsOo=
 github.com/yugabyte/platform-go-client v0.0.0-20220301223122-5b0f9aaacea3 h1:G9UKYupngRHUW77BSeOs0n0BrYW37Iwo1tgtendYgK0=
 github.com/yugabyte/platform-go-client v0.0.0-20220301223122-5b0f9aaacea3/go.mod h1:DCweVAOmhBcxKl4aAmsBDVI6K1VZXHkLRcCCLgZnwj0=
+github.com/yugabyte/platform-go-client v0.0.0-20220302222540-9907969f8a07 h1:LGcyo7smms17zL7sxNv8kEJleeGoDxZ5rgkGayXNWAE=
+github.com/yugabyte/platform-go-client v0.0.0-20220302222540-9907969f8a07/go.mod h1:DCweVAOmhBcxKl4aAmsBDVI6K1VZXHkLRcCCLgZnwj0=
 github.com/yugabyte/yb-tools v0.0.0-20220216002636-78907b855fc9 h1:tsh95g9UHc6IRftUv9g8g9q4PlQEb/ClGv7lKBADHI8=
 github.com/yugabyte/yb-tools v0.0.0-20220216002636-78907b855fc9/go.mod h1:TgPJso5ev7CE/AAcOQpnt4wIFOLqy7NqJ3sopxbZB/g=
 github.com/yuin/goldmark v1.1.25/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9decYSb74=
