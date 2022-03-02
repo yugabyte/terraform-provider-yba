@@ -50,6 +50,10 @@ func GetInt32Pointer(in int32) *int32 {
 	return &in
 }
 
+func GetInt64Pointer(in int64) *int64 {
+	return &in
+}
+
 func CreateSingletonList(in interface{}) []interface{} {
 	return []interface{}{in}
 }
