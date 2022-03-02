@@ -81,7 +81,6 @@ provider "yb" {
 #resource "yb_backups" "gcp_universe_backup" {
 #  depends_on = [yb_universe.gcp_universe]
 #  uni_uuid = yb_universe.gcp_universe.id
-#  action_type = "CREATE"
 #  keyspace = "postgres"
 #  storage_config_uuid = data.yb_storage_configs.configs.uuid_list[0]
 #  time_before_delete = 864000000
