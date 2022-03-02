@@ -76,6 +76,7 @@ func providerConfigure(ctx context.Context, d *schema.ResourceData) (interface{}
 	// create swagger go client
 	cfg := client.NewConfiguration()
 	cfg.Host = host
+	cfg.Scheme = "http"
 	cfg.DefaultHeader = map[string]string{"X-AUTH-YW-API-TOKEN": key}
 	ybc := client.NewAPIClient(cfg)
 

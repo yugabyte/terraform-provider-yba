@@ -2,7 +2,6 @@ package utils
 
 import (
 	"context"
-	"github.com/go-openapi/strfmt"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
 	client "github.com/yugabyte/platform-go-client"
 	"time"
@@ -16,19 +15,19 @@ func StringSlice(in []interface{}) *[]string {
 	return &out
 }
 
-func UUIDSlice(in []interface{}) (out []strfmt.UUID) {
-	for _, v := range in {
-		out = append(out, strfmt.UUID(v.(string)))
-	}
-	return out
-}
-
 func StringMap(in map[string]interface{}) *map[string]string {
 	out := make(map[string]string)
 	for k, v := range in {
 		out[k] = v.(string)
 	}
 	return &out
+}
+
+func GetStringMap(in *map[string]string) map[string]string {
+	if in != nil {
+		return *in
+	}
+	return map[string]string{}
 }
 
 func MapFromSingletonList(in []interface{}) map[string]interface{} {
@@ -58,11 +57,6 @@ func CreateSingletonList(in interface{}) []interface{} {
 	return []interface{}{in}
 }
 
-func GetUUIDPointer(in string) *strfmt.UUID {
-	out := strfmt.UUID(in)
-	return &out
-}
-
 var PendingTaskStates = []string{"Created", "Initializing", "Running"}
 var SuccessTaskStates = []string{"Success"}
 
@@ -79,8 +73,7 @@ func WaitForTask(ctx context.Context, tUUID string, cUUID string, c *client.APIC
 				return nil, "", err
 			}
 
-			// TODO: figure out why this is a nested map
-			s := r["body"]["status"].(string)
+			s := r["status"].(string)
 			return s, s, nil
 		},
 	}

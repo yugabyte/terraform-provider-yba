@@ -21,6 +21,7 @@ func RegionsSchema() *schema.Schema {
 				"code": {
 					Type:     schema.TypeString,
 					Computed: true,
+					Optional: true,
 					ForceNew: true,
 				},
 				"config": {
@@ -101,6 +102,7 @@ func RegionsSchema() *schema.Schema {
 							},
 							"name": {
 								Type:     schema.TypeString,
+								Optional: true,
 								Computed: true,
 								ForceNew: true,
 							},
@@ -129,6 +131,7 @@ func buildRegions(regions []interface{}) (res []client.Region) {
 		region := v.(map[string]interface{})
 		r := client.Region{
 			Config:          utils.StringMap(region["config"].(map[string]interface{})),
+			Code:            utils.GetStringPointer(region["code"].(string)),
 			Name:            utils.GetStringPointer(region["name"].(string)),
 			SecurityGroupId: utils.GetStringPointer(region["security_group_id"].(string)),
 			VnetName:        utils.GetStringPointer(region["vnet_name"].(string)),
@@ -160,7 +163,7 @@ func flattenRegions(regions []client.Region) (res []map[string]interface{}) {
 		r := map[string]interface{}{
 			"uuid":      region.Uuid,
 			"code":      region.Code,
-			"config":    region.Config,
+			"config":    utils.GetStringMap(region.Config),
 			"latitude":  region.Latitude,
 			"longitude": region.Longitude,
 			// TODO: the region name is being changed by the server, which messes with terraform state
@@ -183,10 +186,11 @@ func flattenZones(zones []client.AvailabilityZone) (res []map[string]interface{}
 			"uuid":             zone.Uuid,
 			"active":           zone.Active,
 			"code":             zone.Code,
-			"config":           zone.Config,
+			"config":           utils.GetStringMap(zone.Config),
 			"kube_config_path": zone.KubeconfigPath,
 			"secondary_subnet": zone.SecondarySubnet,
 			"subnet":           zone.Subnet,
+			"name":             zone.Name,
 		}
 		res = append(res, z)
 	}
