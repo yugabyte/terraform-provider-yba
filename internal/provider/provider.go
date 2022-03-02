@@ -65,10 +65,6 @@ func New() func() *schema.Provider {
 }
 
 func providerConfigure(ctx context.Context, d *schema.ResourceData) (interface{}, diag.Diagnostics) {
-	// Setup a User-Agent for your API client (replace the provider name for yours):
-	// userAgent := p.UserAgent("terraform-provider-scaffolding", version)
-	// TODO: myClient.UserAgent = userAgent
-
 	var diags diag.Diagnostics
 
 	key := d.Get("apikey").(string)
