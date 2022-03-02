@@ -20,8 +20,8 @@ func Customer() *schema.Resource {
 func dataSourceCustomerRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	var diags diag.Diagnostics
 
-	c := meta.(*api.ApiClient).YugawareClient
-	d.SetId(string(c.CustomerUUID()))
+	c := meta.(*api.ApiClient)
+	d.SetId(c.CustomerUUID)
 
 	return diags
 }

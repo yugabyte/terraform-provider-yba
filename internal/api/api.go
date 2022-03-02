@@ -2,14 +2,15 @@ package api
 
 import (
 	"fmt"
-	"github.com/yugabyte/yb-tools/yugaware-client/pkg/client"
+	client "github.com/yugabyte/platform-go-client"
 	"io"
 	"net/http"
 )
 
 type ApiClient struct {
 	VanillaClient  *VanillaClient
-	YugawareClient *client.YugawareClient
+	YugawareClient *client.APIClient
+	CustomerUUID   string
 }
 
 type VanillaClient struct {
