@@ -59,8 +59,6 @@ func resourceUserCreate(ctx context.Context, d *schema.ResourceData, meta interf
 		Password:        utils.GetStringPointer(d.Get("password").(string)),
 		ConfirmPassword: utils.GetStringPointer(d.Get("password").(string)),
 		Role:            d.Get("role").(string),
-		// TODO: nested map again. why?
-		//Features:        d.Get("features").(map[string]interface{}),
 	}
 	r, _, err := c.UserManagementApi.CreateUser(ctx, cUUID).User(req).Execute()
 	if err != nil {

@@ -682,7 +682,7 @@ func flattenUserIntent(ui client.UserIntent) []interface{} {
 		"enable_ycql":                   ui.EnableYCQL,
 		"enable_ycql_auth":              ui.EnableYCQLAuth,
 		"enable_ysql_auth":              ui.EnableYSQLAuth,
-		"instance_tags":                 ui.InstanceTags,
+		"instance_tags":                 utils.GetStringMap(ui.InstanceTags),
 		"preferred_region":              ui.PreferredRegion,
 		"use_host_name":                 ui.UseHostname,
 		"use_systemd":                   ui.UseSystemd,
@@ -705,8 +705,8 @@ func flattenUserIntent(ui client.UserIntent) []interface{} {
 		"enable_volume_encryption":      ui.EnableVolumeEncryption,
 		"yb_software_version":           ui.YbSoftwareVersion,
 		"access_key_code":               ui.AccessKeyCode,
-		"tserver_gflags":                ui.TserverGFlags,
-		"master_gflags":                 ui.MasterGFlags,
+		"tserver_gflags":                utils.GetStringMap(ui.TserverGFlags),
+		"master_gflags":                 utils.GetStringMap(ui.MasterGFlags),
 	}
 	return utils.CreateSingletonList(v)
 }
