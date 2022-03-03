@@ -8,12 +8,13 @@ terraform {
 }
 
 provider "yb" {
+  // these can be set as environment variables
   apikey = "***REMOVED***"
-  host = "portal.dev.yugabyte.com"
+  host = "localhost:9000"
 }
 
-data "yb_customer" "customer" {}
-
-output "customer" {
-  value = data.yb_customer.customer
+resource "yb_user" "user" {
+  email = "sdu@yugabyte.com"
+  password = "Password1@#"
+  role = "ReadOnly"
 }
