@@ -104,8 +104,10 @@ func resourceUserUpdate(ctx context.Context, d *schema.ResourceData, meta interf
 	}
 	if d.HasChange("password") {
 		req := client.UserRegistrationData{
+			Email:           d.Get("email").(string),
 			Password:        utils.GetStringPointer(d.Get("password").(string)),
 			ConfirmPassword: utils.GetStringPointer(d.Get("password").(string)),
+			Role:            d.Get("role").(string),
 		}
 		_, _, err := c.UserManagementApi.UpdateUserPassword(ctx, cUUID, d.Id()).Users(req).Execute()
 		if err != nil {

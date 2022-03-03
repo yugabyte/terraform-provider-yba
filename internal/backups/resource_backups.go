@@ -17,6 +17,7 @@ func ResourceBackups() *schema.Resource {
 
 		CreateContext: resourceBackupsCreate,
 		ReadContext:   resourceBackupsRead,
+		UpdateContext: resourceBackupsUpdate,
 		DeleteContext: resourceBackupsDelete,
 
 		Importer: &schema.ResourceImporter{
@@ -31,13 +32,13 @@ func ResourceBackups() *schema.Resource {
 			},
 			"cron_expression": {
 				Type:     schema.TypeString,
+				Optional: true,
 				Computed: true,
-				ForceNew: true,
 			},
 			"frequency": {
 				Type:     schema.TypeInt,
+				Optional: true,
 				Computed: true,
-				ForceNew: true,
 			},
 			"keyspace": {
 				Type:     schema.TypeString,
@@ -90,8 +91,10 @@ func resourceBackupsCreate(ctx context.Context, d *schema.ResourceData, meta int
 		TransactionalBackup: utils.GetBoolPointer(d.Get("transactional_backup").(bool)),
 		Parallelism:         utils.GetInt32Pointer(int32(d.Get("parallelism").(int))),
 		BackupType:          utils.GetStringPointer(d.Get("backup_type").(string)),
+		CronExpression:      utils.GetStringPointer(d.Get("cron_expression").(string)),
+		SchedulingFrequency: utils.GetInt64Pointer(int64(d.Get("frequency").(int))),
 	}
-	r, _, err := c.BackupsApi.CreateMultiTableBackup(ctx, cUUID, d.Id()).TableBackup(req).Execute()
+	r, _, err := c.BackupsApi.CreateMultiTableBackup(ctx, cUUID, d.Get("uni_uuid").(string)).TableBackup(req).Execute()
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -128,6 +131,21 @@ func findBackup(backups []client.Schedule, sUUID string) (*client.Schedule, erro
 		}
 	}
 	return nil, errors.New(fmt.Sprintf("Can't find backup schedule %s", sUUID))
+}
+
+func resourceBackupsUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+	c := meta.(*api.ApiClient).YugawareClient
+
+	cUUID := meta.(*api.ApiClient).CustomerUUID
+	req := client.EditBackupScheduleParams{
+		CronExpression: utils.GetStringPointer(d.Get("cron_expression").(string)),
+		Frequency:      utils.GetInt64Pointer(int64(d.Get("frequency").(int))),
+	}
+	_, _, err := c.ScheduleManagementApi.EditBackupSchedule(ctx, cUUID, d.Id()).Body(req).Execute()
+	if err != nil {
+		return diag.FromErr(err)
+	}
+	return resourceBackupsRead(ctx, d, meta)
 }
 
 func resourceBackupsDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {

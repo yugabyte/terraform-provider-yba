@@ -76,18 +76,4 @@ resource "yb_universe" "gcp_universe" {
   communication_ports {}
 }
 
-#data "yb_storage_configs" "configs" {}
-
-#resource "yb_backups" "gcp_universe_backup" {
-#  depends_on = [yb_universe.gcp_universe]
-#  uni_uuid = yb_universe.gcp_universe.id
-#  keyspace = "postgres"
-#  storage_config_uuid = data.yb_storage_configs.configs.uuid_list[0]
-#  time_before_delete = 864000000
-#  sse = false
-#  transactional_backup = false
-#  parallelism = 8
-#  backup_type = "PGSQL_TABLE_TYPE"
-#}
-
 
