@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"fmt"
 	client "github.com/yugabyte/platform-go-client"
 	"io"
@@ -10,7 +11,11 @@ import (
 type ApiClient struct {
 	VanillaClient  *VanillaClient
 	YugawareClient *client.APIClient
-	CustomerUUID   string
+	ApiKeys        map[string]client.APIKey
+}
+
+func (c ApiClient) SetContextApiKey(ctx context.Context, cUUID string) context.Context {
+	return context.WithValue(ctx, "apiKeys", map[string]client.APIKey{"apiKeyAuth": c.ApiKeys[cUUID]})
 }
 
 type VanillaClient struct {
