@@ -9,6 +9,7 @@ import (
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/api"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/backups"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/cloud_provider"
+	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/customer"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/datasource"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/universe"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/user"
@@ -58,6 +59,7 @@ func New() func() *schema.Provider {
 				"yb_universe":       universe.ResourceUniverse(),
 				"yb_backups":        backups.ResourceBackups(),
 				"yb_user":           user.ResourceUser(),
+				"yb_customer":       customer.ResourceCustomer(),
 			},
 			ConfigureContextFunc: providerConfigure,
 		}
