@@ -50,16 +50,16 @@ func New() func() *schema.Provider {
 				},
 			},
 			DataSourcesMap: map[string]*schema.Resource{
-				"yb_customer":        datasource.Customer(),
+				"yb_customer_data":   datasource.Customer(),
 				"yb_provider_key":    cloud_provider.ProviderKey(),
 				"yb_storage_configs": backups.StorageConfigs(),
 			},
 			ResourcesMap: map[string]*schema.Resource{
-				"yb_cloud_provider": cloud_provider.ResourceCloudProvider(),
-				"yb_universe":       universe.ResourceUniverse(),
-				"yb_backups":        backups.ResourceBackups(),
-				"yb_user":           user.ResourceUser(),
-				"yb_customer":       customer.ResourceCustomer(),
+				"yb_cloud_provider":    cloud_provider.ResourceCloudProvider(),
+				"yb_universe":          universe.ResourceUniverse(),
+				"yb_backups":           backups.ResourceBackups(),
+				"yb_user":              user.ResourceUser(),
+				"yb_customer_resource": customer.ResourceCustomer(),
 			},
 			ConfigureContextFunc: providerConfigure,
 		}
@@ -82,14 +82,6 @@ func providerConfigure(ctx context.Context, d *schema.ResourceData) (interface{}
 	cfg.DefaultHeader = map[string]string{"X-AUTH-YW-API-TOKEN": key}
 	ybc := client.NewAPIClient(cfg)
 
-	// get customer uuid
-	req := ybc.SessionManagementApi.GetSessionInfo(ctx)
-	r, _, err := ybc.SessionManagementApi.GetSessionInfoExecute(req)
-	if err != nil {
-		return nil, diag.FromErr(err)
-	}
-	cUUID := *r.CustomerUUID
-
 	vc := &api.VanillaClient{
 		Client: &http.Client{Timeout: 10 * time.Second},
 		ApiKey: key,
@@ -99,6 +91,5 @@ func providerConfigure(ctx context.Context, d *schema.ResourceData) (interface{}
 	return &api.ApiClient{
 		YugawareClient: ybc,
 		VanillaClient:  vc,
-		CustomerUUID:   cUUID,
 	}, diags
 }

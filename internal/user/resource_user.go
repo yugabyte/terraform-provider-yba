@@ -23,6 +23,11 @@ func ResourceUser() *schema.Resource {
 		},
 
 		Schema: map[string]*schema.Schema{
+			"customer_id": {
+				Type:     schema.TypeString,
+				Required: true,
+				ForceNew: true,
+			},
 			"email": {
 				Type:     schema.TypeString,
 				Required: true,
@@ -53,7 +58,8 @@ func ResourceUser() *schema.Resource {
 func resourceUserCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	c := meta.(*api.ApiClient).YugawareClient
 
-	cUUID := meta.(*api.ApiClient).CustomerUUID
+	cUUID := d.Get("customer_id").(string)
+	ctx = meta.(*api.ApiClient).SetContextApiKey(ctx, d.Get("customer_id").(string))
 	req := client.UserRegistrationData{
 		Email:           d.Get("email").(string),
 		Password:        utils.GetStringPointer(d.Get("password").(string)),
@@ -74,7 +80,8 @@ func resourceUserRead(ctx context.Context, d *schema.ResourceData, meta interfac
 
 	c := meta.(*api.ApiClient).YugawareClient
 
-	cUUID := meta.(*api.ApiClient).CustomerUUID
+	cUUID := d.Get("customer_id").(string)
+	ctx = meta.(*api.ApiClient).SetContextApiKey(ctx, d.Get("customer_id").(string))
 	r, _, err := c.UserManagementApi.GetUserDetails(ctx, cUUID, d.Id()).Execute()
 	if err != nil {
 		return diag.FromErr(err)
@@ -95,7 +102,8 @@ func resourceUserRead(ctx context.Context, d *schema.ResourceData, meta interfac
 func resourceUserUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	c := meta.(*api.ApiClient).YugawareClient
 
-	cUUID := meta.(*api.ApiClient).CustomerUUID
+	cUUID := d.Get("customer_id").(string)
+	ctx = meta.(*api.ApiClient).SetContextApiKey(ctx, d.Get("customer_id").(string))
 	if d.HasChange("role") {
 		_, _, err := c.UserManagementApi.UpdateUserRole(ctx, cUUID, d.Id()).Role(d.Get("role").(string)).Execute()
 		if err != nil {
@@ -121,7 +129,8 @@ func resourceUserDelete(ctx context.Context, d *schema.ResourceData, meta interf
 
 	c := meta.(*api.ApiClient).YugawareClient
 
-	cUUID := meta.(*api.ApiClient).CustomerUUID
+	cUUID := d.Get("customer_id").(string)
+	ctx = meta.(*api.ApiClient).SetContextApiKey(ctx, d.Get("customer_id").(string))
 	_, _, err := c.UserManagementApi.DeleteUser(ctx, cUUID, d.Id()).Execute()
 	if err != nil {
 		return diag.FromErr(err)

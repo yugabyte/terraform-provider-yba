@@ -27,6 +27,11 @@ func ResourceCloudProvider() *schema.Resource {
 		},
 
 		Schema: map[string]*schema.Schema{
+			"customer_id": {
+				Type:     schema.TypeString,
+				Required: true,
+				ForceNew: true,
+			},
 			"active": {
 				Type:     schema.TypeBool,
 				Computed: true,
@@ -108,7 +113,9 @@ func ResourceCloudProvider() *schema.Resource {
 func resourceCloudProviderCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	c := meta.(*api.ApiClient).YugawareClient
 
-	cUUID := meta.(*api.ApiClient).CustomerUUID
+	cUUID := d.Get("customer_id").(string)
+	ctx = meta.(*api.ApiClient).SetContextApiKey(ctx, d.Get("customer_id").(string))
+	tflog.Debug(ctx, ctx.Value("apiKeys").(map[string]client.APIKey)["apiKeyAuth"].Key)
 	req := client.Provider{
 		AirGapInstall:        utils.GetBoolPointer(d.Get("air_gap_install").(bool)),
 		Code:                 utils.GetStringPointer(d.Get("code").(string)),
@@ -155,7 +162,8 @@ func resourceCloudProviderRead(ctx context.Context, d *schema.ResourceData, meta
 
 	c := meta.(*api.ApiClient).YugawareClient
 
-	cUUID := meta.(*api.ApiClient).CustomerUUID
+	cUUID := d.Get("customer_id").(string)
+	ctx = meta.(*api.ApiClient).SetContextApiKey(ctx, d.Get("customer_id").(string))
 	r, _, err := c.CloudProvidersApi.GetListOfProviders(ctx, cUUID).Execute()
 	if err != nil {
 		return diag.FromErr(err)
@@ -213,7 +221,7 @@ func resourceCloudProviderDelete(ctx context.Context, d *schema.ResourceData, me
 	var diags diag.Diagnostics
 
 	vc := meta.(*api.ApiClient).VanillaClient
-	cUUID := meta.(*api.ApiClient).CustomerUUID
+	cUUID := d.Get("customer_id").(string)
 	pUUID := d.Id()
 	_, err := vc.MakeRequest(http.MethodDelete, fmt.Sprintf("api/v1/customers/%s/providers/%s", cUUID, pUUID), nil)
 	if err != nil {

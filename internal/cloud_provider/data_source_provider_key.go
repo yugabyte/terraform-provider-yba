@@ -14,6 +14,10 @@ func ProviderKey() *schema.Resource {
 		ReadContext: dataSourceProviderKeyRead,
 
 		Schema: map[string]*schema.Schema{
+			"customer_id": {
+				Type:     schema.TypeString,
+				Required: true,
+			},
 			"provider_id": {
 				Type:     schema.TypeString,
 				Required: true,
@@ -25,10 +29,10 @@ func ProviderKey() *schema.Resource {
 func dataSourceProviderKeyRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	var diags diag.Diagnostics
 
+	ctx = meta.(*api.ApiClient).SetContextApiKey(ctx, d.Get("customer_id").(string))
 	c := meta.(*api.ApiClient).YugawareClient
 
-	cUUID := meta.(*api.ApiClient).CustomerUUID
-	r, _, err := c.AccessKeysApi.List(ctx, cUUID, d.Get("provider_id").(string)).Execute()
+	r, _, err := c.AccessKeysApi.List(ctx, d.Get("customer_id").(string), d.Get("provider_id").(string)).Execute()
 	if err != nil {
 		return diag.FromErr(err)
 	}
