@@ -2,7 +2,6 @@ package provider
 
 import (
 	"context"
-	"errors"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	client "github.com/yugabyte/platform-go-client"
@@ -10,7 +9,6 @@ import (
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/backups"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/cloud_provider"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/customer"
-	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/datasource"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/universe"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/user"
 	"net/http"
@@ -50,7 +48,7 @@ func New() func() *schema.Provider {
 				},
 			},
 			DataSourcesMap: map[string]*schema.Resource{
-				"yb_customer_data":   datasource.Customer(),
+				"yb_customer_data":   customer.Customer(),
 				"yb_provider_key":    cloud_provider.ProviderKey(),
 				"yb_storage_configs": backups.StorageConfigs(),
 			},
@@ -71,15 +69,11 @@ func providerConfigure(ctx context.Context, d *schema.ResourceData) (interface{}
 
 	key := d.Get("apikey").(string)
 	host := d.Get("host").(string)
-	if key == "" {
-		return nil, diag.FromErr(errors.New("yugabyte platform API key is required"))
-	}
 
 	// create swagger go client
 	cfg := client.NewConfiguration()
 	cfg.Host = host
 	cfg.Scheme = "http"
-	cfg.DefaultHeader = map[string]string{"X-AUTH-YW-API-TOKEN": key}
 	ybc := client.NewAPIClient(cfg)
 
 	vc := &api.VanillaClient{
@@ -88,8 +82,5 @@ func providerConfigure(ctx context.Context, d *schema.ResourceData) (interface{}
 		Host:   host,
 	}
 
-	return &api.ApiClient{
-		YugawareClient: ybc,
-		VanillaClient:  vc,
-	}, diags
+	return api.NewApiClient(vc, ybc), diags
 }

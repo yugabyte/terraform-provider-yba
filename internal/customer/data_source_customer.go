@@ -1,4 +1,4 @@
-package datasource
+package customer
 
 import (
 	"context"
@@ -14,7 +14,18 @@ func Customer() *schema.Resource {
 
 		ReadContext: dataSourceCustomerRead,
 
-		Schema: map[string]*schema.Schema{},
+		Schema: map[string]*schema.Schema{
+			"api_token": {
+				Type:     schema.TypeString,
+				Computed: true,
+				ForceNew: true,
+			},
+			"cuuid": {
+				Type:     schema.TypeString,
+				Computed: true,
+				ForceNew: true,
+			},
+		},
 	}
 }
 
@@ -22,12 +33,18 @@ func dataSourceCustomerRead(ctx context.Context, d *schema.ResourceData, meta in
 	var diags diag.Diagnostics
 
 	c := meta.(*api.ApiClient).YugawareClient
+	ctx = context.WithValue(ctx, client.ContextAPIKeys, map[string]client.APIKey{"apiKeyAuth": {Key: d.Get("api_token").(string)}})
 	r, _, err := c.SessionManagementApi.GetSessionInfo(ctx).Execute()
 	if err != nil {
 		return diag.FromErr(err)
 	}
 
-	meta.(*api.ApiClient).ApiKeys[*r.CustomerUUID] = client.APIKey{Key: *r.ApiToken}
+	if err = d.Set("api_token", *r.ApiToken); err != nil {
+		return diag.FromErr(err)
+	}
+	if err = d.Set("cuuid", *r.CustomerUUID); err != nil {
+		return diag.FromErr(err)
+	}
 
 	d.SetId(*r.CustomerUUID)
 	return diags

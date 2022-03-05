@@ -9,6 +9,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	client "github.com/yugabyte/platform-go-client"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/api"
+	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/customer"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/utils"
 	"net/http"
 	"time"
@@ -20,6 +21,7 @@ func ResourceCloudProvider() *schema.Resource {
 
 		CreateContext: resourceCloudProviderCreate,
 		ReadContext:   resourceCloudProviderRead,
+		UpdateContext: resourceCloudProviderUpdate,
 		DeleteContext: resourceCloudProviderDelete,
 
 		Importer: &schema.ResourceImporter{
@@ -27,11 +29,7 @@ func ResourceCloudProvider() *schema.Resource {
 		},
 
 		Schema: map[string]*schema.Schema{
-			"customer_id": {
-				Type:     schema.TypeString,
-				Required: true,
-				ForceNew: true,
-			},
+			"connection_info": customer.ConnectionInfoSchema(),
 			"active": {
 				Type:     schema.TypeBool,
 				Computed: true,
@@ -113,9 +111,8 @@ func ResourceCloudProvider() *schema.Resource {
 func resourceCloudProviderCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	c := meta.(*api.ApiClient).YugawareClient
 
-	cUUID := d.Get("customer_id").(string)
-	ctx = meta.(*api.ApiClient).SetContextApiKey(ctx, d.Get("customer_id").(string))
-	tflog.Debug(ctx, ctx.Value("apiKeys").(map[string]client.APIKey)["apiKeyAuth"].Key)
+	cUUID, token := api.GetConnectionInfo(d)
+	ctx = api.SetContextApiKey(ctx, token)
 	req := client.Provider{
 		AirGapInstall:        utils.GetBoolPointer(d.Get("air_gap_install").(bool)),
 		Code:                 utils.GetStringPointer(d.Get("code").(string)),
@@ -162,8 +159,8 @@ func resourceCloudProviderRead(ctx context.Context, d *schema.ResourceData, meta
 
 	c := meta.(*api.ApiClient).YugawareClient
 
-	cUUID := d.Get("customer_id").(string)
-	ctx = meta.(*api.ApiClient).SetContextApiKey(ctx, d.Get("customer_id").(string))
+	cUUID, token := api.GetConnectionInfo(d)
+	ctx = api.SetContextApiKey(ctx, token)
 	r, _, err := c.CloudProvidersApi.GetListOfProviders(ctx, cUUID).Execute()
 	if err != nil {
 		return diag.FromErr(err)
@@ -216,12 +213,17 @@ func resourceCloudProviderRead(ctx context.Context, d *schema.ResourceData, meta
 	return diags
 }
 
+func resourceCloudProviderUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+	// do nothing; this is here so that we can chang eth api token without forcing recreation
+	return diag.Diagnostics{}
+}
+
 func resourceCloudProviderDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	// TODO: this uses a non-public API
 	var diags diag.Diagnostics
 
 	vc := meta.(*api.ApiClient).VanillaClient
-	cUUID := d.Get("customer_id").(string)
+	cUUID, _ := api.GetConnectionInfo(d)
 	pUUID := d.Id()
 	_, err := vc.MakeRequest(http.MethodDelete, fmt.Sprintf("api/v1/customers/%s/providers/%s", cUUID, pUUID), nil)
 	if err != nil {

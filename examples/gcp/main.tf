@@ -49,7 +49,11 @@ resource "yb_customer_resource" "customer" {
 }
 
 resource "yb_cloud_provider" "gcp" {
-  customer_id = yb_customer_resource.customer.id
+  connection_info {
+    cuuid = yb_customer_resource.customer.cuuid
+    api_token = yb_customer_resource.customer.api_token
+  }
+
   code = "gcp"
   config = {
     type = "service_account"

@@ -3,19 +3,31 @@ package api
 import (
 	"context"
 	"fmt"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	client "github.com/yugabyte/platform-go-client"
 	"io"
 	"net/http"
 )
 
+func SetContextApiKey(ctx context.Context, key string) context.Context {
+	return context.WithValue(ctx, client.ContextAPIKeys, map[string]client.APIKey{"apiKeyAuth": {Key: key}})
+}
+
+func GetConnectionInfo(d *schema.ResourceData) (string, string) {
+	m := d.Get("connection_info").([]interface{})[0].(map[string]interface{})
+	return m["cuuid"].(string), m["api_token"].(string)
+}
+
 type ApiClient struct {
 	VanillaClient  *VanillaClient
 	YugawareClient *client.APIClient
-	ApiKeys        map[string]client.APIKey
 }
 
-func (c ApiClient) SetContextApiKey(ctx context.Context, cUUID string) context.Context {
-	return context.WithValue(ctx, "apiKeys", map[string]client.APIKey{"apiKeyAuth": c.ApiKeys[cUUID]})
+func NewApiClient(vc *VanillaClient, yc *client.APIClient) *ApiClient {
+	return &ApiClient{
+		VanillaClient:  vc,
+		YugawareClient: yc,
+	}
 }
 
 type VanillaClient struct {
