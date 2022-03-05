@@ -5,6 +5,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/api"
+	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/customer"
 )
 
 func ProviderKey() *schema.Resource {
@@ -14,10 +15,7 @@ func ProviderKey() *schema.Resource {
 		ReadContext: dataSourceProviderKeyRead,
 
 		Schema: map[string]*schema.Schema{
-			"customer_id": {
-				Type:     schema.TypeString,
-				Required: true,
-			},
+			"connection_info": customer.ConnectionInfoSchema(),
 			"provider_id": {
 				Type:     schema.TypeString,
 				Required: true,
@@ -29,10 +27,11 @@ func ProviderKey() *schema.Resource {
 func dataSourceProviderKeyRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	var diags diag.Diagnostics
 
-	ctx = meta.(*api.ApiClient).SetContextApiKey(ctx, d.Get("customer_id").(string))
+	cUUID, token := api.GetConnectionInfo(d)
+	ctx = api.SetContextApiKey(ctx, token)
 	c := meta.(*api.ApiClient).YugawareClient
 
-	r, _, err := c.AccessKeysApi.List(ctx, d.Get("customer_id").(string), d.Get("provider_id").(string)).Execute()
+	r, _, err := c.AccessKeysApi.List(ctx, cUUID, d.Get("provider_id").(string)).Execute()
 	if err != nil {
 		return diag.FromErr(err)
 	}

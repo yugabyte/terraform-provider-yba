@@ -9,6 +9,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	client "github.com/yugabyte/platform-go-client"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/api"
+	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/customer"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/utils"
 	"time"
 )
@@ -27,11 +28,7 @@ func ResourceUniverse() *schema.Resource {
 		},
 
 		Schema: map[string]*schema.Schema{
-			"customer_id": {
-				Type:     schema.TypeString,
-				Required: true,
-				ForceNew: true,
-			},
+			"connection_info": customer.ConnectionInfoSchema(),
 
 			// Universe Delete Options
 			"delete_certs": {
@@ -421,8 +418,8 @@ func userIntentSchema() *schema.Resource {
 func resourceUniverseCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	c := meta.(*api.ApiClient).YugawareClient
 
-	cUUID := d.Get("customer").(string)
-	ctx = meta.(*api.ApiClient).SetContextApiKey(ctx, d.Get("customer_id").(string))
+	cUUID, token := api.GetConnectionInfo(d)
+	ctx = api.SetContextApiKey(ctx, token)
 	req := buildUniverse(d)
 	r, _, err := c.UniverseClusterMutationsApi.CreateAllClusters(ctx, cUUID).UniverseConfigureTaskParams(req).Execute()
 	if err != nil {
@@ -582,8 +579,8 @@ func resourceUniverseRead(ctx context.Context, d *schema.ResourceData, meta inte
 
 	c := meta.(*api.ApiClient).YugawareClient
 
-	cUUID := d.Get("customer_id").(string)
-	ctx = meta.(*api.ApiClient).SetContextApiKey(ctx, d.Get("customer_id").(string))
+	cUUID, token := api.GetConnectionInfo(d)
+	ctx = api.SetContextApiKey(ctx, token)
 	r, _, err := c.UniverseManagementApi.GetUniverse(ctx, cUUID, d.Id()).Execute()
 	if err != nil {
 		return diag.FromErr(err)
@@ -736,8 +733,8 @@ func resourceUniverseUpdate(ctx context.Context, d *schema.ResourceData, meta in
 	// Only updates user intent for each cluster
 	c := meta.(*api.ApiClient).YugawareClient
 
-	cUUID := d.Get("customer_id").(string)
-	ctx = meta.(*api.ApiClient).SetContextApiKey(ctx, d.Get("customer_id").(string))
+	cUUID, token := api.GetConnectionInfo(d)
+	ctx = api.SetContextApiKey(ctx, token)
 	if d.HasChanges("clusters") {
 		var taskIds []string
 		clusters := d.Get("clusters").([]interface{})
@@ -787,8 +784,8 @@ func resourceUniverseDelete(ctx context.Context, d *schema.ResourceData, meta in
 
 	c := meta.(*api.ApiClient).YugawareClient
 
-	cUUID := d.Get("customer_id").(string)
-	ctx = meta.(*api.ApiClient).SetContextApiKey(ctx, d.Get("customer_id").(string))
+	cUUID, token := api.GetConnectionInfo(d)
+	ctx = api.SetContextApiKey(ctx, token)
 	r, _, err := c.UniverseManagementApi.DeleteUniverse(ctx, cUUID, d.Id()).
 		IsForceDelete(d.Get("force_delete").(bool)).
 		IsDeleteBackups(d.Get("delete_backups").(bool)).
