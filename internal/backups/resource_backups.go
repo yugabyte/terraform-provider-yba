@@ -8,6 +8,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	client "github.com/yugabyte/platform-go-client"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/api"
+	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/customer"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/utils"
 )
 
@@ -25,11 +26,7 @@ func ResourceBackups() *schema.Resource {
 		},
 
 		Schema: map[string]*schema.Schema{
-			"customer_id": {
-				Type:     schema.TypeString,
-				Required: true,
-				ForceNew: true,
-			},
+			"connection_info": customer.ConnectionInfoSchema(),
 			"uni_uuid": {
 				Type:     schema.TypeString,
 				Required: true,
@@ -87,8 +84,8 @@ func ResourceBackups() *schema.Resource {
 func resourceBackupsCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	c := meta.(*api.ApiClient).YugawareClient
 
-	cUUID := d.Get("customer_id").(string)
-	ctx = meta.(*api.ApiClient).SetContextApiKey(ctx, d.Get("customer_id").(string))
+	cUUID, token := api.GetConnectionInfo(d)
+	ctx = api.SetContextApiKey(ctx, token)
 	req := client.MultiTableBackupRequestParams{
 		Keyspace:            utils.GetStringPointer(d.Get("keyspace").(string)),
 		StorageConfigUUID:   d.Get("storage_config_uuid").(string),
@@ -114,8 +111,8 @@ func resourceBackupsRead(ctx context.Context, d *schema.ResourceData, meta inter
 
 	c := meta.(*api.ApiClient).YugawareClient
 
-	cUUID := d.Get("customer_id").(string)
-	ctx = meta.(*api.ApiClient).SetContextApiKey(ctx, d.Get("customer_id").(string))
+	cUUID, token := api.GetConnectionInfo(d)
+	ctx = api.SetContextApiKey(ctx, token)
 	r, _, err := c.ScheduleManagementApi.ListSchedules(ctx, cUUID).Execute()
 	b, err := findBackup(r, d.Id())
 	if err != nil {
@@ -143,8 +140,8 @@ func findBackup(backups []client.Schedule, sUUID string) (*client.Schedule, erro
 func resourceBackupsUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	c := meta.(*api.ApiClient).YugawareClient
 
-	cUUID := d.Get("customer_id").(string)
-	ctx = meta.(*api.ApiClient).SetContextApiKey(ctx, d.Get("customer_id").(string))
+	cUUID, token := api.GetConnectionInfo(d)
+	ctx = api.SetContextApiKey(ctx, token)
 	req := client.EditBackupScheduleParams{
 		CronExpression: utils.GetStringPointer(d.Get("cron_expression").(string)),
 		Frequency:      utils.GetInt64Pointer(int64(d.Get("frequency").(int))),
@@ -159,8 +156,8 @@ func resourceBackupsUpdate(ctx context.Context, d *schema.ResourceData, meta int
 func resourceBackupsDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	c := meta.(*api.ApiClient).YugawareClient
 
-	cUUID := d.Get("customer_id").(string)
-	ctx = meta.(*api.ApiClient).SetContextApiKey(ctx, d.Get("customer_id").(string))
+	cUUID, token := api.GetConnectionInfo(d)
+	ctx = api.SetContextApiKey(ctx, token)
 	_, _, err := c.ScheduleManagementApi.DeleteSchedule(ctx, cUUID, d.Id()).Execute()
 	if err != nil {
 		return diag.FromErr(err)
