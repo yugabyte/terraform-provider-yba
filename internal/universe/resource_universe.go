@@ -18,10 +18,10 @@ func ResourceUniverse() *schema.Resource {
 	return &schema.Resource{
 		Description: "Universe Resource",
 
-		CreateContext: resourceUniverseCreate,
-		ReadContext:   resourceUniverseRead,
-		UpdateContext: resourceUniverseUpdate,
-		DeleteContext: resourceUniverseDelete,
+		CreateWithoutTimeout: resourceUniverseCreate,
+		ReadContext:          resourceUniverseRead,
+		UpdateContext:        resourceUniverseUpdate,
+		DeleteContext:        resourceUniverseDelete,
 
 		Importer: &schema.ResourceImporter{
 			StateContext: schema.ImportStatePassthroughContext,
