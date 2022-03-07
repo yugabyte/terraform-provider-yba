@@ -2,7 +2,6 @@ package customer
 
 import (
 	"context"
-	"errors"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
@@ -60,6 +59,8 @@ func ResourceCustomer() *schema.Resource {
 }
 
 func resourceCustomerCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+	var diags diag.Diagnostics
+
 	c := meta.(*api.ApiClient).YugawareClient
 
 	// if we are registering a customer, this could be a new instance of platform, so we may need to wait for startup
@@ -76,12 +77,24 @@ func resourceCustomerCreate(ctx context.Context, d *schema.ResourceData, meta in
 		Name:     d.Get("name").(string),
 		Password: d.Get("password").(string),
 	}
-	_, _, err = c.SessionManagementApi.RegisterCustomer(ctx).CustomerRegisterFormData(req).Execute()
+	r, _, err := c.SessionManagementApi.RegisterCustomer(ctx).CustomerRegisterFormData(req).Execute()
 	if err != nil {
 		return diag.FromErr(err)
 	}
 
-	return resourceCustomerRead(ctx, d, meta)
+	token := ""
+	if r.ApiToken != nil {
+		token = *r.ApiToken
+	}
+	if err = d.Set("api_token", token); err != nil {
+		return diag.FromErr(err)
+	}
+	if err = d.Set("cuuid", *r.CustomerUUID); err != nil {
+		return diag.FromErr(err)
+	}
+
+	d.SetId(*r.CustomerUUID)
+	return diags
 }
 
 func waitForStart(ctx context.Context, c *client.APIClient, timeout time.Duration) error {
@@ -94,7 +107,7 @@ func waitForStart(ctx context.Context, c *client.APIClient, timeout time.Duratio
 		Refresh: func() (result interface{}, state string, err error) {
 			_, _, err = c.SessionManagementApi.AppVersion(ctx).Execute()
 			if err != nil {
-				return "Waiting", "Waiting", err
+				return "Waiting", "Waiting", nil
 			}
 
 			return "Ready", "Ready", nil
@@ -124,11 +137,13 @@ func resourceCustomerRead(ctx context.Context, d *schema.ResourceData, meta inte
 	if err = d.Set("cuuid", *r.CustomerUUID); err != nil {
 		return diag.FromErr(err)
 	}
-	
+
 	d.SetId(*r.CustomerUUID)
 	return diags
 }
 
 func resourceCustomerDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	return diag.FromErr(errors.New("customer resource cannot be deleted or changed"))
+	tflog.Debug(ctx, "marking as deleted; customer resources cannot be deleted or changed")
+	d.SetId("")
+	return diag.Diagnostics{}
 }
