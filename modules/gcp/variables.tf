@@ -37,6 +37,10 @@ variable "disk_size" {
   default     = "100"
   type        = string
 }
+variable "network_tags" {
+  description = "network tags to apply to the platform instance"
+  type = list(string)
+}
 
 // file-paths
 variable "ssh_private_key" {
