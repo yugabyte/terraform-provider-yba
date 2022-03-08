@@ -53,11 +53,12 @@ func New() func() *schema.Provider {
 				"yb_storage_configs": backups.StorageConfigs(),
 			},
 			ResourcesMap: map[string]*schema.Resource{
-				"yb_cloud_provider":    cloud_provider.ResourceCloudProvider(),
-				"yb_universe":          universe.ResourceUniverse(),
-				"yb_backups":           backups.ResourceBackups(),
-				"yb_user":              user.ResourceUser(),
-				"yb_customer_resource": customer.ResourceCustomer(),
+				"yb_cloud_provider":          cloud_provider.ResourceCloudProvider(),
+				"yb_universe":                universe.ResourceUniverse(),
+				"yb_backups":                 backups.ResourceBackups(),
+				"yb_user":                    user.ResourceUser(),
+				"yb_customer_resource":       customer.ResourceCustomer(),
+				"yb_storage_config_resource": backups.ResourceStorageConfig(),
 			},
 			ConfigureContextFunc: providerConfigure,
 		}

@@ -8,7 +8,7 @@ require (
 	github.com/hashicorp/terraform-plugin-docs v0.5.1
 	github.com/hashicorp/terraform-plugin-log v0.2.1
 	github.com/hashicorp/terraform-plugin-sdk/v2 v2.10.1
-	github.com/yugabyte/platform-go-client v0.0.0-20220307210054-ab40d6126b3c // indirect
+	github.com/yugabyte/platform-go-client v0.0.0-20220308232516-f7d106d1bdaa // indirect
 	github.com/yugabyte/yb-tools v0.0.0-20220216002636-78907b855fc9
 	go.uber.org/zap v1.20.0
 )
