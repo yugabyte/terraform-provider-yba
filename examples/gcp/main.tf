@@ -19,13 +19,17 @@ provider "google" {
 
 locals {
   dir = "/Users/stevendu/code/terraform-provider-yugabyte-platform/modules/resources"
+  cluster_name = "sdu-test-yugaware"
 }
 
 module "gcp-platform" {
   source = "../../modules/gcp"
 
-  cluster_name                  = "sdu-test-yugaware"
+  cluster_name                  = local.cluster_name
   ssh_user                      = "centos"
+  network_tags = [local.cluster_name, "http-server", "https-server"]
+  vpc_network = "***REMOVED***"
+  vpc_subnetwork = "***REMOVED***"
   // files
   replicated_filepath           = "${local.dir}/replicated.conf"
   license_filepath              = "/Users/stevendu/.yugabyte/yw-dev.rli"
@@ -66,8 +70,9 @@ resource "yb_cloud_provider" "gcp" {
     ***REMOVED***
     ***REMOVED***
     ***REMOVED***
+    YB_FIREWALL_TAGS            = "cluster-server"
   }
-  dest_vpc_id = "default"
+  dest_vpc_id = "***REMOVED***"
   name        = "sdu-test-gcp-provider"
   regions {
     code = "us-west1"
@@ -119,7 +124,7 @@ resource "yb_universe" "gcp_universe" {
       enable_ysql                   = true
       enable_node_to_node_encrypt   = true
       enable_client_to_node_encrypt = true
-      yb_software_version           = "2.7.3.0-b80"
+      yb_software_version           = "2.12.1.0-b41"
       access_key_code               = local.provider_key
     }
   }
