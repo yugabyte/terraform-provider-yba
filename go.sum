@@ -1076,6 +1076,12 @@ github.com/yugabyte/platform-go-client v0.0.0-20220302222540-9907969f8a07 h1:LGc
 github.com/yugabyte/platform-go-client v0.0.0-20220302222540-9907969f8a07/go.mod h1:DCweVAOmhBcxKl4aAmsBDVI6K1VZXHkLRcCCLgZnwj0=
 github.com/yugabyte/platform-go-client v0.0.0-20220307210054-ab40d6126b3c h1:9VvGQHkgo36SJ+lALY+5KXHAKNSP9liwM9UF/3GX654=
 github.com/yugabyte/platform-go-client v0.0.0-20220307210054-ab40d6126b3c/go.mod h1:DCweVAOmhBcxKl4aAmsBDVI6K1VZXHkLRcCCLgZnwj0=
+github.com/yugabyte/platform-go-client v0.0.0-20220308230021-32c5e9cb9df0 h1:1VUy4psos7oZ1sxgHTz/BM7ZQ0MzfayafyM0HXqGp7g=
+github.com/yugabyte/platform-go-client v0.0.0-20220308230021-32c5e9cb9df0/go.mod h1:DCweVAOmhBcxKl4aAmsBDVI6K1VZXHkLRcCCLgZnwj0=
+github.com/yugabyte/platform-go-client v0.0.0-20220308231443-39837b064e9d h1:2gTRUisJRU/grWkB0Q3gCGGJRqQWTuNxcKoesM0apLk=
+github.com/yugabyte/platform-go-client v0.0.0-20220308231443-39837b064e9d/go.mod h1:DCweVAOmhBcxKl4aAmsBDVI6K1VZXHkLRcCCLgZnwj0=
+github.com/yugabyte/platform-go-client v0.0.0-20220308232516-f7d106d1bdaa h1:P8P6Mma02cAK4LJPYaeoGpsfucp24/wqTW8sVCxoxSI=
+github.com/yugabyte/platform-go-client v0.0.0-20220308232516-f7d106d1bdaa/go.mod h1:DCweVAOmhBcxKl4aAmsBDVI6K1VZXHkLRcCCLgZnwj0=
 github.com/yugabyte/yb-tools v0.0.0-20220216002636-78907b855fc9 h1:tsh95g9UHc6IRftUv9g8g9q4PlQEb/ClGv7lKBADHI8=
 github.com/yugabyte/yb-tools v0.0.0-20220216002636-78907b855fc9/go.mod h1:TgPJso5ev7CE/AAcOQpnt4wIFOLqy7NqJ3sopxbZB/g=
 github.com/yuin/goldmark v1.1.25/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9decYSb74=

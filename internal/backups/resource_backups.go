@@ -146,7 +146,7 @@ func resourceBackupsUpdate(ctx context.Context, d *schema.ResourceData, meta int
 		CronExpression: utils.GetStringPointer(d.Get("cron_expression").(string)),
 		Frequency:      utils.GetInt64Pointer(int64(d.Get("frequency").(int))),
 	}
-	_, _, err := c.ScheduleManagementApi.EditBackupSchedule(ctx, cUUID, d.Id()).Body(req).Execute()
+	_, _, err := c.ScheduleManagementApi.EditBackupScheduleV2(ctx, cUUID, d.Id()).Body(req).Execute()
 	if err != nil {
 		return diag.FromErr(err)
 	}
