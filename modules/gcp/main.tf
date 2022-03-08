@@ -25,7 +25,7 @@ resource "google_compute_instance" "yb_platform_node" {
     }
   }
 
-  tags     = [var.cluster_name]
+  tags     = var.network_tags
   metadata = {
     sshKeys = "${var.ssh_user}:${file(var.ssh_public_key)}"
   }

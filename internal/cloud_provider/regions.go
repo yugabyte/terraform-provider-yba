@@ -169,7 +169,7 @@ func flattenRegions(regions []client.Region) (res []map[string]interface{}) {
 			// TODO: the region name is being changed by the server, which messes with terraform state
 			// it is currently hardcoded to work with the config in example
 			// https://yugabyte.atlassian.net/browse/PLAT-3034
-			"name":              "us-central1",
+			"name":              "us-west1",
 			"security_group_id": region.SecurityGroupId,
 			"vnet_name":         region.VnetName,
 			"yb_image":          region.YbImage,
