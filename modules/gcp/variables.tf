@@ -18,6 +18,11 @@ variable "vpc_network" {
   default     = "default"
   type        = string
 }
+variable "vpc_subnetwork" {
+  description = "VPC subnetwork to deploy platform instance"
+  default     = null
+  type        = string
+}
 variable "ssh_user" {
   description = "User name to ssh into platform node to configure cluster"
   type        = string

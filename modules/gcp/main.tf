@@ -31,7 +31,8 @@ resource "google_compute_instance" "yb_platform_node" {
   }
 
   network_interface {
-    network = var.vpc_network
+    network    = var.vpc_network
+    subnetwork = var.vpc_subnetwork
     access_config {}
   }
 
@@ -49,24 +50,24 @@ resource "google_compute_instance" "yb_platform_node" {
 
   // tls certificate
   provisioner "file" {
-    content = try(file(var.tls_cert_filepath), "")
+    content     = try(file(var.tls_cert_filepath), "")
     destination = "/tmp/server.crt"
     connection {
-      host = self.network_interface.0.access_config.0.nat_ip
-      type = "ssh"
-      user = var.ssh_user
+      host        = self.network_interface.0.access_config.0.nat_ip
+      type        = "ssh"
+      user        = var.ssh_user
       private_key = file(var.ssh_private_key)
     }
   }
 
   // tls key
   provisioner "file" {
-    content = try(file(var.tls_key_filepath), "")
+    content     = try(file(var.tls_key_filepath), "")
     destination = "/tmp/server.key"
     connection {
-      host = self.network_interface.0.access_config.0.nat_ip
-      type = "ssh"
-      user = var.ssh_user
+      host        = self.network_interface.0.access_config.0.nat_ip
+      type        = "ssh"
+      user        = var.ssh_user
       private_key = file(var.ssh_private_key)
     }
   }

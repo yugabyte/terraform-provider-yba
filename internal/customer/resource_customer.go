@@ -77,7 +77,7 @@ func resourceCustomerCreate(ctx context.Context, d *schema.ResourceData, meta in
 		Name:     d.Get("name").(string),
 		Password: d.Get("password").(string),
 	}
-	r, _, err := c.SessionManagementApi.RegisterCustomer(ctx).CustomerRegisterFormData(req).Execute()
+	r, _, err := c.SessionManagementApi.RegisterCustomer(ctx).CustomerRegisterFormData(req).GenerateApiToken(true).Execute()
 	if err != nil {
 		return diag.FromErr(err)
 	}

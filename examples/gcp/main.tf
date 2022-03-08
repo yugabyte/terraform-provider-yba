@@ -5,7 +5,7 @@ terraform {
     }
     yb = {
       version = "~> 0.1.0"
-      source = "terraform.yugabyte.com/platform/yugabyte-platform"
+      source  = "terraform.yugabyte.com/platform/yugabyte-platform"
     }
   }
 }
@@ -42,19 +42,19 @@ provider "yb" {
 }
 
 resource "yb_customer_resource" "customer" {
-  code = "admin"
-  email = "sdu@yugabyte.com"
-  name = "sdu"
+  code     = "admin"
+  email    = "sdu@yugabyte.com"
+  name     = "sdu"
   password = "Password1@"
 }
 
 resource "yb_cloud_provider" "gcp" {
   connection_info {
-    cuuid = yb_customer_resource.customer.cuuid
+    cuuid     = yb_customer_resource.customer.cuuid
     api_token = yb_customer_resource.customer.api_token
   }
 
-  code = "gcp"
+  code   = "gcp"
   config = {
     ***REMOVED***
     ***REMOVED***
@@ -66,21 +66,20 @@ resource "yb_cloud_provider" "gcp" {
     ***REMOVED***
     ***REMOVED***
     ***REMOVED***
-    YB_FIREWALL_TAGS = "cluster-server"
   }
-  dest_vpc_id = "yugabyte-network"
-  name = "sdu-test-gcp-provider"
+  dest_vpc_id = "default"
+  name        = "sdu-test-gcp-provider"
   regions {
-    code = "us-central1"
-    name = "us-central1"
+    code = "us-west1"
+    name = "us-west1"
   }
-  ssh_port = 54422
+  ssh_port        = 54422
   air_gap_install = false
 }
 
 data "yb_provider_key" "gcp-key" {
   connection_info {
-    cuuid = yb_customer_resource.customer.cuuid
+    cuuid     = yb_customer_resource.customer.cuuid
     api_token = yb_customer_resource.customer.api_token
   }
 
@@ -88,14 +87,14 @@ data "yb_provider_key" "gcp-key" {
 }
 
 locals {
-  region_list = yb_cloud_provider.gcp.regions[*].uuid
-  provider_id = yb_cloud_provider.gcp.id
+  region_list  = yb_cloud_provider.gcp.regions[*].uuid
+  provider_id  = yb_cloud_provider.gcp.id
   provider_key = data.yb_provider_key.gcp-key.id
 }
 
 resource "yb_universe" "gcp_universe" {
   connection_info {
-    cuuid = yb_customer_resource.customer.cuuid
+    cuuid     = yb_customer_resource.customer.cuuid
     api_token = yb_customer_resource.customer.api_token
   }
 
@@ -103,25 +102,25 @@ resource "yb_universe" "gcp_universe" {
   clusters {
     cluster_type = "PRIMARY"
     user_intent {
-      universe_name = "sdu-test-gcp-universe"
-      provider_type = "gcp"
-      provider = local.provider_id
-      region_list = local.region_list
-      num_nodes = 3
+      universe_name      = "sdu-test-gcp-universe"
+      provider_type      = "gcp"
+      provider           = local.provider_id
+      region_list        = local.region_list
+      num_nodes          = 3
       replication_factor = 3
-      instance_type = "n1-standard-1"
+      instance_type      = "n1-standard-1"
       device_info {
-        num_volumes = 1
-        volume_size = 375
+        num_volumes  = 1
+        volume_size  = 375
         storage_type = "Persistent"
       }
-      assign_public_ip = true
-      use_time_sync = true
-      enable_ysql = true
-      enable_node_to_node_encrypt = true
+      assign_public_ip              = true
+      use_time_sync                 = true
+      enable_ysql                   = true
+      enable_node_to_node_encrypt   = true
       enable_client_to_node_encrypt = true
-      yb_software_version = "2.7.3.0-b80"
-      access_key_code = local.provider_key
+      yb_software_version           = "2.7.3.0-b80"
+      access_key_code               = local.provider_key
     }
   }
   communication_ports {}

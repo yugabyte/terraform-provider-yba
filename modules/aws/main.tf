@@ -147,24 +147,24 @@ resource "aws_instance" "yb_platform_node" {
 
   // tls certificate
   provisioner "file" {
-    content = try(file(var.tls_cert_filepath), "")
+    content     = try(file(var.tls_cert_filepath), "")
     destination = "/tmp/server.crt"
     connection {
-      host = self.public_ip
-      type = "ssh"
-      user = var.ssh_user
+      host        = self.public_ip
+      type        = "ssh"
+      user        = var.ssh_user
       private_key = file(var.ssh_private_key)
     }
   }
 
   // tls key
   provisioner "file" {
-    content = try(file(var.tls_key_filepath), "")
+    content     = try(file(var.tls_key_filepath), "")
     destination = "/tmp/server.key"
     connection {
-      host = self.public_ip
-      type = "ssh"
-      user = var.ssh_user
+      host        = self.public_ip
+      type        = "ssh"
+      user        = var.ssh_user
       private_key = file(var.ssh_private_key)
     }
   }
