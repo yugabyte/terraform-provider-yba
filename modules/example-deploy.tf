@@ -67,12 +67,12 @@ provider "azurerm" {
 module "azure-platform" {
   source = "./azure"
 
-  cluster_name = "sdu-test-yugaware"
-  ssh_user = "sdu"
-  region_name = "westus2"
+  cluster_name                  = "sdu-test-yugaware"
+  ssh_user                      = "sdu"
+  region_name                   = "westus2"
   // files
-  ssh_private_key = "/Users/stevendu/.ssh/yugaware-azure"
-  ssh_public_key = "/Users/stevendu/.ssh/yugaware-azure.pub"
+  ssh_private_key               = "/Users/stevendu/.ssh/yugaware-azure"
+  ssh_public_key                = "/Users/stevendu/.ssh/yugaware-azure.pub"
   replicated_filepath           = "${local.dir}/replicated.conf"
   application_settings_filepath = "${local.dir}/application_settings.conf"
   tls_cert_filepath             = ""

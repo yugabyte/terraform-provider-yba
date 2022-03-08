@@ -8,7 +8,7 @@ resource "azurerm_resource_group" "yb_rg" {
 }
 
 resource "azurerm_virtual_network" "yb_network" {
-  depends_on = [azurerm_resource_group.yb_rg]
+  depends_on          = [azurerm_resource_group.yb_rg]
   name                = "${var.cluster_name}-vpc"
   address_space       = ["10.0.0.0/16"]
   location            = var.region_name
@@ -20,7 +20,7 @@ resource "azurerm_virtual_network" "yb_network" {
 }
 
 resource "azurerm_subnet" "yb_subnet" {
-  depends_on = [azurerm_resource_group.yb_rg, azurerm_virtual_network.yb_network]
+  depends_on           = [azurerm_resource_group.yb_rg, azurerm_virtual_network.yb_network]
   name                 = "${var.cluster_name}-subnet"
   resource_group_name  = azurerm_resource_group.yb_rg.name
   virtual_network_name = azurerm_virtual_network.yb_network.name
@@ -28,7 +28,7 @@ resource "azurerm_subnet" "yb_subnet" {
 }
 
 resource "azurerm_public_ip" "yb_public_ip" {
-  depends_on = [azurerm_resource_group.yb_rg]
+  depends_on          = [azurerm_resource_group.yb_rg]
   name                = "${var.cluster_name}-public-ip"
   location            = var.region_name
   resource_group_name = azurerm_resource_group.yb_rg.name
@@ -41,19 +41,19 @@ resource "azurerm_public_ip" "yb_public_ip" {
 }
 
 resource "azurerm_network_security_group" "yb_sg" {
-  depends_on = [azurerm_resource_group.yb_rg]
+  depends_on          = [azurerm_resource_group.yb_rg]
   location            = var.region_name
   name                = "${var.cluster_name}-sg"
   resource_group_name = azurerm_resource_group.yb_rg.name
 
   security_rule {
-    name                       = "yb-rule"
-    priority                   = 100
-    direction                  = "Inbound"
-    access                     = "Allow"
-    protocol                   = "Tcp"
-    source_port_range          = "*"
-    destination_port_ranges    = [
+    name                    = "yb-rule"
+    priority                = 100
+    direction               = "Inbound"
+    access                  = "Allow"
+    protocol                = "Tcp"
+    source_port_range       = "*"
+    destination_port_ranges = [
       "22", "8800", "80", "7000", "7100", "9000", "9100", "11000", "12000", "9300", "9042", "5433", "6379"
     ]
     source_address_prefix      = "*"
@@ -66,13 +66,13 @@ resource "azurerm_network_security_group" "yb_sg" {
 }
 
 resource "azurerm_subnet_network_security_group_association" "yb_sg_association" {
-  depends_on = [azurerm_subnet.yb_subnet, azurerm_network_security_group.yb_sg]
+  depends_on                = [azurerm_subnet.yb_subnet, azurerm_network_security_group.yb_sg]
   subnet_id                 = azurerm_subnet.yb_subnet.id
   network_security_group_id = azurerm_network_security_group.yb_sg.id
 }
 
 resource "azurerm_network_interface" "yb_network_interface" {
-  depends_on = [azurerm_resource_group.yb_rg, azurerm_subnet.yb_subnet, azurerm_public_ip.yb_public_ip]
+  depends_on          = [azurerm_resource_group.yb_rg, azurerm_subnet.yb_subnet, azurerm_public_ip.yb_public_ip]
   name                = "${var.cluster_name}-network-interface"
   location            = var.region_name
   resource_group_name = azurerm_resource_group.yb_rg.name
@@ -90,7 +90,9 @@ resource "azurerm_network_interface" "yb_network_interface" {
 }
 
 resource "azurerm_virtual_machine" "yb_platform_node" {
-  depends_on = [azurerm_resource_group.yb_rg, azurerm_network_interface.yb_network_interface, azurerm_public_ip.yb_public_ip]
+  depends_on = [
+    azurerm_resource_group.yb_rg, azurerm_network_interface.yb_network_interface, azurerm_public_ip.yb_public_ip
+  ]
   name                = var.cluster_name
   resource_group_name = azurerm_resource_group.yb_rg.name
   location            = var.region_name
@@ -144,24 +146,24 @@ resource "azurerm_virtual_machine" "yb_platform_node" {
 
   // tls certificate
   provisioner "file" {
-    content = try(file(var.tls_cert_filepath), "")
+    content     = try(file(var.tls_cert_filepath), "")
     destination = "/tmp/server.crt"
     connection {
-      host = azurerm_public_ip.yb_public_ip.ip_address
-      type = "ssh"
-      user = var.ssh_user
+      host        = azurerm_public_ip.yb_public_ip.ip_address
+      type        = "ssh"
+      user        = var.ssh_user
       private_key = file(var.ssh_private_key)
     }
   }
 
   // tls key
   provisioner "file" {
-    content = try(file(var.tls_key_filepath), "")
+    content     = try(file(var.tls_key_filepath), "")
     destination = "/tmp/server.key"
     connection {
-      host = azurerm_public_ip.yb_public_ip.ip_address
-      type = "ssh"
-      user = var.ssh_user
+      host        = azurerm_public_ip.yb_public_ip.ip_address
+      type        = "ssh"
+      user        = var.ssh_user
       private_key = file(var.ssh_private_key)
     }
   }

@@ -2,7 +2,7 @@ terraform {
   required_providers {
     yb = {
       version = "~> 0.1.0"
-      source = "terraform.yugabyte.com/platform/yugabyte-platform"
+      source  = "terraform.yugabyte.com/platform/yugabyte-platform"
     }
   }
 }
@@ -10,11 +10,11 @@ terraform {
 provider "yb" {
   // these can be set as environment variables
   apikey = "***REMOVED***"
-  host = "portal.dev.yugabyte.com"
+  host   = "portal.dev.yugabyte.com"
 }
 
 resource "yb_cloud_provider" "gcp" {
-  code = "gcp"
+  code   = "gcp"
   config = {
     ***REMOVED***
     ***REMOVED***
@@ -26,14 +26,14 @@ resource "yb_cloud_provider" "gcp" {
     ***REMOVED***
     ***REMOVED***
     ***REMOVED***
-    YB_FIREWALL_TAGS = "cluster-server"
+    YB_FIREWALL_TAGS            = "cluster-server"
   }
   dest_vpc_id = "***REMOVED***"
-  name = "sdu-test-gcp-provider"
+  name        = "sdu-test-gcp-provider"
   regions {
     name = "us-central1"
   }
-  ssh_port = 54422
+  ssh_port        = 54422
   air_gap_install = false
 }
 
@@ -42,8 +42,8 @@ data "yb_provider_key" "gcp-key" {
 }
 
 locals {
-  region_list = yb_cloud_provider.gcp.regions[*].uuid
-  provider_id = yb_cloud_provider.gcp.id
+  region_list  = yb_cloud_provider.gcp.regions[*].uuid
+  provider_id  = yb_cloud_provider.gcp.id
   provider_key = data.yb_provider_key.gcp-key.id
 }
 
@@ -52,25 +52,25 @@ resource "yb_universe" "gcp_universe" {
   clusters {
     cluster_type = "PRIMARY"
     user_intent {
-      universe_name = "sdu-test-gcp-universe"
-      provider_type = "gcp"
-      provider = local.provider_id
-      region_list = local.region_list
-      num_nodes = 4
+      universe_name      = "sdu-test-gcp-universe"
+      provider_type      = "gcp"
+      provider           = local.provider_id
+      region_list        = local.region_list
+      num_nodes          = 4
       replication_factor = 3
-      instance_type = "n1-standard-1"
+      instance_type      = "n1-standard-1"
       device_info {
-        num_volumes = 1
-        volume_size = 375
+        num_volumes  = 1
+        volume_size  = 375
         storage_type = "Persistent"
       }
-      assign_public_ip = true
-      use_time_sync = true
-      enable_ysql = true
-      enable_node_to_node_encrypt = true
+      assign_public_ip              = true
+      use_time_sync                 = true
+      enable_ysql                   = true
+      enable_node_to_node_encrypt   = true
       enable_client_to_node_encrypt = true
-      yb_software_version = "2.7.3.0-b80"
-      access_key_code = local.provider_key
+      yb_software_version           = "2.7.3.0-b80"
+      access_key_code               = local.provider_key
     }
   }
   communication_ports {}
