@@ -68,7 +68,6 @@ func New() func() *schema.Provider {
 func providerConfigure(ctx context.Context, d *schema.ResourceData) (interface{}, diag.Diagnostics) {
 	var diags diag.Diagnostics
 
-	key := d.Get("apikey").(string)
 	host := d.Get("host").(string)
 
 	// create swagger go client
@@ -79,7 +78,6 @@ func providerConfigure(ctx context.Context, d *schema.ResourceData) (interface{}
 
 	vc := &api.VanillaClient{
 		Client: &http.Client{Timeout: 10 * time.Second},
-		ApiKey: key,
 		Host:   host,
 	}
 

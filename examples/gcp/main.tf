@@ -42,7 +42,8 @@ module "gcp-platform" {
 
 provider "yb" {
   // these can be set as environment variables
-  host = "${module.gcp-platform.public_ip}:80"
+#  host = "${module.gcp-platform.public_ip}:80"
+  host = "35.203.183.215:80"
 }
 
 resource "yb_customer_resource" "customer" {
