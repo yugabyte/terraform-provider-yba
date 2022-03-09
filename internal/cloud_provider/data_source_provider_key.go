@@ -2,11 +2,10 @@ package cloud_provider
 
 import (
 	"context"
-	"github.com/go-openapi/strfmt"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/api"
-	"github.com/yugabyte/yb-tools/yugaware-client/pkg/client/swagger/client/access_keys"
+	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/customer"
 )
 
 func ProviderKey() *schema.Resource {
@@ -16,6 +15,7 @@ func ProviderKey() *schema.Resource {
 		ReadContext: dataSourceProviderKeyRead,
 
 		Schema: map[string]*schema.Schema{
+			"connection_info": customer.ConnectionInfoSchema(),
 			"provider_id": {
 				Type:     schema.TypeString,
 				Required: true,
@@ -27,19 +27,15 @@ func ProviderKey() *schema.Resource {
 func dataSourceProviderKeyRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	var diags diag.Diagnostics
 
+	cUUID, token := api.GetConnectionInfo(d)
+	ctx = api.SetContextApiKey(ctx, token)
 	c := meta.(*api.ApiClient).YugawareClient
-	r, err := c.PlatformAPIs.AccessKeys.List(&access_keys.ListParams{
-		CUUID:      c.CustomerUUID(),
-		PUUID:      strfmt.UUID(d.Get("provider_id").(string)),
-		Context:    ctx,
-		HTTPClient: c.Session(),
-	},
-		c.SwaggerAuth,
-	)
+
+	r, _, err := c.AccessKeysApi.List(ctx, cUUID, d.Get("provider_id").(string)).Execute()
 	if err != nil {
 		return diag.FromErr(err)
 	}
 
-	d.SetId(r.Payload[0].IDKey.KeyCode)
+	d.SetId(*r[0].IdKey.KeyCode)
 	return diags
 }

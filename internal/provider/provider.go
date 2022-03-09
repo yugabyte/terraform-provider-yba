@@ -2,18 +2,15 @@ package provider
 
 import (
 	"context"
-	"errors"
-	"github.com/go-logr/zapr"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	client "github.com/yugabyte/platform-go-client"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/api"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/backups"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/cloud_provider"
-	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/datasource"
+	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/customer"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/universe"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/user"
-	"github.com/yugabyte/yb-tools/yugaware-client/pkg/client"
-	"go.uber.org/zap"
 	"net/http"
 	"time"
 )
@@ -51,15 +48,17 @@ func New() func() *schema.Provider {
 				},
 			},
 			DataSourcesMap: map[string]*schema.Resource{
-				"yb_customer":        datasource.Customer(),
+				"yb_customer_data":   customer.Customer(),
 				"yb_provider_key":    cloud_provider.ProviderKey(),
 				"yb_storage_configs": backups.StorageConfigs(),
 			},
 			ResourcesMap: map[string]*schema.Resource{
-				"yb_cloud_provider": cloud_provider.ResourceCloudProvider(),
-				"yb_universe":       universe.ResourceUniverse(),
-				"yb_backups":        backups.ResourceBackups(),
-				"yb_user":           user.ResourceUser(),
+				"yb_cloud_provider":          cloud_provider.ResourceCloudProvider(),
+				"yb_universe":                universe.ResourceUniverse(),
+				"yb_backups":                 backups.ResourceBackups(),
+				"yb_user":                    user.ResourceUser(),
+				"yb_customer_resource":       customer.ResourceCustomer(),
+				"yb_storage_config_resource": backups.ResourceStorageConfig(),
 			},
 			ConfigureContextFunc: providerConfigure,
 		}
@@ -67,35 +66,20 @@ func New() func() *schema.Provider {
 }
 
 func providerConfigure(ctx context.Context, d *schema.ResourceData) (interface{}, diag.Diagnostics) {
-	// Setup a User-Agent for your API client (replace the provider name for yours):
-	// userAgent := p.UserAgent("terraform-provider-scaffolding", version)
-	// TODO: myClient.UserAgent = userAgent
-
 	var diags diag.Diagnostics
 
-	key := d.Get("apikey").(string)
 	host := d.Get("host").(string)
-	if key == "" {
-		return nil, diag.FromErr(errors.New("yugabyte platform API key is required"))
-	}
 
-	zapLog, err := zap.NewDevelopment()
-	if err != nil {
-		return nil, diag.FromErr(err)
-	}
-	log := zapr.NewLogger(zapLog)
-	ybc, err := client.New(ctx, log, host).APIToken(key).TimeoutSeconds(10).Connect()
-	if err != nil {
-		return nil, diag.FromErr(err)
-	}
+	// create swagger go client
+	cfg := client.NewConfiguration()
+	cfg.Host = host
+	cfg.Scheme = "http"
+	ybc := client.NewAPIClient(cfg)
+
 	vc := &api.VanillaClient{
 		Client: &http.Client{Timeout: 10 * time.Second},
-		ApiKey: key,
 		Host:   host,
 	}
 
-	return &api.ApiClient{
-		YugawareClient: ybc,
-		VanillaClient:  vc,
-	}, diags
+	return api.NewApiClient(vc, ybc), diags
 }
