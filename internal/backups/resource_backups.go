@@ -4,14 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/go-openapi/strfmt"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	client "github.com/yugabyte/platform-go-client"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/api"
+	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/customer"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/utils"
-	"github.com/yugabyte/yb-tools/yugaware-client/pkg/client/swagger/client/backup_schedule_management"
-	"github.com/yugabyte/yb-tools/yugaware-client/pkg/client/swagger/client/backups"
-	"github.com/yugabyte/yb-tools/yugaware-client/pkg/client/swagger/models"
 )
 
 func ResourceBackups() *schema.Resource {
@@ -20,6 +18,7 @@ func ResourceBackups() *schema.Resource {
 
 		CreateContext: resourceBackupsCreate,
 		ReadContext:   resourceBackupsRead,
+		UpdateContext: resourceBackupsUpdate,
 		DeleteContext: resourceBackupsDelete,
 
 		Importer: &schema.ResourceImporter{
@@ -27,15 +26,21 @@ func ResourceBackups() *schema.Resource {
 		},
 
 		Schema: map[string]*schema.Schema{
+			"connection_info": customer.ConnectionInfoSchema(),
 			"uni_uuid": {
 				Type:     schema.TypeString,
 				Required: true,
 				ForceNew: true,
 			},
-			"action_type": {
+			"cron_expression": {
 				Type:     schema.TypeString,
-				Required: true,
-				ForceNew: true,
+				Optional: true,
+				Computed: true,
+			},
+			"frequency": {
+				Type:     schema.TypeInt,
+				Optional: true,
+				Computed: true,
 			},
 			"keyspace": {
 				Type:     schema.TypeString,
@@ -78,31 +83,26 @@ func ResourceBackups() *schema.Resource {
 
 func resourceBackupsCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	c := meta.(*api.ApiClient).YugawareClient
-	tb := &models.MultiTableBackupRequestParams{
-		ActionType:          utils.GetStringPointer(d.Get("action_type").(string)),
-		Keyspace:            d.Get("keyspace").(string),
-		StorageConfigUUID:   utils.GetUUIDPointer(d.Get("storage_config_uuid").(string)),
-		TimeBeforeDelete:    int64(d.Get("time_before_delete").(int)),
-		Sse:                 d.Get("sse").(bool),
-		TransactionalBackup: d.Get("transactional_backup").(bool),
-		Parallelism:         int32(d.Get("parallelism").(int)),
-		BackupType:          d.Get("backup_type").(string),
+
+	cUUID, token := api.GetConnectionInfo(d)
+	ctx = api.SetContextApiKey(ctx, token)
+	req := client.MultiTableBackupRequestParams{
+		Keyspace:            utils.GetStringPointer(d.Get("keyspace").(string)),
+		StorageConfigUUID:   d.Get("storage_config_uuid").(string),
+		TimeBeforeDelete:    utils.GetInt64Pointer(int64(d.Get("time_before_delete").(int))),
+		Sse:                 utils.GetBoolPointer(d.Get("sse").(bool)),
+		TransactionalBackup: utils.GetBoolPointer(d.Get("transactional_backup").(bool)),
+		Parallelism:         utils.GetInt32Pointer(int32(d.Get("parallelism").(int))),
+		BackupType:          utils.GetStringPointer(d.Get("backup_type").(string)),
+		CronExpression:      utils.GetStringPointer(d.Get("cron_expression").(string)),
+		SchedulingFrequency: utils.GetInt64Pointer(int64(d.Get("frequency").(int))),
 	}
-	r, err := c.PlatformAPIs.Backups.CreateMultiTableBackup(
-		&backups.CreateMultiTableBackupParams{
-			TableBackup: tb,
-			CUUID:       c.CustomerUUID(),
-			UniUUID:     strfmt.UUID(d.Get("uni_uuid").(string)),
-			Context:     ctx,
-			HTTPClient:  c.Session(),
-		},
-		c.SwaggerAuth,
-	)
+	r, _, err := c.BackupsApi.CreateMultiTableBackup(ctx, cUUID, d.Get("uni_uuid").(string)).TableBackup(req).Execute()
 	if err != nil {
 		return diag.FromErr(err)
 	}
 
-	d.SetId(string(r.Payload.ScheduleUUID))
+	d.SetId(*r.ScheduleUUID)
 	return resourceBackupsRead(ctx, d, meta)
 }
 
@@ -110,67 +110,55 @@ func resourceBackupsRead(ctx context.Context, d *schema.ResourceData, meta inter
 	var diags diag.Diagnostics
 
 	c := meta.(*api.ApiClient).YugawareClient
-	r, err := c.PlatformAPIs.BackupScheduleManagement.ListBackupSchedules(
-		&backup_schedule_management.ListBackupSchedulesParams{
-			CUUID:      c.CustomerUUID(),
-			Context:    ctx,
-			HTTPClient: c.Session(),
-		},
-		c.SwaggerAuth,
-	)
-	b, err := findBackup(r.Payload, strfmt.UUID(d.Id()))
+
+	cUUID, token := api.GetConnectionInfo(d)
+	ctx = api.SetContextApiKey(ctx, token)
+	r, _, err := c.ScheduleManagementApi.ListSchedules(ctx, cUUID).Execute()
+	b, err := findBackup(r, d.Id())
 	if err != nil {
 		return diag.FromErr(err)
 	}
 
-	s := b.TaskParams
-	if err = d.Set("action_type", s.ActionType); err != nil {
+	if err = d.Set("cron_expression", b.CronExpression); err != nil {
 		return diag.FromErr(err)
 	}
-	if err = d.Set("keyspace", s.Keyspace); err != nil {
-		return diag.FromErr(err)
-	}
-	if err = d.Set("storage_config_uuid", s.StorageConfigUUID); err != nil {
-		return diag.FromErr(err)
-	}
-	if err = d.Set("time_before_delete", s.TimeBeforeDelete); err != nil {
-		return diag.FromErr(err)
-	}
-	if err = d.Set("sse", s.Sse); err != nil {
-		return diag.FromErr(err)
-	}
-	if err = d.Set("transactional_backup", s.TransactionalBackup); err != nil {
-		return diag.FromErr(err)
-	}
-	if err = d.Set("parallelism", s.Parallelism); err != nil {
-		return diag.FromErr(err)
-	}
-	if err = d.Set("backup_type", s.BackupType); err != nil {
+	if err = d.Set("frequency", b.Frequency); err != nil {
 		return diag.FromErr(err)
 	}
 	return diags
 }
 
-func findBackup(backups []*models.Schedule, sUUID strfmt.UUID) (*models.Schedule, error) {
+func findBackup(backups []client.Schedule, sUUID string) (*client.Schedule, error) {
 	for _, b := range backups {
-		if b.ScheduleUUID == sUUID {
-			return b, nil
+		if *b.ScheduleUUID == sUUID {
+			return &b, nil
 		}
 	}
 	return nil, errors.New(fmt.Sprintf("Can't find backup schedule %s", sUUID))
 }
 
+func resourceBackupsUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+	c := meta.(*api.ApiClient).YugawareClient
+
+	cUUID, token := api.GetConnectionInfo(d)
+	ctx = api.SetContextApiKey(ctx, token)
+	req := client.EditBackupScheduleParams{
+		CronExpression: utils.GetStringPointer(d.Get("cron_expression").(string)),
+		Frequency:      utils.GetInt64Pointer(int64(d.Get("frequency").(int))),
+	}
+	_, _, err := c.ScheduleManagementApi.EditBackupScheduleV2(ctx, cUUID, d.Id()).Body(req).Execute()
+	if err != nil {
+		return diag.FromErr(err)
+	}
+	return resourceBackupsRead(ctx, d, meta)
+}
+
 func resourceBackupsDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	c := meta.(*api.ApiClient).YugawareClient
-	_, err := c.PlatformAPIs.BackupScheduleManagement.DeleteBackupSchedule(
-		&backup_schedule_management.DeleteBackupScheduleParams{
-			CUUID:      c.CustomerUUID(),
-			SUUID:      strfmt.UUID(d.Id()),
-			Context:    ctx,
-			HTTPClient: c.Session(),
-		},
-		c.SwaggerAuth,
-	)
+
+	cUUID, token := api.GetConnectionInfo(d)
+	ctx = api.SetContextApiKey(ctx, token)
+	_, _, err := c.ScheduleManagementApi.DeleteSchedule(ctx, cUUID, d.Id()).Execute()
 	if err != nil {
 		return diag.FromErr(err)
 	}
