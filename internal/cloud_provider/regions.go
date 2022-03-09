@@ -2,8 +2,8 @@ package cloud_provider
 
 import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	client "github.com/yugabyte/platform-go-client"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/utils"
-	"github.com/yugabyte/yb-tools/yugaware-client/pkg/client/swagger/models"
 )
 
 func RegionsSchema() *schema.Schema {
@@ -21,6 +21,7 @@ func RegionsSchema() *schema.Schema {
 				"code": {
 					Type:     schema.TypeString,
 					Computed: true,
+					Optional: true,
 					ForceNew: true,
 				},
 				"config": {
@@ -101,6 +102,7 @@ func RegionsSchema() *schema.Schema {
 							},
 							"name": {
 								Type:     schema.TypeString,
+								Optional: true,
 								Computed: true,
 								ForceNew: true,
 							},
@@ -124,15 +126,16 @@ func RegionsSchema() *schema.Schema {
 	}
 }
 
-func buildRegions(regions []interface{}) (res []*models.Region) {
+func buildRegions(regions []interface{}) (res []client.Region) {
 	for _, v := range regions {
 		region := v.(map[string]interface{})
-		r := &models.Region{
+		r := client.Region{
 			Config:          utils.StringMap(region["config"].(map[string]interface{})),
-			Name:            region["name"].(string),
-			SecurityGroupID: region["security_group_id"].(string),
-			VnetName:        region["vnet_name"].(string),
-			YbImage:         region["yb_image"].(string),
+			Code:            utils.GetStringPointer(region["code"].(string)),
+			Name:            utils.GetStringPointer(region["name"].(string)),
+			SecurityGroupId: utils.GetStringPointer(region["security_group_id"].(string)),
+			VnetName:        utils.GetStringPointer(region["vnet_name"].(string)),
+			YbImage:         utils.GetStringPointer(region["yb_image"].(string)),
 			Zones:           buildZones(region["zones"].([]interface{})),
 		}
 		res = append(res, r)
@@ -140,34 +143,34 @@ func buildRegions(regions []interface{}) (res []*models.Region) {
 	return res
 }
 
-func buildZones(zones []interface{}) (res []*models.AvailabilityZone) {
+func buildZones(zones []interface{}) (res []client.AvailabilityZone) {
 	for _, v := range zones {
 		zone := v.(map[string]interface{})
-		z := &models.AvailabilityZone{
-			Code:            zone["code"].(string),
+		z := client.AvailabilityZone{
+			Code:            utils.GetStringPointer(zone["code"].(string)),
 			Config:          utils.StringMap(zone["config"].(map[string]interface{})),
-			Name:            utils.GetStringPointer(zone["name"].(string)),
-			SecondarySubnet: zone["secondary_subnet"].(string),
-			Subnet:          zone["subnet"].(string),
+			Name:            zone["name"].(string),
+			SecondarySubnet: utils.GetStringPointer(zone["secondary_subnet"].(string)),
+			Subnet:          utils.GetStringPointer(zone["subnet"].(string)),
 		}
 		res = append(res, z)
 	}
 	return res
 }
 
-func flattenRegions(regions []*models.Region) (res []map[string]interface{}) {
+func flattenRegions(regions []client.Region) (res []map[string]interface{}) {
 	for _, region := range regions {
 		r := map[string]interface{}{
-			"uuid":      region.UUID,
+			"uuid":      region.Uuid,
 			"code":      region.Code,
-			"config":    region.Config,
+			"config":    utils.GetStringMap(region.Config),
 			"latitude":  region.Latitude,
 			"longitude": region.Longitude,
 			// TODO: the region name is being changed by the server, which messes with terraform state
 			// it is currently hardcoded to work with the config in example
 			// https://yugabyte.atlassian.net/browse/PLAT-3034
-			"name":              "us-central1",
-			"security_group_id": region.SecurityGroupID,
+			"name":              "us-west1",
+			"security_group_id": region.SecurityGroupId,
 			"vnet_name":         region.VnetName,
 			"yb_image":          region.YbImage,
 			"zones":             flattenZones(region.Zones),
@@ -177,16 +180,17 @@ func flattenRegions(regions []*models.Region) (res []map[string]interface{}) {
 	return res
 }
 
-func flattenZones(zones []*models.AvailabilityZone) (res []map[string]interface{}) {
+func flattenZones(zones []client.AvailabilityZone) (res []map[string]interface{}) {
 	for _, zone := range zones {
 		z := map[string]interface{}{
-			"uuid":             zone.UUID,
+			"uuid":             zone.Uuid,
 			"active":           zone.Active,
 			"code":             zone.Code,
-			"config":           zone.Config,
+			"config":           utils.GetStringMap(zone.Config),
 			"kube_config_path": zone.KubeconfigPath,
 			"secondary_subnet": zone.SecondarySubnet,
 			"subnet":           zone.Subnet,
+			"name":             zone.Name,
 		}
 		res = append(res, z)
 	}

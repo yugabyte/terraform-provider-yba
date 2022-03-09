@@ -1,3 +1,3 @@
-output "ami" {
-  value = data.aws_ami.yb_ami.name
+output "public_ip" {
+  value = aws_instance.yb_platform_node.public_ip
 }

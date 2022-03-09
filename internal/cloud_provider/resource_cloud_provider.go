@@ -4,14 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/go-openapi/strfmt"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	client "github.com/yugabyte/platform-go-client"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/api"
+	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/customer"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/utils"
-	"github.com/yugabyte/yb-tools/yugaware-client/pkg/client/swagger/client/cloud_providers"
-	"github.com/yugabyte/yb-tools/yugaware-client/pkg/client/swagger/models"
 	"net/http"
 	"time"
 )
@@ -22,6 +21,7 @@ func ResourceCloudProvider() *schema.Resource {
 
 		CreateContext: resourceCloudProviderCreate,
 		ReadContext:   resourceCloudProviderRead,
+		UpdateContext: resourceCloudProviderUpdate,
 		DeleteContext: resourceCloudProviderDelete,
 
 		Importer: &schema.ResourceImporter{
@@ -29,6 +29,7 @@ func ResourceCloudProvider() *schema.Resource {
 		},
 
 		Schema: map[string]*schema.Schema{
+			"connection_info": customer.ConnectionInfoSchema(),
 			"active": {
 				Type:     schema.TypeBool,
 				Computed: true,
@@ -109,38 +110,34 @@ func ResourceCloudProvider() *schema.Resource {
 
 func resourceCloudProviderCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	c := meta.(*api.ApiClient).YugawareClient
-	req := &models.Provider{
-		AirGapInstall:        d.Get("air_gap_install").(bool),
-		Code:                 d.Get("code").(string),
+
+	cUUID, token := api.GetConnectionInfo(d)
+	ctx = api.SetContextApiKey(ctx, token)
+	req := client.Provider{
+		AirGapInstall:        utils.GetBoolPointer(d.Get("air_gap_install").(bool)),
+		Code:                 utils.GetStringPointer(d.Get("code").(string)),
 		Config:               utils.StringMap(d.Get("config").(map[string]interface{})),
 		CustomHostCidrs:      utils.StringSlice(d.Get("custom_host_cidrs").([]interface{})),
-		DestVpcID:            d.Get("dest_vpc_id").(string),
-		HostVpcID:            d.Get("host_vpc_id").(string),
-		HostVpcRegion:        d.Get("host_vpc_region").(string),
-		HostedZoneID:         d.Get("hosted_zone_id").(string),
-		HostedZoneName:       d.Get("hosted_zone_name").(string),
-		KeyPairName:          d.Get("key_pair_name").(string),
-		Name:                 d.Get("name").(string),
-		SSHPort:              int32(d.Get("ssh_port").(int)),
-		SSHPrivateKeyContent: d.Get("ssh_private_key_content").(string),
-		SSHUser:              d.Get("ssh_user").(string),
+		DestVpcId:            utils.GetStringPointer(d.Get("dest_vpc_id").(string)),
+		HostVpcId:            utils.GetStringPointer(d.Get("host_vpc_id").(string)),
+		HostVpcRegion:        utils.GetStringPointer(d.Get("host_vpc_region").(string)),
+		HostedZoneId:         utils.GetStringPointer(d.Get("hosted_zone_id").(string)),
+		HostedZoneName:       utils.GetStringPointer(d.Get("hosted_zone_name").(string)),
+		KeyPairName:          utils.GetStringPointer(d.Get("key_pair_name").(string)),
+		Name:                 utils.GetStringPointer(d.Get("name").(string)),
+		SshPort:              utils.GetInt32Pointer(int32(d.Get("ssh_port").(int))),
+		SshPrivateKeyContent: utils.GetStringPointer(d.Get("ssh_private_key_content").(string)),
+		SshUser:              utils.GetStringPointer(d.Get("ssh_user").(string)),
 		Regions:              buildRegions(d.Get("regions").([]interface{})),
 	}
-	p, err := c.PlatformAPIs.CloudProviders.CreateProviders(&cloud_providers.CreateProvidersParams{
-		CreateProviderRequest: req,
-		CUUID:                 c.CustomerUUID(),
-		Context:               ctx,
-		HTTPClient:            c.Session(),
-	},
-		c.SwaggerAuth,
-	)
+	r, _, err := c.CloudProvidersApi.CreateProviders(ctx, cUUID).CreateProviderRequest(req).Execute()
 	if err != nil {
 		return diag.FromErr(err)
 	}
 
-	d.SetId(string(p.Payload.ResourceUUID))
+	d.SetId(*r.ResourceUUID)
 	tflog.Debug(ctx, fmt.Sprintf("Waiting for provider %s to be active", d.Id()))
-	err = utils.WaitForTask(ctx, p.Payload.TaskUUID, c, time.Minute)
+	err = utils.WaitForTask(ctx, *r.TaskUUID, cUUID, c, time.Minute)
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -148,10 +145,10 @@ func resourceCloudProviderCreate(ctx context.Context, d *schema.ResourceData, me
 	return resourceCloudProviderRead(ctx, d, meta)
 }
 
-func findProvider(providers []*models.Provider, uuid strfmt.UUID) (*models.Provider, error) {
+func findProvider(providers []client.Provider, uuid string) (*client.Provider, error) {
 	for _, p := range providers {
-		if p.UUID == uuid {
-			return p, nil
+		if *p.Uuid == uuid {
+			return &p, nil
 		}
 	}
 	return nil, errors.New(fmt.Sprintf("could not find provider %s", uuid))
@@ -161,18 +158,15 @@ func resourceCloudProviderRead(ctx context.Context, d *schema.ResourceData, meta
 	var diags diag.Diagnostics
 
 	c := meta.(*api.ApiClient).YugawareClient
-	r, err := c.PlatformAPIs.CloudProviders.GetListOfProviders(&cloud_providers.GetListOfProvidersParams{
-		CUUID:      c.CustomerUUID(),
-		Context:    ctx,
-		HTTPClient: c.Session(),
-	},
-		c.SwaggerAuth,
-	)
+
+	cUUID, token := api.GetConnectionInfo(d)
+	ctx = api.SetContextApiKey(ctx, token)
+	r, _, err := c.CloudProvidersApi.GetListOfProviders(ctx, cUUID).Execute()
 	if err != nil {
 		return diag.FromErr(err)
 	}
 
-	p, err := findProvider(r.Payload, strfmt.UUID(d.Id()))
+	p, err := findProvider(r, d.Id())
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -192,7 +186,7 @@ func resourceCloudProviderRead(ctx context.Context, d *schema.ResourceData, meta
 	if err = d.Set("custom_host_cidrs", p.CustomHostCidrs); err != nil {
 		return diag.FromErr(err)
 	}
-	if err = d.Set("hosted_zone_id", p.HostedZoneID); err != nil {
+	if err = d.Set("hosted_zone_id", p.HostedZoneId); err != nil {
 		return diag.FromErr(err)
 	}
 	if err = d.Set("active", p.Active); err != nil {
@@ -204,13 +198,13 @@ func resourceCloudProviderRead(ctx context.Context, d *schema.ResourceData, meta
 	if err = d.Set("name", p.Name); err != nil {
 		return diag.FromErr(err)
 	}
-	if err = d.Set("ssh_port", p.SSHPort); err != nil {
+	if err = d.Set("ssh_port", p.SshPort); err != nil {
 		return diag.FromErr(err)
 	}
-	if err = d.Set("ssh_private_key_content", p.SSHPrivateKeyContent); err != nil {
+	if err = d.Set("ssh_private_key_content", p.SshPrivateKeyContent); err != nil {
 		return diag.FromErr(err)
 	}
-	if err = d.Set("ssh_user", p.SSHUser); err != nil {
+	if err = d.Set("ssh_user", p.SshUser); err != nil {
 		return diag.FromErr(err)
 	}
 	if err = d.Set("regions", flattenRegions(p.Regions)); err != nil {
@@ -219,14 +213,19 @@ func resourceCloudProviderRead(ctx context.Context, d *schema.ResourceData, meta
 	return diags
 }
 
+func resourceCloudProviderUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+	// do nothing; this is here so that we can chang eth api token without forcing recreation
+	return diag.Diagnostics{}
+}
+
 func resourceCloudProviderDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	// TODO: this uses a non-public API
 	var diags diag.Diagnostics
 
 	vc := meta.(*api.ApiClient).VanillaClient
-	ywc := meta.(*api.ApiClient).YugawareClient
+	cUUID, token := api.GetConnectionInfo(d)
 	pUUID := d.Id()
-	_, err := vc.MakeRequest(http.MethodDelete, fmt.Sprintf("api/v1/customers/%s/providers/%s", ywc.CustomerUUID(), pUUID), nil)
+	_, err := vc.MakeRequest(http.MethodDelete, fmt.Sprintf("api/v1/customers/%s/providers/%s", cUUID, pUUID), nil, token)
 	if err != nil {
 		return diag.FromErr(err)
 	}
