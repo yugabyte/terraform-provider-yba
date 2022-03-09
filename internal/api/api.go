@@ -33,18 +33,17 @@ func NewApiClient(vc *VanillaClient, yc *client.APIClient) *ApiClient {
 type VanillaClient struct {
 	// TODO: remove this client, used for accessing non-public APIs
 	Client *http.Client
-	ApiKey string
 	Host   string
 }
 
-func (c VanillaClient) MakeRequest(method string, url string, body io.Reader) (*http.Response, error) {
+func (c VanillaClient) MakeRequest(method string, url string, body io.Reader, apiKey string) (*http.Response, error) {
 	req, err := http.NewRequest(method, fmt.Sprintf("http://%s/%s", c.Host, url), body)
 	if err != nil {
 		return nil, err
 	}
 
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-AUTH-YW-API-TOKEN", c.ApiKey)
+	req.Header.Set("X-AUTH-YW-API-TOKEN", apiKey)
 
 	r, err := c.Client.Do(req)
 	if err != nil {

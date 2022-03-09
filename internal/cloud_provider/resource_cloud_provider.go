@@ -223,9 +223,9 @@ func resourceCloudProviderDelete(ctx context.Context, d *schema.ResourceData, me
 	var diags diag.Diagnostics
 
 	vc := meta.(*api.ApiClient).VanillaClient
-	cUUID, _ := api.GetConnectionInfo(d)
+	cUUID, token := api.GetConnectionInfo(d)
 	pUUID := d.Id()
-	_, err := vc.MakeRequest(http.MethodDelete, fmt.Sprintf("api/v1/customers/%s/providers/%s", cUUID, pUUID), nil)
+	_, err := vc.MakeRequest(http.MethodDelete, fmt.Sprintf("api/v1/customers/%s/providers/%s", cUUID, pUUID), nil, token)
 	if err != nil {
 		return diag.FromErr(err)
 	}

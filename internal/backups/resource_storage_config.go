@@ -53,7 +53,7 @@ func resourceStorageConfigCreate(ctx context.Context, d *schema.ResourceData, me
 		CustomerUUID: cUUID,
 		Data:         d.Get("data").(map[string]interface{}),
 		Name:         d.Get("name").(string),
-		Type:         "storage",
+		Type:         "STORAGE",
 	}
 	r, _, err := c.CustomerConfigurationApi.CreateCustomerConfig(ctx, cUUID).Config(req).Execute()
 	if err != nil {
