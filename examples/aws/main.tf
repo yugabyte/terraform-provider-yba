@@ -1,7 +1,7 @@
 terraform {
   required_providers {
     google = {
-      source = "hashicorp/google"
+      source = "hashicorp/aws"
     }
     yb = {
       version = "~> 0.1.0"
@@ -10,38 +10,36 @@ terraform {
   }
 }
 
-provider "google" {
-  credentials = "/Users/stevendu/.yugabyte/yugabyte-gce.json"
-  project     = "yugabyte"
-  region      = "us-west1"
-  zone        = "us-west1-b"
-}
-
 locals {
   dir = "/Users/stevendu/code/terraform-provider-yugabyte-platform/modules/resources"
   cluster_name = "sdu-test-yugaware"
 }
 
-module "gcp-platform" {
-  source = "../../modules/gcp"
+provider "aws" {
+  region = "us-west-2"
+}
+
+module "aws-platform" {
+  source = "../../modules/aws"
 
   cluster_name                  = local.cluster_name
-  ssh_user                      = "centos"
-  network_tags = [local.cluster_name, "http-server", "https-server"]
-  vpc_network = "yugabyte-network"
-  vpc_subnetwork = "subnet-us-west1"
+  ssh_user                      = "ubuntu"
+  ssh_keypair                   = "yb-dev-aws-2"
+  security_group_name           = "sdu_test_sg"
+  vpc_id                        = "vpc-0fe36f6b"
+  subnet_id                     = "subnet-f840ce9c"
   // files
   replicated_filepath           = "${local.dir}/replicated.conf"
   license_filepath              = "/Users/stevendu/.yugabyte/yw-dev.rli"
   tls_cert_filepath             = ""
   tls_key_filepath              = ""
   application_settings_filepath = "${local.dir}/application_settings.conf"
-  ssh_private_key               = "/Users/stevendu/.ssh/yugaware-1-gcp"
-  ssh_public_key                = "/Users/stevendu/.ssh/yugaware-1-gcp.pub"
+  ssh_private_key               = "/Users/stevendu/.yugabyte/yb-dev-aws-2.pem"
 }
 
 provider "yb" {
-  host = "${module.gcp-platform.public_ip}:80"
+  // these can be set as environment variables
+  host = "${module.aws-platform.public_ip}:80"
 }
 
 resource "yb_customer_resource" "customer" {
@@ -129,25 +127,3 @@ resource "yb_universe" "gcp_universe" {
   }
   communication_ports {}
 }
-
-#data "yb_storage_configs" "configs" {}
-
-#resource "yb_backups" "gcp_universe_backup" {
-#  depends_on = [yb_universe.gcp_universe]
-#
-#  uni_uuid = yb_universe.gcp_universe.id
-#  keyspace = "postgres"
-#  storage_config_uuid = data.yb_storage_configs.configs.uuid_list[0]
-#  time_before_delete = 864000000
-#  sse = false
-#  transactional_backup = false
-#  frequency = 864000000
-#  parallelism = 8
-#  backup_type = "PGSQL_TABLE_TYPE"
-#}
-
-#resource "yb_user" "user" {
-#  email = "sdu@yugabyte.com"
-#  password = "Password1@"
-#  role = "ReadOnly"
-#}
