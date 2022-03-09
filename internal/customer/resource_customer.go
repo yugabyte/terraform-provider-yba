@@ -47,6 +47,7 @@ func ResourceCustomer() *schema.Resource {
 			"api_token": {
 				Type:     schema.TypeString,
 				Computed: true,
+				Optional: true,
 				ForceNew: true,
 			},
 			"cuuid": {
