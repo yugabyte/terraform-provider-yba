@@ -30,7 +30,7 @@ module "aws-platform" {
   subnet_id                     = "subnet-f840ce9c"
   // files
   replicated_filepath           = "${local.dir}/replicated.conf"
-  license_filepath              = "/Users/stevendu/.yugabyte/yw-dev.rli"
+  license_filepath              = "/Users/stevendu/.yugabyte/yugabyte-dev.rli"
   tls_cert_filepath             = ""
   tls_key_filepath              = ""
   application_settings_filepath = "${local.dir}/application_settings.conf"
