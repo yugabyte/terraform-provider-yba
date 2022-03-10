@@ -1,6 +1,6 @@
 terraform {
   required_providers {
-    google = {
+    aws = {
       source = "hashicorp/aws"
     }
     yb = {
@@ -11,7 +11,7 @@ terraform {
 }
 
 locals {
-  dir = "/Users/stevendu/code/terraform-provider-yugabyte-platform/modules/resources"
+  dir = "/Users/stevendu/code/terraform-provider-yugabyte-anywhere/modules/resources"
   cluster_name = "sdu-test-yugaware"
 }
 
