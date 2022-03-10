@@ -18,7 +18,7 @@ provider "google" {
 }
 
 locals {
-  dir = "/Users/stevendu/code/terraform-provider-yugabyte-platform/modules/resources"
+  dir = "/Users/stevendu/code/terraform-provider-yugabyte-anywhere/modules/resources"
   cluster_name = "sdu-test-yugaware"
 }
 
