@@ -17,9 +17,9 @@ provider "azurerm" {
 module "azure-platform" {
   source = "../../modules/azure"
 
-  cluster_name                  = "sdu-test-yugaware"
-  ssh_user                      = "sdu"
-  region_name                   = "westus2"
+  cluster_name = "sdu-test-yugaware"
+  ssh_user     = "sdu"
+  region_name  = "westus2"
   // files
   ssh_private_key               = "/Users/stevendu/.ssh/yugaware-azure"
   ssh_public_key                = "/Users/stevendu/.ssh/yugaware-azure.pub"
@@ -47,7 +47,7 @@ resource "yb_cloud_provider" "gcp" {
     api_token = yb_customer_resource.customer.api_token
   }
 
-  code   = "gcp"
+  code = "gcp"
   config = {
     ***REMOVED***
     ***REMOVED***

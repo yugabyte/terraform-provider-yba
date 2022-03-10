@@ -13,7 +13,7 @@ data "yb_customer_data" "customer" {
 
 provider "yb" {
   // these can be set as environment variables
-  host   = "35.203.183.215:80"
+  host = "35.203.183.215:80"
 }
 
 resource "yb_storage_config_resource" "config" {

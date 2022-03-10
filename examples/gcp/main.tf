@@ -18,17 +18,17 @@ provider "google" {
 }
 
 locals {
-  dir = "/Users/stevendu/code/terraform-provider-yugabyte-anywhere/modules/resources"
+  dir          = "/Users/stevendu/code/terraform-provider-yugabyte-anywhere/modules/resources"
   cluster_name = "sdu-test-yugaware"
 }
 
 module "gcp-platform" {
   source = "../../modules/gcp"
 
-  cluster_name                  = local.cluster_name
-  ssh_user                      = "centos"
-  network_tags = [local.cluster_name, "http-server", "https-server"]
-  vpc_network = "yugabyte-network"
+  cluster_name   = local.cluster_name
+  ssh_user       = "centos"
+  network_tags   = [local.cluster_name, "http-server", "https-server"]
+  vpc_network    = "yugabyte-network"
   vpc_subnetwork = "subnet-us-west1"
   // files
   replicated_filepath           = "${local.dir}/replicated.conf"
@@ -57,7 +57,7 @@ resource "yb_cloud_provider" "gcp" {
     api_token = yb_customer_resource.customer.api_token
   }
 
-  code   = "gcp"
+  code = "gcp"
   config = {
     ***REMOVED***
     ***REMOVED***
