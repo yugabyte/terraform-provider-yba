@@ -11,7 +11,7 @@ terraform {
 }
 
 locals {
-  dir = "/Users/stevendu/code/terraform-provider-yugabyte-anywhere/modules/resources"
+  dir          = "/Users/stevendu/code/terraform-provider-yugabyte-anywhere/modules/resources"
   cluster_name = "sdu-test-yugaware"
 }
 
@@ -22,12 +22,12 @@ provider "aws" {
 module "aws-platform" {
   source = "../../modules/aws"
 
-  cluster_name                  = local.cluster_name
-  ssh_user                      = "ubuntu"
-  ssh_keypair                   = "yb-dev-aws-2"
-  security_group_name           = "sdu_test_sg"
-  vpc_id                        = "***REMOVED***"
-  subnet_id                     = "***REMOVED***"
+  cluster_name        = local.cluster_name
+  ssh_user            = "ubuntu"
+  ssh_keypair         = "yb-dev-aws-2"
+  security_group_name = "sdu_test_sg"
+  vpc_id              = "***REMOVED***"
+  subnet_id           = "***REMOVED***"
   // files
   replicated_filepath           = "${local.dir}/replicated.conf"
   license_filepath              = "/Users/stevendu/.yugabyte/yugabyte-dev.rli"
@@ -55,7 +55,7 @@ resource "yb_cloud_provider" "gcp" {
     api_token = yb_customer_resource.customer.api_token
   }
 
-  code   = "gcp"
+  code = "gcp"
   config = {
     ***REMOVED***
     ***REMOVED***
