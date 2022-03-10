@@ -1,7 +1,7 @@
 terraform {
   required_providers {
-    aws = {
-      source = "hashicorp/aws"
+    azurerm = {
+      source = "hashicorp/azurerm"
     }
     yb = {
       version = "~> 0.1.0"
@@ -10,36 +10,28 @@ terraform {
   }
 }
 
-locals {
-  dir = "/Users/stevendu/code/terraform-provider-yugabyte-anywhere/modules/resources"
-  cluster_name = "sdu-test-yugaware"
+provider "azurerm" {
+  features {}
 }
 
-provider "aws" {
-  region = "us-west-2"
-}
+module "azure-platform" {
+  source = "../../modules/azure"
 
-module "aws-platform" {
-  source = "../../modules/aws"
-
-  cluster_name                  = local.cluster_name
-  ssh_user                      = "ubuntu"
-  ssh_keypair                   = "yb-dev-aws-2"
-  security_group_name           = "sdu_test_sg"
-  vpc_id                        = "***REMOVED***"
-  subnet_id                     = "***REMOVED***"
+  cluster_name                  = "sdu-test-yugaware"
+  ssh_user                      = "sdu"
+  region_name                   = "westus2"
   // files
+  ssh_private_key               = "/Users/stevendu/.ssh/yugaware-azure"
+  ssh_public_key                = "/Users/stevendu/.ssh/yugaware-azure.pub"
   replicated_filepath           = "${local.dir}/replicated.conf"
-  license_filepath              = "/Users/stevendu/.yugabyte/yugabyte-dev.rli"
+  application_settings_filepath = "${local.dir}/application_settings.conf"
   tls_cert_filepath             = ""
   tls_key_filepath              = ""
-  application_settings_filepath = "${local.dir}/application_settings.conf"
-  ssh_private_key               = "/Users/stevendu/.yugabyte/yb-dev-aws-2.pem"
+  license_filepath              = "/Users/stevendu/.yugabyte/yugabyte-dev.rli"
 }
 
 provider "yb" {
-  // these can be set as environment variables
-  host = "${module.aws-platform.public_ip}:80"
+  host = "${module.azure-platform.public_ip}:80"
 }
 
 resource "yb_customer_resource" "customer" {
@@ -121,7 +113,7 @@ resource "yb_universe" "gcp_universe" {
       enable_ysql                   = true
       enable_node_to_node_encrypt   = true
       enable_client_to_node_encrypt = true
-      yb_software_version           = "2.12.1.0-b41"
+      yb_software_version           = "2.13.1.0-b20"
       access_key_code               = local.provider_key
     }
   }
