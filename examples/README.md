@@ -7,4 +7,5 @@ Each directory contains a full example for creating a Yugabyte Anywhere instance
 The example configuration files can be found under `modules/resources`:
 * `application_setting.conf` template for specifying Yugabyte Anywhere settings
 * `replicated.conf` template for specifying replicated settings to be used during the installation
+  * additional configuration [options](https://help.replicated.com/docs/native/customer-installations/automating/)
 * `replicated.conf` template for specifying replicated setting with HTTPS setup during the installation
