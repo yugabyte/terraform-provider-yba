@@ -21,11 +21,11 @@ locals {
 module "azure-platform" {
   source = "../../modules/azure"
 
-  cluster_name = "sdu-test-yugaware"
-  ssh_user     = "sdu"
-  region_name  = "westus2"
-  subnet_name    = "yugabyte-subnet-westus2"
-  vnet_name = "yugabyte-vnet-us-west2"
+  cluster_name        = "sdu-test-yugaware"
+  ssh_user            = "sdu"
+  region_name         = "westus2"
+  subnet_name         = "yugabyte-subnet-westus2"
+  vnet_name           = "yugabyte-vnet-us-west2"
   vnet_resource_group = "yugabyte-rg"
   // files
   ssh_private_key               = "/Users/stevendu/.ssh/yugaware-azure"
@@ -56,19 +56,10 @@ resource "yb_cloud_provider" "gcp" {
   }
 
   code = "gcp"
-  config = {
-    ***REMOVED***
-    ***REMOVED***
-    ***REMOVED***
-    ***REMOVED***
-    ***REMOVED***
-    ***REMOVED***
-    ***REMOVED***
-    ***REMOVED***
-    ***REMOVED***
-    ***REMOVED***
-    YB_FIREWALL_TAGS            = "cluster-server"
-  }
+  config = merge(
+    { YB_FIREWALL_TAGS = "cluster-server" },
+    jsondecode(file("/Users/stevendu/.yugabyte/yugabyte-gce.json"))
+  )
   dest_vpc_id = "yugabyte-network"
   name        = "sdu-test-gcp-provider"
   regions {
