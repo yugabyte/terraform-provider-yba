@@ -35,6 +35,7 @@ jobs:
     - name: Get dependencies
       env:
         GITHUB_TOKEN: ${{ github.token }}
+        GOPRIVATE: "github.com/yugabyte/platform-go-client"
       run: |
         go mod download
 
@@ -78,6 +79,7 @@ jobs:
     - name: Get dependencies
       env:
         GITHUB_TOKEN: ${{ github.token }}
+        GOPRIVATE: "github.com/yugabyte/platform-go-client"
       run: |
         go mod download
         
