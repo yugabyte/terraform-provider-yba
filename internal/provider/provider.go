@@ -31,37 +31,29 @@ func init() {
 	// }
 }
 
-func New() func() *schema.Provider {
-	return func() *schema.Provider {
-		return &schema.Provider{
-			Schema: map[string]*schema.Schema{
-				"apikey": {
-					Type:        schema.TypeString,
-					Optional:    true,
-					Sensitive:   true,
-					DefaultFunc: schema.EnvDefaultFunc("YB_API_KEY", nil),
-				},
-				"host": {
-					Type:        schema.TypeString,
-					Optional:    true,
-					DefaultFunc: schema.EnvDefaultFunc("YB_HOST", "localhost:9000"),
-				},
+func New() *schema.Provider {
+	return &schema.Provider{
+		Schema: map[string]*schema.Schema{
+			"host": {
+				Type:        schema.TypeString,
+				Optional:    true,
+				DefaultFunc: schema.EnvDefaultFunc("YB_HOST", "localhost:9000"),
 			},
-			DataSourcesMap: map[string]*schema.Resource{
-				"yb_customer_data":   customer.Customer(),
-				"yb_provider_key":    cloud_provider.ProviderKey(),
-				"yb_storage_configs": backups.StorageConfigs(),
-			},
-			ResourcesMap: map[string]*schema.Resource{
-				"yb_cloud_provider":          cloud_provider.ResourceCloudProvider(),
-				"yb_universe":                universe.ResourceUniverse(),
-				"yb_backups":                 backups.ResourceBackups(),
-				"yb_user":                    user.ResourceUser(),
-				"yb_customer_resource":       customer.ResourceCustomer(),
-				"yb_storage_config_resource": backups.ResourceStorageConfig(),
-			},
-			ConfigureContextFunc: providerConfigure,
-		}
+		},
+		DataSourcesMap: map[string]*schema.Resource{
+			"yb_customer_data":   customer.Customer(),
+			"yb_provider_key":    cloud_provider.ProviderKey(),
+			"yb_storage_configs": backups.StorageConfigs(),
+		},
+		ResourcesMap: map[string]*schema.Resource{
+			"yb_cloud_provider":          cloud_provider.ResourceCloudProvider(),
+			"yb_universe":                universe.ResourceUniverse(),
+			"yb_backups":                 backups.ResourceBackups(),
+			"yb_user":                    user.ResourceUser(),
+			"yb_customer_resource":       customer.ResourceCustomer(),
+			"yb_storage_config_resource": backups.ResourceStorageConfig(),
+		},
+		ConfigureContextFunc: providerConfigure,
 	}
 }
 

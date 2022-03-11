@@ -69,8 +69,10 @@ func CreateSingletonList(in interface{}) []interface{} {
 	return []interface{}{in}
 }
 
-var PendingTaskStates = []string{"Created", "Initializing", "Running"}
-var SuccessTaskStates = []string{"Success"}
+var (
+	PendingTaskStates = []string{"Created", "Initializing", "Running"}
+	SuccessTaskStates = []string{"Success"}
+)
 
 func WaitForTask(ctx context.Context, tUUID string, cUUID string, c *client.APIClient, timeout time.Duration) error {
 	wait := &resource.StateChangeConf{
