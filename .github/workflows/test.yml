@@ -34,7 +34,7 @@ jobs:
 
     - name: Get dependencies
       env:
-        GITHUB_TOKEN: ${{ github.token }}
+        GITHUB_TOKEN: ${{ secrets.PRIVATE_GITHUB_TOKEN }}
         GOPRIVATE: "github.com/yugabyte/platform-go-client"
         GONOPROXY: "github.com/yugabyte/platform-go-client"
       run: |
@@ -79,7 +79,7 @@ jobs:
 
     - name: Get dependencies
       env:
-        GITHUB_TOKEN: ${{ github.token }}
+        GITHUB_TOKEN: ${{ secrets.PRIVATE_GITHUB_TOKEN }}
         GOPRIVATE: "github.com/yugabyte/platform-go-client"
         GONOPROXY: "github.com/yugabyte/platform-go-client"
       run: |
