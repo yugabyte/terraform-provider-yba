@@ -7,13 +7,12 @@ terraform {
   }
 }
 
-data "yb_customer_data" "customer" {
-  api_token = "c611f38b-3ea1-4587-8cad-fa041f55b11a"
+provider "yb" {
+  host = "portal.dev.yugabyte.com"
 }
 
-provider "yb" {
-  // these can be set as environment variables
-  host = "portal.dev.yugabyte.com"
+data "yb_customer_data" "customer" {
+  api_token = "c611f38b-3ea1-4587-8cad-fa041f55b11a"
 }
 
 resource "yb_cloud_provider" "gcp" {
