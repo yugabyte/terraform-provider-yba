@@ -23,7 +23,26 @@ func TestAccCloudProvider_GCP(t *testing.T) {
 			{
 				Config: cloudProviderGCPConfig(rName),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckCloudProviderGCPExists("yb_cloud_provider.gcp", &provider),
+					testAccCheckCloudProviderExists("yb_cloud_provider.gcp", &provider),
+				),
+			},
+		},
+	})
+}
+
+func TestAccCloudProvider_AWS(t *testing.T) {
+	var provider client.Provider
+
+	rName := fmt.Sprintf("tf-acctest-provider-%s", sdkacctest.RandString(12))
+	resource.ParallelTest(t, resource.TestCase{
+		PreCheck:          func() { acctest.TestAccPreCheck(t) },
+		ProviderFactories: acctest.ProviderFactories,
+		CheckDestroy:      testAccCheckDestroyCloudProvider,
+		Steps: []resource.TestStep{
+			{
+				Config: cloudProviderAWSConfig(rName),
+				Check: resource.ComposeTestCheckFunc(
+					testAccCheckCloudProviderExists("yb_cloud_provider.aws", &provider),
 				),
 			},
 		},
@@ -53,7 +72,7 @@ func testAccCheckDestroyCloudProvider(s *terraform.State) error {
 	return nil
 }
 
-func testAccCheckCloudProviderGCPExists(name string, provider *client.Provider) resource.TestCheckFunc {
+func testAccCheckCloudProviderExists(name string, provider *client.Provider) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
 		r, ok := s.RootModule().Resources[name]
 		if !ok {
@@ -105,5 +124,32 @@ resource "yb_cloud_provider" "gcp" {
   ssh_port        = 54422
   air_gap_install = false
 }
-`, acctest.TestApiKey(), acctest.TestCloudConfig(), name)
+`, acctest.TestApiKey(), acctest.TestGCPConfig(), name)
+}
+
+func cloudProviderAWSConfig(name string) string {
+	return fmt.Sprintf(`
+data "yb_customer_data" "customer" {
+  api_token = "%s"
+}
+
+resource "yb_cloud_provider" "aws" {
+  connection_info {
+    cuuid     = data.yb_customer_data.customer.cuuid
+    api_token = data.yb_customer_data.customer.api_token
+  }
+
+  code = "aws"
+  config = { 
+	YB_FIREWALL_TAGS = "cluster-server" 
+	AWS_ACCESS_KEY_ID = "%s"
+	AWS_SECRET_ACCESS_KEY = "%s"
+  }
+  name        = "%s"
+  regions {
+    code = "us-west1"
+    name = "us-west1"
+  }
+}
+`, acctest.TestApiKey(), acctest.TestAWSAccessKey(), acctest.TestAWSSecretAccessKey(), name)
 }

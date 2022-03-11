@@ -12,10 +12,12 @@ import (
 )
 
 const (
-	testHost        = "YB_HOST"
-	testApiKey      = "TF_ACC_TEST_API_KEY"
-	testCloudConfig = "TF_ACC_TEST_CLOUD_CONFIG"
-	YBProviderName  = "yb"
+	testHost               = "YB_HOST"
+	testApiKey             = "TF_ACC_TEST_API_KEY"
+	testGCPConfig          = "TF_ACC_TEST_GCP_CONFIG"
+	testAWSAccessKey       = "AWS_ACCESS_KEY_ID"
+	testAWSSecretAccessKey = "AWS_SECRET_ACCESS_KEY"
+	YBProviderName         = "yb"
 )
 
 var (
@@ -34,8 +36,16 @@ func TestApiKey() string {
 	return os.Getenv(testApiKey)
 }
 
-func TestCloudConfig() string {
-	return os.Getenv(testCloudConfig)
+func TestGCPConfig() string {
+	return os.Getenv(testGCPConfig)
+}
+
+func TestAWSAccessKey() string {
+	return os.Getenv(testAWSAccessKey)
+}
+
+func TestAWSSecretAccessKey() string {
+	return os.Getenv(testAWSSecretAccessKey)
 }
 
 func TestAccPreCheck(t *testing.T) {
@@ -45,8 +55,14 @@ func TestAccPreCheck(t *testing.T) {
 	if v := os.Getenv(testApiKey); v == "" {
 		t.Fatal(testApiKey + " must be set for acceptance tests")
 	}
-	if v := os.Getenv(testCloudConfig); v == "" {
-		t.Fatal(testCloudConfig + " must be set for acceptance tests")
+	if v := os.Getenv(testGCPConfig); v == "" {
+		t.Fatal(testGCPConfig + " must be set for acceptance tests")
+	}
+	if v := os.Getenv(testAWSAccessKey); v == "" {
+		t.Fatal(testAWSAccessKey + " must be set for acceptance tests")
+	}
+	if v := os.Getenv(testAWSSecretAccessKey); v == "" {
+		t.Fatal(testAWSSecretAccessKey + " must be set for acceptance tests")
 	}
 }
 
