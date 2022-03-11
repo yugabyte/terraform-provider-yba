@@ -56,19 +56,10 @@ resource "yb_cloud_provider" "gcp" {
   }
 
   code = "gcp"
-  config = {
-    ***REMOVED***
-    ***REMOVED***
-    ***REMOVED***
-    ***REMOVED***
-    ***REMOVED***
-    ***REMOVED***
-    ***REMOVED***
-    ***REMOVED***
-    ***REMOVED***
-    ***REMOVED***
-    YB_FIREWALL_TAGS            = "cluster-server"
-  }
+  config = merge(
+    { YB_FIREWALL_TAGS = "cluster-server" },
+    jsondecode(file("/Users/stevendu/.yugabyte/yugabyte-gce.json"))
+  )
   dest_vpc_id = "***REMOVED***"
   name        = "sdu-test-gcp-provider"
   regions {
