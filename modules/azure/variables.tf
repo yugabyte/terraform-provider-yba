@@ -21,6 +21,18 @@ variable "ssh_user" {
   description = "name of the ssh user"
   type        = string
 }
+variable "subnet_name" {
+  description = "name of the subnet to use for the platform instance"
+  type        = string
+}
+variable "vnet_name" {
+  description = "name of the virtual network to use for the platform instance"
+  type        = string
+}
+variable "vnet_resource_group" {
+  description = "name of the resource group associated with the virtual network"
+  type        = string
+}
 
 // files
 variable "ssh_private_key" {

@@ -14,12 +14,19 @@ provider "azurerm" {
   features {}
 }
 
+locals {
+  dir = "/Users/stevendu/code/terraform-provider-yugabyte-anywhere/modules/resources"
+}
+
 module "azure-platform" {
   source = "../../modules/azure"
 
   cluster_name = "sdu-test-yugaware"
   ssh_user     = "sdu"
   region_name  = "westus2"
+  subnet_name    = "yugabyte-subnet-westus2"
+  vnet_name = "yugabyte-vnet-us-west2"
+  vnet_resource_group = "yugabyte-rg"
   // files
   ssh_private_key               = "/Users/stevendu/.ssh/yugaware-azure"
   ssh_public_key                = "/Users/stevendu/.ssh/yugaware-azure.pub"
@@ -35,10 +42,11 @@ provider "yb" {
 }
 
 resource "yb_customer_resource" "customer" {
-  code     = "admin"
-  email    = "sdu@yugabyte.com"
-  name     = "sdu"
-  password = "Password1@"
+  depends_on = [module.azure-platform]
+  code       = "admin"
+  email      = "sdu@yugabyte.com"
+  name       = "sdu"
+  password   = "Password1@"
 }
 
 resource "yb_cloud_provider" "gcp" {
@@ -96,7 +104,7 @@ resource "yb_universe" "gcp_universe" {
   clusters {
     cluster_type = "PRIMARY"
     user_intent {
-      universe_name      = "sdu-test-gcp-universe"
+      universe_name      = "sdu-test-gcp-universe-on-azure"
       provider_type      = "gcp"
       provider           = local.provider_id
       region_list        = local.region_list
@@ -113,7 +121,7 @@ resource "yb_universe" "gcp_universe" {
       enable_ysql                   = true
       enable_node_to_node_encrypt   = true
       enable_client_to_node_encrypt = true
-      yb_software_version           = "2.13.1.0-b20"
+      yb_software_version           = "2.13.1.0-b24"
       access_key_code               = local.provider_key
     }
   }
