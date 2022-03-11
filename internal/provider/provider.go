@@ -4,7 +4,6 @@ import (
 	"context"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	client "github.com/yugabyte/platform-go-client"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/api"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/backups"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/cloud_provider"
@@ -62,12 +61,7 @@ func providerConfigure(ctx context.Context, d *schema.ResourceData) (interface{}
 
 	host := d.Get("host").(string)
 
-	// create swagger go client
-	cfg := client.NewConfiguration()
-	cfg.Host = host
-	cfg.Scheme = "http"
-	ybc := client.NewAPIClient(cfg)
-
+	ybc := api.NewYugawareClient(host, "http")
 	vc := &api.VanillaClient{
 		Client: &http.Client{Timeout: 10 * time.Second},
 		Host:   host,

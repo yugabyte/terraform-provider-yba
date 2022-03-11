@@ -23,6 +23,13 @@ type ApiClient struct {
 	YugawareClient *client.APIClient
 }
 
+func NewYugawareClient(host string, scheme string) *client.APIClient {
+	cfg := client.NewConfiguration()
+	cfg.Host = host
+	cfg.Scheme = scheme
+	return client.NewAPIClient(cfg)
+}
+
 func NewApiClient(vc *VanillaClient, yc *client.APIClient) *ApiClient {
 	return &ApiClient{
 		VanillaClient:  vc,

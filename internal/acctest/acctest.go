@@ -2,9 +2,9 @@ package acctest
 
 import (
 	"context"
-	"fmt"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
+	client "github.com/yugabyte/platform-go-client"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/api"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/provider"
 	"os"
@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	testHost        = "TF_ACC_TEST_HOST"
+	testHost        = "YB_HOST"
 	testApiKey      = "TF_ACC_TEST_API_KEY"
 	testCloudConfig = "TF_ACC_TEST_CLOUD_CONFIG"
 	YBProviderName  = "yb"
@@ -20,18 +20,14 @@ const (
 
 var (
 	ProviderFactories map[string]func() (*schema.Provider, error)
-	YBProvider        *schema.Provider
+	YWClient          *client.APIClient
 )
 
 func init() {
-	YBProvider = provider.New()
+	YWClient = api.NewYugawareClient(os.Getenv(testHost), "http")
 	ProviderFactories = map[string]func() (*schema.Provider, error){
 		YBProviderName: func() (*schema.Provider, error) { return provider.New(), nil },
 	}
-}
-
-func TestHost() string {
-	return os.Getenv(testHost)
 }
 
 func TestApiKey() string {
@@ -54,28 +50,9 @@ func TestAccPreCheck(t *testing.T) {
 	}
 }
 
-func ConfigWithYBProvider(config string) string {
-	return fmt.Sprintf(`
-terraform {
-  required_providers {
-    yb = {
-      version = "~> 0.1.0"
-      source  = "terraform.yugabyte.com/platform/yugabyte-platform"
-    }
-  }
-}
-
-provider "yb" {
-  host = "%s"
-}
-
-%s
-`, TestHost(), config)
-}
-
 func GetCtxWithConnectionInfo(s *terraform.InstanceState) (context.Context, string) {
 	ctx := context.Background()
-	key := s.Attributes["connection_info.api_token"]
-	cUUID := s.Attributes["connection_info.cuuid"]
+	key := s.Attributes["connection_info.0.api_token"]
+	cUUID := s.Attributes["connection_info.0.cuuid"]
 	return api.SetContextApiKey(ctx, key), cUUID
 }
