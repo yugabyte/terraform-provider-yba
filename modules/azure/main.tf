@@ -7,26 +7,6 @@ resource "azurerm_resource_group" "yb_rg" {
   }
 }
 
-resource "azurerm_virtual_network" "yb_network" {
-  depends_on          = [azurerm_resource_group.yb_rg]
-  name                = "${var.cluster_name}-vpc"
-  address_space       = ["10.0.0.0/16"]
-  location            = var.region_name
-  resource_group_name = azurerm_resource_group.yb_rg.name
-
-  tags = {
-    environment = var.cluster_name
-  }
-}
-
-resource "azurerm_subnet" "yb_subnet" {
-  depends_on           = [azurerm_resource_group.yb_rg, azurerm_virtual_network.yb_network]
-  name                 = "${var.cluster_name}-subnet"
-  resource_group_name  = azurerm_resource_group.yb_rg.name
-  virtual_network_name = azurerm_virtual_network.yb_network.name
-  address_prefixes     = ["10.0.2.0/24"]
-}
-
 resource "azurerm_public_ip" "yb_public_ip" {
   depends_on          = [azurerm_resource_group.yb_rg]
   name                = "${var.cluster_name}-public-ip"
@@ -65,21 +45,27 @@ resource "azurerm_network_security_group" "yb_sg" {
   }
 }
 
+data "azurerm_subnet" "subnet" {
+  name                 = var.subnet_name
+  virtual_network_name = var.vnet_name
+  resource_group_name  = var.vnet_resource_group
+}
+
 resource "azurerm_subnet_network_security_group_association" "yb_sg_association" {
-  depends_on                = [azurerm_subnet.yb_subnet, azurerm_network_security_group.yb_sg]
-  subnet_id                 = azurerm_subnet.yb_subnet.id
+  depends_on                = [azurerm_network_security_group.yb_sg]
+  subnet_id                 = data.azurerm_subnet.subnet.id
   network_security_group_id = azurerm_network_security_group.yb_sg.id
 }
 
 resource "azurerm_network_interface" "yb_network_interface" {
-  depends_on          = [azurerm_resource_group.yb_rg, azurerm_subnet.yb_subnet, azurerm_public_ip.yb_public_ip]
+  depends_on          = [azurerm_resource_group.yb_rg, azurerm_public_ip.yb_public_ip]
   name                = "${var.cluster_name}-network-interface"
   location            = var.region_name
   resource_group_name = azurerm_resource_group.yb_rg.name
 
   ip_configuration {
     name                          = "${var.cluster_name}-nic-config"
-    subnet_id                     = azurerm_subnet.yb_subnet.id
+    subnet_id                     = data.azurerm_subnet.subnet.id
     private_ip_address_allocation = "Dynamic"
     public_ip_address_id          = azurerm_public_ip.yb_public_ip.id
   }

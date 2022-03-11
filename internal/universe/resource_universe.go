@@ -30,7 +30,7 @@ func ResourceUniverse() *schema.Resource {
 		Schema: map[string]*schema.Schema{
 			"connection_info": customer.ConnectionInfoSchema(),
 
-			// Universe Delete Options
+			// Universe Delete Options (TODO: make its own block)
 			"delete_certs": {
 				Type:     schema.TypeBool,
 				Optional: true,
