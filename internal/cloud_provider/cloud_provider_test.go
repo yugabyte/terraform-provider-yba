@@ -8,7 +8,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
 	client "github.com/yugabyte/platform-go-client"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/acctest"
-	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/api"
 	"testing"
 )
 
@@ -32,7 +31,7 @@ func TestAccCloudProvider_GCP(t *testing.T) {
 }
 
 func testAccCheckDestroyCloudProvider(s *terraform.State) error {
-	conn := acctest.YBProvider.Meta().(*api.ApiClient).YugawareClient
+	conn := acctest.YWClient
 
 	for _, r := range s.RootModule().Resources {
 		if r.Type != "yb_cloud_provider" {
@@ -64,7 +63,7 @@ func testAccCheckCloudProviderGCPExists(name string, provider *client.Provider) 
 			return errors.New("no ID is set for cloud provider resource")
 		}
 
-		conn := acctest.YBProvider.Meta().(*api.ApiClient).YugawareClient
+		conn := acctest.YWClient
 		ctx, cUUID := acctest.GetCtxWithConnectionInfo(r.Primary)
 		res, _, err := conn.CloudProvidersApi.GetListOfProviders(ctx, cUUID).Execute()
 		if err != nil {
@@ -81,7 +80,7 @@ func testAccCheckCloudProviderGCPExists(name string, provider *client.Provider) 
 }
 
 func cloudProviderGCPConfig(name string) string {
-	return acctest.ConfigWithYBProvider(fmt.Sprintf(`
+	return fmt.Sprintf(`
 data "yb_customer_data" "customer" {
   api_token = "%s"
 }
@@ -98,7 +97,7 @@ resource "yb_cloud_provider" "gcp" {
     jsondecode(file("%s"))
   )
   dest_vpc_id = "yugabyte-network"
-  name        = "sdu-test-gcp-provider"
+  name        = "%s"
   regions {
     code = "us-west1"
     name = "us-west1"
@@ -106,5 +105,5 @@ resource "yb_cloud_provider" "gcp" {
   ssh_port        = 54422
   air_gap_install = false
 }
-`, acctest.TestApiKey(), acctest.TestCloudConfig()))
+`, acctest.TestApiKey(), acctest.TestCloudConfig(), name)
 }
