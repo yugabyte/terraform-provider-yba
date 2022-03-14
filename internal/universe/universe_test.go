@@ -109,7 +109,7 @@ func universeAzureConfigWithNodes(name string, nodes int) string {
 }
 
 func universeConfigWithProviderWithNodes(p string, name string, nodes int) string {
-	return cloudProviderGCPConfig(fmt.Sprintf(name+"provider")) +
+	return cloudProviderGCPConfig(fmt.Sprintf(name+"-provider")) +
 		fmt.Sprintf(`
 data "yb_provider_key" "%s_key" {
   connection_info {
@@ -199,14 +199,13 @@ resource "yb_cloud_provider" "aws" {
 
   code = "aws"
   config = { 
-	YB_FIREWALL_TAGS = "cluster-server" 
 	AWS_ACCESS_KEY_ID = "%s"
 	AWS_SECRET_ACCESS_KEY = "%s"
   }
   name        = "%s"
   regions {
-    code = "us-west1"
-    name = "us-west1"
+    code = "us-west-1"
+    name = "us-west-1"
   }
 }
 `, acctest.TestApiKey(), acctest.TestAWSAccessKey(), acctest.TestAWSSecretAccessKey(), name)
@@ -224,19 +223,22 @@ resource "yb_cloud_provider" "azure" {
     api_token = data.yb_customer_data.customer.api_token
   }
 
-  code = "azure"
+  code = "azu"
   config = { 
-	YB_FIREWALL_TAGS = "cluster-server" 
-	SUBSCRIPTION_ID = "%s"
-	RESOURCE_GROUP = "%s"
-	TENANT_ID = "%s"
-	CLIENT_ID = "%s"
-	CLIENT_SECRET = "%s"
+	AZURE_SUBSCRIPTION_ID = "%s"
+	AZURE_RG = "%s"
+	AZURE_TENANT_ID = "%s"
+	AZURE_CLIENT_ID = "%s"
+	AZURE_CLIENT_SECRET = "%s"
   }
   name        = "%s"
   regions {
-    code = "us-west1"
-    name = "us-west1"
+    code = "westus2"
+    name = "westus2"
+	vnet_name = "***REMOVED***"
+	zones {
+	  subnet = "***REMOVED***"
+	}
   }
 }
 `,
