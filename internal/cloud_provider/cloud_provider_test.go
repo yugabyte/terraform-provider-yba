@@ -14,7 +14,7 @@ import (
 func TestAccCloudProvider_GCP(t *testing.T) {
 	var provider client.Provider
 
-	rName := fmt.Sprintf("tf-acctest-provider-%s", sdkacctest.RandString(12))
+	rName := fmt.Sprintf("tf-acctest-gcp-provider-%s", sdkacctest.RandString(12))
 	resource.ParallelTest(t, resource.TestCase{
 		PreCheck:          func() { acctest.TestAccPreCheck(t) },
 		ProviderFactories: acctest.ProviderFactories,
@@ -33,7 +33,7 @@ func TestAccCloudProvider_GCP(t *testing.T) {
 func TestAccCloudProvider_AWS(t *testing.T) {
 	var provider client.Provider
 
-	rName := fmt.Sprintf("tf-acctest-provider-%s", sdkacctest.RandString(12))
+	rName := fmt.Sprintf("tf-acctest-aws-provider-%s", sdkacctest.RandString(12))
 	resource.ParallelTest(t, resource.TestCase{
 		PreCheck:          func() { acctest.TestAccPreCheck(t) },
 		ProviderFactories: acctest.ProviderFactories,
@@ -43,6 +43,25 @@ func TestAccCloudProvider_AWS(t *testing.T) {
 				Config: cloudProviderAWSConfig(rName),
 				Check: resource.ComposeTestCheckFunc(
 					testAccCheckCloudProviderExists("yb_cloud_provider.aws", &provider),
+				),
+			},
+		},
+	})
+}
+
+func TestAccCloudProvider_Azure(t *testing.T) {
+	var provider client.Provider
+
+	rName := fmt.Sprintf("tf-acctest-azure-provider-%s", sdkacctest.RandString(12))
+	resource.ParallelTest(t, resource.TestCase{
+		PreCheck:          func() { acctest.TestAccPreCheck(t) },
+		ProviderFactories: acctest.ProviderFactories,
+		CheckDestroy:      testAccCheckDestroyCloudProvider,
+		Steps: []resource.TestStep{
+			{
+				Config: cloudProviderAzureConfig(rName),
+				Check: resource.ComposeTestCheckFunc(
+					testAccCheckCloudProviderExists("yb_cloud_provider.azure", &provider),
 				),
 			},
 		},
@@ -152,4 +171,41 @@ resource "yb_cloud_provider" "aws" {
   }
 }
 `, acctest.TestApiKey(), acctest.TestAWSAccessKey(), acctest.TestAWSSecretAccessKey(), name)
+}
+
+func cloudProviderAzureConfig(name string) string {
+	return fmt.Sprintf(`
+data "yb_customer_data" "customer" {
+  api_token = "%s"
+}
+
+resource "yb_cloud_provider" "azure" {
+  connection_info {
+    cuuid     = data.yb_customer_data.customer.cuuid
+    api_token = data.yb_customer_data.customer.api_token
+  }
+
+  code = "azure"
+  config = { 
+	YB_FIREWALL_TAGS = "cluster-server" 
+	SUBSCRIPTION_ID = "%s"
+	RESOURCE_GROUP = "%s"
+	TENANT_ID = "%s"
+	CLIENT_ID = "%s"
+	CLIENT_SECRET = "%s"
+  }
+  name        = "%s"
+  regions {
+    code = "us-west1"
+    name = "us-west1"
+  }
+}
+`,
+		acctest.TestApiKey(),
+		acctest.TestAzureSubscriptionID(),
+		acctest.TestAzureResourceGroup(),
+		acctest.TestAzureTenantID(),
+		acctest.TestAzureClientID(),
+		acctest.TestAzureClientSecret(),
+		name)
 }

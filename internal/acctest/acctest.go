@@ -12,12 +12,17 @@ import (
 )
 
 const (
-	testHost               = "YB_HOST"
-	testApiKey             = "TF_ACC_TEST_API_KEY"
-	testGCPConfig          = "TF_ACC_TEST_GCP_CONFIG"
-	testAWSAccessKey       = "AWS_ACCESS_KEY_ID"
-	testAWSSecretAccessKey = "AWS_SECRET_ACCESS_KEY"
-	YBProviderName         = "yb"
+	testHost                = "YB_HOST"
+	testApiKey              = "TF_ACC_TEST_API_KEY"
+	testGCPConfig           = "TF_ACC_TEST_GCP_CONFIG"
+	testAWSAccessKey        = "AWS_ACCESS_KEY_ID"
+	testAWSSecretAccessKey  = "AWS_SECRET_ACCESS_KEY"
+	testAzureSubscriptionID = "TF_ACC_TEST_AZURE_SUBSCRIPTION_ID"
+	testAzureResourceGroup  = "TF_ACC_TEST_AZURE_RESOURCE_GROUP"
+	testAzureTenantID       = "TF_ACC_TEST_AZURE_TENANT_ID"
+	testAzureClientID       = "TF_ACC_TEST_CLIENT_ID"
+	testAzureClientSecret   = "TF_ACC_TEST_CLIENT_SECRET"
+	YBProviderName          = "yb"
 )
 
 var (
@@ -48,6 +53,26 @@ func TestAWSSecretAccessKey() string {
 	return os.Getenv(testAWSSecretAccessKey)
 }
 
+func TestAzureClientID() string {
+	return os.Getenv(testAzureClientID)
+}
+
+func TestAzureSubscriptionID() string {
+	return os.Getenv(testAzureSubscriptionID)
+}
+
+func TestAzureResourceGroup() string {
+	return os.Getenv(testAzureResourceGroup)
+}
+
+func TestAzureTenantID() string {
+	return os.Getenv(testAzureTenantID)
+}
+
+func TestAzureClientSecret() string {
+	return os.Getenv(testAzureClientSecret)
+}
+
 func TestAccPreCheck(t *testing.T) {
 	if v := os.Getenv(testHost); v == "" {
 		t.Fatal(testHost + " must be set for acceptance tests")
@@ -63,6 +88,21 @@ func TestAccPreCheck(t *testing.T) {
 	}
 	if v := os.Getenv(testAWSSecretAccessKey); v == "" {
 		t.Fatal(testAWSSecretAccessKey + " must be set for acceptance tests")
+	}
+	if v := os.Getenv(testAzureClientID); v == "" {
+		t.Fatal(testAzureClientID + " must be set for acceptance tests")
+	}
+	if v := os.Getenv(testAzureSubscriptionID); v == "" {
+		t.Fatal(testAzureSubscriptionID + " must be set for acceptance tests")
+	}
+	if v := os.Getenv(testAzureResourceGroup); v == "" {
+		t.Fatal(testAzureResourceGroup + " must be set for acceptance tests")
+	}
+	if v := os.Getenv(testAzureTenantID); v == "" {
+		t.Fatal(testAzureTenantID + " must be set for acceptance tests")
+	}
+	if v := os.Getenv(testAzureClientSecret); v == "" {
+		t.Fatal(testAzureClientSecret + " must be set for acceptance tests")
 	}
 }
 
