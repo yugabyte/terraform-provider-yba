@@ -143,7 +143,7 @@ resource "yb_cloud_provider" "gcp" {
   ssh_port        = 54422
   air_gap_install = false
 }
-`, acctest.TestApiKey(), acctest.TestGCPConfig(), name)
+`, acctest.TestApiKey(), acctest.TestGCPCredentials(), name)
 }
 
 func cloudProviderAWSConfig(name string) string {
@@ -160,14 +160,13 @@ resource "yb_cloud_provider" "aws" {
 
   code = "aws"
   config = { 
-	YB_FIREWALL_TAGS = "cluster-server" 
 	AWS_ACCESS_KEY_ID = "%s"
 	AWS_SECRET_ACCESS_KEY = "%s"
   }
   name        = "%s"
   regions {
-    code = "us-west1"
-    name = "us-west1"
+    code = "us-west-1"
+    name = "us-west-1"
   }
 }
 `, acctest.TestApiKey(), acctest.TestAWSAccessKey(), acctest.TestAWSSecretAccessKey(), name)
@@ -185,20 +184,15 @@ resource "yb_cloud_provider" "azure" {
     api_token = data.yb_customer_data.customer.api_token
   }
 
-  code = "azure"
+  code = "azu"
   config = { 
-	YB_FIREWALL_TAGS = "cluster-server" 
-	SUBSCRIPTION_ID = "%s"
-	RESOURCE_GROUP = "%s"
-	TENANT_ID = "%s"
-	CLIENT_ID = "%s"
-	CLIENT_SECRET = "%s"
+	AZURE_SUBSCRIPTION_ID = "%s"
+	AZURE_RG = "%s"
+	AZURE_TENANT_ID = "%s"
+	AZURE_CLIENT_ID = "%s"
+	AZURE_CLIENT_SECRET = "%s"
   }
   name        = "%s"
-  regions {
-    code = "us-west1"
-    name = "us-west1"
-  }
 }
 `,
 		acctest.TestApiKey(),

@@ -18,19 +18,19 @@ func TestAccUniverse_GCP_UpdatePrimaryNodes(t *testing.T) {
 	resource.ParallelTest(t, resource.TestCase{
 		PreCheck:          func() { acctest.TestAccPreCheck(t) },
 		ProviderFactories: acctest.ProviderFactories,
-		CheckDestroy:      testAccCheckDestroyUniverse,
+		CheckDestroy:      testAccCheckDestroyProviderAndUniverse,
 		Steps: []resource.TestStep{
 			{
 				Config: universeGcpConfigWithNodes(rName, 3),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckUniverseExists("yb_cloud_provider.gcp", &universe),
+					testAccCheckUniverseExists("yb_universe.gcp_universe", &universe),
 					testAccCheckNumNodes(&universe, 3),
 				),
 			},
 			{
 				Config: universeGcpConfigWithNodes(rName, 4),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckUniverseExists("yb_cloud_provider.gcp", &universe),
+					testAccCheckUniverseExists("yb_universe.gcp_universe", &universe),
 					testAccCheckNumNodes(&universe, 4),
 				),
 			},
@@ -38,18 +38,27 @@ func TestAccUniverse_GCP_UpdatePrimaryNodes(t *testing.T) {
 	})
 }
 
-func testAccCheckDestroyUniverse(s *terraform.State) error {
+func testAccCheckDestroyProviderAndUniverse(s *terraform.State) error {
 	conn := acctest.YWClient
 
 	for _, r := range s.RootModule().Resources {
-		if r.Type != "yb_universe" {
-			continue
-		}
-
-		ctx, cUUID := acctest.GetCtxWithConnectionInfo(r.Primary)
-		_, _, err := conn.UniverseManagementApi.GetUniverse(ctx, cUUID, r.Primary.ID).Execute()
-		if err == nil || acctest.IsResourceNotFoundError(err) {
-			return errors.New("universe resource is not destroyed")
+		if r.Type == "yb_universe" {
+			ctx, cUUID := acctest.GetCtxWithConnectionInfo(r.Primary)
+			_, _, err := conn.UniverseManagementApi.GetUniverse(ctx, cUUID, r.Primary.ID).Execute()
+			if err == nil || acctest.IsResourceNotFoundError(err) {
+				return errors.New("universe resource is not destroyed")
+			}
+		} else if r.Type == "yb_cloud_provider" {
+			ctx, cUUID := acctest.GetCtxWithConnectionInfo(r.Primary)
+			res, _, err := conn.CloudProvidersApi.GetListOfProviders(ctx, cUUID).Execute()
+			if err != nil {
+				return err
+			}
+			for _, p := range res {
+				if *p.Uuid == r.Primary.ID {
+					return errors.New("cloud provider is not destroyed")
+				}
+			}
 		}
 	}
 
@@ -100,18 +109,18 @@ func universeAzureConfigWithNodes(name string, nodes int) string {
 }
 
 func universeConfigWithProviderWithNodes(p string, name string, nodes int) string {
-	return cloudProviderGCPConfig(fmt.Sprintf("tf-acctest-gcp-universe-provider-%s", sdkacctest.RandString(12))) +
+	return cloudProviderGCPConfig(fmt.Sprintf(name+"provider")) +
 		fmt.Sprintf(`
-data "yb_provider_key" "%s-key" {
+data "yb_provider_key" "%s_key" {
   connection_info {
-    cuuid     = yb_customer_resource.customer.cuuid
-    api_token = yb_customer_resource.customer.api_token
+   	cuuid     = data.yb_customer_data.customer.cuuid
+    api_token = data.yb_customer_data.customer.api_token
   }
 
   provider_id = yb_cloud_provider.%s.id
 }
 
-resource "yb_universe" "gcp_universe" {
+resource "yb_universe" "%s_universe" {
   connection_info {
     cuuid     = data.yb_customer_data.customer.cuuid
     api_token = data.yb_customer_data.customer.api_token
@@ -123,7 +132,7 @@ resource "yb_universe" "gcp_universe" {
       universe_name      = "%s"
       provider_type      = "%s"
       provider           = yb_cloud_provider.%s.id
-      region_list        = data.yb_provider_key.%s-key.id
+      region_list        = yb_cloud_provider.%s.regions[*].uuid
       num_nodes          = %d
       replication_factor = 3
       instance_type      = "n1-standard-1"
@@ -138,12 +147,12 @@ resource "yb_universe" "gcp_universe" {
       enable_node_to_node_encrypt   = true
       enable_client_to_node_encrypt = true
       yb_software_version           = "%s"
-      access_key_code               = local.provider_key
+      access_key_code               = data.yb_provider_key.%s_key.id
     }
   }
   communication_ports {}
 }
-`, p, p, name, p, p, p, nodes, acctest.TestYBSoftwareVersion())
+`, p, p, p, name, p, p, p, nodes, acctest.TestYBSoftwareVersion(), p)
 
 }
 
@@ -173,7 +182,7 @@ resource "yb_cloud_provider" "gcp" {
   ssh_port        = 54422
   air_gap_install = false
 }
-`, acctest.TestApiKey(), acctest.TestGCPConfig(), name)
+`, acctest.TestApiKey(), acctest.TestGCPCredentials(), name)
 }
 
 func cloudProviderAWSConfig(name string) string {

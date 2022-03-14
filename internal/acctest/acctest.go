@@ -13,18 +13,28 @@ import (
 )
 
 const (
-	testHost                = "YB_HOST"
-	testApiKey              = "TF_ACC_TEST_API_KEY"
-	testGCPConfig           = "TF_ACC_TEST_GCP_CONFIG"
-	testAWSAccessKey        = "AWS_ACCESS_KEY_ID"
-	testAWSSecretAccessKey  = "AWS_SECRET_ACCESS_KEY"
-	testAzureSubscriptionID = "TF_ACC_TEST_AZURE_SUBSCRIPTION_ID"
-	testAzureResourceGroup  = "TF_ACC_TEST_AZURE_RESOURCE_GROUP"
-	testAzureTenantID       = "TF_ACC_TEST_AZURE_TENANT_ID"
-	testAzureClientID       = "TF_ACC_TEST_CLIENT_ID"
-	testAzureClientSecret   = "TF_ACC_TEST_CLIENT_SECRET"
-	testYBSoftwareVersion   = "TF_ACC_TEST_YB_SOFTWARE_VERSION"
-	YBProviderName          = "yb"
+	// env variables/other constants for yugabyte provider
+	testHost              = "YB_HOST"
+	testApiKey            = "TF_ACC_TEST_API_KEY"
+	testYBSoftwareVersion = "TF_ACC_TEST_YB_SOFTWARE_VERSION"
+	ybProviderName        = "yb"
+
+	// env variables for gcp provider
+	testGCPCredentials = "GOOGLE_CREDENTIALS"
+	testGCPProject     = "GOOGLE_PROJECT"
+	testGCPRegion      = "GOOGLE_REGION"
+	testGCPZone        = "GOOGLE_ZONE"
+
+	// env variables for aws provider
+	testAWSAccessKey       = "AWS_ACCESS_KEY_ID"
+	testAWSSecretAccessKey = "AWS_SECRET_ACCESS_KEY"
+
+	// env variables for azure provider
+	testAzureSubscriptionID = "ARM_SUBSCRIPTION_ID"
+	testAzureResourceGroup  = "ARM_RESOURCE_GROUP"
+	testAzureTenantID       = "ARM_TENANT_ID"
+	testAzureClientID       = "ARM_CLIENT_ID"
+	testAzureClientSecret   = "ARM_CLIENT_SECRET"
 )
 
 var (
@@ -35,7 +45,7 @@ var (
 func init() {
 	YWClient = api.NewYugawareClient(os.Getenv(testHost), "http")
 	ProviderFactories = map[string]func() (*schema.Provider, error){
-		YBProviderName: func() (*schema.Provider, error) { return provider.New(), nil },
+		ybProviderName: func() (*schema.Provider, error) { return provider.New(), nil },
 	}
 }
 
@@ -43,8 +53,8 @@ func TestApiKey() string {
 	return os.Getenv(testApiKey)
 }
 
-func TestGCPConfig() string {
-	return os.Getenv(testGCPConfig)
+func TestGCPCredentials() string {
+	return os.Getenv(testGCPCredentials)
 }
 
 func TestAWSAccessKey() string {
@@ -86,8 +96,17 @@ func TestAccPreCheck(t *testing.T) {
 	if v := os.Getenv(testApiKey); v == "" {
 		t.Fatal(testApiKey + " must be set for acceptance tests")
 	}
-	if v := os.Getenv(testGCPConfig); v == "" {
-		t.Fatal(testGCPConfig + " must be set for acceptance tests")
+	if v := os.Getenv(testGCPCredentials); v == "" {
+		t.Fatal(testGCPCredentials + " must be set for acceptance tests")
+	}
+	if v := os.Getenv(testGCPProject); v == "" {
+		t.Fatal(testGCPProject + " must be set for acceptance tests")
+	}
+	if v := os.Getenv(testGCPRegion); v == "" {
+		t.Fatal(testGCPRegion + " must be set for acceptance tests")
+	}
+	if v := os.Getenv(testGCPZone); v == "" {
+		t.Fatal(testGCPZone + " must be set for acceptance tests")
 	}
 	if v := os.Getenv(testAWSAccessKey); v == "" {
 		t.Fatal(testAWSAccessKey + " must be set for acceptance tests")
