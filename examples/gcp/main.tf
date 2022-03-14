@@ -65,8 +65,12 @@ resource "yb_cloud_provider" "gcp" {
   dest_vpc_id = "yugabyte-network"
   name        = "sdu-test-gcp-provider"
   regions {
-    code = "us-west1"
-    name = "us-west1"
+    code = "us-west2"
+    name = "us-west2"
+    vnet_name = "yugabyte-vnet-us-west2"
+    zones {
+      subnet = "yugabyte-subnet-westus2"
+    }
   }
   ssh_port        = 54422
   air_gap_install = false

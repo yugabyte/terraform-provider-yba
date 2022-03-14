@@ -92,6 +92,7 @@ func ResourceCloudProvider() *schema.Resource {
 			"ssh_port": {
 				Type:     schema.TypeInt,
 				Optional: true,
+				Computed: true,
 				ForceNew: true,
 			},
 			"ssh_private_key_content": {
