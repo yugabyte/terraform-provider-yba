@@ -65,8 +65,12 @@ resource "yb_cloud_provider" "gcp" {
   dest_vpc_id = "***REMOVED***"
   name        = "sdu-test-gcp-provider"
   regions {
-    code = "us-west1"
-    name = "us-west1"
+    code = "us-west2"
+    name = "us-west2"
+    vnet_name = "***REMOVED***"
+    zones {
+      subnet = "***REMOVED***"
+    }
   }
   ssh_port        = 54422
   air_gap_install = false

@@ -10,6 +10,7 @@ import (
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/utils"
 )
 
+// ResourceUser TODO: none of these functions will work until the date issue is resolved https://yugabyte.atlassian.net/browse/PLAT-3305
 func ResourceUser() *schema.Resource {
 	return &schema.Resource{
 		Description: "User Resource",
