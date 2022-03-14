@@ -23,13 +23,6 @@ func StringMap(in map[string]interface{}) *map[string]string {
 	return &out
 }
 
-func GetStringMap(in *map[string]string) map[string]string {
-	if in != nil {
-		return *in
-	}
-	return map[string]string{}
-}
-
 func MapFromSingletonList(in []interface{}) map[string]interface{} {
 	if len(in) == 0 {
 		return make(map[string]interface{})

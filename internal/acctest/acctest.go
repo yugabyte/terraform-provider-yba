@@ -23,6 +23,7 @@ const (
 	testAzureTenantID       = "TF_ACC_TEST_AZURE_TENANT_ID"
 	testAzureClientID       = "TF_ACC_TEST_CLIENT_ID"
 	testAzureClientSecret   = "TF_ACC_TEST_CLIENT_SECRET"
+	testYBSoftwareVersion   = "TF_ACC_TEST_YB_SOFTWARE_VERSION"
 	YBProviderName          = "yb"
 )
 
@@ -74,6 +75,10 @@ func TestAzureClientSecret() string {
 	return os.Getenv(testAzureClientSecret)
 }
 
+func TestYBSoftwareVersion() string {
+	return os.Getenv(testYBSoftwareVersion)
+}
+
 func TestAccPreCheck(t *testing.T) {
 	if v := os.Getenv(testHost); v == "" {
 		t.Fatal(testHost + " must be set for acceptance tests")
@@ -104,6 +109,9 @@ func TestAccPreCheck(t *testing.T) {
 	}
 	if v := os.Getenv(testAzureClientSecret); v == "" {
 		t.Fatal(testAzureClientSecret + " must be set for acceptance tests")
+	}
+	if v := os.Getenv(testYBSoftwareVersion); v == "" {
+		t.Fatal(testYBSoftwareVersion + " must be set for acceptance tests")
 	}
 }
 
