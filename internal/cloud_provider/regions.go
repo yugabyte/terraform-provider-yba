@@ -163,7 +163,7 @@ func flattenRegions(regions []client.Region) (res []map[string]interface{}) {
 		r := map[string]interface{}{
 			"uuid":      region.Uuid,
 			"code":      region.Code,
-			"config":    utils.GetStringMap(region.Config),
+			"config":    region.GetConfig(),
 			"latitude":  region.Latitude,
 			"longitude": region.Longitude,
 			// TODO: the region name is being changed by the server, which messes with terraform state
@@ -186,7 +186,7 @@ func flattenZones(zones []client.AvailabilityZone) (res []map[string]interface{}
 			"uuid":             zone.Uuid,
 			"active":           zone.Active,
 			"code":             zone.Code,
-			"config":           utils.GetStringMap(zone.Config),
+			"config":           zone.GetConfig(),
 			"kube_config_path": zone.KubeconfigPath,
 			"secondary_subnet": zone.SecondarySubnet,
 			"subnet":           zone.Subnet,

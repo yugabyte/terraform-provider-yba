@@ -93,7 +93,6 @@ resource "yb_universe" "gcp_universe" {
     api_token = yb_customer_resource.customer.api_token
   }
 
-  depends_on = [yb_cloud_provider.gcp]
   clusters {
     cluster_type = "PRIMARY"
     user_intent {
