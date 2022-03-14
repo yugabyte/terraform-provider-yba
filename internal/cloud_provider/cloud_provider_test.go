@@ -193,6 +193,14 @@ resource "yb_cloud_provider" "azure" {
 	AZURE_CLIENT_SECRET = "%s"
   }
   name        = "%s"
+  regions {
+    code = "westus2"
+    name = "westus2"
+	vnet_name = "yugabyte-vnet-us-west2"
+	zones {
+	  subnet = "yugabyte-subnet-westus2"
+	}
+  }
 }
 `,
 		acctest.TestApiKey(),
