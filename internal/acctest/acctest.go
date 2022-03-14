@@ -8,6 +8,7 @@ import (
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/api"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/provider"
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -111,4 +112,11 @@ func GetCtxWithConnectionInfo(s *terraform.InstanceState) (context.Context, stri
 	key := s.Attributes["connection_info.0.api_token"]
 	cUUID := s.Attributes["connection_info.0.cuuid"]
 	return api.SetContextApiKey(ctx, key), cUUID
+}
+
+func IsResourceNotFoundError(err error) bool {
+	if strings.Contains(err.Error(), "404") {
+		return true
+	}
+	return false
 }
