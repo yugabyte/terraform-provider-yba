@@ -18,7 +18,7 @@ Retrieve cloud provider access key
 ### Required
 
 - **connection_info** (Block List, Min: 1, Max: 1) (see [below for nested schema](#nestedblock--connection_info))
-- **provider_id** (String)
+- **provider_id** (String) UUID of the provider
 
 ### Optional
 
@@ -29,7 +29,7 @@ Retrieve cloud provider access key
 
 Required:
 
-- **api_token** (String)
-- **cuuid** (String)
+- **api_token** (String) The API Token for the customer. This can be found in the YugabyteDB Anywhere Portal and is also returned when a customer resource is created
+- **cuuid** (String) UUID for the customer associated with the resource/data source.
 
 

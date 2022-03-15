@@ -19,9 +19,10 @@ func StorageConfigs() *schema.Resource {
 		Schema: map[string]*schema.Schema{
 			"connection_info": customer.ConnectionInfoSchema(),
 			"uuid_list": {
-				Type:     schema.TypeList,
-				Elem:     &schema.Schema{Type: schema.TypeString},
-				Computed: true,
+				Type:        schema.TypeList,
+				Elem:        &schema.Schema{Type: schema.TypeString},
+				Computed:    true,
+				Description: "List of storage configuration UUIDs. These can be used in the backup resource.",
 			},
 		},
 	}

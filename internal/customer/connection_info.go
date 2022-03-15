@@ -12,13 +12,15 @@ func ConnectionInfoSchema() *schema.Schema {
 		Elem: &schema.Resource{
 			Schema: map[string]*schema.Schema{
 				"api_token": {
-					Type:     schema.TypeString,
-					Required: true,
+					Type:        schema.TypeString,
+					Required:    true,
+					Description: "The API Token for the customer. This can be found in the YugabyteDB Anywhere Portal and is also returned when a customer resource is created",
 				},
 				"cuuid": {
-					Type:     schema.TypeString,
-					Required: true,
-					ForceNew: true,
+					Type:        schema.TypeString,
+					Required:    true,
+					ForceNew:    true,
+					Description: "UUID for the customer associated with the resource/data source.",
 				},
 			},
 		},

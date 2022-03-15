@@ -17,8 +17,9 @@ func ProviderKey() *schema.Resource {
 		Schema: map[string]*schema.Schema{
 			"connection_info": customer.ConnectionInfoSchema(),
 			"provider_id": {
-				Type:     schema.TypeString,
-				Required: true,
+				Type:        schema.TypeString,
+				Required:    true,
+				Description: "UUID of the provider",
 			},
 		},
 	}

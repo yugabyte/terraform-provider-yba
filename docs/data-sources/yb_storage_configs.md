@@ -25,14 +25,14 @@ Retrieve list of storage configs
 
 ### Read-Only
 
-- **uuid_list** (List of String)
+- **uuid_list** (List of String) List of storage configuration UUIDs. These can be used in the backup resource.
 
 <a id="nestedblock--connection_info"></a>
 ### Nested Schema for `connection_info`
 
 Required:
 
-- **api_token** (String)
-- **cuuid** (String)
+- **api_token** (String) The API Token for the customer. This can be found in the YugabyteDB Anywhere Portal and is also returned when a customer resource is created
+- **cuuid** (String) UUID for the customer associated with the resource/data source.
 
 
