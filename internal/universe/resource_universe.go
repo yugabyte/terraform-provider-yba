@@ -30,18 +30,27 @@ func ResourceUniverse() *schema.Resource {
 		Schema: map[string]*schema.Schema{
 			"connection_info": customer.ConnectionInfoSchema(),
 
-			// Universe Delete Options (TODO: make its own block)
-			"delete_certs": {
-				Type:     schema.TypeBool,
+			// Universe Delete Options
+			"delete_options": {
+				Type:     schema.TypeList,
 				Optional: true,
-			},
-			"delete_backups": {
-				Type:     schema.TypeBool,
-				Optional: true,
-			},
-			"force_delete": {
-				Type:     schema.TypeBool,
-				Optional: true,
+				MaxItems: 1,
+				Elem: &schema.Resource{
+					Schema: map[string]*schema.Schema{
+						"delete_certs": {
+							Type:     schema.TypeBool,
+							Optional: true,
+						},
+						"delete_backups": {
+							Type:     schema.TypeBool,
+							Optional: true,
+						},
+						"force_delete": {
+							Type:     schema.TypeBool,
+							Optional: true,
+						},
+					},
+				},
 			},
 
 			// Universe Fields
@@ -787,9 +796,9 @@ func resourceUniverseDelete(ctx context.Context, d *schema.ResourceData, meta in
 	cUUID, token := api.GetConnectionInfo(d)
 	ctx = api.SetContextApiKey(ctx, token)
 	r, _, err := c.UniverseManagementApi.DeleteUniverse(ctx, cUUID, d.Id()).
-		IsForceDelete(d.Get("force_delete").(bool)).
-		IsDeleteBackups(d.Get("delete_backups").(bool)).
-		IsDeleteAssociatedCerts(d.Get("delete_certs").(bool)).
+		IsForceDelete(d.Get("delete_options.0.force_delete").(bool)).
+		IsDeleteBackups(d.Get("delete_options.0.delete_backups").(bool)).
+		IsDeleteAssociatedCerts(d.Get("delete_options.0.delete_certs").(bool)).
 		Execute()
 	if err != nil {
 		return diag.FromErr(err)
