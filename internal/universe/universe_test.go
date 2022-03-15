@@ -65,6 +65,33 @@ func TestAccUniverse_AWS_UpdatePrimaryNodes(t *testing.T) {
 	})
 }
 
+func TestAccUniverse_Azure_UpdatePrimaryNodes(t *testing.T) {
+	var universe client.UniverseResp
+
+	rName := fmt.Sprintf("tf-acctest-azu-universe-%s", sdkacctest.RandString(12))
+	resource.ParallelTest(t, resource.TestCase{
+		PreCheck:          func() { acctest.TestAccPreCheck(t) },
+		ProviderFactories: acctest.ProviderFactories,
+		CheckDestroy:      testAccCheckDestroyProviderAndUniverse,
+		Steps: []resource.TestStep{
+			{
+				Config: universeAzureConfigWithNodes(rName, 3),
+				Check: resource.ComposeTestCheckFunc(
+					testAccCheckUniverseExists("yb_universe.azu", &universe),
+					testAccCheckNumNodes(&universe, 3),
+				),
+			},
+			{
+				Config: universeAzureConfigWithNodes(rName, 4),
+				Check: resource.ComposeTestCheckFunc(
+					testAccCheckUniverseExists("yb_universe.azu", &universe),
+					testAccCheckNumNodes(&universe, 4),
+				),
+			},
+		},
+	})
+}
+
 func testAccCheckDestroyProviderAndUniverse(s *terraform.State) error {
 	conn := acctest.YWClient
 
