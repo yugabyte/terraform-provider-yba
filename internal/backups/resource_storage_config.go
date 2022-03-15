@@ -27,17 +27,20 @@ func ResourceStorageConfig() *schema.Resource {
 			"connection_info": customer.ConnectionInfoSchema(),
 
 			"config_name": {
-				Type:     schema.TypeString,
-				Required: true,
+				Type:        schema.TypeString,
+				Required:    true,
+				Description: "", // TODO: document
 			},
 			"data": {
-				Type:     schema.TypeMap,
-				Elem:     &schema.Schema{Type: schema.TypeString},
-				Required: true,
+				Type:        schema.TypeMap,
+				Elem:        &schema.Schema{Type: schema.TypeString},
+				Required:    true,
+				Description: "", // TODO: document
 			},
 			"name": {
-				Type:     schema.TypeString,
-				Required: true,
+				Type:        schema.TypeString,
+				Required:    true,
+				Description: "", // TODO: document
 			},
 		},
 	}

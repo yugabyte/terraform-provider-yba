@@ -31,7 +31,7 @@ Storage Config Resource
 
 Required:
 
-- **api_token** (String)
-- **cuuid** (String)
+- **api_token** (String) The API Token for the customer. This can be found in the YugabyteDB Anywhere Portal and is also returned when a customer resource is created
+- **cuuid** (String) UUID for the customer associated with the resource/data source.
 
 

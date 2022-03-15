@@ -17,5 +17,4 @@ description: |-
 
 ### Optional
 
-- **apikey** (String, Sensitive)
 - **host** (String)

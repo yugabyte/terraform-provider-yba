@@ -38,16 +38,19 @@ func ResourceUniverse() *schema.Resource {
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
 						"delete_certs": {
-							Type:     schema.TypeBool,
-							Optional: true,
+							Type:        schema.TypeBool,
+							Optional:    true,
+							Description: "Flag indicating whether the certificates should be deleted with the universe",
 						},
 						"delete_backups": {
-							Type:     schema.TypeBool,
-							Optional: true,
+							Type:        schema.TypeBool,
+							Optional:    true,
+							Description: "Flag indicating whether the backups should be deleted with the universe",
 						},
 						"force_delete": {
-							Type:     schema.TypeBool,
-							Optional: true,
+							Type:        schema.TypeBool,
+							Optional:    true,
+							Description: "", // TODO: document
 						},
 					},
 				},
@@ -55,22 +58,26 @@ func ResourceUniverse() *schema.Resource {
 
 			// Universe Fields
 			"allow_insecure": {
-				Type:     schema.TypeBool,
-				Optional: true,
-				Computed: true,
+				Type:        schema.TypeBool,
+				Optional:    true,
+				Computed:    true,
+				Description: "", // TODO: document
 			},
 			"capability": {
-				Type:     schema.TypeString,
-				Optional: true,
-				Computed: true,
+				Type:        schema.TypeString,
+				Optional:    true,
+				Computed:    true,
+				Description: "Operations permitted on the universe. Permitted values: READ_ONLY, EDITS_ALLOWED",
 			},
 			"client_root_ca": {
-				Type:     schema.TypeString,
-				Optional: true,
+				Type:        schema.TypeString,
+				Optional:    true,
+				Description: "", // TODO: document
 			},
 			"cmk_arn": {
-				Type:     schema.TypeString,
-				Optional: true,
+				Type:        schema.TypeString,
+				Optional:    true,
+				Description: "Amazon Resource Name (ARN) of the CMK",
 			},
 			"clusters": {
 				Type:     schema.TypeList,
@@ -78,24 +85,28 @@ func ResourceUniverse() *schema.Resource {
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
 						"uuid": {
-							Type:     schema.TypeString,
-							Computed: true,
+							Type:        schema.TypeString,
+							Computed:    true,
+							Description: "Cluster UUID",
 						},
 						"cluster_type": {
-							Type:     schema.TypeString,
-							Required: true,
+							Type:        schema.TypeString,
+							Required:    true,
+							Description: "Cluster Type. Permitted values: PRIMARY, ASYNC",
 						},
 						"user_intent": {
-							Type:     schema.TypeList,
-							MaxItems: 1,
-							Required: true,
-							Elem:     userIntentSchema(),
+							Type:        schema.TypeList,
+							MaxItems:    1,
+							Required:    true,
+							Elem:        userIntentSchema(),
+							Description: "Configuration values used in universe creation. Only these values can be updated.",
 						},
 						"cloud_list": {
-							Type:     schema.TypeList,
-							Optional: true,
-							Computed: true,
-							Elem:     cloudListSchema(),
+							Type:        schema.TypeList,
+							Optional:    true,
+							Computed:    true,
+							Elem:        cloudListSchema(),
+							Description: "Cloud, region, and zone placement information for the universe",
 						},
 					},
 				},
@@ -173,13 +184,15 @@ func cloudListSchema() *schema.Resource {
 	return &schema.Resource{
 		Schema: map[string]*schema.Schema{
 			"uuid": {
-				Type:     schema.TypeString,
-				Computed: true,
+				Type:        schema.TypeString,
+				Computed:    true,
+				Description: "", // TODO: document
 			},
 			"code": {
-				Type:     schema.TypeString,
-				Optional: true,
-				Computed: true,
+				Type:        schema.TypeString,
+				Optional:    true,
+				Computed:    true,
+				Description: "", // TODO: document
 			},
 			"region_list": {
 				Type:     schema.TypeList,
@@ -188,13 +201,15 @@ func cloudListSchema() *schema.Resource {
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
 						"uuid": {
-							Type:     schema.TypeString,
-							Computed: true,
+							Type:        schema.TypeString,
+							Computed:    true,
+							Description: "Region UUID",
 						},
 						"code": {
-							Type:     schema.TypeString,
-							Optional: true,
-							Computed: true,
+							Type:        schema.TypeString,
+							Optional:    true,
+							Computed:    true,
+							Description: "", // TODO: document
 						},
 						"az_list": {
 							Type:     schema.TypeList,
@@ -203,38 +218,45 @@ func cloudListSchema() *schema.Resource {
 							Elem: &schema.Resource{
 								Schema: map[string]*schema.Schema{
 									"uuid": {
-										Type:     schema.TypeString,
-										Optional: true,
-										Computed: true,
+										Type:        schema.TypeString,
+										Optional:    true,
+										Computed:    true,
+										Description: "Zone UUID",
 									},
 									"is_affinitized": {
-										Type:     schema.TypeBool,
-										Computed: true,
+										Type:        schema.TypeBool,
+										Computed:    true,
+										Description: "", // TODO: document
 									},
 									"name": {
-										Type:     schema.TypeString,
-										Optional: true,
-										Computed: true,
+										Type:        schema.TypeString,
+										Optional:    true,
+										Computed:    true,
+										Description: "Zone name",
 									},
 									"num_nodes": {
-										Type:     schema.TypeInt,
-										Optional: true,
-										Computed: true,
+										Type:        schema.TypeInt,
+										Optional:    true,
+										Computed:    true,
+										Description: "Number of nodes in this zone",
 									},
 									"replication_factor": {
-										Type:     schema.TypeInt,
-										Optional: true,
-										Computed: true,
+										Type:        schema.TypeInt,
+										Optional:    true,
+										Computed:    true,
+										Description: "Replication factor in this zone",
 									},
 									"secondary_subnet": {
-										Type:     schema.TypeString,
-										Optional: true,
-										Computed: true,
+										Type:        schema.TypeString,
+										Optional:    true,
+										Computed:    true,
+										Description: "", // TODO: document
 									},
 									"subnet": {
-										Type:     schema.TypeString,
-										Optional: true,
-										Computed: true,
+										Type:        schema.TypeString,
+										Optional:    true,
+										Computed:    true,
+										Description: "", // TODO: document
 									},
 								},
 							},
@@ -250,175 +272,218 @@ func userIntentSchema() *schema.Resource {
 	return &schema.Resource{
 		Schema: map[string]*schema.Schema{
 			"assign_static_ip": {
-				Type:     schema.TypeBool,
-				Optional: true,
+				Type:        schema.TypeBool,
+				Optional:    true,
+				Description: "Flag indicating whether a static IP should be assigned",
 			},
 			"aws_arn_string": {
-				Type:     schema.TypeString,
-				Optional: true,
+				Type:        schema.TypeString,
+				Optional:    true,
+				Description: "", // TODO: document
 			},
 			"enable_exposing_service": {
-				Type:     schema.TypeString,
-				Optional: true,
-				Computed: true,
+				Type:        schema.TypeString,
+				Optional:    true,
+				Computed:    true,
+				Description: "", // TODO: document
 			},
 			"enable_ipv6": {
-				Type:     schema.TypeBool,
-				Optional: true,
+				Type:        schema.TypeBool,
+				Optional:    true,
+				Description: "", // TODO: document
 			},
 			"enable_ycql": {
-				Type:     schema.TypeBool,
-				Optional: true,
-				Computed: true,
+				Type:        schema.TypeBool,
+				Optional:    true,
+				Computed:    true,
+				Description: "", // TODO: document
 			},
 			"enable_ycql_auth": {
-				Type:     schema.TypeBool,
-				Optional: true,
+				Type:         schema.TypeBool,
+				Optional:     true,
+				RequiredWith: []string{"ycql_password", "enable_ycql_auth"},
+				Description:  "", // TODO: document
 			},
 			"enable_ysql_auth": {
-				Type:     schema.TypeBool,
-				Optional: true,
+				Type:         schema.TypeBool,
+				Optional:     true,
+				RequiredWith: []string{"ysql_password", "enable_ysql_auth"},
+				Description:  "", // TODO: document
 			},
 			"instance_tags": {
-				Type:     schema.TypeMap,
-				Elem:     &schema.Schema{Type: schema.TypeString},
-				Optional: true,
+				Type:        schema.TypeMap,
+				Elem:        &schema.Schema{Type: schema.TypeString},
+				Optional:    true,
+				Description: "", // TODO: document
 			},
 			"preferred_region": {
-				Type:     schema.TypeString,
-				Optional: true,
+				Type:        schema.TypeString,
+				Optional:    true,
+				Description: "", // TODO: document
 			},
 			"use_host_name": {
-				Type:     schema.TypeBool,
-				Optional: true,
+				Type:        schema.TypeBool,
+				Optional:    true,
+				Description: "", // TODO: document
 			},
 			"use_systemd": {
-				Type:     schema.TypeBool,
-				Optional: true,
+				Type:        schema.TypeBool,
+				Optional:    true,
+				Description: "", // TODO: document
 			},
 			"ysql_password": {
-				Type:     schema.TypeString,
-				Optional: true,
+				Type:         schema.TypeString,
+				Optional:     true,
+				RequiredWith: []string{"ycql_password", "enable_ycql_auth"},
+				Description:  "", // TODO: document
 			},
 			"ycql_password": {
-				Type:     schema.TypeString,
-				Optional: true,
+				Type:         schema.TypeString,
+				Optional:     true,
+				RequiredWith: []string{"ycql_password", "enable_ycql_auth"},
+				Description:  "", // TODO: document
 			},
 			"universe_name": {
-				Type:     schema.TypeString,
-				Optional: true,
+				Type:        schema.TypeString,
+				Optional:    true,
+				Description: "", // TODO: document
 			},
 			"provider_type": {
-				Type:     schema.TypeString,
-				Optional: true,
+				Type:        schema.TypeString,
+				Optional:    true,
+				Description: "", // TODO: document
 			},
 			"provider": {
-				Type:     schema.TypeString,
-				Optional: true,
+				Type:        schema.TypeString,
+				Optional:    true,
+				Description: "", // TODO: document
 			},
 			"region_list": {
 				Type: schema.TypeList,
 				Elem: &schema.Schema{
 					Type: schema.TypeString,
 				},
-				Optional: true,
+				Optional:    true,
+				Description: "", // TODO: document
 			},
 			"num_nodes": {
-				Type:     schema.TypeInt,
-				Optional: true,
+				Type:        schema.TypeInt,
+				Optional:    true,
+				Description: "Number of nodes for this universe",
 			},
 			"replication_factor": {
-				Type:     schema.TypeInt,
-				Optional: true,
+				Type:        schema.TypeInt,
+				Optional:    true,
+				Description: "Replicated factor for this universe",
 			},
 			"instance_type": {
-				Type:     schema.TypeString,
-				Optional: true,
+				Type:        schema.TypeString,
+				Optional:    true,
+				Description: "", // TODO: document
 			},
 			"device_info": {
-				Type:     schema.TypeList,
-				MaxItems: 1,
-				Required: true,
+				Type:        schema.TypeList,
+				MaxItems:    1,
+				Required:    true,
+				Description: "Configuration values associated with the machines used for this universe",
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
 						"disk_iops": {
-							Type:     schema.TypeInt,
-							Optional: true,
+							Type:        schema.TypeInt,
+							Optional:    true,
+							Description: "", // TODO: document
 						},
 						"mount_points": {
-							Type:     schema.TypeString,
-							Optional: true,
+							Type:        schema.TypeString,
+							Optional:    true,
+							Description: "", // TODO: document
 						},
 						"storage_class": {
-							Type:     schema.TypeString,
-							Optional: true,
+							Type:        schema.TypeString,
+							Optional:    true,
+							Description: "", // TODO: document
 						},
 						"throughput": {
-							Type:     schema.TypeInt,
-							Optional: true,
+							Type:        schema.TypeInt,
+							Optional:    true,
+							Description: "", // TODO: document
 						},
 						"num_volumes": {
-							Type:     schema.TypeInt,
-							Optional: true,
+							Type:        schema.TypeInt,
+							Optional:    true,
+							Description: "", // TODO: document
 						},
 						"volume_size": {
-							Type:     schema.TypeInt,
-							Optional: true,
+							Type:        schema.TypeInt,
+							Optional:    true,
+							Description: "", // TODO: document
 						},
 						"storage_type": {
-							Type:     schema.TypeString,
-							Optional: true,
+							Type:        schema.TypeString,
+							Optional:    true,
+							Description: "", // TODO: document
 						},
 					},
 				},
 			},
 			"assign_public_ip": {
-				Type:     schema.TypeBool,
-				Optional: true,
+				Type:        schema.TypeBool,
+				Optional:    true,
+				Description: "", // TODO: document
 			},
 			"use_time_sync": {
-				Type:     schema.TypeBool,
-				Optional: true,
+				Type:        schema.TypeBool,
+				Optional:    true,
+				Description: "", // TODO: document
 			},
 			"enable_ysql": {
-				Type:     schema.TypeBool,
-				Optional: true,
-				Computed: true,
+				Type:        schema.TypeBool,
+				Optional:    true,
+				Computed:    true,
+				Description: "", // TODO: document
 			},
 			"enable_yedis": {
-				Type:     schema.TypeBool,
-				Optional: true,
-				Computed: true,
+				Type:        schema.TypeBool,
+				Optional:    true,
+				Computed:    true,
+				Description: "", // TODO: document
 			},
 			"enable_node_to_node_encrypt": {
-				Type:     schema.TypeBool,
-				Optional: true,
+				Type:        schema.TypeBool,
+				Optional:    true,
+				Description: "", // TODO: document
 			},
 			"enable_client_to_node_encrypt": {
-				Type:     schema.TypeBool,
-				Optional: true,
+				Type:        schema.TypeBool,
+				Optional:    true,
+				Description: "", // TODO: document
 			},
 			"enable_volume_encryption": {
-				Type:     schema.TypeBool,
-				Optional: true,
+				Type:        schema.TypeBool,
+				Optional:    true,
+				Description: "", // TODO: document
 			},
 			"yb_software_version": {
-				Type:     schema.TypeString,
-				Optional: true,
+				Type:        schema.TypeString,
+				Optional:    true,
+				Description: "", // TODO: document
 			},
 			"access_key_code": {
-				Type:     schema.TypeString,
-				Optional: true,
+				Type:        schema.TypeString,
+				Optional:    true,
+				Description: "", // TODO: document
 			},
 			"tserver_gflags": {
-				Type:     schema.TypeMap,
-				Elem:     schema.TypeString,
-				Optional: true,
+				Type:        schema.TypeMap,
+				Elem:        schema.TypeString,
+				Optional:    true,
+				Description: "", // TODO: document
 			},
 			"master_gflags": {
-				Type:     schema.TypeMap,
-				Elem:     schema.TypeString,
-				Optional: true,
+				Type:        schema.TypeMap,
+				Elem:        schema.TypeString,
+				Optional:    true,
+				Description: "", // TODO: document
 			},
 		},
 	}

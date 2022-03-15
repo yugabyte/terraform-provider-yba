@@ -18,27 +18,27 @@ Scheduled Backups for Universe
 ### Required
 
 - **connection_info** (Block List, Min: 1, Max: 1) (see [below for nested schema](#nestedblock--connection_info))
-- **storage_config_uuid** (String)
-- **uni_uuid** (String)
+- **storage_config_uuid** (String) UUID of the storage configuration to use. Can be retrieved from the storage config data source.
+- **uni_uuid** (String) The UUID of the universe that this backup schedule targets
 
 ### Optional
 
-- **backup_type** (String)
-- **cron_expression** (String)
-- **frequency** (Number)
+- **backup_type** (String) Type of the backup. Permitted values: YQL_TABLE_TYPE, REDIS_TABLE_TYPE, PGSQL_TABLE_TYPE, TRANSACTION_STATUS_TABLE_TYPE
+- **cron_expression** (String) A cron expression to use
+- **frequency** (Number) Frequency to run the backup, in milliseconds
 - **id** (String) The ID of this resource.
-- **keyspace** (String)
-- **parallelism** (Number)
+- **keyspace** (String) Keyspace to backup
+- **parallelism** (Number) Number of concurrent commands to run on nodes over SSH
 - **sse** (Boolean)
-- **time_before_delete** (Number)
-- **transactional_backup** (Boolean)
+- **time_before_delete** (Number) Time before deleting the backup from storage, in milliseconds
+- **transactional_backup** (Boolean) Flag for indicating if backup is transactional across tables
 
 <a id="nestedblock--connection_info"></a>
 ### Nested Schema for `connection_info`
 
 Required:
 
-- **api_token** (String)
-- **cuuid** (String)
+- **api_token** (String) The API Token for the customer. This can be found in the YugabyteDB Anywhere Portal and is also returned when a customer resource is created
+- **cuuid** (String) UUID for the customer associated with the resource/data source.
 
 

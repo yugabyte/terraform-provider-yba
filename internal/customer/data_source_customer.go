@@ -10,21 +10,22 @@ import (
 
 func Customer() *schema.Resource {
 	return &schema.Resource{
-		Description: "Retrieve customer UUID",
+		Description: "Data source that retrieves the customer UUID given an API token",
 
 		ReadContext: dataSourceCustomerRead,
 
 		Schema: map[string]*schema.Schema{
 			"api_token": {
-				Type:     schema.TypeString,
-				Computed: true,
-				Optional: true,
-				ForceNew: true,
+				Type:        schema.TypeString,
+				Required:    true,
+				ForceNew:    true,
+				Description: "The API Token for the customer. This can be found in the YugabyteDB Anywhere Portal",
 			},
 			"cuuid": {
-				Type:     schema.TypeString,
-				Computed: true,
-				ForceNew: true,
+				Type:        schema.TypeString,
+				Computed:    true,
+				ForceNew:    true,
+				Description: "Customer UUID",
 			},
 		},
 	}
