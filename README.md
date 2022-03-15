@@ -1,4 +1,4 @@
-# Terraform Provider Yugabyte Anywhere
+# Terraform Provider YugabyteDB Anywhere
 
 This Terraform provider manages the following resources for YugabyteDB Anywhere:
 * Cloud Providers
