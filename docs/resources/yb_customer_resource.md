@@ -17,18 +17,18 @@ Customer Resource
 
 ### Required
 
-- **code** (String)
-- **email** (String)
-- **name** (String)
-- **password** (String)
+- **code** (String) Label for the user (i.e. admin)
+- **email** (String) Email for the user, which is used for login on the YugabyteDB Anywhere portal.
+- **name** (String) Name of the user.
+- **password** (String) Secure password for the user. Must contain an uppercase letter, number, and symbol
 
 ### Optional
 
-- **api_token** (String)
+- **api_token** (String) API token for the customer.
 - **id** (String) The ID of this resource.
 
 ### Read-Only
 
-- **cuuid** (String)
+- **cuuid** (String) Customer UUID
 
 

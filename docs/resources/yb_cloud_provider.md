@@ -22,10 +22,13 @@ Cloud Provider Resource
 
 ### Optional
 
-- **air_gap_install** (Boolean)
-- **code** (String)
-- **computed_config** (Map of String)
-- **config** (Map of String)
+- **air_gap_install** (Boolean) Flag indicating if the universe should use an air-gapped installation
+- **code** (String) Code of the cloud provider. Permitted values: gcp, aws, azu
+- **computed_config** (Map of String) Same as config field except some additional values may have been returned by the server.
+- **config** (Map of String) Configuration values to be set for the provider.
+AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY must be set for AWS providers.
+The contents of your google credentials must be included here for GCP providers.
+AZURE_SUBSCRIPTION_ID, AZURE_RG, AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET must be set for AZURE providers.
 - **custom_host_cidrs** (List of String)
 - **dest_vpc_id** (String)
 - **host_vpc_id** (String)
@@ -34,22 +37,22 @@ Cloud Provider Resource
 - **hosted_zone_name** (String)
 - **id** (String) The ID of this resource.
 - **key_pair_name** (String)
-- **name** (String)
-- **ssh_port** (Number)
-- **ssh_private_key_content** (String)
-- **ssh_user** (String)
+- **name** (String) Name of the provider
+- **ssh_port** (Number) Port to use for ssh commands
+- **ssh_private_key_content** (String) Private key to use for ssh commands
+- **ssh_user** (String) User to use for ssh commands
 
 ### Read-Only
 
-- **active** (Boolean)
+- **active** (Boolean) Flag indicating if the provider is active
 
 <a id="nestedblock--connection_info"></a>
 ### Nested Schema for `connection_info`
 
 Required:
 
-- **api_token** (String)
-- **cuuid** (String)
+- **api_token** (String) The API Token for the customer. This can be found in the YugabyteDB Anywhere Portal and is also returned when a customer resource is created
+- **cuuid** (String) UUID for the customer associated with the resource/data source.
 
 
 <a id="nestedblock--regions"></a>
@@ -57,11 +60,11 @@ Required:
 
 Optional:
 
-- **code** (String)
+- **code** (String) Region code. Varies by cloud provider
 - **config** (Map of String)
-- **name** (String)
-- **security_group_id** (String)
-- **vnet_name** (String)
+- **name** (String) Name of the region. Varies by cloud provider
+- **security_group_id** (String) Security group ID to use for this region. Only set for AWS providers
+- **vnet_name** (String) Name of the virtual network to use for this region. Only set for Azure providers
 - **yb_image** (String)
 - **zones** (Block List) (see [below for nested schema](#nestedblock--regions--zones))
 
@@ -69,23 +72,23 @@ Read-Only:
 
 - **latitude** (Number)
 - **longitude** (Number)
-- **uuid** (String)
+- **uuid** (String) Region UUID
 
 <a id="nestedblock--regions--zones"></a>
 ### Nested Schema for `regions.zones`
 
 Optional:
 
-- **code** (String)
+- **code** (String) Code of the zone. Varies by cloud provider.
 - **config** (Map of String)
-- **name** (String)
+- **name** (String) Name of the zone. Varies by cloud provider.
 - **secondary_subnet** (String)
-- **subnet** (String)
+- **subnet** (String) Subnet to use for this zone
 
 Read-Only:
 
-- **active** (Boolean)
+- **active** (Boolean) Flag indicating if the zone is active
 - **kube_config_path** (String)
-- **uuid** (String)
+- **uuid** (String) Zone UUID
 
 

@@ -23,13 +23,11 @@ Universe Resource
 ### Optional
 
 - **allow_insecure** (Boolean)
-- **capability** (String)
+- **capability** (String) Operations permitted on the universe. Permitted values: READ_ONLY, EDITS_ALLOWED
 - **client_root_ca** (String)
-- **cmk_arn** (String)
+- **cmk_arn** (String) Amazon Resource Name (ARN) of the CMK
 - **communication_ports** (Block List, Max: 1) (see [below for nested schema](#nestedblock--communication_ports))
-- **delete_backups** (Boolean)
-- **delete_certs** (Boolean)
-- **force_delete** (Boolean)
+- **delete_options** (Block List, Max: 1) (see [below for nested schema](#nestedblock--delete_options))
 - **id** (String) The ID of this resource.
 
 <a id="nestedblock--clusters"></a>
@@ -37,29 +35,29 @@ Universe Resource
 
 Required:
 
-- **cluster_type** (String)
-- **user_intent** (Block List, Min: 1, Max: 1) (see [below for nested schema](#nestedblock--clusters--user_intent))
+- **cluster_type** (String) Cluster Type. Permitted values: PRIMARY, ASYNC
+- **user_intent** (Block List, Min: 1, Max: 1) Configuration values used in universe creation. Only these values can be updated. (see [below for nested schema](#nestedblock--clusters--user_intent))
 
 Optional:
 
-- **cloud_list** (Block List) (see [below for nested schema](#nestedblock--clusters--cloud_list))
+- **cloud_list** (Block List) Cloud, region, and zone placement information for the universe (see [below for nested schema](#nestedblock--clusters--cloud_list))
 
 Read-Only:
 
-- **uuid** (String)
+- **uuid** (String) Cluster UUID
 
 <a id="nestedblock--clusters--user_intent"></a>
 ### Nested Schema for `clusters.user_intent`
 
 Required:
 
-- **device_info** (Block List, Min: 1, Max: 1) (see [below for nested schema](#nestedblock--clusters--user_intent--device_info))
+- **device_info** (Block List, Min: 1, Max: 1) Configuration values associated with the machines used for this universe (see [below for nested schema](#nestedblock--clusters--user_intent--device_info))
 
 Optional:
 
 - **access_key_code** (String)
 - **assign_public_ip** (Boolean)
-- **assign_static_ip** (Boolean)
+- **assign_static_ip** (Boolean) Flag indicating whether a static IP should be assigned
 - **aws_arn_string** (String)
 - **enable_client_to_node_encrypt** (Boolean)
 - **enable_exposing_service** (String)
@@ -74,12 +72,12 @@ Optional:
 - **instance_tags** (Map of String)
 - **instance_type** (String)
 - **master_gflags** (Map of String)
-- **num_nodes** (Number)
+- **num_nodes** (Number) Number of nodes for this universe
 - **preferred_region** (String)
 - **provider** (String)
 - **provider_type** (String)
 - **region_list** (List of String)
-- **replication_factor** (Number)
+- **replication_factor** (Number) Replicated factor for this universe
 - **tserver_gflags** (Map of String)
 - **universe_name** (String)
 - **use_host_name** (Boolean)
@@ -126,19 +124,19 @@ Optional:
 
 Read-Only:
 
-- **uuid** (String)
+- **uuid** (String) Region UUID
 
 <a id="nestedblock--clusters--cloud_list--region_list--az_list"></a>
 ### Nested Schema for `clusters.cloud_list.region_list.uuid`
 
 Optional:
 
-- **name** (String)
-- **num_nodes** (Number)
-- **replication_factor** (Number)
+- **name** (String) Zone name
+- **num_nodes** (Number) Number of nodes in this zone
+- **replication_factor** (Number) Replication factor in this zone
 - **secondary_subnet** (String)
 - **subnet** (String)
-- **uuid** (String)
+- **uuid** (String) Zone UUID
 
 Read-Only:
 
@@ -153,8 +151,8 @@ Read-Only:
 
 Required:
 
-- **api_token** (String)
-- **cuuid** (String)
+- **api_token** (String) The API Token for the customer. This can be found in the YugabyteDB Anywhere Portal and is also returned when a customer resource is created
+- **cuuid** (String) UUID for the customer associated with the resource/data source.
 
 
 <a id="nestedblock--communication_ports"></a>
@@ -173,5 +171,15 @@ Optional:
 - **yql_server_rpc_port** (Number)
 - **ysql_server_http_port** (Number)
 - **ysql_server_rpc_port** (Number)
+
+
+<a id="nestedblock--delete_options"></a>
+### Nested Schema for `delete_options`
+
+Optional:
+
+- **delete_backups** (Boolean) Flag indicating whether the backups should be deleted with the universe
+- **delete_certs** (Boolean) Flag indicating whether the certificates should be deleted with the universe
+- **force_delete** (Boolean)
 
 

@@ -31,79 +31,111 @@ func ResourceCloudProvider() *schema.Resource {
 		Schema: map[string]*schema.Schema{
 			"connection_info": customer.ConnectionInfoSchema(),
 			"active": {
-				Type:     schema.TypeBool,
-				Computed: true,
+				Type:        schema.TypeBool,
+				Computed:    true,
+				Description: "Flag indicating if the provider is active",
 			},
 			"air_gap_install": {
-				Type:     schema.TypeBool,
-				Optional: true,
-				ForceNew: true,
+				Type:        schema.TypeBool,
+				Optional:    true,
+				ForceNew:    true,
+				Description: "Flag indicating if the universe should use an air-gapped installation",
 			},
 			"code": {
-				Type:     schema.TypeString,
-				Optional: true,
-				ForceNew: true,
+				Type:        schema.TypeString,
+				Optional:    true,
+				ForceNew:    true,
+				Description: "Code of the cloud provider. Permitted values: gcp, aws, azu",
 			},
-			"config":          ConfigSchema(),
-			"computed_config": ComputedConfigSchema(),
-			"custom_host_cidrs": {
-				Type:     schema.TypeList,
+			"config": {
+				Type:     schema.TypeMap,
 				Elem:     &schema.Schema{Type: schema.TypeString},
-				Optional: true,
-				Computed: true,
 				ForceNew: true,
+				Optional: true,
+				Description: `
+Configuration values to be set for the provider.
+AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY must be set for AWS providers.
+The contents of your google credentials must be included here for GCP providers.
+AZURE_SUBSCRIPTION_ID, AZURE_RG, AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET must be set for AZURE providers.
+`,
+			},
+			"computed_config": {
+				Type:        schema.TypeMap,
+				Elem:        &schema.Schema{Type: schema.TypeString},
+				Optional:    true,
+				ForceNew:    true,
+				Computed:    true,
+				Description: "Same as config field except some additional values may have been returned by the server.",
+			},
+			"custom_host_cidrs": {
+				Type:        schema.TypeList,
+				Elem:        &schema.Schema{Type: schema.TypeString},
+				Optional:    true,
+				Computed:    true,
+				ForceNew:    true,
+				Description: "", // TODO: document
 			},
 			"dest_vpc_id": {
-				Type:     schema.TypeString,
-				Optional: true,
-				ForceNew: true,
+				Type:        schema.TypeString,
+				Optional:    true,
+				ForceNew:    true,
+				Description: "", // TODO: document
 			},
 			"host_vpc_id": {
-				Type:     schema.TypeString,
-				Optional: true,
-				ForceNew: true,
+				Type:        schema.TypeString,
+				Optional:    true,
+				ForceNew:    true,
+				Description: "", // TODO: document
 			},
 			"host_vpc_region": {
-				Type:     schema.TypeString,
-				Optional: true,
-				ForceNew: true,
+				Type:        schema.TypeString,
+				Optional:    true,
+				ForceNew:    true,
+				Description: "", // TODO: document
 			},
 			"hosted_zone_id": {
-				Type:     schema.TypeString,
-				Optional: true,
-				ForceNew: true,
+				Type:        schema.TypeString,
+				Optional:    true,
+				ForceNew:    true,
+				Description: "", // TODO: document
 			},
 			"hosted_zone_name": {
-				Type:     schema.TypeString,
-				Optional: true,
-				ForceNew: true,
+				Type:        schema.TypeString,
+				Optional:    true,
+				ForceNew:    true,
+				Description: "", // TODO: document
 			},
 			"key_pair_name": {
-				Type:     schema.TypeString,
-				Optional: true,
-				ForceNew: true,
+				Type:        schema.TypeString,
+				Optional:    true,
+				ForceNew:    true,
+				Description: "", // TODO: document
 			},
 			"name": {
-				Type:     schema.TypeString,
-				Optional: true,
-				ForceNew: true,
+				Type:        schema.TypeString,
+				Optional:    true,
+				ForceNew:    true,
+				Description: "Name of the provider",
 			},
 			"regions": RegionsSchema(),
 			"ssh_port": {
-				Type:     schema.TypeInt,
-				Optional: true,
-				Computed: true,
-				ForceNew: true,
+				Type:        schema.TypeInt,
+				Optional:    true,
+				Computed:    true,
+				ForceNew:    true,
+				Description: "Port to use for ssh commands",
 			},
 			"ssh_private_key_content": {
-				Type:     schema.TypeString,
-				Optional: true,
-				ForceNew: true,
+				Type:        schema.TypeString,
+				Optional:    true,
+				ForceNew:    true,
+				Description: "Private key to use for ssh commands",
 			},
 			"ssh_user": {
-				Type:     schema.TypeString,
-				Optional: true,
-				ForceNew: true,
+				Type:        schema.TypeString,
+				Optional:    true,
+				ForceNew:    true,
+				Description: "User to use for ssh commands",
 			},
 		},
 	}

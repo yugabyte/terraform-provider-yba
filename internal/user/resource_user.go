@@ -27,27 +27,32 @@ func ResourceUser() *schema.Resource {
 		Schema: map[string]*schema.Schema{
 			"connection_info": customer.ConnectionInfoSchema(),
 			"email": {
-				Type:     schema.TypeString,
-				Required: true,
-				ForceNew: true,
+				Type:        schema.TypeString,
+				Required:    true,
+				ForceNew:    true,
+				Description: "Email for the user, which is used for login on the YugabyteDB Anywhere portal.",
 			},
 			"password": {
-				Type:     schema.TypeString,
-				Required: true,
+				Type:        schema.TypeString,
+				Required:    true,
+				Description: "Secure password for the user. Must contain an uppercase letter, number, and symbol.",
 			},
 			"role": {
-				Type:     schema.TypeString,
-				Required: true,
+				Type:        schema.TypeString,
+				Required:    true,
+				Description: "User role. Permitted values: Admin, ReadOnly, SuperAdmin, BackupAdmin",
 			},
 			"features": {
-				Type:     schema.TypeMap,
-				Elem:     &schema.Schema{Type: schema.TypeString},
-				Optional: true,
-				ForceNew: true,
+				Type:        schema.TypeMap,
+				Elem:        &schema.Schema{Type: schema.TypeString},
+				Optional:    true,
+				ForceNew:    true,
+				Description: "", // TODO: document
 			},
 			"is_primary": {
-				Type:     schema.TypeBool,
-				Computed: true,
+				Type:        schema.TypeBool,
+				Computed:    true,
+				Description: "Flag indicating if this is the primary user for the customer",
 			},
 		},
 	}
