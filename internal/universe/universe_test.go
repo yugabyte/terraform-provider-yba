@@ -192,7 +192,7 @@ resource "yb_universe" "%s" {
       device_info {
         num_volumes  = 1
         volume_size  = 375
-        storage_type = "Persistent"
+        storage_type = "%s"
       }
       assign_public_ip              = true
       use_time_sync                 = true
@@ -205,7 +205,16 @@ resource "yb_universe" "%s" {
   }
   communication_ports {}
 }
-`, p, p, p, name, p, p, p, nodes, acctest.TestYBSoftwareVersion(), p)
+`, p, p, p, name, p, p, p, nodes, getUniverseStorageType(p), acctest.TestYBSoftwareVersion(), p)
+}
+
+func getUniverseStorageType(p string) string {
+	if p == "gcp" {
+		return "Persistent"
+	} else if p == "aws" {
+		return "GP2"
+	}
+	return "Premium"
 }
 
 func cloudProviderGCPConfig(name string) string {
@@ -263,6 +272,7 @@ resource "yb_cloud_provider" "aws" {
 `, acctest.TestApiKey(), acctest.TestAWSAccessKey(), acctest.TestAWSSecretAccessKey(), name)
 }
 
+// TODO: there should be 3 zones here but https://yugabyte.atlassian.net/browse/PLAT-3034 needs to be resolved first
 func cloudProviderAzureConfig(name string) string {
 	return fmt.Sprintf(`
 data "yb_customer_data" "customer" {
@@ -289,6 +299,7 @@ resource "yb_cloud_provider" "azure" {
     name = "westus2"
 	vnet_name = "***REMOVED***"
 	zones {
+      name = "westus2-1"
 	  subnet = "***REMOVED***"
 	}
   }

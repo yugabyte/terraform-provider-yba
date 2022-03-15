@@ -172,6 +172,7 @@ resource "yb_cloud_provider" "aws" {
 `, acctest.TestApiKey(), acctest.TestAWSAccessKey(), acctest.TestAWSSecretAccessKey(), name)
 }
 
+// TODO: there should be 3 zones here but https://yugabyte.atlassian.net/browse/PLAT-3034 needs to be resolved first
 func cloudProviderAzureConfig(name string) string {
 	return fmt.Sprintf(`
 data "yb_customer_data" "customer" {
@@ -198,6 +199,7 @@ resource "yb_cloud_provider" "azure" {
     name = "westus2"
 	vnet_name = "***REMOVED***"
 	zones {
+      name = "westus2-1"
 	  subnet = "***REMOVED***"
 	}
   }
