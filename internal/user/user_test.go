@@ -3,50 +3,52 @@ package user_test
 import (
 	"errors"
 	"fmt"
+	sdkacctest "github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
 	client "github.com/yugabyte/platform-go-client"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/acctest"
+	"testing"
 )
 
 // TODO: these tests will not work until the date issue is resolved https://yugabyte.atlassian.net/browse/PLAT-3305
-//func TestAccUser_Admin(t *testing.T) {
-//	var user client.UserWithFeatures
-//
-//	rName := fmt.Sprintf("tf-acctest-admin-user-%s", sdkacctest.RandString(12))
-//	resource.ParallelTest(t, resource.TestCase{
-//		PreCheck:          func() { acctest.TestAccPreCheck(t) },
-//		ProviderFactories: acctest.ProviderFactories,
-//		CheckDestroy:      testAccCheckDestroyUser,
-//		Steps: []resource.TestStep{
-//			{
-//				Config: userConfigWithRole("Admin", rName),
-//				Check: resource.ComposeTestCheckFunc(
-//					testAccCheckUserExists("yb_user.user", &user),
-//				),
-//			},
-//		},
-//	})
-//}
-//
-//func TestAccUser_ReadOnly(t *testing.T) {
-//	var user client.UserWithFeatures
-//
-//	rName := fmt.Sprintf("tf-acctest-admin-user-%s", sdkacctest.RandString(12))
-//	resource.ParallelTest(t, resource.TestCase{
-//		PreCheck:          func() { acctest.TestAccPreCheck(t) },
-//		ProviderFactories: acctest.ProviderFactories,
-//		CheckDestroy:      testAccCheckDestroyUser,
-//		Steps: []resource.TestStep{
-//			{
-//				Config: userConfigWithRole("ReadOnly", rName),
-//				Check: resource.ComposeTestCheckFunc(
-//					testAccCheckUserExists("yb_user.user", &user),
-//				),
-//			},
-//		},
-//	})
-//}
+func TestAccUser_Admin(t *testing.T) {
+	var user client.UserWithFeatures
+
+	rName := fmt.Sprintf("tf-acctest-admin-user-%s", sdkacctest.RandString(12))
+	resource.ParallelTest(t, resource.TestCase{
+		PreCheck:          func() { acctest.TestAccPreCheck(t) },
+		ProviderFactories: acctest.ProviderFactories,
+		CheckDestroy:      testAccCheckDestroyUser,
+		Steps: []resource.TestStep{
+			{
+				Config: userConfigWithRole("Admin", rName),
+				Check: resource.ComposeTestCheckFunc(
+					testAccCheckUserExists("yb_user.user", &user),
+				),
+			},
+		},
+	})
+}
+
+func TestAccUser_ReadOnly(t *testing.T) {
+	var user client.UserWithFeatures
+
+	rName := fmt.Sprintf("tf-acctest-admin-user-%s", sdkacctest.RandString(12))
+	resource.ParallelTest(t, resource.TestCase{
+		PreCheck:          func() { acctest.TestAccPreCheck(t) },
+		ProviderFactories: acctest.ProviderFactories,
+		CheckDestroy:      testAccCheckDestroyUser,
+		Steps: []resource.TestStep{
+			{
+				Config: userConfigWithRole("ReadOnly", rName),
+				Check: resource.ComposeTestCheckFunc(
+					testAccCheckUserExists("yb_user.user", &user),
+				),
+			},
+		},
+	})
+}
 
 func testAccCheckDestroyUser(s *terraform.State) error {
 	conn := acctest.YWClient
