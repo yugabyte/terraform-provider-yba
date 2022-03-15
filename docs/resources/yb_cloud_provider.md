@@ -25,10 +25,7 @@ Cloud Provider Resource
 - **air_gap_install** (Boolean) Flag indicating if the universe should use an air-gapped installation
 - **code** (String) Code of the cloud provider. Permitted values: gcp, aws, azu
 - **computed_config** (Map of String) Same as config field except some additional values may have been returned by the server.
-- **config** (Map of String) Configuration values to be set for the provider.
-AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY must be set for AWS providers.
-The contents of your google credentials must be included here for GCP providers.
-AZURE_SUBSCRIPTION_ID, AZURE_RG, AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET must be set for AZURE providers.
+- **config** (Map of String) Configuration values to be set for the provider. AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY must be set for AWS providers. The contents of your google credentials must be included here for GCP providers. AZURE_SUBSCRIPTION_ID, AZURE_RG, AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET must be set for AZURE providers.
 - **custom_host_cidrs** (List of String)
 - **dest_vpc_id** (String)
 - **host_vpc_id** (String)

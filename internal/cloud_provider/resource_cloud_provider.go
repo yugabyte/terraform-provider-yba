@@ -48,16 +48,11 @@ func ResourceCloudProvider() *schema.Resource {
 				Description: "Code of the cloud provider. Permitted values: gcp, aws, azu",
 			},
 			"config": {
-				Type:     schema.TypeMap,
-				Elem:     &schema.Schema{Type: schema.TypeString},
-				ForceNew: true,
-				Optional: true,
-				Description: `
-Configuration values to be set for the provider.
-AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY must be set for AWS providers.
-The contents of your google credentials must be included here for GCP providers.
-AZURE_SUBSCRIPTION_ID, AZURE_RG, AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET must be set for AZURE providers.
-`,
+				Type:        schema.TypeMap,
+				Elem:        &schema.Schema{Type: schema.TypeString},
+				ForceNew:    true,
+				Optional:    true,
+				Description: "Configuration values to be set for the provider. AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY must be set for AWS providers. The contents of your google credentials must be included here for GCP providers. AZURE_SUBSCRIPTION_ID, AZURE_RG, AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET must be set for AZURE providers.",
 			},
 			"computed_config": {
 				Type:        schema.TypeMap,
