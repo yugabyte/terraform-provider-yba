@@ -167,7 +167,7 @@ func flattenRegions(regions []client.Region) (res []map[string]interface{}) {
 			"latitude":  region.Latitude,
 			"longitude": region.Longitude,
 			// TODO: the region name is being changed by the server, which messes with terraform state
-			// stop-gap fix is to use the code
+			// stop-gap fix is to use the code value
 			// https://yugabyte.atlassian.net/browse/PLAT-3034
 			"name":              region.Code,
 			"security_group_id": region.SecurityGroupId,
@@ -185,12 +185,14 @@ func flattenZones(zones []client.AvailabilityZone) (res []map[string]interface{}
 		z := map[string]interface{}{
 			"uuid":             zone.Uuid,
 			"active":           zone.Active,
-			"code":             zone.Code,
 			"config":           zone.GetConfig(),
 			"kube_config_path": zone.KubeconfigPath,
 			"secondary_subnet": zone.SecondarySubnet,
 			"subnet":           zone.Subnet,
-			"name":             zone.Name,
+			// TODO: the region name/code is being changed by the server, which messes with terraform state
+			// https://yugabyte.atlassian.net/browse/PLAT-3034
+			"name": zone.Name,
+			"code": zone.Code,
 		}
 		res = append(res, z)
 	}
