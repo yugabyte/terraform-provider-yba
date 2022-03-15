@@ -23,14 +23,41 @@ func TestAccUniverse_GCP_UpdatePrimaryNodes(t *testing.T) {
 			{
 				Config: universeGcpConfigWithNodes(rName, 3),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckUniverseExists("yb_universe.gcp_universe", &universe),
+					testAccCheckUniverseExists("yb_universe.gcp", &universe),
 					testAccCheckNumNodes(&universe, 3),
 				),
 			},
 			{
 				Config: universeGcpConfigWithNodes(rName, 4),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckUniverseExists("yb_universe.gcp_universe", &universe),
+					testAccCheckUniverseExists("yb_universe.gcp", &universe),
+					testAccCheckNumNodes(&universe, 4),
+				),
+			},
+		},
+	})
+}
+
+func TestAccUniverse_AWS_UpdatePrimaryNodes(t *testing.T) {
+	var universe client.UniverseResp
+
+	rName := fmt.Sprintf("tf-acctest-aws-universe-%s", sdkacctest.RandString(12))
+	resource.ParallelTest(t, resource.TestCase{
+		PreCheck:          func() { acctest.TestAccPreCheck(t) },
+		ProviderFactories: acctest.ProviderFactories,
+		CheckDestroy:      testAccCheckDestroyProviderAndUniverse,
+		Steps: []resource.TestStep{
+			{
+				Config: universeAwsConfigWithNodes(rName, 3),
+				Check: resource.ComposeTestCheckFunc(
+					testAccCheckUniverseExists("yb_universe.aws", &universe),
+					testAccCheckNumNodes(&universe, 3),
+				),
+			},
+			{
+				Config: universeAwsConfigWithNodes(rName, 4),
+				Check: resource.ComposeTestCheckFunc(
+					testAccCheckUniverseExists("yb_universe.aws", &universe),
 					testAccCheckNumNodes(&universe, 4),
 				),
 			},
@@ -97,20 +124,19 @@ func testAccCheckNumNodes(universe *client.UniverseResp, expected int32) resourc
 }
 
 func universeGcpConfigWithNodes(name string, nodes int) string {
-	return universeConfigWithProviderWithNodes("gcp", name, nodes)
+	return cloudProviderGCPConfig(fmt.Sprintf(name+"-provider")) + universeConfigWithProviderWithNodes("gcp", name, nodes)
 }
 
 func universeAwsConfigWithNodes(name string, nodes int) string {
-	return universeConfigWithProviderWithNodes("aws", name, nodes)
+	return cloudProviderAWSConfig(fmt.Sprintf(name+"-provider")) + universeConfigWithProviderWithNodes("aws", name, nodes)
 }
 
 func universeAzureConfigWithNodes(name string, nodes int) string {
-	return universeConfigWithProviderWithNodes("azure", name, nodes)
+	return cloudProviderAzureConfig(fmt.Sprintf(name+"-provider")) + universeConfigWithProviderWithNodes("azu", name, nodes)
 }
 
 func universeConfigWithProviderWithNodes(p string, name string, nodes int) string {
-	return cloudProviderGCPConfig(fmt.Sprintf(name+"-provider")) +
-		fmt.Sprintf(`
+	return fmt.Sprintf(`
 data "yb_provider_key" "%s_key" {
   connection_info {
    	cuuid     = data.yb_customer_data.customer.cuuid
@@ -120,7 +146,7 @@ data "yb_provider_key" "%s_key" {
   provider_id = yb_cloud_provider.%s.id
 }
 
-resource "yb_universe" "%s_universe" {
+resource "yb_universe" "%s" {
   connection_info {
     cuuid     = data.yb_customer_data.customer.cuuid
     api_token = data.yb_customer_data.customer.api_token
@@ -153,7 +179,6 @@ resource "yb_universe" "%s_universe" {
   communication_ports {}
 }
 `, p, p, p, name, p, p, p, nodes, acctest.TestYBSoftwareVersion(), p)
-
 }
 
 func cloudProviderGCPConfig(name string) string {
