@@ -13,10 +13,10 @@ import (
 
 var (
 	installationFiles = map[string]string{
-		"replicated_config_file": "/tmp/replicated.conf",
-		"tls_certificate_file": "/tmp/server.crt",
-		"tls_key_file": "/tmp/server.key",
-		"replicated_license_file": "/tmp/license.rli",
+		"replicated_config_file":    "/tmp/replicated.conf",
+		"tls_certificate_file":      "/tmp/server.crt",
+		"tls_key_file":              "/tmp/server.key",
+		"replicated_license_file":   "/tmp/license.rli",
 		"application_settings_file": "/tmp/settings.conf",
 	}
 	installationCommands = []string{
@@ -36,7 +36,7 @@ var (
 		"docker stop replicated-statsd",
 		"docker rm -f replicated replicated-ui replicated-operator replicated-premkit replicated-statsd retraced-api retraced-processor retraced-cron retraced-nsqd retraced-postgres",
 		"docker images | grep \"quay\\.io/replicated\" | awk '{print $3}' | xargs sudo docker rmi -f",
-		"docker images | grep \"registry\\.replicated\\.com/library/retraced\" | awk '{print $3}' | xargs sudo docker rmi -f"
+		"docker images | grep \"registry\\.replicated\\.com/library/retraced\" | awk '{print $3}' | xargs sudo docker rmi -f",
 		"apt-get remove -y replicated replicated-ui replicated-operator",
 		"apt-get purge -y replicated replicated-ui replicated-operator",
 		"rm -rf /var/lib/replicated* /etc/replicated* /etc/init/replicated* /etc/init.d/replicated* /etc/default/replicated* /var/log/upstart/replicated* /etc/systemd/system/replicated*",
@@ -75,31 +75,31 @@ func ResourceInstallation() *schema.Resource {
 			"replicated_config_file": {
 				Type:        schema.TypeString,
 				Required:    true,
-				ForceNew: true,
+				ForceNew:    true,
 				Description: "Configuration file to use for automated installation using Replicated",
 			},
 			"tls_certificate_file": {
 				Type:        schema.TypeString,
 				Required:    true,
-				ForceNew: true,
+				ForceNew:    true,
 				Description: "TLS certificate used to configure HTTPS",
 			},
 			"tls_key_file": {
 				Type:        schema.TypeString,
 				Required:    true,
-				ForceNew: true,
+				ForceNew:    true,
 				Description: "TLS key used to configure HTTPS",
 			},
 			"replicated_license_file": {
 				Type:        schema.TypeString,
 				Required:    true,
-				ForceNew: true,
+				ForceNew:    true,
 				Description: "YugabyteDB Anywhere license file used for installation using Replicated",
 			},
 			"application_settings_file": {
 				Type:        schema.TypeString,
 				Required:    true,
-				ForceNew: true,
+				ForceNew:    true,
 				Description: "Application settings file to configure YugabyteDB Anywhere",
 			},
 		},
