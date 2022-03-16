@@ -173,6 +173,7 @@ resource "yb_cloud_provider" "aws" {
 }
 
 // TODO: there should be 3 zones here but https://yugabyte.atlassian.net/browse/PLAT-3034 needs to be resolved first
+// TODO: this test is really flaky when run against portal.dev
 func cloudProviderAzureConfig(name string) string {
 	return fmt.Sprintf(`
 data "yb_customer_data" "customer" {
@@ -200,14 +201,6 @@ resource "yb_cloud_provider" "azure" {
 	vnet_name = "yugabyte-vnet-us-west2"
 	zones {
       name = "westus2-1"
-	  subnet = "yugabyte-subnet-westus2"
-	}
-	zones {
-      name = "westus2-2"
-	  subnet = "yugabyte-subnet-westus2"
-	}
-	zones {
-      name = "westus2-3"
 	  subnet = "yugabyte-subnet-westus2"
 	}
   }
