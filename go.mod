@@ -19,7 +19,7 @@ require (
 	github.com/mitchellh/mapstructure v1.4.3 // indirect
 	github.com/posener/complete v1.2.3 // indirect
 	github.com/rogpeppe/go-internal v1.8.1 // indirect
-	github.com/yugabyte/platform-go-client v0.0.0-20220308232516-f7d106d1bdaa
+	github.com/yugabyte/platform-go-client v0.0.0-20220316000403-72690ff08ac1
 	golang.org/x/crypto v0.0.0-20220112180741-5e0467b6c7ce // indirect
 	golang.org/x/net v0.0.0-20220121210141-e204ce36a2ba // indirect
 	golang.org/x/sys v0.0.0-20220114195835-da31bd327af9 // indirect
