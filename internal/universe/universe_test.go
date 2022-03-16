@@ -214,7 +214,7 @@ func getUniverseStorageType(p string) string {
 	} else if p == "aws" {
 		return "GP2"
 	}
-	return "Premium"
+	return "Premium_LRS"
 }
 
 func getUniverseInstanceType(p string) string {
@@ -223,7 +223,7 @@ func getUniverseInstanceType(p string) string {
 	} else if p == "aws" {
 		return "c5.xlarge"
 	}
-	return "Standard_D2ads_v5"
+	return "Standard_D4s_v3"
 }
 
 func cloudProviderGCPConfig(name string) string {
