@@ -416,6 +416,8 @@ github.com/xanzy/ssh-agent v0.3.0 h1:wUMzuKtKilRgBAD1sUb8gOwwRr2FGoBVumcjoOACClI
 github.com/xanzy/ssh-agent v0.3.0/go.mod h1:3s9xbODqPuuhK9JV1R321M/FlMZSBvE5aY6eAcqrDh0=
 github.com/yugabyte/platform-go-client v0.0.0-20220308232516-f7d106d1bdaa h1:P8P6Mma02cAK4LJPYaeoGpsfucp24/wqTW8sVCxoxSI=
 github.com/yugabyte/platform-go-client v0.0.0-20220308232516-f7d106d1bdaa/go.mod h1:DCweVAOmhBcxKl4aAmsBDVI6K1VZXHkLRcCCLgZnwj0=
+github.com/yugabyte/platform-go-client v0.0.0-20220316000403-72690ff08ac1 h1:IHJD5PTbYnDZSGkwo185RTSSEr8Qg3vCk6FCkRUaiaQ=
+github.com/yugabyte/platform-go-client v0.0.0-20220316000403-72690ff08ac1/go.mod h1:DCweVAOmhBcxKl4aAmsBDVI6K1VZXHkLRcCCLgZnwj0=
 github.com/yuin/goldmark v1.1.25/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9decYSb74=
 github.com/yuin/goldmark v1.1.27/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9decYSb74=
 github.com/yuin/goldmark v1.1.32/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9decYSb74=

@@ -58,14 +58,14 @@ func RegionsSchema() *schema.Schema {
 					Optional:    true,
 					Computed:    true,
 					ForceNew:    true,
-					Description: "Security group ID to use for this region. Only set for AWS providers",
+					Description: "Security group ID to use for this region. Only set for AWS/Azure providers",
 				},
 				"vnet_name": {
 					Type:        schema.TypeString,
 					Optional:    true,
 					Computed:    true,
 					ForceNew:    true,
-					Description: "Name of the virtual network to use for this region. Only set for Azure providers",
+					Description: "Name of the virtual network/VPC ID to use for this region. Only set for AWS/Azure providers",
 				},
 				"yb_image": {
 					Type:        schema.TypeString,
