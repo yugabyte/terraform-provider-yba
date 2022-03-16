@@ -299,16 +299,14 @@ func userIntentSchema() *schema.Resource {
 				Description: "", // TODO: document
 			},
 			"enable_ycql_auth": {
-				Type:         schema.TypeBool,
-				Optional:     true,
-				RequiredWith: []string{"ycql_password", "enable_ycql_auth"},
-				Description:  "", // TODO: document
+				Type:        schema.TypeBool,
+				Optional:    true,
+				Description: "", // TODO: document
 			},
 			"enable_ysql_auth": {
-				Type:         schema.TypeBool,
-				Optional:     true,
-				RequiredWith: []string{"ysql_password", "enable_ysql_auth"},
-				Description:  "", // TODO: document
+				Type:        schema.TypeBool,
+				Optional:    true,
+				Description: "", // TODO: document
 			},
 			"instance_tags": {
 				Type:        schema.TypeMap,
@@ -332,16 +330,14 @@ func userIntentSchema() *schema.Resource {
 				Description: "", // TODO: document
 			},
 			"ysql_password": {
-				Type:         schema.TypeString,
-				Optional:     true,
-				RequiredWith: []string{"ycql_password", "enable_ycql_auth"},
-				Description:  "", // TODO: document
+				Type:        schema.TypeString,
+				Optional:    true,
+				Description: "", // TODO: document
 			},
 			"ycql_password": {
-				Type:         schema.TypeString,
-				Optional:     true,
-				RequiredWith: []string{"ycql_password", "enable_ycql_auth"},
-				Description:  "", // TODO: document
+				Type:        schema.TypeString,
+				Optional:    true,
+				Description: "", // TODO: document
 			},
 			"universe_name": {
 				Type:        schema.TypeString,
@@ -809,7 +805,7 @@ func resourceUniverseUpdate(ctx context.Context, d *schema.ResourceData, meta in
 
 	cUUID, token := api.GetConnectionInfo(d)
 	ctx = api.SetContextApiKey(ctx, token)
-	if d.HasChanges("clusters") {
+	if d.HasChange("clusters") {
 		var taskIds []string
 		clusters := d.Get("clusters").([]interface{})
 		updateUni, _, err := c.UniverseManagementApi.GetUniverse(ctx, cUUID, d.Id()).Execute()
@@ -848,6 +844,14 @@ func resourceUniverseUpdate(ctx context.Context, d *schema.ResourceData, meta in
 			if err != nil {
 				return diag.FromErr(err)
 			}
+		}
+	}
+	if d.HasChange("yb_software_version") {
+		req := client.SoftwareUpgradeParams{YbSoftwareVersion: d.Get("yb_software_version").(string)}
+		r, _, err := c.UniverseUpgradesManagementApi.UpgradeSoftware(ctx, cUUID, d.Id()).SoftwareUpgradeParams(req).Execute()
+		err = utils.WaitForTask(ctx, *r.TaskUUID, cUUID, c, time.Hour)
+		if err != nil {
+			return diag.FromErr(err)
 		}
 	}
 	return resourceUniverseRead(ctx, d, meta)

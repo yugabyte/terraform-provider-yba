@@ -188,7 +188,7 @@ resource "yb_universe" "%s" {
       region_list        = yb_cloud_provider.%s.regions[*].uuid
       num_nodes          = %d
       replication_factor = 3
-      instance_type      = "n1-standard-1"
+      instance_type      = "%s"
       device_info {
         num_volumes  = 1
         volume_size  = 375
@@ -205,7 +205,7 @@ resource "yb_universe" "%s" {
   }
   communication_ports {}
 }
-`, p, p, p, name, p, p, p, nodes, getUniverseStorageType(p), acctest.TestYBSoftwareVersion(), p)
+`, p, p, p, name, p, p, p, nodes, getUniverseInstanceType(p), getUniverseStorageType(p), acctest.TestYBSoftwareVersion(), p)
 }
 
 func getUniverseStorageType(p string) string {
@@ -215,6 +215,15 @@ func getUniverseStorageType(p string) string {
 		return "GP2"
 	}
 	return "Premium"
+}
+
+func getUniverseInstanceType(p string) string {
+	if p == "gcp" {
+		return "n1-standard-1"
+	} else if p == "aws" {
+		return "c5.xlarge"
+	}
+	return "Standard_D2ads_v5"
 }
 
 func cloudProviderGCPConfig(name string) string {
@@ -279,7 +288,7 @@ data "yb_customer_data" "customer" {
   api_token = "%s"
 }
 
-resource "yb_cloud_provider" "azure" {
+resource "yb_cloud_provider" "azu" {
   connection_info {
     cuuid     = data.yb_customer_data.customer.cuuid
     api_token = data.yb_customer_data.customer.api_token

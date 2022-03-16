@@ -202,6 +202,14 @@ resource "yb_cloud_provider" "azure" {
       name = "westus2-1"
 	  subnet = "***REMOVED***"
 	}
+	zones {
+      name = "westus2-2"
+	  subnet = "***REMOVED***"
+	}
+	zones {
+      name = "westus2-3"
+	  subnet = "***REMOVED***"
+	}
   }
 }
 `,
