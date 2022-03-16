@@ -6,6 +6,7 @@ require (
 	cloud.google.com/go/storage v1.14.0 // indirect
 	github.com/armon/go-radix v1.0.0 // indirect
 	github.com/aws/aws-sdk-go v1.36.30 // indirect
+	github.com/bramvdbogaerde/go-scp v1.2.0 // indirect
 	github.com/fatih/color v1.13.0 // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/google/uuid v1.3.0 // indirect
@@ -20,7 +21,7 @@ require (
 	github.com/posener/complete v1.2.3 // indirect
 	github.com/rogpeppe/go-internal v1.8.1 // indirect
 	github.com/yugabyte/platform-go-client v0.0.0-20220316000403-72690ff08ac1
-	golang.org/x/crypto v0.0.0-20220112180741-5e0467b6c7ce // indirect
+	golang.org/x/crypto v0.0.0-20220315160706-3147a52a75dd // indirect
 	golang.org/x/net v0.0.0-20220121210141-e204ce36a2ba // indirect
 	golang.org/x/sys v0.0.0-20220114195835-da31bd327af9 // indirect
 	google.golang.org/api v0.63.0 // indirect
