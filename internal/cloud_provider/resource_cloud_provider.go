@@ -30,11 +30,6 @@ func ResourceCloudProvider() *schema.Resource {
 
 		Schema: map[string]*schema.Schema{
 			"connection_info": customer.ConnectionInfoSchema(),
-			"active": {
-				Type:        schema.TypeBool,
-				Computed:    true,
-				Description: "Flag indicating if the provider is active",
-			},
 			"air_gap_install": {
 				Type:        schema.TypeBool,
 				Optional:    true,
@@ -199,9 +194,6 @@ func resourceCloudProviderRead(ctx context.Context, d *schema.ResourceData, meta
 		return diag.FromErr(err)
 	}
 
-	if err = d.Set("active", p.Active); err != nil {
-		return diag.FromErr(err)
-	}
 	if err = d.Set("air_gap_install", p.AirGapInstall); err != nil {
 		return diag.FromErr(err)
 	}
@@ -215,9 +207,6 @@ func resourceCloudProviderRead(ctx context.Context, d *schema.ResourceData, meta
 		return diag.FromErr(err)
 	}
 	if err = d.Set("hosted_zone_id", p.HostedZoneId); err != nil {
-		return diag.FromErr(err)
-	}
-	if err = d.Set("active", p.Active); err != nil {
 		return diag.FromErr(err)
 	}
 	if err = d.Set("hosted_zone_name", p.HostedZoneName); err != nil {

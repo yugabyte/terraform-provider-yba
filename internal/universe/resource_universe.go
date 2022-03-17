@@ -57,27 +57,10 @@ func ResourceUniverse() *schema.Resource {
 			},
 
 			// Universe Fields
-			"allow_insecure": {
-				Type:        schema.TypeBool,
-				Optional:    true,
-				Computed:    true,
-				Description: "", // TODO: document
-			},
-			"capability": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				Computed:    true,
-				Description: "Operations permitted on the universe. Permitted values: READ_ONLY, EDITS_ALLOWED",
-			},
 			"client_root_ca": {
 				Type:        schema.TypeString,
 				Optional:    true,
 				Description: "", // TODO: document
-			},
-			"cmk_arn": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				Description: "Amazon Resource Name (ARN) of the CMK",
 			},
 			"clusters": {
 				Type:     schema.TypeList,
@@ -507,10 +490,7 @@ func resourceUniverseCreate(ctx context.Context, d *schema.ResourceData, meta in
 
 func buildUniverse(d *schema.ResourceData) client.UniverseConfigureTaskParams {
 	return client.UniverseConfigureTaskParams{
-		AllowInsecure:      utils.GetBoolPointer(d.Get("allow_insecure").(bool)),
-		Capability:         utils.GetStringPointer(d.Get("capability").(string)),
 		ClientRootCA:       utils.GetStringPointer(d.Get("client_root_ca").(string)),
-		CmkArn:             utils.GetStringPointer(d.Get("cmk_arn").(string)),
 		Clusters:           buildClusters(d.Get("clusters").([]interface{})),
 		CommunicationPorts: buildCommunicationPorts(utils.MapFromSingletonList(d.Get("communication_ports").([]interface{}))),
 	}
@@ -657,16 +637,7 @@ func resourceUniverseRead(ctx context.Context, d *schema.ResourceData, meta inte
 	}
 
 	u := r.UniverseDetails
-	if err = d.Set("allow_insecure", u.AllowInsecure); err != nil {
-		return diag.FromErr(err)
-	}
-	if err = d.Set("capability", u.Capability); err != nil {
-		return diag.FromErr(err)
-	}
 	if err = d.Set("client_root_ca", u.ClientRootCA); err != nil {
-		return diag.FromErr(err)
-	}
-	if err = d.Set("cmk_arn", u.CmkArn); err != nil {
 		return diag.FromErr(err)
 	}
 	if err = d.Set("clusters", flattenClusters(u.Clusters)); err != nil {
