@@ -30,11 +30,6 @@ module "azure-platform" {
   // files
   ssh_private_key               = "/Users/stevendu/.ssh/yugaware-azure"
   ssh_public_key                = "/Users/stevendu/.ssh/yugaware-azure.pub"
-  replicated_filepath           = "${local.dir}/replicated.conf"
-  application_settings_filepath = "${local.dir}/application_settings.conf"
-  tls_cert_filepath             = ""
-  tls_key_filepath              = ""
-  license_filepath              = "/Users/stevendu/.yugabyte/yugabyte-dev.rli"
 }
 
 provider "yb" {
@@ -47,6 +42,15 @@ resource "yb_customer_resource" "customer" {
   email      = "sdu@yugabyte.com"
   name       = "sdu"
   password   = "Password1@"
+}
+
+resource "yb_installation" "installation" {
+  public_ip                 = module.azure-platform.public_ip
+  ssh_user                  = "centos"
+  ssh_private_key           = file("/Users/stevendu/.ssh/yugaware-1-gcp")
+  replicated_config_file    = "${local.dir}/replicated.conf"
+  replicated_license_file   = "/Users/stevendu/.yugabyte/yugabyte-dev.rli"
+  application_settings_file = "${local.dir}/application_settings.conf"
 }
 
 resource "yb_cloud_provider" "gcp" {
