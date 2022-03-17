@@ -25,11 +25,11 @@ locals {
 module "gcp-platform" {
   source = "../../modules/gcp"
 
-  cluster_name    = local.cluster_name
-  ssh_user        = "centos"
-  network_tags    = [local.cluster_name, "http-server", "https-server"]
-  vpc_network     = "***REMOVED***"
-  vpc_subnetwork  = "***REMOVED***"
+  cluster_name   = local.cluster_name
+  ssh_user       = "centos"
+  network_tags   = [local.cluster_name, "http-server", "https-server"]
+  vpc_network    = "***REMOVED***"
+  vpc_subnetwork = "***REMOVED***"
   // files
   ssh_private_key = "/Users/stevendu/.ssh/yugaware-1-gcp"
   ssh_public_key  = "/Users/stevendu/.ssh/yugaware-1-gcp.pub"
