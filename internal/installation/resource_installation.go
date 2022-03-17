@@ -1,6 +1,7 @@
 package installation
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"github.com/bramvdbogaerde/go-scp"
@@ -102,6 +103,11 @@ func ResourceInstallation() *schema.Resource {
 				Required:    true,
 				Description: "Application settings file to configure YugabyteDB Anywhere",
 			},
+			"cleanup": {
+				Type:        schema.TypeBool,
+				Optional:    true,
+				Description: "Flag for indicating if resources should be cleaned up during the uninstall. Set this to true if you plan to reuse the virtual machine.",
+			},
 		},
 	}
 }
@@ -126,18 +132,21 @@ func newSSHClient(user string, ip string, key string) (*ssh.Client, error) {
 }
 
 func runCommand(ctx context.Context, client *ssh.Client, cmd string) error {
-	tflog.Debug(ctx, fmt.Sprintf("running command %s", cmd))
+	tflog.Info(ctx, fmt.Sprintf("running command %s", cmd))
 	session, err := client.NewSession()
 	if err != nil {
 		return err
 	}
+	var b bytes.Buffer
+	session.Stdout = &b
 	defer session.Close()
 	err = session.Run(cmd)
+	tflog.Info(ctx, b.String())
 	return err
 }
 
 func scpFile(ctx context.Context, sshClient *ssh.Client, localFile string, remoteFile string) error {
-	tflog.Debug(ctx, fmt.Sprintf("copying %s to %s", localFile, remoteFile))
+	tflog.Info(ctx, fmt.Sprintf("copying %s to %s", localFile, remoteFile))
 
 	client, err := scp.NewClientBySSH(sshClient)
 	if err != nil {
@@ -206,8 +215,14 @@ func resourceInstallationUpdate(ctx context.Context, d *schema.ResourceData, met
 func resourceInstallationDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	var diags diag.Diagnostics
 
+	cleanup := d.Get("cleanup").(bool)
+	if !cleanup {
+		d.SetId("")
+		return diags
+	}
+
 	ip := d.Get("public_ip").(string)
-	user := d.Get("user").(string)
+	user := d.Get("ssh_user").(string)
 	pk := d.Get("ssh_private_key").(string)
 
 	sshClient, err := newSSHClient(user, ip, pk)
