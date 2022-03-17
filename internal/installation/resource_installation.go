@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/bramvdbogaerde/go-scp"
+	"github.com/google/uuid"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
@@ -148,7 +149,7 @@ func scpFile(ctx context.Context, sshClient *ssh.Client, localFile string, remot
 		return err
 	}
 	defer client.Close()
-	
+
 	f, _ := os.Open(localFile)
 	defer f.Close()
 
@@ -186,6 +187,8 @@ func resourceInstallationCreate(ctx context.Context, d *schema.ResourceData, met
 			return diag.FromErr(err)
 		}
 	}
+
+	d.SetId(uuid.New().String())
 	return diags
 }
 
@@ -218,5 +221,7 @@ func resourceInstallationDelete(ctx context.Context, d *schema.ResourceData, met
 			return diag.FromErr(err)
 		}
 	}
+
+	d.SetId("")
 	return diags
 }
