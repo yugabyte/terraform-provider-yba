@@ -26,11 +26,12 @@ var (
 	}
 	installationCommands = []string{
 		"sudo mv /tmp/replicated.conf /etc/replicated.conf",
+		// after uninstalling, this command will prompt for input from /dev/tty and there's no easy way to provide it using the command line
 		"curl -sSL https://get.replicated.com/docker | sudo bash",
 	}
 	deletionCommands = []string{
 		// remove yugabyte resources
-		"/usr/local/bin/replicated apps | grep \"yugaware\" | awk '{print $1} | xargs /usr/local/bin/replicated app stop",
+		"/usr/local/bin/replicated apps | grep \"yugaware\" | awk '{print $1}' | xargs -I {} /usr/local/bin/replicated app {} stop",
 		"sudo docker images | grep \"yuga\" | awk '{print $3}' | sudo xargs docker rmi -f",
 		"sudo rm -rf /opt/yugabyte",
 		"sudo rm /etc/replicated.conf /tmp/replicated.conf /tmp/server.crt /tmp/server.key /tmp/license/rli /tmp/settings.conf",
@@ -133,18 +134,20 @@ func newSSHClient(user string, ip string, key string) (*ssh.Client, error) {
 	return client, nil
 }
 
-func runCommand(ctx context.Context, client *ssh.Client, cmd string) error {
+func runCommand(ctx context.Context, client *ssh.Client, cmd string) (string, error) {
 	tflog.Info(ctx, fmt.Sprintf("running command %s", cmd))
 	session, err := client.NewSession()
 	if err != nil {
-		return err
+		return "", err
 	}
 	var b bytes.Buffer
+	var c bytes.Buffer
+	session.Stderr = &c
 	session.Stdout = &b
 	defer session.Close()
 	err = session.Run(cmd)
 	tflog.Info(ctx, b.String())
-	return err
+	return c.String(), err
 }
 
 func scpFile(ctx context.Context, sshClient *ssh.Client, localFile string, remoteFile string) error {
@@ -218,9 +221,9 @@ func resourceInstallationCreate(ctx context.Context, d *schema.ResourceData, met
 	}
 
 	for _, cmd := range installationCommands {
-		err = runCommand(ctx, sshClient, cmd)
+		m, err := runCommand(ctx, sshClient, cmd)
 		if err != nil {
-			return diag.FromErr(err)
+			tflog.Error(ctx, m)
 		}
 	}
 
@@ -258,9 +261,9 @@ func resourceInstallationDelete(ctx context.Context, d *schema.ResourceData, met
 	defer sshClient.Close()
 
 	for _, cmd := range deletionCommands {
-		err = runCommand(ctx, sshClient, cmd)
+		m, err := runCommand(ctx, sshClient, cmd)
 		if err != nil {
-			return diag.FromErr(err)
+			tflog.Error(ctx, m)
 		}
 	}
 
