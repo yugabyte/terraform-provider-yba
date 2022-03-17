@@ -1,9 +1,10 @@
 package installation
 
 import (
-	"bytes"
 	"context"
+	"fmt"
 	"github.com/bramvdbogaerde/go-scp"
+	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"golang.org/x/crypto/ssh"
@@ -45,7 +46,7 @@ var (
 
 func ResourceInstallation() *schema.Resource {
 	return &schema.Resource{
-		Description: "Manages the installation of YugabyteDB Anywhere on an existing virtual machine",
+		Description: "Manages the installation of YugabyteDB Anywhere on an existing virtual machine. This resource does not track the remote state and is only provided as a convenience tool. To reinstall, taint this resource and re-apply.",
 
 		CreateContext: resourceInstallationCreate,
 		ReadContext:   resourceInstallationRead,
@@ -75,31 +76,28 @@ func ResourceInstallation() *schema.Resource {
 			"replicated_config_file": {
 				Type:        schema.TypeString,
 				Required:    true,
-				ForceNew:    true,
 				Description: "Configuration file to use for automated installation using Replicated",
 			},
 			"tls_certificate_file": {
-				Type:        schema.TypeString,
-				Required:    true,
-				ForceNew:    true,
-				Description: "TLS certificate used to configure HTTPS",
+				Type:         schema.TypeString,
+				Optional:     true,
+				RequiredWith: []string{"tls_key_file"},
+				Description:  "TLS certificate used to configure HTTPS",
 			},
 			"tls_key_file": {
-				Type:        schema.TypeString,
-				Required:    true,
-				ForceNew:    true,
-				Description: "TLS key used to configure HTTPS",
+				Type:         schema.TypeString,
+				Optional:     true,
+				RequiredWith: []string{"tls_certificate_file"},
+				Description:  "TLS key used to configure HTTPS",
 			},
 			"replicated_license_file": {
 				Type:        schema.TypeString,
 				Required:    true,
-				ForceNew:    true,
 				Description: "YugabyteDB Anywhere license file used for installation using Replicated",
 			},
 			"application_settings_file": {
 				Type:        schema.TypeString,
 				Required:    true,
-				ForceNew:    true,
 				Description: "Application settings file to configure YugabyteDB Anywhere",
 			},
 		},
@@ -125,25 +123,33 @@ func newSSHClient(user string, ip string, key string) (*ssh.Client, error) {
 	return client, nil
 }
 
-func runCommand(client *ssh.Client, cmd string) (string, error) {
+func runCommand(ctx context.Context, client *ssh.Client, cmd string) error {
+	tflog.Debug(ctx, fmt.Sprintf("running command %s", cmd))
 	session, err := client.NewSession()
-	if err != nil {
-		return "", err
-	}
-	defer session.Close()
-	var b bytes.Buffer
-	session.Stdout = &b
-	err = session.Run(cmd)
-	return b.String(), err
-}
-
-func scpFile(client *scp.Client, localFile string, remoteFile string) error {
-	err := client.Connect()
 	if err != nil {
 		return err
 	}
-	f, _ := os.Open(localFile)
+	defer session.Close()
+	err = session.Run(cmd)
+	return err
+}
+
+func scpFile(ctx context.Context, sshClient *ssh.Client, localFile string, remoteFile string) error {
+	tflog.Debug(ctx, fmt.Sprintf("copying %s to %s", localFile, remoteFile))
+
+	client, err := scp.NewClientBySSH(sshClient)
+	if err != nil {
+		return err
+	}
 	defer client.Close()
+
+	err = client.Connect()
+	if err != nil {
+		return err
+	}
+	defer client.Close()
+	
+	f, _ := os.Open(localFile)
 	defer f.Close()
 
 	err = client.CopyFromFile(context.Background(), *f, remoteFile, "0666")
@@ -154,31 +160,28 @@ func resourceInstallationCreate(ctx context.Context, d *schema.ResourceData, met
 	var diags diag.Diagnostics
 
 	ip := d.Get("public_ip").(string)
-	user := d.Get("user").(string)
+	user := d.Get("ssh_user").(string)
 	pk := d.Get("ssh_private_key").(string)
 
 	sshClient, err := newSSHClient(user, ip, pk)
 	if err != nil {
 		return diag.FromErr(err)
 	}
-	scpClient, err := scp.NewClientBySSH(sshClient)
-	if err != nil {
-		return diag.FromErr(err)
-	}
+	defer sshClient.Close()
 
 	for key, remote := range installationFiles {
 		local := d.Get(key).(string)
 		if local == "" {
 			continue
 		}
-		err = scpFile(&scpClient, local, remote)
+		err = scpFile(ctx, sshClient, local, remote)
 		if err != nil {
 			return diag.FromErr(err)
 		}
 	}
 
 	for _, cmd := range installationCommands {
-		_, err = runCommand(sshClient, cmd)
+		err = runCommand(ctx, sshClient, cmd)
 		if err != nil {
 			return diag.FromErr(err)
 		}
@@ -207,9 +210,10 @@ func resourceInstallationDelete(ctx context.Context, d *schema.ResourceData, met
 	if err != nil {
 		return diag.FromErr(err)
 	}
+	defer sshClient.Close()
 
 	for _, cmd := range deletionCommands {
-		_, err = runCommand(sshClient, cmd)
+		err = runCommand(ctx, sshClient, cmd)
 		if err != nil {
 			return diag.FromErr(err)
 		}
