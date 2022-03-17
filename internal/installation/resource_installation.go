@@ -26,7 +26,7 @@ var (
 	}
 	installationCommands = []string{
 		"sudo mv /tmp/replicated.conf /etc/replicated.conf",
-		// after uninstalling, this command will prompt for input from /dev/tty and there's no easy way to provide it using the command line
+		// TODO: after uninstalling, this command will prompt for input from /dev/tty and there's no easy way to provide it using the command line
 		"curl -sSL https://get.replicated.com/docker | sudo bash",
 	}
 	deletionCommands = []string{
