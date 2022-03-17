@@ -27,21 +27,22 @@ var (
 	}
 	deletionCommands = []string{
 		// remove yugabyte resources
-		"docker images | grep \"yuga\" | awk '{print $3}' | xargs docker rmi -f",
-		"rm -rf /opt/yugabyte",
-		"rm /etc/replicated.conf /tmp/replicated.conf /tmp/server.crt /tmp/server.key /tmp/license/rli /tmp/settings.conf",
+		"/usr/local/bin/replicated apps | grep \"yugaware\" | awk '{print $1} | xargs /usr/local/bin/replicated app stop",
+		"sudo docker images | grep \"yuga\" | awk '{print $3}' | sudo xargs docker rmi -f",
+		"sudo rm -rf /opt/yugabyte",
+		"sudo rm /etc/replicated.conf /tmp/replicated.conf /tmp/server.crt /tmp/server.key /tmp/license/rli /tmp/settings.conf",
 		// remove replicated resources
-		"service replicated stop",
-		"service replicated-ui stop",
-		"service replicated-operator stop",
-		"docker stop replicated-premkit",
-		"docker stop replicated-statsd",
-		"docker rm -f replicated replicated-ui replicated-operator replicated-premkit replicated-statsd retraced-api retraced-processor retraced-cron retraced-nsqd retraced-postgres",
-		"docker images | grep \"quay\\.io/replicated\" | awk '{print $3}' | xargs sudo docker rmi -f",
-		"docker images | grep \"registry\\.replicated\\.com/library/retraced\" | awk '{print $3}' | xargs sudo docker rmi -f",
-		"apt-get remove -y replicated replicated-ui replicated-operator",
-		"apt-get purge -y replicated replicated-ui replicated-operator",
-		"rm -rf /var/lib/replicated* /etc/replicated* /etc/init/replicated* /etc/init.d/replicated* /etc/default/replicated* /var/log/upstart/replicated* /etc/systemd/system/replicated*",
+		"sudo service replicated stop",
+		"sudo service replicated-ui stop",
+		"sudo service replicated-operator stop",
+		"sudo docker stop replicated-premkit",
+		"sudo docker stop replicated-statsd",
+		"sudo docker rm -f replicated replicated-ui replicated-operator replicated-premkit replicated-statsd retraced-api retraced-processor retraced-cron retraced-nsqd retraced-postgres",
+		"sudo docker images | grep \"quay\\.io/replicated\" | awk '{print $3}' | xargs sudo docker rmi -f",
+		"sudo docker images | grep \"registry\\.replicated\\.com/library/retraced\" | awk '{print $3}' | sudo xargs docker rmi -f",
+		"sudo apt-get remove -y replicated replicated-ui replicated-operator",
+		"sudo apt-get purge -y replicated replicated-ui replicated-operator",
+		"sudo rm -rf /var/lib/replicated* /etc/replicated* /etc/init/replicated* /etc/init.d/replicated* /etc/default/replicated* /var/log/upstart/replicated* /etc/systemd/system/replicated*",
 	}
 )
 
