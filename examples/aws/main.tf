@@ -29,7 +29,7 @@ module "aws-platform" {
   vpc_id              = "vpc-0fe36f6b"
   subnet_id           = "subnet-f840ce9c"
   // files
-  ssh_private_key               = "/Users/stevendu/.yugabyte/yb-dev-aws-2.pem"
+  ssh_private_key = "/Users/stevendu/.yugabyte/yb-dev-aws-2.pem"
 }
 
 provider "yb" {

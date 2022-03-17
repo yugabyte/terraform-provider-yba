@@ -60,8 +60,8 @@ Optional:
 - **code** (String) Region code. Varies by cloud provider
 - **config** (Map of String)
 - **name** (String) Name of the region. Varies by cloud provider
-- **security_group_id** (String) Security group ID to use for this region. Only set for AWS providers
-- **vnet_name** (String) Name of the virtual network to use for this region. Only set for Azure providers
+- **security_group_id** (String) Security group ID to use for this region. Only set for AWS/Azure providers
+- **vnet_name** (String) Name of the virtual network/VPC ID to use for this region. Only set for AWS/Azure providers
 - **yb_image** (String)
 - **zones** (Block List) (see [below for nested schema](#nestedblock--regions--zones))
 

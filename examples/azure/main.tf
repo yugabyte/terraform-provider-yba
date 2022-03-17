@@ -28,8 +28,8 @@ module "azure-platform" {
   vnet_name           = "yugabyte-vnet-us-west2"
   vnet_resource_group = "yugabyte-rg"
   // files
-  ssh_private_key               = "/Users/stevendu/.ssh/yugaware-azure"
-  ssh_public_key                = "/Users/stevendu/.ssh/yugaware-azure.pub"
+  ssh_private_key = "/Users/stevendu/.ssh/yugaware-azure"
+  ssh_public_key  = "/Users/stevendu/.ssh/yugaware-azure.pub"
 }
 
 provider "yb" {
