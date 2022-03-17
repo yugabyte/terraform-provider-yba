@@ -45,23 +45,3 @@ variable "ssh_private_key" {
   description = "Path to private key to use when connecting to the instances"
   type        = string
 }
-variable "replicated_filepath" {
-  description = "path to replicated config"
-  type        = string
-}
-variable "license_filepath" {
-  description = "path to Yugabyte platform license"
-  type        = string
-}
-variable "tls_cert_filepath" {
-  description = "path to tls certificate"
-  type        = string
-}
-variable "tls_key_filepath" {
-  description = "path to tls private key"
-  type        = string
-}
-variable "application_settings_filepath" {
-  description = "path to platform application settings"
-  type        = string
-}
