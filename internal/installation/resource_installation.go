@@ -8,10 +8,12 @@ import (
 	"github.com/google/uuid"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"golang.org/x/crypto/ssh"
 	"net"
 	"os"
+	"time"
 )
 
 var (
@@ -167,6 +169,30 @@ func scpFile(ctx context.Context, sshClient *ssh.Client, localFile string, remot
 	return err
 }
 
+func waitForIP(ctx context.Context, user string, ip string, pk string, timeout time.Duration) (*ssh.Client, error) {
+	wait := &resource.StateChangeConf{
+		Delay:   1 * time.Second,
+		Pending: []string{"Waiting"},
+		Target:  []string{"Ready"},
+		Timeout: timeout,
+
+		Refresh: func() (result interface{}, state string, err error) {
+			client, err := newSSHClient(user, ip, pk)
+			if err != nil {
+				return nil, "Waiting", nil
+			}
+
+			return client, "Ready", nil
+		},
+	}
+
+	client, err := wait.WaitForStateContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return client.(*ssh.Client), nil
+}
+
 func resourceInstallationCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	var diags diag.Diagnostics
 
@@ -174,7 +200,7 @@ func resourceInstallationCreate(ctx context.Context, d *schema.ResourceData, met
 	user := d.Get("ssh_user").(string)
 	pk := d.Get("ssh_private_key").(string)
 
-	sshClient, err := newSSHClient(user, ip, pk)
+	sshClient, err := waitForIP(ctx, user, ip, pk, 5*time.Minute)
 	if err != nil {
 		return diag.FromErr(err)
 	}

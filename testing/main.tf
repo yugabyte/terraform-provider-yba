@@ -49,8 +49,16 @@ resource "yb_installation" "installation" {
 }
 
 resource "yb_customer_resource" "customer" {
+  depends_on = [yb_installation.installation]
   code     = "admin"
   email    = "tf@yugabyte.com"
   name     = "tf-acctest"
   password = "Password1@"
+}
+
+output "host" {
+  value = module.gcp-platform.public_ip
+}
+output "api_key" {
+  value = yb_customer_resource.customer.api_token
 }

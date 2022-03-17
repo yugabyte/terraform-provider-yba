@@ -37,20 +37,21 @@ provider "yb" {
   host = "${module.aws-platform.public_ip}:80"
 }
 
+resource "yb_installation" "installation" {
+  public_ip                 = module.aws-platform.public_ip
+  ssh_user                  = "ubuntu"
+  ssh_private_key           = file("/Users/stevendu/.yugabyte/yb-dev-aws-2.pem")
+  replicated_config_file    = "${local.dir}/replicated.conf"
+  replicated_license_file   = "/Users/stevendu/.yugabyte/yugabyte-dev.rli"
+  application_settings_file = "${local.dir}/application_settings.conf"
+}
+
 resource "yb_customer_resource" "customer" {
+  depends_on = [yb_installation.installation]
   code     = "admin"
   email    = "sdu@yugabyte.com"
   name     = "sdu"
   password = "Password1@"
-}
-
-resource "yb_installation" "installation" {
-  public_ip                 = module.aws-platform.public_ip
-  ssh_user                  = "centos"
-  ssh_private_key           = file("/Users/stevendu/.ssh/yugaware-1-gcp")
-  replicated_config_file    = "${local.dir}/replicated.conf"
-  replicated_license_file   = "/Users/stevendu/.yugabyte/yugabyte-dev.rli"
-  application_settings_file = "${local.dir}/application_settings.conf"
 }
 
 resource "yb_cloud_provider" "gcp" {

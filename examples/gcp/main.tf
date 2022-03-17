@@ -49,6 +49,7 @@ resource "yb_installation" "installation" {
 }
 
 resource "yb_customer_resource" "customer" {
+  depends_on = [yb_installation.installation]
   code     = "admin"
   email    = "sdu@yugabyte.com"
   name     = "sdu"
