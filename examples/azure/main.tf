@@ -18,7 +18,7 @@ locals {
   dir = "/Users/stevendu/code/terraform-provider-yugabyte-anywhere/modules/resources"
 }
 
-module "azure-platform" {
+module "azure_yb_anywhere" {
   source = "../../modules/azure"
 
   cluster_name        = "sdu-test-yugaware"
@@ -33,12 +33,12 @@ module "azure-platform" {
 }
 
 provider "yb" {
-  host = "${module.azure-platform.public_ip}:80"
+  host = "${module.azure_yb_anywhere.public_ip}:80"
 }
 
 resource "yb_installation" "installation" {
-  public_ip                 = module.azure-platform.public_ip
-  private_ip                = module.azure-platform.private_ip
+  public_ip                 = module.azure_yb_anywhere.public_ip
+  private_ip                = module.azure_yb_anywhere.private_ip
   ssh_user                  = "sdu"
   ssh_private_key           = file("/Users/stevendu/.ssh/yugaware-azure")
   replicated_config_file    = "${local.dir}/replicated.conf"
@@ -47,7 +47,7 @@ resource "yb_installation" "installation" {
 }
 
 resource "yb_customer_resource" "customer" {
-  depends_on = [module.azure-platform, yb_installation.installation]
+  depends_on = [module.azure_yb_anywhere, yb_installation.installation]
   code       = "admin"
   email      = "sdu@yugabyte.com"
   name       = "sdu"

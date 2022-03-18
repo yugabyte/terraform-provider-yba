@@ -1,4 +1,4 @@
-data "google_compute_image" "yb_platform_image" {
+data "google_compute_image" "yb_anywhere_image" {
   family  = var.image_family
   project = var.image_project
 }
@@ -14,13 +14,13 @@ resource "google_compute_firewall" "yugaware-firewall" {
   target_tags   = [var.cluster_name]
 }
 
-resource "google_compute_instance" "yb_platform_node" {
+resource "google_compute_instance" "yb_anywhere_node" {
   name         = var.cluster_name
   machine_type = var.machine_type
 
   boot_disk {
     initialize_params {
-      image = data.google_compute_image.yb_platform_image.self_link
+      image = data.google_compute_image.yb_anywhere_image.self_link
       size  = var.disk_size
     }
   }

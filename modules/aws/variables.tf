@@ -1,15 +1,15 @@
 variable "instance_type" {
-  description = "The instance type for the platform node"
+  description = "The instance type for the YugabyteDB Anywhere node"
   type        = string
   default     = "c5.xlarge"
 }
 variable "volume_size" {
-  description = "Volume size for platform node"
+  description = "Volume size for YugabyteDB Anywhere node"
   type        = string
   default     = "100"
 }
 variable "cluster_name" {
-  description = "Name for platform cluster"
+  description = "Name for YugabyteDB Anywhere cluster"
   type        = string
   default     = "yugaware"
 }
@@ -18,7 +18,7 @@ variable "ssh_keypair" {
   type        = string
 }
 variable "ssh_user" {
-  description = "User name to ssh into platform node to configure cluster"
+  description = "User name to ssh into the YugabyteDB Anywhere node to configure cluster"
   type        = string
 }
 variable "security_group_name" {

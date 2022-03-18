@@ -1,5 +1,5 @@
 variable "cluster_name" {
-  description = "Name for platform cluster"
+  description = "Name for YugabyteDB Anywhere cluster"
   type        = string
   default     = "yugaware"
 }
@@ -22,11 +22,11 @@ variable "ssh_user" {
   type        = string
 }
 variable "subnet_name" {
-  description = "name of the subnet to use for the platform instance"
+  description = "name of the subnet to use for the YugabyteDB Anywhere instance"
   type        = string
 }
 variable "vnet_name" {
-  description = "name of the virtual network to use for the platform instance"
+  description = "name of the virtual network to use for the YugabyteDB Anywhere instance"
   type        = string
 }
 variable "vnet_resource_group" {
