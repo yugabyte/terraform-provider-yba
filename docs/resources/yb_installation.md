@@ -18,6 +18,7 @@ Manages the installation of YugabyteDB Anywhere on an existing virtual machine. 
 ### Required
 
 - **application_settings_file** (String) Application settings file to configure YugabyteDB Anywhere
+- **private_ip** (String) Private ip of the existing virtual machine
 - **public_ip** (String) Public ip of the existing virtual machine
 - **replicated_config_file** (String) Configuration file to use for automated installation using Replicated
 - **replicated_license_file** (String) YugabyteDB Anywhere license file used for installation using Replicated
