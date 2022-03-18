@@ -22,10 +22,7 @@ Universe Resource
 
 ### Optional
 
-- **allow_insecure** (Boolean)
-- **capability** (String) Operations permitted on the universe. Permitted values: READ_ONLY, EDITS_ALLOWED
 - **client_root_ca** (String)
-- **cmk_arn** (String) Amazon Resource Name (ARN) of the CMK
 - **communication_ports** (Block List, Max: 1) (see [below for nested schema](#nestedblock--communication_ports))
 - **delete_options** (Block List, Max: 1) (see [below for nested schema](#nestedblock--delete_options))
 - **id** (String) The ID of this resource.

@@ -22,7 +22,7 @@ locals {
   cluster_name = "sdu-test-yugaware"
 }
 
-module "gcp-platform" {
+module "gcp_yb_anywhere" {
   source = "../../modules/gcp"
 
   cluster_name   = local.cluster_name
@@ -36,12 +36,12 @@ module "gcp-platform" {
 }
 
 provider "yb" {
-  host = "${module.gcp-platform.public_ip}:80"
+  host = "${module.gcp_yb_anywhere.public_ip}:80"
 }
 
 resource "yb_installation" "installation" {
-  public_ip                 = module.gcp-platform.public_ip
-  private_ip                = module.gcp-platform.private_ip
+  public_ip                 = module.gcp_yb_anywhere.public_ip
+  private_ip                = module.gcp_yb_anywhere.private_ip
   ssh_user                  = "centos"
   ssh_private_key           = file("/Users/stevendu/.ssh/yugaware-1-gcp")
   replicated_config_file    = "${local.dir}/replicated.conf"
@@ -51,10 +51,10 @@ resource "yb_installation" "installation" {
 
 resource "yb_customer_resource" "customer" {
   depends_on = [yb_installation.installation]
-  code     = "admin"
-  email    = "sdu@yugabyte.com"
-  name     = "sdu"
-  password = "Password1@"
+  code       = "admin"
+  email      = "sdu@yugabyte.com"
+  name       = "sdu"
+  password   = "Password1@"
 }
 
 resource "yb_cloud_provider" "gcp" {

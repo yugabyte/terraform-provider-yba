@@ -39,10 +39,6 @@ Cloud Provider Resource
 - **ssh_private_key_content** (String) Private key to use for ssh commands
 - **ssh_user** (String) User to use for ssh commands
 
-### Read-Only
-
-- **active** (Boolean) Flag indicating if the provider is active
-
 <a id="nestedblock--connection_info"></a>
 ### Nested Schema for `connection_info`
 

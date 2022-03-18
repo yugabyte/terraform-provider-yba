@@ -117,7 +117,7 @@ resource "aws_security_group" "yb_security_group" {
   }
 }
 
-resource "aws_instance" "yb_platform_node" {
+resource "aws_instance" "yb_anywhere_node" {
   ami                         = data.aws_ami.yb_ami.id
   instance_type               = var.instance_type
   associate_public_ip_address = true

@@ -75,7 +75,7 @@ resource "azurerm_network_interface" "yb_network_interface" {
   }
 }
 
-resource "azurerm_virtual_machine" "yb_platform_node" {
+resource "azurerm_virtual_machine" "yb_anywhere_node" {
   depends_on = [
     azurerm_resource_group.yb_rg, azurerm_network_interface.yb_network_interface, azurerm_public_ip.yb_public_ip
   ]

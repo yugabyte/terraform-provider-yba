@@ -1,5 +1,5 @@
 variable "cluster_name" {
-  description = "The name for the cluster (platform instance) being created."
+  description = "The name for the cluster (YugabyteDB Anywhere instance) being created."
   type        = string
   default     = "yugaware"
 }
@@ -14,31 +14,31 @@ variable "image_project" {
   default     = "ubuntu-os-cloud"
 }
 variable "vpc_network" {
-  description = "VPC network to deploy platform instance"
+  description = "VPC network to deploy YugabyteDB Anywhere instance"
   default     = "default"
   type        = string
 }
 variable "vpc_subnetwork" {
-  description = "VPC subnetwork to deploy platform instance"
+  description = "VPC subnetwork to deploy YugabyteDB Anywhere instance"
   default     = null
   type        = string
 }
 variable "ssh_user" {
-  description = "User name to ssh into platform node to configure cluster"
+  description = "User name to ssh into YugabyteDB Anywhere node to configure cluster"
   type        = string
 }
 variable "machine_type" {
-  description = "Type of machine to be used for platform instance"
+  description = "Type of machine to be used for YugabyteDB Anywhere instance"
   default     = "n1-standard-4"
   type        = string
 }
 variable "disk_size" {
-  description = "disk size for platform instance"
+  description = "disk size for YugabyteDB Anywhere instance"
   default     = "100"
   type        = string
 }
 variable "network_tags" {
-  description = "network tags to apply to the platform instance"
+  description = "network tags to apply to the YugabyteDB Anywhere instance"
   type = list(string)
 }
 
