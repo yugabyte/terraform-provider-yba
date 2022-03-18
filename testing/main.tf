@@ -45,14 +45,15 @@ provider "yb" {
 
 resource "yb_installation" "installation" {
   public_ip                 = module.gcp-platform.public_ip
+  private_ip                = module.gcp-platform.private_ip
   ssh_user                  = "centos"
   ssh_private_key           = file("/Users/stevendu/.ssh/yugaware-1-gcp")
   replicated_config_file    = "${local.dir}/replicated.conf"
   replicated_license_file   = "/Users/stevendu/.yugabyte/yugabyte-dev.rli"
   application_settings_file = "${local.dir}/application_settings.conf"
-  cleanup                  = true
+  cleanup                   = true
 }
-
+#
 #resource "yb_customer_resource" "customer" {
 #  depends_on = [yb_installation.installation]
 #  code       = "admin"

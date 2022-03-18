@@ -41,6 +41,7 @@ provider "yb" {
 
 resource "yb_installation" "installation" {
   public_ip                 = module.gcp-platform.public_ip
+  private_ip                = module.gcp-platform.private_ip
   ssh_user                  = "centos"
   ssh_private_key           = file("/Users/stevendu/.ssh/yugaware-1-gcp")
   replicated_config_file    = "${local.dir}/replicated.conf"
