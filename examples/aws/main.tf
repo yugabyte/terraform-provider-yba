@@ -39,6 +39,7 @@ provider "yb" {
 
 resource "yb_installation" "installation" {
   public_ip                 = module.aws-platform.public_ip
+  private_ip                = module.aws-platform.private_ip
   ssh_user                  = "ubuntu"
   ssh_private_key           = file("/Users/stevendu/.yugabyte/yb-dev-aws-2.pem")
   replicated_config_file    = "${local.dir}/replicated.conf"

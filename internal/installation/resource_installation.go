@@ -24,11 +24,6 @@ var (
 		"replicated_license_file":   "/tmp/license.rli",
 		"application_settings_file": "/tmp/settings.conf",
 	}
-	installationCommands = []string{
-		"sudo mv /tmp/replicated.conf /etc/replicated.conf",
-		// TODO: after uninstalling, this command will prompt for input from /dev/tty and there's no easy way to provide it using the command line
-		"curl -sSL https://get.replicated.com/docker | sudo bash",
-	}
 	deletionCommands = []string{
 		// remove yugabyte resources
 		"/usr/local/bin/replicated apps | grep \"yugaware\" | awk '{print $1}' | xargs -I {} /usr/local/bin/replicated app {} stop",
@@ -50,6 +45,12 @@ var (
 	}
 )
 
+func getInstallationCommands(publicIP string, privateIP string) []string {
+	var installationCommands = []string{"sudo mv /tmp/replicated.conf /etc/replicated.conf"}
+	s := fmt.Sprintf("curl -sSL https://get.replicated.com/docker | sudo bash -s public-address=%s private-address=%s fast-timeouts", publicIP, privateIP)
+	return append(installationCommands, s)
+}
+
 func ResourceInstallation() *schema.Resource {
 	return &schema.Resource{
 		Description: "Manages the installation of YugabyteDB Anywhere on an existing virtual machine. This resource does not track the remote state and is only provided as a convenience tool. To reinstall, taint this resource and re-apply.",
@@ -68,6 +69,11 @@ func ResourceInstallation() *schema.Resource {
 				Type:        schema.TypeString,
 				Required:    true,
 				Description: "Public ip of the existing virtual machine",
+			},
+			"private_ip": {
+				Type:        schema.TypeString,
+				Required:    true,
+				Description: "Private ip of the existing virtual machine",
 			},
 			"ssh_private_key": {
 				Type:        schema.TypeString,
@@ -199,11 +205,12 @@ func waitForIP(ctx context.Context, user string, ip string, pk string, timeout t
 func resourceInstallationCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	var diags diag.Diagnostics
 
-	ip := d.Get("public_ip").(string)
+	publicIP := d.Get("public_ip").(string)
+	privateIP := d.Get("private_ip").(string)
 	user := d.Get("ssh_user").(string)
 	pk := d.Get("ssh_private_key").(string)
 
-	sshClient, err := waitForIP(ctx, user, ip, pk, 5*time.Minute)
+	sshClient, err := waitForIP(ctx, user, publicIP, pk, 5*time.Minute)
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -220,7 +227,7 @@ func resourceInstallationCreate(ctx context.Context, d *schema.ResourceData, met
 		}
 	}
 
-	for _, cmd := range installationCommands {
+	for _, cmd := range getInstallationCommands(publicIP, privateIP) {
 		m, err := runCommand(ctx, sshClient, cmd)
 		if err != nil {
 			tflog.Error(ctx, m)

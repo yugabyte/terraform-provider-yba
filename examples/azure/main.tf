@@ -38,6 +38,7 @@ provider "yb" {
 
 resource "yb_installation" "installation" {
   public_ip                 = module.azure-platform.public_ip
+  private_ip                = module.azure-platform.private_ip
   ssh_user                  = "sdu"
   ssh_private_key           = file("/Users/stevendu/.ssh/yugaware-azure")
   replicated_config_file    = "${local.dir}/replicated.conf"
