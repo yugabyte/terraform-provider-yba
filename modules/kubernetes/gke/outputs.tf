@@ -1,3 +1,3 @@
 output "public_ip" {
-  value = module.gke-cluster.endpoint
+  value = module.kubernetes-config.public_ip
 }
