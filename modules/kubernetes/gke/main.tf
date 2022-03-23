@@ -1,5 +1,6 @@
 terraform {
   required_providers {
+    // Google provider is configured using environment variables: GOOGLE_REGION, GOOGLE_PROJECT, GOOGLE_CREDENTIALS
     google = {
       source  = "hashicorp/google"
     }
@@ -14,70 +15,48 @@ terraform {
   }
 }
 
-# GKE cluster
-resource "google_container_cluster" "primary" {
-  name     = var.cluster_name
-
-  remove_default_node_pool = true
-  initial_node_count       = 1
-
-  network    = var.network
-  subnetwork = var.subnet
+// Configure kubernetes provider with Oauth2 access token.
+data "google_client_config" "client_config" {
+  depends_on = [module.gke-cluster]
 }
 
-# Separately Managed Node Pool
-resource "google_container_node_pool" "primary_nodes" {
-  name       = "${google_container_cluster.primary.name}-node-pool"
-  cluster    = google_container_cluster.primary.name
-  node_count = var.num_nodes
-
-  node_config {
-    oauth_scopes = [
-      "https://www.googleapis.com/auth/logging.write",
-      "https://www.googleapis.com/auth/monitoring",
-    ]
-
-    labels = {
-      env = var.cluster_name
-    }
-
-    machine_type = "n1-standard-1"
-    tags         = ["gke-node", "${var.cluster_name}-gke"]
-    metadata = {
-      disable-legacy-endpoints = "true"
-    }
-  }
-}
-
-resource "kubernetes_namespace" "yb_anywhere" {
-  metadata {
-    name = var.cluster_name
-  }
-}
-
-// load in kubernetes secret obtained from Yugabyte
-resource "kubernetes_secret" "example" {
-  metadata {
-    name = "yugabyte-k8s-pull-secret"
-    namespace = kubernetes_namespace.yb_anywhere.metadata.name
-  }
-  data = {
-    ".dockerconfigjson" = var.docker_config_json
-  }
-  type = "kubernetes.io/dockerconfigjson"
-}
-
-resource "helm_release" "yb-release" {
+// Defer reading the cluster data until the GKE cluster exists.
+data "google_container_cluster" "container_cluster" {
   name = var.cluster_name
-  repository = "https://charts.yugabyte.com"
-  chart = "yugabytedb/yugaware"
-  version = var.chart_version
-  namespace = kubernetes_namespace.yb_anywhere.metadata.name
-  wait = true
+  depends_on = [module.gke-cluster]
 }
 
-data "kubernetes_service" "yb_anywhere" {
-  metadata {
-    name = var.cluster_name
+provider "kubernetes" {
+  host  = "https://${data.google_container_cluster.container_cluster.endpoint}"
+  token = data.google_client_config.client_config.access_token
+  cluster_ca_certificate = base64decode(
+    data.google_container_cluster.container_cluster.master_auth[0].cluster_ca_certificate,
+  )
+}
+
+provider "helm" {
+  kubernetes {
+    host  = "https://${data.google_container_cluster.container_cluster.endpoint}"
+    token = data.google_client_config.client_config.access_token
+    cluster_ca_certificate = base64decode(
+      data.google_container_cluster.container_cluster.master_auth[0].cluster_ca_certificate,
+    )
   }
+}
+
+module "gke-cluster" {
+  source       = "./gke-cluster"
+  cluster_name = var.cluster_name
+  network = var.network
+  subnet = var.subnet
+  num_nodes = var.num_nodes
+  memory_max = var.memory_max
+  cpu_max = var.cpu_max
+}
+
+module "kubernetes-config" {
+  depends_on       = [module.gke-cluster]
+  source           = "./kubernetes-config"
+  cluster_name     = var.cluster_name
+  docker_config_json = var.docker_config_json
 }
