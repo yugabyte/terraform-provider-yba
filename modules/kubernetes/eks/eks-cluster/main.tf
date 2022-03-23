@@ -59,8 +59,11 @@ resource "aws_iam_role_policy_attachment" "yb-anywhere-AmazonEC2ContainerRegistr
   role       = aws_iam_role.yb-anywhere-node.name
 }
 
-data "aws_subnet_ids" "subnet_ids" {
-  vpc_id = var.vpc_id
+data "aws_subnets" "subnets" {
+  filter {
+    name   = "vpc-id"
+    values = [var.vpc_id]
+  }
 }
 
 resource "aws_eks_cluster" "yb-anywhere" {
@@ -68,7 +71,7 @@ resource "aws_eks_cluster" "yb-anywhere" {
   role_arn = aws_iam_role.yb-anywhere-cluster.arn
 
   vpc_config {
-    subnet_ids = data.aws_subnet_ids.subnet_ids.ids
+    subnet_ids = data.aws_subnets.subnets.ids
   }
 
   # Ensure that IAM Role permissions are created before and deleted after EKS Cluster handling.
@@ -83,7 +86,7 @@ resource "aws_eks_node_group" "yb-anywhere" {
   cluster_name    = aws_eks_cluster.yb-anywhere.name
   node_group_name = var.cluster_name
   node_role_arn   = aws_iam_role.yb-anywhere-node.arn
-  subnet_ids      = data.aws_subnet_ids.subnet_ids.ids
+  subnet_ids      = data.aws_subnets.subnets.ids
 
   scaling_config {
     desired_size = 1
