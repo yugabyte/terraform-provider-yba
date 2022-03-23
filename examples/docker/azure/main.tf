@@ -19,7 +19,7 @@ locals {
 }
 
 module "azure_yb_anywhere" {
-  source = "../../modules/azure"
+  source = "../../../modules/docker/azure"
 
   cluster_name        = "sdu-test-yugaware"
   ssh_user            = "sdu"

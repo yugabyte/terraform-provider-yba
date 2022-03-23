@@ -23,7 +23,7 @@ locals {
 }
 
 module "gcp_yb_anywhere" {
-  source = "../../modules/gcp"
+  source = "../../../modules/docker/gcp"
 
   cluster_name   = local.cluster_name
   ssh_user       = "centos"

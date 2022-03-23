@@ -20,7 +20,7 @@ provider "aws" {
 }
 
 module "aws_yb_anywhere" {
-  source = "../../modules/aws"
+  source = "../../../modules/docker/aws"
 
   cluster_name        = local.cluster_name
   ssh_user            = "ubuntu"
