@@ -39,7 +39,9 @@ resource "helm_release" "yb-release" {
 }
 
 data "kubernetes_service" "yb_anywhere" {
+  depends_on = [helm_release.yb-release]
   metadata {
-    name = var.cluster_name
+    name = "${var.cluster_name}-yugaware-ui"
+    namespace = var.cluster_name
   }
 }

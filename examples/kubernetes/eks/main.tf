@@ -18,11 +18,14 @@ provider "aws" {
   region = "us-west-2"
 }
 
-module "aws_cluster" {
+module "eks_cluster" {
   source = "../../../modules/kubernetes/eks"
   cluster_name = "sdu-yb-anywhere"
   vpc_id = "***REMOVED***"
   docker_config_json = base64decode(yamldecode(file("~/.yugabyte/yugabyte-k8s-secret.yml"))["data"][".dockerconfigjson"])
 }
 
+output "public_ip" {
+  value = module.eks_cluster.public_ip
+}
 

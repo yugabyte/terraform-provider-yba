@@ -28,4 +28,8 @@ module "gke_cluster" {
   memory_max = 100
 }
 
+output "public_ip" {
+  value = module.gke_cluster.public_ip
+}
+
 

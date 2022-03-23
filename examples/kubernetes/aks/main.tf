@@ -26,4 +26,8 @@ module "aks_cluster" {
   docker_config_json = base64decode(yamldecode(file("~/.yugabyte/yugabyte-k8s-secret.yml"))["data"][".dockerconfigjson"])
 }
 
+output "public_ip" {
+  value = module.aks_cluster.public_ip
+}
+
 
