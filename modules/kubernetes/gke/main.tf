@@ -56,7 +56,7 @@ module "gke-cluster" {
 
 module "kubernetes-config" {
   depends_on       = [module.gke-cluster]
-  source           = "./kubernetes-config"
+  source           = "../kubernetes-config"
   cluster_name     = var.cluster_name
   docker_config_json = var.docker_config_json
 }
