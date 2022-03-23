@@ -14,49 +14,18 @@ terraform {
   }
 }
 
-locals {
-  cluster_name = "yb-anywhere"
-}
-
 // Provider is configured using environment variables: GOOGLE_REGION, GOOGLE_PROJECT, GOOGLE_CREDENTIALS.
 provider "google" {}
 
-// Configure kubernetes provider with Oauth2 access token.
-data "google_client_config" "client_config" {
-  depends_on = [module.gke-cluster]
-}
-
-// Defer reading the cluster data until the GKE cluster exists.
-data "google_container_cluster" "container_cluster" {
-  name = local.cluster_name
-  depends_on = [module.gke-cluster]
-}
-
-provider "kubernetes" {
-  host  = "https://${data.google_container_cluster.container_cluster.endpoint}"
-  token = data.google_client_config.client_config.access_token
-  cluster_ca_certificate = base64decode(
-    data.google_container_cluster.container_cluster.master_auth[0].cluster_ca_certificate,
-  )
-}
-
-provider "helm" {
-  kubernetes {
-    host  = "https://${data.google_container_cluster.container_cluster.endpoint}"
-    token = data.google_client_config.client_config.access_token
-    cluster_ca_certificate = base64decode(
-      data.google_container_cluster.container_cluster.master_auth[0].cluster_ca_certificate,
-    )
-  }
-}
-
-module "gke-cluster" {
+module "gke_cluster" {
   source = "../../../modules/kubernetes/gke"
   num_nodes = 2
-  cluster_name = local.cluster_name
+  cluster_name = "sdu-yb-anywhere"
   network = "yugabyte-network"
   subnet = "subnet-us-west1"
-  docker_config_json = yamldecode(file("~/.yugabyte/itest_kubernetes_secret.yml"))["data"][".dockerconfigjson"]
+  docker_config_json = base64decode(yamldecode(file("~/.yugabyte/itest_kubernetes_secret.yml"))["data"][".dockerconfigjson"])
+  cpu_max = 10
+  memory_max = 100
 }
 
 
