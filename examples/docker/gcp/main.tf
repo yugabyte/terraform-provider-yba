@@ -1,7 +1,7 @@
 terraform {
   required_providers {
-    azurerm = {
-      source = "hashicorp/azurerm"
+    google = {
+      source = "hashicorp/google"
     }
     yb = {
       version = "~> 0.1.0"
@@ -10,44 +10,47 @@ terraform {
   }
 }
 
-provider "azurerm" {
-  features {}
+provider "google" {
+  credentials = "/Users/stevendu/.yugabyte/yugabyte-gce.json"
+  project     = "yugabyte"
+  region      = "us-west1"
+  zone        = "us-west1-b"
 }
 
 locals {
-  dir = "/Users/stevendu/code/terraform-provider-yugabyte-anywhere/modules/resources"
+  dir          = "/Users/stevendu/code/terraform-provider-yugabyte-anywhere/modules/resources"
+  cluster_name = "sdu-test-yugaware"
 }
 
-module "azure_yb_anywhere" {
-  source = "../../modules/azure"
+module "gcp_yb_anywhere" {
+  source = "../../../modules/docker/gcp"
 
-  cluster_name        = "sdu-test-yugaware"
-  ssh_user            = "sdu"
-  region_name         = "westus2"
-  subnet_name         = "***REMOVED***"
-  vnet_name           = "***REMOVED***"
-  vnet_resource_group = "yugabyte-rg"
+  cluster_name   = local.cluster_name
+  ssh_user       = "centos"
+  network_tags   = [local.cluster_name, "http-server", "https-server"]
+  vpc_network    = "***REMOVED***"
+  vpc_subnetwork = "***REMOVED***"
   // files
-  ssh_private_key = "/Users/stevendu/.ssh/yugaware-azure"
-  ssh_public_key  = "/Users/stevendu/.ssh/yugaware-azure.pub"
+  ssh_private_key = "/Users/stevendu/.ssh/yugaware-1-gcp"
+  ssh_public_key  = "/Users/stevendu/.ssh/yugaware-1-gcp.pub"
 }
 
 provider "yb" {
-  host = "${module.azure_yb_anywhere.public_ip}:80"
+  host = "${module.gcp_yb_anywhere.public_ip}:80"
 }
 
 resource "yb_installation" "installation" {
-  public_ip                 = module.azure_yb_anywhere.public_ip
-  private_ip                = module.azure_yb_anywhere.private_ip
-  ssh_user                  = "sdu"
-  ssh_private_key           = file("/Users/stevendu/.ssh/yugaware-azure")
+  public_ip                 = module.gcp_yb_anywhere.public_ip
+  private_ip                = module.gcp_yb_anywhere.private_ip
+  ssh_user                  = "centos"
+  ssh_private_key           = file("/Users/stevendu/.ssh/yugaware-1-gcp")
   replicated_config_file    = "${local.dir}/replicated.conf"
   replicated_license_file   = "/Users/stevendu/.yugabyte/yugabyte-dev.rli"
   application_settings_file = "${local.dir}/application_settings.conf"
 }
 
 resource "yb_customer_resource" "customer" {
-  depends_on = [module.azure_yb_anywhere, yb_installation.installation]
+  depends_on = [yb_installation.installation]
   code       = "admin"
   email      = "sdu@yugabyte.com"
   name       = "sdu"
@@ -96,11 +99,10 @@ resource "yb_universe" "gcp_universe" {
     api_token = yb_customer_resource.customer.api_token
   }
 
-  depends_on = [yb_cloud_provider.gcp]
   clusters {
     cluster_type = "PRIMARY"
     user_intent {
-      universe_name      = "sdu-test-gcp-universe-on-azure"
+      universe_name      = "sdu-test-gcp-universe"
       provider_type      = "gcp"
       provider           = local.provider_id
       region_list        = local.region_list
@@ -117,9 +119,31 @@ resource "yb_universe" "gcp_universe" {
       enable_ysql                   = true
       enable_node_to_node_encrypt   = true
       enable_client_to_node_encrypt = true
-      yb_software_version           = "2.13.1.0-b24"
+      yb_software_version           = "2.13.1.0-b20"
       access_key_code               = local.provider_key
     }
   }
   communication_ports {}
 }
+
+#data "yb_storage_configs" "configs" {}
+
+#resource "yb_backups" "gcp_universe_backup" {
+#  depends_on = [yb_universe.gcp_universe]
+#
+#  uni_uuid = yb_universe.gcp_universe.id
+#  keyspace = "postgres"
+#  storage_config_uuid = data.yb_storage_configs.configs.uuid_list[0]
+#  time_before_delete = 864000000
+#  sse = false
+#  transactional_backup = false
+#  frequency = 864000000
+#  parallelism = 8
+#  backup_type = "PGSQL_TABLE_TYPE"
+#}
+
+#resource "yb_user" "user" {
+#  email = "sdu@yugabyte.com"
+#  password = "Password1@"
+#  role = "ReadOnly"
+#}

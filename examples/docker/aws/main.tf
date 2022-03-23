@@ -1,7 +1,7 @@
 terraform {
   required_providers {
-    google = {
-      source = "hashicorp/google"
+    aws = {
+      source = "hashicorp/aws"
     }
     yb = {
       version = "~> 0.1.0"
@@ -10,40 +10,38 @@ terraform {
   }
 }
 
-provider "google" {
-  credentials = "/Users/stevendu/.yugabyte/yugabyte-gce.json"
-  project     = "yugabyte"
-  region      = "us-west1"
-  zone        = "us-west1-b"
-}
-
 locals {
   dir          = "/Users/stevendu/code/terraform-provider-yugabyte-anywhere/modules/resources"
   cluster_name = "sdu-test-yugaware"
 }
 
-module "gcp_yb_anywhere" {
-  source = "../../modules/gcp"
+provider "aws" {
+  region = "us-west-2"
+}
 
-  cluster_name   = local.cluster_name
-  ssh_user       = "centos"
-  network_tags   = [local.cluster_name, "http-server", "https-server"]
-  vpc_network    = "***REMOVED***"
-  vpc_subnetwork = "***REMOVED***"
+module "aws_yb_anywhere" {
+  source = "../../../modules/docker/aws"
+
+  cluster_name        = local.cluster_name
+  ssh_user            = "ubuntu"
+  ssh_keypair         = "yb-dev-aws-2"
+  security_group_name = "sdu_test_sg"
+  vpc_id              = "***REMOVED***"
+  subnet_id           = "***REMOVED***"
   // files
-  ssh_private_key = "/Users/stevendu/.ssh/yugaware-1-gcp"
-  ssh_public_key  = "/Users/stevendu/.ssh/yugaware-1-gcp.pub"
+  ssh_private_key = "/Users/stevendu/.yugabyte/yb-dev-aws-2.pem"
 }
 
 provider "yb" {
-  host = "${module.gcp_yb_anywhere.public_ip}:80"
+  // these can be set as environment variables
+  host = "${module.aws_yb_anywhere.public_ip}:80"
 }
 
 resource "yb_installation" "installation" {
-  public_ip                 = module.gcp_yb_anywhere.public_ip
-  private_ip                = module.gcp_yb_anywhere.private_ip
-  ssh_user                  = "centos"
-  ssh_private_key           = file("/Users/stevendu/.ssh/yugaware-1-gcp")
+  public_ip                 = module.aws_yb_anywhere.public_ip
+  private_ip                = module.aws_yb_anywhere.private_ip
+  ssh_user                  = "ubuntu"
+  ssh_private_key           = file("/Users/stevendu/.yugabyte/yb-dev-aws-2.pem")
   replicated_config_file    = "${local.dir}/replicated.conf"
   replicated_license_file   = "/Users/stevendu/.yugabyte/yugabyte-dev.rli"
   application_settings_file = "${local.dir}/application_settings.conf"
@@ -99,6 +97,7 @@ resource "yb_universe" "gcp_universe" {
     api_token = yb_customer_resource.customer.api_token
   }
 
+  depends_on = [yb_cloud_provider.gcp]
   clusters {
     cluster_type = "PRIMARY"
     user_intent {
@@ -119,31 +118,9 @@ resource "yb_universe" "gcp_universe" {
       enable_ysql                   = true
       enable_node_to_node_encrypt   = true
       enable_client_to_node_encrypt = true
-      yb_software_version           = "2.13.1.0-b20"
+      yb_software_version           = "2.12.1.0-b41"
       access_key_code               = local.provider_key
     }
   }
   communication_ports {}
 }
-
-#data "yb_storage_configs" "configs" {}
-
-#resource "yb_backups" "gcp_universe_backup" {
-#  depends_on = [yb_universe.gcp_universe]
-#
-#  uni_uuid = yb_universe.gcp_universe.id
-#  keyspace = "postgres"
-#  storage_config_uuid = data.yb_storage_configs.configs.uuid_list[0]
-#  time_before_delete = 864000000
-#  sse = false
-#  transactional_backup = false
-#  frequency = 864000000
-#  parallelism = 8
-#  backup_type = "PGSQL_TABLE_TYPE"
-#}
-
-#resource "yb_user" "user" {
-#  email = "sdu@yugabyte.com"
-#  password = "Password1@"
-#  role = "ReadOnly"
-#}

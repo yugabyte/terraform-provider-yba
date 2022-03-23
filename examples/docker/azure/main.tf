@@ -1,7 +1,7 @@
 terraform {
   required_providers {
-    aws = {
-      source = "hashicorp/aws"
+    azurerm = {
+      source = "hashicorp/azurerm"
     }
     yb = {
       version = "~> 0.1.0"
@@ -10,45 +10,44 @@ terraform {
   }
 }
 
+provider "azurerm" {
+  features {}
+}
+
 locals {
-  dir          = "/Users/stevendu/code/terraform-provider-yugabyte-anywhere/modules/resources"
-  cluster_name = "sdu-test-yugaware"
+  dir = "/Users/stevendu/code/terraform-provider-yugabyte-anywhere/modules/resources"
 }
 
-provider "aws" {
-  region = "us-west-2"
-}
+module "azure_yb_anywhere" {
+  source = "../../../modules/docker/azure"
 
-module "aws_yb_anywhere" {
-  source = "../../modules/aws"
-
-  cluster_name        = local.cluster_name
-  ssh_user            = "ubuntu"
-  ssh_keypair         = "yb-dev-aws-2"
-  security_group_name = "sdu_test_sg"
-  vpc_id              = "***REMOVED***"
-  subnet_id           = "***REMOVED***"
+  cluster_name        = "sdu-test-yugaware"
+  ssh_user            = "sdu"
+  region_name         = "westus2"
+  subnet_name         = "***REMOVED***"
+  vnet_name           = "***REMOVED***"
+  vnet_resource_group = "yugabyte-rg"
   // files
-  ssh_private_key = "/Users/stevendu/.yugabyte/yb-dev-aws-2.pem"
+  ssh_private_key = "/Users/stevendu/.ssh/yugaware-azure"
+  ssh_public_key  = "/Users/stevendu/.ssh/yugaware-azure.pub"
 }
 
 provider "yb" {
-  // these can be set as environment variables
-  host = "${module.aws_yb_anywhere.public_ip}:80"
+  host = "${module.azure_yb_anywhere.public_ip}:80"
 }
 
 resource "yb_installation" "installation" {
-  public_ip                 = module.aws_yb_anywhere.public_ip
-  private_ip                = module.aws_yb_anywhere.private_ip
-  ssh_user                  = "ubuntu"
-  ssh_private_key           = file("/Users/stevendu/.yugabyte/yb-dev-aws-2.pem")
+  public_ip                 = module.azure_yb_anywhere.public_ip
+  private_ip                = module.azure_yb_anywhere.private_ip
+  ssh_user                  = "sdu"
+  ssh_private_key           = file("/Users/stevendu/.ssh/yugaware-azure")
   replicated_config_file    = "${local.dir}/replicated.conf"
   replicated_license_file   = "/Users/stevendu/.yugabyte/yugabyte-dev.rli"
   application_settings_file = "${local.dir}/application_settings.conf"
 }
 
 resource "yb_customer_resource" "customer" {
-  depends_on = [yb_installation.installation]
+  depends_on = [module.azure_yb_anywhere, yb_installation.installation]
   code       = "admin"
   email      = "sdu@yugabyte.com"
   name       = "sdu"
@@ -101,7 +100,7 @@ resource "yb_universe" "gcp_universe" {
   clusters {
     cluster_type = "PRIMARY"
     user_intent {
-      universe_name      = "sdu-test-gcp-universe"
+      universe_name      = "sdu-test-gcp-universe-on-azure"
       provider_type      = "gcp"
       provider           = local.provider_id
       region_list        = local.region_list
@@ -118,7 +117,7 @@ resource "yb_universe" "gcp_universe" {
       enable_ysql                   = true
       enable_node_to_node_encrypt   = true
       enable_client_to_node_encrypt = true
-      yb_software_version           = "2.12.1.0-b41"
+      yb_software_version           = "2.13.1.0-b24"
       access_key_code               = local.provider_key
     }
   }
