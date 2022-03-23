@@ -4,8 +4,8 @@ terraform {
       source = "hashicorp/kubernetes"
       version = ">= 2.0.3"
     }
-    google = {
-      source  = "hashicorp/google"
+    aws = {
+      source  = "hashicorp/aws"
     }
     helm = {
       source  = "hashicorp/helm"
@@ -14,18 +14,13 @@ terraform {
   }
 }
 
-// Provider is configured using environment variables: GOOGLE_REGION, GOOGLE_PROJECT, GOOGLE_CREDENTIALS.
-provider "google" {}
+provider "aws" {}
 
-module "gke_cluster" {
-  source = "../../../modules/kubernetes/gke"
-  num_nodes = 2
+module "aws_cluster" {
+  source = "../../../modules/kubernetes/eks"
   cluster_name = "sdu-yb-anywhere"
-  network = "***REMOVED***"
-  subnet = "***REMOVED***"
+  vpc_id = "***REMOVED***"
   docker_config_json = base64decode(yamldecode(file("~/.yugabyte/yugabyte-k8s-secret.yml"))["data"][".dockerconfigjson"])
-  cpu_max = 10
-  memory_max = 100
 }
 
 
