@@ -11,7 +11,7 @@ resource "azurerm_resource_group" "rg" {
   location = var.region_name
 }
 
-resource "azurerm_kubernetes_cluster" "default" {
+resource "azurerm_kubernetes_cluster" "yb-anywhere" {
   name                = var.cluster_name
   location            = azurerm_resource_group.rg.location
   resource_group_name = azurerm_resource_group.rg.name

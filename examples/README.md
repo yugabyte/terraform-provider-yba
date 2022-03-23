@@ -10,4 +10,4 @@ The example configuration files can be found under `modules/resources`:
   * additional configuration [options](https://help.replicated.com/docs/native/customer-installations/automating/)
 * `replicated.conf` template for specifying replicated setting with HTTPS setup during the installation
 
-Each directory in `kubernetes` contains a full example for created a YugabyteDB Anywhere cluster in that particular cloud. The steps to then register a customer, create a universe etc. are the same as those in the docker examples.
+Each directory in `kubernetes` contains a full example for creating a YugabyteDB Anywhere cluster in that particular cloud. The steps to then register a customer, create a universe etc. are the same as those in the docker examples.

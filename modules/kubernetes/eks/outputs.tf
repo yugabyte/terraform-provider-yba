@@ -1,3 +1,3 @@
-output "endpoint" {
-  value = data.aws_eks_cluster.yb-anywhere.endpoint
+output "public_ip" {
+  value = module.kubernetes-config.public_ip
 }
