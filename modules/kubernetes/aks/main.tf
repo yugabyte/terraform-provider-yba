@@ -53,11 +53,3 @@ module "kubernetes-config" {
   cluster_name     = var.cluster_name
   docker_config_json = var.docker_config_json
 }
-
-data "kubernetes_service" "yb_anywhere" {
-  depends_on = [module.kubernetes-config]
-  metadata {
-    name = "${var.cluster_name}-yugaware-ui"
-    namespace = var.cluster_name
-  }
-}
