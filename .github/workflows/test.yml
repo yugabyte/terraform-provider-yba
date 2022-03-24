@@ -17,7 +17,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v2.1.3
       with:
-        go-version: '1.15'
+        go-version: '1.16'
       id: go
 
     - name: Check out code into the Go module directory
@@ -30,3 +30,84 @@ jobs:
     - name: Build
       run: |
         go build -v .
+        
+  generate:
+    name: Check Documentation Generation
+    runs-on: self-hosted
+    steps:
+      - uses: actions/setup-go@v3
+        with:
+          go-version: '1.16'
+      - uses: actions/checkout@v3
+      - run: go generate ./...
+      - name: git diff
+        run: |
+          git diff --compact-summary --exit-code || \
+            (echo; echo "Unexpected difference in directories after code generation. Run 'go generate ./...' command and commit."; exit 1)
+          
+  gcptest:
+    name: Acceptance Test on GCP
+    needs: build
+    runs-on: self-hosted
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        terraform:
+          - '1.0.*'
+          - '1.1.*'
+#          - '0.12.*'
+#          - '0.13.*'
+#          - '0.14.*'
+#          - '0.15.*'
+
+    steps:
+      - name: Set up Go
+        uses: actions/setup-go@v2.1.3
+        with:
+          go-version: '1.16'
+        id: go
+
+      - uses: hashicorp/setup-terraform@v1
+        with:
+          terraform_version: ${{ matrix.terraform }}
+          terraform_wrapper: false
+
+      - name: Check out code into the Go module directory
+        uses: actions/checkout@v3
+
+      - name: Get dependencies
+        run: |
+          go mod download
+
+      # use the modules to bring up platform instance for acceptance tests
+      - name: Terraform Init
+        run: terraform init
+        working-directory: ./acctest
+
+      - name: Terraform Plan
+        run: terraform plan -no-color
+        working-directory: ./acctest
+
+      - name: Terraform Apply
+        run: terraform apply -auto-approve
+        working-directory: ./acctest
+
+      # run acceptance tests
+      - name: TF acceptance tests
+        timeout-minutes: 120
+        env:
+          TF_ACC: "1"
+
+          # Set whatever additional acceptance test env vars here. You can
+          # optionally use data from your repository secrets using the
+          # following syntax:
+          # SOME_VAR: ${{ secrets.SOME_VAR }}
+
+        run: |
+          go test -v -cover ./... -run ".*GCP.*"
+
+      # clean up platform instance
+      - name: Terraform Destroy
+        run: terraform destroy -force
+        working-directory: ./acctest

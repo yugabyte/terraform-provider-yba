@@ -16,7 +16,10 @@ func TestAccUniverse_GCP_UpdatePrimaryNodes(t *testing.T) {
 
 	rName := fmt.Sprintf("tf-acctest-gcp-universe-%s", sdkacctest.RandString(12))
 	resource.ParallelTest(t, resource.TestCase{
-		PreCheck:          func() { acctest.TestAccPreCheck(t) },
+		PreCheck: func() {
+			acctest.TestAccPreCheck(t)
+			acctest.TestAccPreCheckGCP(t)
+		},
 		ProviderFactories: acctest.ProviderFactories,
 		CheckDestroy:      testAccCheckDestroyProviderAndUniverse,
 		Steps: []resource.TestStep{
@@ -43,7 +46,10 @@ func TestAccUniverse_AWS_UpdatePrimaryNodes(t *testing.T) {
 
 	rName := fmt.Sprintf("tf-acctest-aws-universe-%s", sdkacctest.RandString(12))
 	resource.ParallelTest(t, resource.TestCase{
-		PreCheck:          func() { acctest.TestAccPreCheck(t) },
+		PreCheck: func() {
+			acctest.TestAccPreCheck(t)
+			acctest.TestAccPreCheckAWS(t)
+		},
 		ProviderFactories: acctest.ProviderFactories,
 		CheckDestroy:      testAccCheckDestroyProviderAndUniverse,
 		Steps: []resource.TestStep{
@@ -70,7 +76,10 @@ func TestAccUniverse_Azure_UpdatePrimaryNodes(t *testing.T) {
 
 	rName := fmt.Sprintf("tf-acctest-azu-universe-%s", sdkacctest.RandString(12))
 	resource.ParallelTest(t, resource.TestCase{
-		PreCheck:          func() { acctest.TestAccPreCheck(t) },
+		PreCheck: func() {
+			acctest.TestAccPreCheck(t)
+			acctest.TestAccPreCheckAzure(t)
+		},
 		ProviderFactories: acctest.ProviderFactories,
 		CheckDestroy:      testAccCheckDestroyProviderAndUniverse,
 		Steps: []resource.TestStep{

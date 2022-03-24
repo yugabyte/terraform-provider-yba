@@ -10,29 +10,27 @@ terraform {
   }
 }
 
-provider "google" {
-  credentials = "/Users/stevendu/.yugabyte/yugabyte-gce.json"
-  project     = "yugabyte"
-  region      = "us-west1"
-  zone        = "us-west1-b"
+variable "RESOURCES_DIR" {
+  type        = string
+  description = "directory on the platform runner that holds testing resources"
 }
 
-locals {
-  dir          = "/Users/stevendu/code/terraform-provider-yugabyte-anywhere/modules/resources"
-  cluster_name = "terraform-acctest-yugaware"
+resource "random_uuid" "test" {
 }
+
+provider "google" {}
 
 module "gcp_yb_anywhere" {
   source = "../modules/docker/gcp"
 
-  cluster_name    = local.cluster_name
-  ssh_user        = "centos"
-  network_tags    = [local.cluster_name, "http-server", "https-server"]
-  vpc_network     = "***REMOVED***"
-  vpc_subnetwork  = "***REMOVED***"
+  cluster_name    = "terraform-acctest-yugaware"
+  ssh_user        = "tf"
+  network_tags    = ["terraform-acctest-yugaware", "http-server", "https-server"]
+  vpc_network     = "default"
+  vpc_subnetwork  = "default"
   // files
-  ssh_private_key = "/Users/stevendu/.ssh/yugaware-1-gcp"
-  ssh_public_key  = "/Users/stevendu/.ssh/yugaware-1-gcp.pub"
+  ssh_private_key = "${var.RESOURCES_DIR}/acctest"
+  ssh_public_key  = "${var.RESOURCES_DIR}/acctest.pub"
 }
 
 output "host" {
@@ -46,22 +44,22 @@ provider "yb" {
 resource "yb_installation" "installation" {
   public_ip                 = module.gcp_yb_anywhere.public_ip
   private_ip                = module.gcp_yb_anywhere.private_ip
-  ssh_user                  = "centos"
-  ssh_private_key           = file("/Users/stevendu/.ssh/yugaware-1-gcp")
-  replicated_config_file    = "${local.dir}/replicated.conf"
-  replicated_license_file   = "/Users/stevendu/.yugabyte/yugabyte-dev.rli"
-  application_settings_file = "${local.dir}/application_settings.conf"
+  ssh_user                  = "tf"
+  ssh_private_key           = file("${var.RESOURCES_DIR}/acctest")
+  replicated_config_file    = "${var.RESOURCES_DIR}/replicated.conf"
+  replicated_license_file   = "${var.RESOURCES_DIR}/acctest.rli"
+  application_settings_file = "${var.RESOURCES_DIR}/application_settings.conf"
   cleanup                   = true
 }
-#
-#resource "yb_customer_resource" "customer" {
-#  depends_on = [yb_installation.installation]
-#  code       = "admin"
-#  email      = "tf@yugabyte.com"
-#  name       = "tf-acctest"
-#  password   = "Password1@"
-#}
-#
-#output "api_key" {
-#  value = yb_customer_resource.customer.api_token
-#}
+
+resource "yb_customer_resource" "customer" {
+  depends_on = [yb_installation.installation]
+  code       = "admin"
+  email      = "tf@yugabyte.com"
+  name       = "tf-acctest"
+  password   = "Password1@"
+}
+
+output "api_key" {
+  value = yb_customer_resource.customer.api_token
+}
