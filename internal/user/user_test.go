@@ -11,7 +11,6 @@ import (
 	"testing"
 )
 
-// TODO: these tests will not work until the date issue is resolved https://yugabyte.atlassian.net/browse/PLAT-3305
 func TestAccUser_Admin(t *testing.T) {
 	var user client.UserWithFeatures
 

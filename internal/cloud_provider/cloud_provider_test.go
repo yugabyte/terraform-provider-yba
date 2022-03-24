@@ -16,7 +16,10 @@ func TestAccCloudProvider_GCP(t *testing.T) {
 
 	rName := fmt.Sprintf("tf-acctest-gcp-provider-%s", sdkacctest.RandString(12))
 	resource.ParallelTest(t, resource.TestCase{
-		PreCheck:          func() { acctest.TestAccPreCheck(t) },
+		PreCheck: func() {
+			acctest.TestAccPreCheck(t)
+			acctest.TestAccPreCheckGCP(t)
+		},
 		ProviderFactories: acctest.ProviderFactories,
 		CheckDestroy:      testAccCheckDestroyCloudProvider,
 		Steps: []resource.TestStep{
@@ -35,7 +38,10 @@ func TestAccCloudProvider_AWS(t *testing.T) {
 
 	rName := fmt.Sprintf("tf-acctest-aws-provider-%s", sdkacctest.RandString(12))
 	resource.ParallelTest(t, resource.TestCase{
-		PreCheck:          func() { acctest.TestAccPreCheck(t) },
+		PreCheck: func() {
+			acctest.TestAccPreCheck(t)
+			acctest.TestAccPreCheckAWS(t)
+		},
 		ProviderFactories: acctest.ProviderFactories,
 		CheckDestroy:      testAccCheckDestroyCloudProvider,
 		Steps: []resource.TestStep{
@@ -54,7 +60,10 @@ func TestAccCloudProvider_Azure(t *testing.T) {
 
 	rName := fmt.Sprintf("tf-acctest-azure-provider-%s", sdkacctest.RandString(12))
 	resource.ParallelTest(t, resource.TestCase{
-		PreCheck:          func() { acctest.TestAccPreCheck(t) },
+		PreCheck: func() {
+			acctest.TestAccPreCheck(t)
+			acctest.TestAccPreCheckAzure(t)
+		},
 		ProviderFactories: acctest.ProviderFactories,
 		CheckDestroy:      testAccCheckDestroyCloudProvider,
 		Steps: []resource.TestStep{

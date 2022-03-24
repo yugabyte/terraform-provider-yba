@@ -89,13 +89,7 @@ func TestYBSoftwareVersion() string {
 	return os.Getenv(testYBSoftwareVersion)
 }
 
-func TestAccPreCheck(t *testing.T) {
-	if v := os.Getenv(testHost); v == "" {
-		t.Fatal(testHost + " must be set for acceptance tests")
-	}
-	if v := os.Getenv(testApiKey); v == "" {
-		t.Fatal(testApiKey + " must be set for acceptance tests")
-	}
+func TestAccPreCheckGCP(t *testing.T) {
 	if v := os.Getenv(testGCPCredentials); v == "" {
 		t.Fatal(testGCPCredentials + " must be set for acceptance tests")
 	}
@@ -108,12 +102,18 @@ func TestAccPreCheck(t *testing.T) {
 	if v := os.Getenv(testGCPZone); v == "" {
 		t.Fatal(testGCPZone + " must be set for acceptance tests")
 	}
+}
+
+func TestAccPreCheckAWS(t *testing.T) {
 	if v := os.Getenv(testAWSAccessKey); v == "" {
 		t.Fatal(testAWSAccessKey + " must be set for acceptance tests")
 	}
 	if v := os.Getenv(testAWSSecretAccessKey); v == "" {
 		t.Fatal(testAWSSecretAccessKey + " must be set for acceptance tests")
 	}
+}
+
+func TestAccPreCheckAzure(t *testing.T) {
 	if v := os.Getenv(testAzureClientID); v == "" {
 		t.Fatal(testAzureClientID + " must be set for acceptance tests")
 	}
@@ -128,6 +128,15 @@ func TestAccPreCheck(t *testing.T) {
 	}
 	if v := os.Getenv(testAzureClientSecret); v == "" {
 		t.Fatal(testAzureClientSecret + " must be set for acceptance tests")
+	}
+}
+
+func TestAccPreCheck(t *testing.T) {
+	if v := os.Getenv(testHost); v == "" {
+		t.Fatal(testHost + " must be set for acceptance tests")
+	}
+	if v := os.Getenv(testApiKey); v == "" {
+		t.Fatal(testApiKey + " must be set for acceptance tests")
 	}
 	if v := os.Getenv(testYBSoftwareVersion); v == "" {
 		t.Fatal(testYBSoftwareVersion + " must be set for acceptance tests")
