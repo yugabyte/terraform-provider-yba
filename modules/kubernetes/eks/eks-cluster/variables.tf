@@ -15,3 +15,7 @@ variable "node_count" {
   description = "number of nodes to create for the cluster"
   type = number
 }
+variable "subnet_ids" {
+  description = "ids of subnets to use for the cluster"
+  type = list(string)
+}
