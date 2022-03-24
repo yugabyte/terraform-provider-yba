@@ -21,8 +21,11 @@ provider "aws" {
 module "eks_cluster" {
   source = "../../../modules/kubernetes/eks"
   cluster_name = "sdu-yb-anywhere"
-  vpc_id = "***REMOVED***"
+  vpc_id = "vpc-7376f615"
   docker_config_json = base64decode(yamldecode(file("~/.yugabyte/yugabyte-k8s-secret.yml"))["data"][".dockerconfigjson"])
+  iam_role = "eks-admin"
+  node_count = 2
+  subnet_ids = ["subnet-eb77a48d", "subnet-05b0315804f92030c", "subnet-11798e59", "subnet-1598fa4e"]
 }
 
 output "public_ip" {
