@@ -49,7 +49,13 @@ jobs:
     name: Acceptance Test on GCP
     needs: build
     runs-on: self-hosted
-    timeout-minutes: 15
+    env:
+      TF_VAR_RESOURCES_DIR: ${{ secrets.TF_VAR_RESOURCES_DIR }}
+      GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
+      GOOGLE_PROJECT: ${{ secrets.GOOGLE_PROJECT }}
+      GOOGLE_REGION: ${{ secrets.GOOGLE_REGION }}
+      GOOGLE_ZONE: ${{ secrets.GOOGLE_ZONE }}
+    timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
@@ -93,19 +99,24 @@ jobs:
         run: terraform apply -auto-approve
         working-directory: ./acctest
 
+      - name: Set platform host
+        run: echo "YB_HOST=$(terraform output host)" >> $GITHUB_ENV
+        working-directory: ./acctest
+
+      - name: Set platform api key
+        run: echo "TF_ACC_TEST_API_KEY=$(terraform output host)" >> $GITHUB_ENV
+        working-directory: ./acctest
+
       # run acceptance tests
       - name: TF acceptance tests
         timeout-minutes: 120
         env:
           TF_ACC: "1"
-
-          # Set whatever additional acceptance test env vars here. You can
-          # optionally use data from your repository secrets using the
-          # following syntax:
-          # SOME_VAR: ${{ secrets.SOME_VAR }}
+          YB_HOST: ${{ env.YB_HOST }}
+          TF_ACC_TEST_API_KEY: ${{ env.TF_ACC_TEST_API_KEY }}
 
         run: |
-          go test -v -cover ./... -run ".*GCP.*"
+          go test -v -cover ./... -run "GCP"
 
       # clean up platform instance
       - name: Terraform Destroy
