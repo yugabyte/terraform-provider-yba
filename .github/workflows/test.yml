@@ -125,7 +125,7 @@ jobs:
           TF_ACC_TEST_YB_SOFTWARE_VERSION: "2.13.1.0-b69"
 
         run: |
-          go test -v -cover ./... -run "GCP"
+          go test -v -cover -timeout 2h ./... -run "GCP"
 
       # clean up platform instance
       - name: Terraform Destroy
