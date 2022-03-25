@@ -107,11 +107,11 @@ jobs:
         working-directory: ./acctest
 
       - name: Set platform host
-        run: echo "YB_HOST=$(terraform output host)" >> $GITHUB_ENV
+        run: echo "YB_HOST=$(terraform output --raw host)" >> $GITHUB_ENV
         working-directory: ./acctest
 
       - name: Set platform api key
-        run: echo "TF_ACC_TEST_API_KEY=$(terraform output api_key)" >> $GITHUB_ENV
+        run: echo "TF_ACC_TEST_API_KEY=$(terraform output --raw api_key)" >> $GITHUB_ENV
         working-directory: ./acctest
 
       # run acceptance tests
