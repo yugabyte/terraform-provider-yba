@@ -252,7 +252,7 @@ resource "yb_cloud_provider" "gcp" {
     { YB_FIREWALL_TAGS = "cluster-server" },
     jsondecode(file("%s"))
   )
-  dest_vpc_id = "***REMOVED***"
+  dest_vpc_id = "default"
   name        = "%s"
   regions {
     code = "us-west1"
