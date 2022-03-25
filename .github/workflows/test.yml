@@ -51,6 +51,7 @@ jobs:
     runs-on: self-hosted
     env:
       TF_VAR_RESOURCES_DIR: ${{ secrets.TF_VAR_RESOURCES_DIR }}
+      TF_VAR_PORTAL_PASSWORD: ${{ secrets.TF_VAR_PORTAL_PASSWORD }}
       GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
       GOOGLE_PROJECT: ${{ secrets.GOOGLE_PROJECT }}
       GOOGLE_REGION: ${{ secrets.GOOGLE_REGION }}
