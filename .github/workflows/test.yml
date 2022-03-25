@@ -111,7 +111,7 @@ jobs:
         working-directory: ./acctest
 
       - name: Set platform api key
-        run: echo "TF_ACC_TEST_API_KEY=$(terraform output host)" >> $GITHUB_ENV
+        run: echo "TF_ACC_TEST_API_KEY=$(terraform output api_key)" >> $GITHUB_ENV
         working-directory: ./acctest
 
       # run acceptance tests
@@ -122,7 +122,7 @@ jobs:
           YB_HOST: ${{ env.YB_HOST }}
           TF_ACC_TEST_API_KEY: ${{ env.TF_ACC_TEST_API_KEY }}
           # TODO: this is hardcoded to release 790 (2.13.1.0-b69)
-          YB_SOFTWARE_VERSION: "2.13.1.0-b69"
+          TF_ACC_TEST_YB_SOFTWARE_VERSION: "2.13.1.0-b69"
 
         run: |
           go test -v -cover ./... -run "GCP"
