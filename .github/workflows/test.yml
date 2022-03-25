@@ -130,5 +130,5 @@ jobs:
       # clean up platform instance
       - name: Terraform Destroy
         if: always()
-        run: terraform destroy -force
+        run: terraform destroy -auto-approve
         working-directory: ./acctest
