@@ -31,19 +31,19 @@ jobs:
       run: |
         go build -v .
         
-  generate:
-    name: Check Documentation Generation
-    runs-on: self-hosted
-    steps:
-      - uses: actions/setup-go@v3
-        with:
-          go-version: '1.16'
-      - uses: actions/checkout@v3
-      - run: go generate ./...
-      - name: git diff
-        run: |
-          git diff --compact-summary --exit-code || \
-            (echo; echo "Unexpected difference in directories after code generation. Run 'go generate ./...' command and commit."; exit 1)
+#  generate:
+#    name: Check Documentation Generation
+#    runs-on: self-hosted
+#    steps:
+#      - uses: actions/setup-go@v3
+#        with:
+#          go-version: '1.16'
+#      - uses: actions/checkout@v3
+#      - run: go generate ./...
+#      - name: git diff
+#        run: |
+#          git diff --compact-summary --exit-code || \
+#            (echo; echo "Unexpected difference in directories after code generation. Run 'go generate ./...' command and commit."; exit 1)
           
   gcptest:
     name: Acceptance Test on GCP
