@@ -14,6 +14,10 @@ variable "RESOURCES_DIR" {
   type        = string
   description = "directory on the platform runner that holds testing resources"
 }
+variable "PORTAL_PASSWORD" {
+  type        = string
+  description = "password for the management portal"
+}
 
 resource "random_uuid" "random" {
 }
@@ -56,7 +60,7 @@ resource "yb_customer_resource" "customer" {
   depends_on = [yb_installation.installation]
   code       = "admin"
   email      = "tf@yugabyte.com"
-  name       = "tf-acctest"
+  name       = var.PORTAL_PASSWORD
   password   = "Password1@"
 }
 
