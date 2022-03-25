@@ -86,6 +86,13 @@ jobs:
         run: |
           go mod download
 
+      - name: Make terraform provider installation directory
+        run: mkdir -p ./acctest/terraform.d/plugins/terraform.yugabyte.com/platform/yugabyte-platform/0.1.0/linux_amd64
+
+      - name: Install
+        run: |
+          go build -o ./acctest/terraform.d/plugins/terraform.yugabyte.com/platform/yugabyte-platform/0.1.0/linux_amd64
+
       # use the modules to bring up platform instance for acceptance tests
       - name: Terraform Init
         run: terraform init
