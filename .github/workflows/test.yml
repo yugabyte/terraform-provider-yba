@@ -60,7 +60,7 @@ jobs:
       fail-fast: false
       matrix:
         terraform:
-          - '1.0.*'
+#          - '1.0.*'
           - '1.1.*'
 #          - '0.12.*'
 #          - '0.13.*'
@@ -114,6 +114,8 @@ jobs:
           TF_ACC: "1"
           YB_HOST: ${{ env.YB_HOST }}
           TF_ACC_TEST_API_KEY: ${{ env.TF_ACC_TEST_API_KEY }}
+          # TODO: this is hardcoded to release 790 (2.13.1.0-b69)
+          YB_SOFTWARE_VERSION: "2.13.1.0-b69"
 
         run: |
           go test -v -cover ./... -run "GCP"
