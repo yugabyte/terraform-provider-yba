@@ -15,7 +15,7 @@ variable "RESOURCES_DIR" {
   description = "directory on the platform runner that holds testing resources"
 }
 
-resource "random_uuid" "test" {
+resource "random_uuid" "random" {
 }
 
 provider "google" {}
@@ -23,7 +23,7 @@ provider "google" {}
 module "gcp_yb_anywhere" {
   source = "../modules/docker/gcp"
 
-  cluster_name    = "terraform-acctest-yugaware"
+  cluster_name    = "terraform-acctest-yugaware-${random_uuid.random.result}"
   ssh_user        = "tf"
   network_tags    = ["terraform-acctest-yugaware", "http-server", "https-server"]
   vpc_network     = "default"
