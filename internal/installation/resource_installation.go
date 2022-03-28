@@ -10,6 +10,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	client "github.com/yugabyte/platform-go-client"
+	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/api"
 	"golang.org/x/crypto/ssh"
 	"net"
 	"os"
@@ -133,11 +135,11 @@ func newSSHClient(user string, ip string, key string) (*ssh.Client, error) {
 			ssh.PublicKeys(pk),
 		},
 	}
-	client, err := ssh.Dial("tcp", net.JoinHostPort(ip, "22"), config)
+	c, err := ssh.Dial("tcp", net.JoinHostPort(ip, "22"), config)
 	if err != nil {
 		return nil, err
 	}
-	return client, nil
+	return c, nil
 }
 
 func runCommand(ctx context.Context, client *ssh.Client, cmd string) (string, error) {
@@ -159,22 +161,22 @@ func runCommand(ctx context.Context, client *ssh.Client, cmd string) (string, er
 func scpFile(ctx context.Context, sshClient *ssh.Client, localFile string, remoteFile string) error {
 	tflog.Info(ctx, fmt.Sprintf("copying %s to %s", localFile, remoteFile))
 
-	client, err := scp.NewClientBySSH(sshClient)
+	c, err := scp.NewClientBySSH(sshClient)
 	if err != nil {
 		return err
 	}
-	defer client.Close()
+	defer c.Close()
 
-	err = client.Connect()
+	err = c.Connect()
 	if err != nil {
 		return err
 	}
-	defer client.Close()
+	defer c.Close()
 
 	f, _ := os.Open(localFile)
 	defer f.Close()
 
-	err = client.CopyFromFile(context.Background(), *f, remoteFile, "0666")
+	err = c.CopyFromFile(context.Background(), *f, remoteFile, "0666")
 	return err
 }
 
@@ -186,20 +188,20 @@ func waitForIP(ctx context.Context, user string, ip string, pk string, timeout t
 		Timeout: timeout,
 
 		Refresh: func() (result interface{}, state string, err error) {
-			client, err := newSSHClient(user, ip, pk)
+			c, err := newSSHClient(user, ip, pk)
 			if err != nil {
 				return nil, "Waiting", nil
 			}
 
-			return client, "Ready", nil
+			return c, "Ready", nil
 		},
 	}
 
-	client, err := wait.WaitForStateContext(ctx)
+	c, err := wait.WaitForStateContext(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return client.(*ssh.Client), nil
+	return c.(*ssh.Client), nil
 }
 
 func resourceInstallationCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
@@ -234,8 +236,38 @@ func resourceInstallationCreate(ctx context.Context, d *schema.ResourceData, met
 		}
 	}
 
+	c := meta.(*api.ApiClient).YugawareClient
+	err = waitForStart(ctx, c, 10*time.Minute)
+	if err != nil {
+		return diag.FromErr(err)
+	}
+
 	d.SetId(uuid.New().String())
 	return diags
+}
+
+func waitForStart(ctx context.Context, c *client.APIClient, timeout time.Duration) error {
+	wait := &resource.StateChangeConf{
+		Delay:   1 * time.Second,
+		Pending: []string{"Waiting"},
+		Target:  []string{"Ready"},
+		Timeout: timeout,
+
+		Refresh: func() (result interface{}, state string, err error) {
+			_, _, err = c.SessionManagementApi.AppVersion(ctx).Execute()
+			if err != nil {
+				return "Waiting", "Waiting", nil
+			}
+
+			return "Ready", "Ready", nil
+		},
+	}
+
+	if _, err := wait.WaitForStateContext(ctx); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func resourceInstallationRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
