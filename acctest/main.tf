@@ -60,8 +60,8 @@ resource "yb_customer_resource" "customer" {
   depends_on = [yb_installation.installation]
   code       = "admin"
   email      = "tf@yugabyte.com"
-  name       = var.PORTAL_PASSWORD
-  password   = "Password1@"
+  name       = "acctest"
+  password   = var.PORTAL_PASSWORD
 }
 
 output "api_key" {
