@@ -25,7 +25,7 @@ resource "random_uuid" "random" {
 provider "google" {}
 
 module "gcp_yb_anywhere" {
-  source = "../modules/docker/gcp"
+  source = "../../modules/docker/gcp"
 
   cluster_name    = "tf-acctest-${random_uuid.random.result}"
   ssh_user        = "tf"

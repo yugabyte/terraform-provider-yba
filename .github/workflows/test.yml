@@ -30,25 +30,11 @@ jobs:
     - name: Build
       run: |
         go build -v .
-        
-#  generate:
-#    name: Check Documentation Generation
-#    runs-on: self-hosted
-#    steps:
-#      - uses: actions/setup-go@v3
-#        with:
-#          go-version: '1.16'
-#      - uses: actions/checkout@v3
-#      - run: go generate ./...
-#      - name: git diff
-#        run: |
-#          git diff --compact-summary --exit-code || \
-#            (echo; echo "Unexpected difference in directories after code generation. Run 'go generate ./...' command and commit."; exit 1)
           
   gcptest:
     name: Acceptance Test on GCP
     needs: build
-    runs-on: self-hosted
+    runs-on: [self-hosted, gcp]
     env:
       TF_VAR_RESOURCES_DIR: ${{ secrets.TF_VAR_RESOURCES_DIR }}
       TF_VAR_PORTAL_PASSWORD: ${{ secrets.TF_VAR_PORTAL_PASSWORD }}
@@ -88,33 +74,32 @@ jobs:
           go mod download
 
       - name: Make terraform provider installation directory
-        run: mkdir -p ./acctest/terraform.d/plugins/terraform.yugabyte.com/platform/yugabyte-platform/0.1.0/linux_amd64
+        run: mkdir -p ./acctest/gcp/terraform.d/plugins/terraform.yugabyte.com/platform/yugabyte-platform/0.1.0/linux_amd64
 
       - name: Install
         run: |
-          go build -o ./acctest/terraform.d/plugins/terraform.yugabyte.com/platform/yugabyte-platform/0.1.0/linux_amd64
+          go build -o ./acctest/gcp/terraform.d/plugins/terraform.yugabyte.com/platform/yugabyte-platform/0.1.0/linux_amd64
 
       # use the modules to bring up platform instance for acceptance tests
       - name: Terraform Init
         run: terraform init
-        working-directory: ./acctest
+        working-directory: ./acctest/gcp
 
       - name: Terraform Plan
         run: terraform plan -no-color
-        working-directory: ./acctest
+        working-directory: ./acctest/gcp
 
       - name: Terraform Apply
         run: terraform apply -auto-approve
-        working-directory: ./acctest
+        working-directory: ./acctest/gcp
 
       - name: Set platform host
         run: echo "YB_HOST=$(terraform output --raw host)" >> $GITHUB_ENV
-        working-directory: ./acctest
+        working-directory: ./acctest/gcp
 
       - name: Set platform api key
         run: echo "TF_ACC_TEST_API_KEY=$(terraform output --raw api_key)" >> $GITHUB_ENV
-        working-directory: ./acctest
-
+        working-directory: ./acctest/gcp
       # run acceptance tests
       - name: TF acceptance tests
         timeout-minutes: 120
@@ -132,4 +117,4 @@ jobs:
       - name: Terraform Destroy
         if: always()
         run: terraform destroy -auto-approve
-        working-directory: ./acctest
+        working-directory: ./acctest/gcp
