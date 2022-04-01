@@ -30,6 +30,88 @@ jobs:
     - name: Build
       run: |
         go build -v .
+
+  awstest:
+    name: Acceptance Test on AWS
+    needs: build
+    runs-on: [self-hosted, aws]
+    env:
+      TF_VAR_RESOURCES_DIR: ${{ secrets.TF_VAR_RESOURCES_DIR }}
+      TF_VAR_PORTAL_PASSWORD: ${{ secrets.TF_VAR_PORTAL_PASSWORD }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ AWS_SECRET_ACCESS_KEY }}
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        terraform:
+          # add other versions to support
+          - '1.1.*'
+
+    steps:
+      - name: Set up Go
+        uses: actions/setup-go@v2.1.3
+        with:
+          go-version: '1.16'
+        id: go
+
+      - uses: hashicorp/setup-terraform@v1
+        with:
+          terraform_version: ${{ matrix.terraform }}
+          terraform_wrapper: false
+
+      - name: Check out code into the Go module directory
+        uses: actions/checkout@v3
+
+      - name: Get dependencies
+        run: |
+          go mod download
+
+      - name: Make terraform provider installation directory
+        run: mkdir -p ./acctest/aws/terraform.d/plugins/terraform.yugabyte.com/platform/yugabyte-platform/0.1.0/linux_amd64
+
+      - name: Install
+        run: |
+          go build -o ./acctest/aws/terraform.d/plugins/terraform.yugabyte.com/platform/yugabyte-platform/0.1.0/linux_amd64
+
+      # use the modules to bring up platform instance for acceptance tests
+      - name: Terraform Init
+        run: terraform init
+        working-directory: ./acctest/aws
+
+      - name: Terraform Plan
+        run: terraform plan -no-color
+        working-directory: ./acctest/aws
+
+      - name: Terraform Apply
+        run: terraform apply -auto-approve
+        working-directory: ./acctest/aws
+
+      - name: Set platform host
+        run: echo "YB_HOST=$(terraform output --raw host)" >> $GITHUB_ENV
+        working-directory: ./acctest/aws
+
+      - name: Set platform api key
+        run: echo "TF_ACC_TEST_API_KEY=$(terraform output --raw api_key)" >> $GITHUB_ENV
+        working-directory: ./acctest/aws
+      # run acceptance tests
+      - name: TF acceptance tests
+        timeout-minutes: 120
+        env:
+          TF_ACC: "1"
+          YB_HOST: ${{ env.YB_HOST }}
+          TF_ACC_TEST_API_KEY: ${{ env.TF_ACC_TEST_API_KEY }}
+          # TODO: this is hardcoded to release 790 (2.13.1.0-b69)
+          TF_ACC_TEST_YB_SOFTWARE_VERSION: "2.13.1.0-b69"
+
+        run: |
+          go test -v -cover -timeout 2h ./... -run "AWS"
+
+      # clean up platform instance
+      - name: Terraform Destroy
+        if: always()
+        run: terraform destroy -auto-approve
+        working-directory: ./acctest/aws
           
   gcptest:
     name: Acceptance Test on GCP
@@ -47,12 +129,8 @@ jobs:
       fail-fast: false
       matrix:
         terraform:
-#          - '1.0.*'
+          # add other versions to support
           - '1.1.*'
-#          - '0.12.*'
-#          - '0.13.*'
-#          - '0.14.*'
-#          - '0.15.*'
 
     steps:
       - name: Set up Go

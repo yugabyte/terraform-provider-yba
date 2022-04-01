@@ -1,7 +1,7 @@
 terraform {
   required_providers {
-    google = {
-      source = "hashicorp/google"
+    aws = {
+      source = "hashicorp/aws"
     }
     yb = {
       version = "~> 0.1.0"
@@ -22,33 +22,35 @@ variable "PORTAL_PASSWORD" {
 resource "random_uuid" "random" {
 }
 
-provider "google" {}
+provider "aws" {
+  region = "us-east-1"
+}
 
-module "gcp_yb_anywhere" {
-  source = "../../modules/docker/gcp"
+module "aws_yb_anywhere" {
+  source = "../../modules/docker/aws"
 
-  cluster_name    = "tf-acctest-${random_uuid.random.result}"
-  ssh_user        = "tf"
-  network_tags    = ["terraform-acctest-yugaware", "http-server", "https-server"]
-  vpc_network     = "default"
-  vpc_subnetwork  = "default"
+  cluster_name        = "tf-acctest-${random_uuid.random.result}"
+  ssh_user            = "ubuntu"
+  ssh_keypair         = "yb-dev-aws-2"
+  security_group_name = "tf-acctest-sg-${random_uuid.random.result}"
+  vpc_id              = "vpc-0379abc9548a4a921"
+  subnet_id           = "subnet-0596e45df927aa5fd"
   // files
   ssh_private_key = "${var.RESOURCES_DIR}/acctest"
-  ssh_public_key  = "${var.RESOURCES_DIR}/acctest.pub"
 }
 
 output "host" {
-  value = module.gcp_yb_anywhere.public_ip
+  value = module.aws_yb_anywhere.public_ip
 }
 
 provider "yb" {
-  host = "${module.gcp_yb_anywhere.public_ip}:80"
+  host = "${module.aws_yb_anywhere.public_ip}:80"
 }
 
 resource "yb_installation" "installation" {
-  public_ip                 = module.gcp_yb_anywhere.public_ip
-  private_ip                = module.gcp_yb_anywhere.private_ip
-  ssh_user                  = "tf"
+  public_ip                 = module.aws_yb_anywhere.public_ip
+  private_ip                = module.aws_yb_anywhere.private_ip
+  ssh_user                  = "ubuntu"
   ssh_private_key           = file("${var.RESOURCES_DIR}/acctest")
   replicated_config_file    = "${var.RESOURCES_DIR}/replicated.conf"
   replicated_license_file   = "${var.RESOURCES_DIR}/acctest.rli"
