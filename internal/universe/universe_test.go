@@ -265,12 +265,18 @@ resource "yb_cloud_provider" "gcp" {
 }
 
 func cloudProviderAWSConfig(name string) string {
+	// TODO: remove the lifecycle ignore_changes block. This is needed because the current API is not returning vnet_name
 	return fmt.Sprintf(`
 data "yb_customer_data" "customer" {
   api_token = "%s"
 }
 
 resource "yb_cloud_provider" "aws" {
+  lifecycle {
+    ignore_changes = [
+      regions[0].vnet_name,
+    ]
+  }
   connection_info {
     cuuid     = data.yb_customer_data.customer.cuuid
     api_token = data.yb_customer_data.customer.api_token
@@ -291,6 +297,7 @@ resource "yb_cloud_provider" "aws" {
 	  name = "us-east-1a"
 	  subnet = "subnet-0cdb90ad5eaa47ed9"
 	}
+  }
 }
 `, acctest.TestApiKey(), acctest.TestAWSAccessKey(), acctest.TestAWSSecretAccessKey(), name)
 }
