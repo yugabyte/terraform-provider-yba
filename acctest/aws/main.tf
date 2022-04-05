@@ -31,10 +31,10 @@ module "aws_yb_anywhere" {
 
   cluster_name        = "tf-acctest-${random_uuid.random.result}"
   ssh_user            = "ubuntu"
-  ssh_keypair         = "yb-dev-aws-2"
+  ssh_keypair         = "aws-acctest"
   security_group_name = "tf-acctest-sg-${random_uuid.random.result}"
-  vpc_id              = "vpc-0379abc9548a4a921"
-  subnet_id           = "subnet-0596e45df927aa5fd"
+  vpc_id              = "vpc-09eea1b4c18fb9ba0"
+  subnet_id           = "subnet-0cdb90ad5eaa47ed9"
   // files
   ssh_private_key = "${var.RESOURCES_DIR}/acctest"
 }
