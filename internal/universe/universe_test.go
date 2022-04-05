@@ -283,9 +283,14 @@ resource "yb_cloud_provider" "aws" {
   }
   name        = "%s"
   regions {
-    code = "us-west-1"
-    name = "us-west-1"
-  }
+	security_group_id = "sg-019f83043a270f3bb"
+	vnet_name = "vpc-09eea1b4c18fb9ba0"
+    code = "us-east-1"
+    name = "us-east-1"
+	zones {
+	  name = "us-east-1a"
+	  subnet = "subnet-0cdb90ad5eaa47ed9"
+	}
 }
 `, acctest.TestApiKey(), acctest.TestAWSAccessKey(), acctest.TestAWSSecretAccessKey(), name)
 }
