@@ -180,7 +180,7 @@ resource "yb_cloud_provider" "aws" {
   }
   name        = "%s"
   regions {
-	security_group_id = "sg-019f83043a270f3bb"
+	security_group_id = "sg-0ef14aaa12fea6a11"
 	vnet_name = "vpc-09eea1b4c18fb9ba0"
     code = "us-east-1"
     name = "us-east-1"
