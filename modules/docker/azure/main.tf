@@ -1,17 +1,7 @@
-resource "azurerm_resource_group" "yb_rg" {
-  name     = "${var.cluster_name}-rg"
-  location = var.region_name
-
-  tags = {
-    environment = var.cluster_name
-  }
-}
-
 resource "azurerm_public_ip" "yb_public_ip" {
-  depends_on          = [azurerm_resource_group.yb_rg]
   name                = "${var.cluster_name}-public-ip"
   location            = var.region_name
-  resource_group_name = azurerm_resource_group.yb_rg.name
+  resource_group_name = var.resource_group
   allocation_method   = "Static"
   sku                 = "Standard"
 
@@ -21,10 +11,9 @@ resource "azurerm_public_ip" "yb_public_ip" {
 }
 
 resource "azurerm_network_security_group" "yb_sg" {
-  depends_on          = [azurerm_resource_group.yb_rg]
   location            = var.region_name
   name                = "${var.cluster_name}-sg"
-  resource_group_name = azurerm_resource_group.yb_rg.name
+  resource_group_name = var.resource_group
 
   security_rule {
     name                    = "yb-rule"
@@ -48,7 +37,7 @@ resource "azurerm_network_security_group" "yb_sg" {
 data "azurerm_subnet" "subnet" {
   name                 = var.subnet_name
   virtual_network_name = var.vnet_name
-  resource_group_name  = var.vnet_resource_group
+  resource_group_name  = var.resource_group
 }
 
 resource "azurerm_subnet_network_security_group_association" "yb_sg_association" {
@@ -58,10 +47,10 @@ resource "azurerm_subnet_network_security_group_association" "yb_sg_association"
 }
 
 resource "azurerm_network_interface" "yb_network_interface" {
-  depends_on          = [azurerm_resource_group.yb_rg, azurerm_public_ip.yb_public_ip]
+  depends_on          = [azurerm_public_ip.yb_public_ip]
   name                = "${var.cluster_name}-network-interface"
   location            = var.region_name
-  resource_group_name = azurerm_resource_group.yb_rg.name
+  resource_group_name = var.resource_group
 
   ip_configuration {
     name                          = "${var.cluster_name}-nic-config"
@@ -76,11 +65,9 @@ resource "azurerm_network_interface" "yb_network_interface" {
 }
 
 resource "azurerm_virtual_machine" "yb_anywhere_node" {
-  depends_on = [
-    azurerm_resource_group.yb_rg, azurerm_network_interface.yb_network_interface, azurerm_public_ip.yb_public_ip
-  ]
+  depends_on = [azurerm_network_interface.yb_network_interface, azurerm_public_ip.yb_public_ip]
   name                = var.cluster_name
-  resource_group_name = azurerm_resource_group.yb_rg.name
+  resource_group_name = var.resource_group
   location            = var.region_name
 
   tags = {

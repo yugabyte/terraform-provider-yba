@@ -29,8 +29,8 @@ variable "vnet_name" {
   description = "name of the virtual network to use for the YugabyteDB Anywhere instance"
   type        = string
 }
-variable "vnet_resource_group" {
-  description = "name of the resource group associated with the virtual network"
+variable "resource_group" {
+  description = "name of the resource group that all existing and created resources should belong"
   type        = string
 }
 
