@@ -106,6 +106,8 @@ jobs:
           TF_ACC_TEST_API_KEY: ${{ env.TF_ACC_TEST_API_KEY }}
           # TODO: this is hardcoded to release 790 (2.13.1.0-b69)
           TF_ACC_TEST_YB_SOFTWARE_VERSION: "2.13.1.0-b69"
+          # TODO: test universes are created in the yugabyte westus2 network because other networks have no outside access
+          ARM_RESOURCE_GROUP: "yugabyte-rg"
 
         run: |
           go test -v -cover -timeout 2h ./... -run "Azure"
