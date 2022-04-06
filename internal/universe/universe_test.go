@@ -203,7 +203,7 @@ resource "yb_universe" "%s" {
         volume_size  = 375
         storage_type = "%s"
       }
-      assign_public_ip              = false
+      assign_public_ip              = true
       use_time_sync                 = true
       enable_ysql                   = true
       enable_node_to_node_encrypt   = true
@@ -302,7 +302,6 @@ resource "yb_cloud_provider" "aws" {
 `, acctest.TestApiKey(), acctest.TestAWSAccessKey(), acctest.TestAWSSecretAccessKey(), name)
 }
 
-// TODO: there should be 3 zones here but https://yugabyte.atlassian.net/browse/PLAT-3034 needs to be resolved first
 func cloudProviderAzureConfig(name string) string {
 	return fmt.Sprintf(`
 data "yb_customer_data" "customer" {
@@ -325,12 +324,12 @@ resource "yb_cloud_provider" "azu" {
   }
   name        = "%s"
   regions {
-    code = "westus"
-    name = "westus"
-	vnet_name = "terraform-acctest-vnet"
+    code = "westus2"
+    name = "westus2"
+	vnet_name = "terraform-acctest-vnet-westus2"
 	zones {
-      name = "westus"
-	  subnet = "terraform-acctest-subnet"
+      name = "westus2-1"
+	  subnet = "terraform-acctest-subnet-westus2"
 	}
   }
 }
