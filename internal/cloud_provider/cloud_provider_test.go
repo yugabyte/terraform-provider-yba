@@ -217,12 +217,12 @@ resource "yb_cloud_provider" "azure" {
   }
   name        = "%s"
   regions {
-    code = "westus2"
-    name = "westus2"
-	vnet_name = "yugabyte-vnet-us-west2"
+    code = "westus"
+    name = "westus"
+	vnet_name = "terraform-acctest-vnet"
 	zones {
-      name = "westus2-1"
-	  subnet = "yugabyte-subnet-westus2"
+      name = "westus"
+	  subnet = "terraform-acctest-subnet"
 	}
   }
 }
