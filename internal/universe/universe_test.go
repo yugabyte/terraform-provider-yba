@@ -203,7 +203,7 @@ resource "yb_universe" "%s" {
         volume_size  = 375
         storage_type = "%s"
       }
-      assign_public_ip              = true
+      assign_public_ip              = false
       use_time_sync                 = true
       enable_ysql                   = true
       enable_node_to_node_encrypt   = true
@@ -325,12 +325,12 @@ resource "yb_cloud_provider" "azu" {
   }
   name        = "%s"
   regions {
-    code = "westus2"
-    name = "westus2"
-	vnet_name = "***REMOVED***"
+    code = "westus"
+    name = "westus"
+	vnet_name = "terraform-acctest-vnet"
 	zones {
-      name = "westus2-1"
-	  subnet = "***REMOVED***"
+      name = "westus"
+	  subnet = "terraform-acctest-subnet"
 	}
   }
 }
