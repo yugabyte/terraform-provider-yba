@@ -193,8 +193,6 @@ resource "yb_cloud_provider" "aws" {
 `, acctest.TestApiKey(), acctest.TestAWSAccessKey(), acctest.TestAWSSecretAccessKey(), name)
 }
 
-// TODO: there should be 3 zones here but https://yugabyte.atlassian.net/browse/PLAT-3034 needs to be resolved first
-// TODO: this test is really flaky when run against portal.dev
 func cloudProviderAzureConfig(name string) string {
 	return fmt.Sprintf(`
 data "yb_customer_data" "customer" {
@@ -217,12 +215,12 @@ resource "yb_cloud_provider" "azure" {
   }
   name        = "%s"
   regions {
-    code = "westus"
-    name = "westus"
-	vnet_name = "terraform-acctest-vnet"
+    code = "westus2"
+    name = "westus2"
+	vnet_name = "***REMOVED***"
 	zones {
-      name = "westus"
-	  subnet = "terraform-acctest-subnet"
+      name = "westus2-1"
+	  subnet = "***REMOVED***"
 	}
   }
 }
