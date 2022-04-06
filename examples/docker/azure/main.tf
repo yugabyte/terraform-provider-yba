@@ -26,7 +26,7 @@ module "azure_yb_anywhere" {
   region_name         = "westus2"
   subnet_name         = "***REMOVED***"
   vnet_name           = "***REMOVED***"
-  vnet_resource_group = "yugabyte-rg"
+  resource_group = "yugabyte-rg"
   // files
   ssh_private_key = "/Users/stevendu/.ssh/yugaware-azure"
   ssh_public_key  = "/Users/stevendu/.ssh/yugaware-azure.pub"
