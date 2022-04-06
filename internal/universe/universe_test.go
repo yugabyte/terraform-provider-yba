@@ -326,10 +326,10 @@ resource "yb_cloud_provider" "azu" {
   regions {
     code = "westus2"
     name = "westus2"
-	vnet_name = "terraform-acctest-vnet-westus2"
+	vnet_name = "yugabyte-vnet-us-west2"
 	zones {
       name = "westus2-1"
-	  subnet = "terraform-acctest-subnet-westus2"
+	  subnet = "yugabyte-subnet-westus2"
 	}
   }
 }
