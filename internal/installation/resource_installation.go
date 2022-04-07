@@ -237,7 +237,7 @@ func resourceInstallationCreate(ctx context.Context, d *schema.ResourceData, met
 	}
 
 	c := meta.(*api.ApiClient).YugawareClient
-	err = waitForStart(ctx, c, 10*time.Minute)
+	err = waitForStart(ctx, c, 20*time.Minute)
 	if err != nil {
 		return diag.FromErr(err)
 	}
