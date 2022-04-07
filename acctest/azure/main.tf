@@ -31,9 +31,9 @@ module "azure_yb_anywhere" {
 
   cluster_name        = "tf-acctest-${random_uuid.random.result}"
   ssh_user            = "tf"
-  region_name         = "westus"
-  subnet_name         = "terraform-acctest-subnet"
-  vnet_name           = "terraform-acctest-vnet"
+  region_name         = "westus2"
+  subnet_name         = "terraform-acctest-subnet-westus2"
+  vnet_name           = "terraform-acctest-vnet-westus2"
   resource_group = "yugabyte-terraform-test"
   // files
   ssh_private_key = "${var.RESOURCES_DIR}/acctest"
