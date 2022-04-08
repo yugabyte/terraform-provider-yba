@@ -69,6 +69,7 @@ resource "azurerm_virtual_machine" "yb_anywhere_node" {
   name                = var.cluster_name
   resource_group_name = var.resource_group
   location            = var.region_name
+  delete_os_disk_on_termination = true
 
   tags = {
     environment = var.cluster_name
