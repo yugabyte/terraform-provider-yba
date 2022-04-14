@@ -58,6 +58,13 @@ func GetInt64Pointer(in int64) *int64 {
 	return &in
 }
 
+func GetFloat64Pointer(in float64) *float64 {
+	if in == 0 {
+		return nil
+	}
+	return &in
+}
+
 func CreateSingletonList(in interface{}) []interface{} {
 	return []interface{}{in}
 }

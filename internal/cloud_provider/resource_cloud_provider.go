@@ -159,10 +159,12 @@ func resourceCloudProviderCreate(ctx context.Context, d *schema.ResourceData, me
 	}
 
 	d.SetId(*r.ResourceUUID)
-	tflog.Debug(ctx, fmt.Sprintf("Waiting for provider %s to be active", d.Id()))
-	err = utils.WaitForTask(ctx, *r.TaskUUID, cUUID, c, 10*time.Minute)
-	if err != nil {
-		return diag.FromErr(err)
+	if r.TaskUUID != nil {
+		tflog.Debug(ctx, fmt.Sprintf("Waiting for provider %s to be active", d.Id()))
+		err = utils.WaitForTask(ctx, *r.TaskUUID, cUUID, c, 10*time.Minute)
+		if err != nil {
+			return diag.FromErr(err)
+		}
 	}
 
 	return resourceCloudProviderRead(ctx, d, meta)
