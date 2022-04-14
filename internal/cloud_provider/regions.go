@@ -36,14 +36,16 @@ func RegionsSchema() *schema.Schema {
 				},
 				"latitude": {
 					Type:        schema.TypeFloat,
-					Computed:    true,
 					ForceNew:    true,
+					Computed:    true,
+					Optional:    true,
 					Description: "", // TODO: document
 				},
 				"longitude": {
 					Type:        schema.TypeFloat,
-					Computed:    true,
 					ForceNew:    true,
+					Optional:    true,
+					Computed:    true,
 					Description: "", // TODO: document
 				},
 				"name": {
@@ -154,6 +156,8 @@ func buildRegions(regions []interface{}) (res []client.Region) {
 			VnetName:        utils.GetStringPointer(region["vnet_name"].(string)),
 			YbImage:         utils.GetStringPointer(region["yb_image"].(string)),
 			Zones:           buildZones(region["zones"].([]interface{})),
+			Latitude:        utils.GetFloat64Pointer(region["latitude"].(float64)),
+			Longitude:       utils.GetFloat64Pointer(region["longitude"].(float64)),
 		}
 		res = append(res, r)
 	}
