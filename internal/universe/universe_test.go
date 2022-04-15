@@ -175,20 +175,10 @@ func universeAzureConfigWithNodes(name string, nodes int) string {
 func universeConfigWithProviderWithNodes(p string, name string, nodes int) string {
 	return fmt.Sprintf(`
 data "yb_provider_key" "%s_key" {
-  connection_info {
-   	cuuid     = data.yb_customer_data.customer.cuuid
-    api_token = data.yb_customer_data.customer.api_token
-  }
-
   provider_id = yb_cloud_provider.%s.id
 }
 
 resource "yb_universe" "%s" {
-  connection_info {
-    cuuid     = data.yb_customer_data.customer.cuuid
-    api_token = data.yb_customer_data.customer.api_token
-  }
-
   clusters {
     cluster_type = "PRIMARY"
     user_intent {
@@ -243,11 +233,6 @@ data "yb_customer_data" "customer" {
 }
 
 resource "yb_cloud_provider" "gcp" {
-  connection_info {
-    cuuid     = data.yb_customer_data.customer.cuuid
-    api_token = data.yb_customer_data.customer.api_token
-  }
-
   code = "gcp"
   config = merge(
     { YB_FIREWALL_TAGS = "cluster-server" },
@@ -278,10 +263,6 @@ resource "yb_cloud_provider" "aws" {
       regions[0].vnet_name,
     ]
   }
-  connection_info {
-    cuuid     = data.yb_customer_data.customer.cuuid
-    api_token = data.yb_customer_data.customer.api_token
-  }
 
   code = "aws"
   config = { 
@@ -310,11 +291,6 @@ data "yb_customer_data" "customer" {
 }
 
 resource "yb_cloud_provider" "azu" {
-  connection_info {
-    cuuid     = data.yb_customer_data.customer.cuuid
-    api_token = data.yb_customer_data.customer.api_token
-  }
-
   code = "azu"
   config = { 
 	AZURE_SUBSCRIPTION_ID = "%s"

@@ -96,11 +96,6 @@ data "yb_customer_data" "customer" {
 }
 
 resource "yb_user" "user" {
-  connection_info {
-    cuuid     = data.yb_customer_data.customer.cuuid
-    api_token = data.yb_customer_data.customer.api_token
-  }
-
   email = "%s@yugabyte.com"
   password = "Password1@"
   role = "%s"

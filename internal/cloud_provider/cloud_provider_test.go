@@ -134,11 +134,6 @@ data "yb_customer_data" "customer" {
 }
 
 resource "yb_cloud_provider" "gcp" {
-  connection_info {
-    cuuid     = data.yb_customer_data.customer.cuuid
-    api_token = data.yb_customer_data.customer.api_token
-  }
-
   code = "gcp"
   config = merge(
     { YB_FIREWALL_TAGS = "cluster-server" },
@@ -169,10 +164,6 @@ resource "yb_cloud_provider" "aws" {
       regions[0].vnet_name,
     ]
   }
-  connection_info {
-    cuuid     = data.yb_customer_data.customer.cuuid
-    api_token = data.yb_customer_data.customer.api_token
-  }
 
   code = "aws"
   config = { 
@@ -201,11 +192,6 @@ data "yb_customer_data" "customer" {
 }
 
 resource "yb_cloud_provider" "azure" {
-  connection_info {
-    cuuid     = data.yb_customer_data.customer.cuuid
-    api_token = data.yb_customer_data.customer.api_token
-  }
-
   code = "azu"
   config = { 
 	AZURE_SUBSCRIPTION_ID = "%s"

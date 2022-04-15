@@ -20,7 +20,6 @@ func ResourceCloudProvider() *schema.Resource {
 
 		CreateContext: resourceCloudProviderCreate,
 		ReadContext:   resourceCloudProviderRead,
-		UpdateContext: resourceCloudProviderUpdate,
 		DeleteContext: resourceCloudProviderDelete,
 
 		Importer: &schema.ResourceImporter{
@@ -224,11 +223,6 @@ func resourceCloudProviderRead(ctx context.Context, d *schema.ResourceData, meta
 		return diag.FromErr(err)
 	}
 	return diags
-}
-
-func resourceCloudProviderUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	// do nothing; this is here so that we can chang eth api token without forcing recreation
-	return diag.Diagnostics{}
 }
 
 func resourceCloudProviderDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
