@@ -1,9 +1,7 @@
 package acctest
 
 import (
-	"context"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
 	client "github.com/yugabyte/platform-go-client"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/api"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/provider"
@@ -141,13 +139,6 @@ func TestAccPreCheck(t *testing.T) {
 	if v := os.Getenv(testYBSoftwareVersion); v == "" {
 		t.Fatal(testYBSoftwareVersion + " must be set for acceptance tests")
 	}
-}
-
-func GetCtxWithConnectionInfo(s *terraform.InstanceState) (context.Context, string) {
-	ctx := context.Background()
-	key := s.Attributes["connection_info.0.api_token"]
-	cUUID := s.Attributes["connection_info.0.cuuid"]
-	return api.SetContextApiKey(ctx, key), cUUID
 }
 
 func IsResourceNotFoundError(err error) bool {

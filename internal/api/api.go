@@ -2,39 +2,30 @@ package api
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	client "github.com/yugabyte/platform-go-client"
 	"io"
 	"net/http"
 )
 
-func SetContextApiKey(ctx context.Context, key string) context.Context {
-	return context.WithValue(ctx, client.ContextAPIKeys, map[string]client.APIKey{"apiKeyAuth": {Key: key}})
-}
-
-func GetConnectionInfo(d *schema.ResourceData) (string, string) {
-	m := d.Get("connection_info").([]interface{})[0].(map[string]interface{})
-	return m["cuuid"].(string), m["api_token"].(string)
-}
-
 type ApiClient struct {
 	VanillaClient  *VanillaClient
 	YugawareClient *client.APIClient
+	ApiKey         string
+	CustomerId     string
 }
 
-func NewYugawareClient(host string, scheme string) *client.APIClient {
-	cfg := client.NewConfiguration()
-	cfg.Host = host
-	cfg.Scheme = scheme
-	return client.NewAPIClient(cfg)
-}
-
-func NewApiClient(vc *VanillaClient, yc *client.APIClient) *ApiClient {
-	return &ApiClient{
-		VanillaClient:  vc,
-		YugawareClient: yc,
+func (c ApiClient) Authenticate() error {
+	r, _, err := c.YugawareClient.SessionManagementApi.GetSessionInfo(context.Background()).Execute()
+	if err != nil {
+		return err
 	}
+	if !r.HasCustomerUUID() {
+		return errors.New("could not retrieve customer id")
+	}
+	c.CustomerId = *r.CustomerUUID
+	return nil
 }
 
 type VanillaClient struct {

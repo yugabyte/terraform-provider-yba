@@ -7,7 +7,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	client "github.com/yugabyte/platform-go-client"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/api"
-	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/customer"
 )
 
 func ResourceStorageConfig() *schema.Resource {
@@ -24,8 +23,6 @@ func ResourceStorageConfig() *schema.Resource {
 		},
 
 		Schema: map[string]*schema.Schema{
-			"connection_info": customer.ConnectionInfoSchema(),
-
 			"config_name": {
 				Type:        schema.TypeString,
 				Required:    true,

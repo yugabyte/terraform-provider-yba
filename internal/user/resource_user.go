@@ -6,7 +6,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	client "github.com/yugabyte/platform-go-client"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/api"
-	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/customer"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/utils"
 )
 
@@ -25,7 +24,6 @@ func ResourceUser() *schema.Resource {
 		},
 
 		Schema: map[string]*schema.Schema{
-			"connection_info": customer.ConnectionInfoSchema(),
 			"email": {
 				Type:        schema.TypeString,
 				Required:    true,
@@ -60,9 +58,8 @@ func ResourceUser() *schema.Resource {
 
 func resourceUserCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	c := meta.(*api.ApiClient).YugawareClient
+	cUUID := meta.(*api.ApiClient).CustomerId
 
-	cUUID, token := api.GetConnectionInfo(d)
-	ctx = api.SetContextApiKey(ctx, token)
 	req := client.UserRegistrationData{
 		Email:           d.Get("email").(string),
 		Password:        utils.GetStringPointer(d.Get("password").(string)),
@@ -82,9 +79,8 @@ func resourceUserRead(ctx context.Context, d *schema.ResourceData, meta interfac
 	var diags diag.Diagnostics
 
 	c := meta.(*api.ApiClient).YugawareClient
+	cUUID := meta.(*api.ApiClient).CustomerId
 
-	cUUID, token := api.GetConnectionInfo(d)
-	ctx = api.SetContextApiKey(ctx, token)
 	r, _, err := c.UserManagementApi.GetUserDetails(ctx, cUUID, d.Id()).Execute()
 	if err != nil {
 		return diag.FromErr(err)
@@ -104,9 +100,8 @@ func resourceUserRead(ctx context.Context, d *schema.ResourceData, meta interfac
 
 func resourceUserUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	c := meta.(*api.ApiClient).YugawareClient
+	cUUID := meta.(*api.ApiClient).CustomerId
 
-	cUUID, token := api.GetConnectionInfo(d)
-	ctx = api.SetContextApiKey(ctx, token)
 	if d.HasChange("role") {
 		_, _, err := c.UserManagementApi.UpdateUserRole(ctx, cUUID, d.Id()).Role(d.Get("role").(string)).Execute()
 		if err != nil {
@@ -131,9 +126,8 @@ func resourceUserDelete(ctx context.Context, d *schema.ResourceData, meta interf
 	var diags diag.Diagnostics
 
 	c := meta.(*api.ApiClient).YugawareClient
+	cUUID := meta.(*api.ApiClient).CustomerId
 
-	cUUID, token := api.GetConnectionInfo(d)
-	ctx = api.SetContextApiKey(ctx, token)
 	_, _, err := c.UserManagementApi.DeleteUser(ctx, cUUID, d.Id()).Execute()
 	if err != nil {
 		return diag.FromErr(err)

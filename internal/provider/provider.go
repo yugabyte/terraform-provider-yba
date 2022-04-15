@@ -4,6 +4,7 @@ import (
 	"context"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	client "github.com/yugabyte/platform-go-client"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/api"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/backups"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/cloud_provider"
@@ -39,6 +40,10 @@ func New() *schema.Provider {
 				Optional:    true,
 				DefaultFunc: schema.EnvDefaultFunc("YB_HOST", "localhost:9000"),
 			},
+			"api_token": {
+				Type:     schema.TypeString,
+				Optional: true,
+			},
 		},
 		DataSourcesMap: map[string]*schema.Resource{
 			"yb_customer_data":   customer.Customer(),
@@ -62,12 +67,32 @@ func providerConfigure(ctx context.Context, d *schema.ResourceData) (interface{}
 	var diags diag.Diagnostics
 
 	host := d.Get("host").(string)
+	apiKey := d.Get("api_token").(string)
 
-	ybc := api.NewYugawareClient(host, "http")
+	// create swagger go client
+	cfg := client.NewConfiguration()
+	cfg.Host = host
+	cfg.Scheme = "http"
+	if apiKey != "" {
+		cfg.DefaultHeader = map[string]string{"X-AUTH-YW-API-TOKEN": apiKey}
+	}
+	ybc := client.NewAPIClient(cfg)
+
+	// create vanilla client for non-public APIs
 	vc := &api.VanillaClient{
 		Client: &http.Client{Timeout: 10 * time.Second},
 		Host:   host,
 	}
 
-	return api.NewApiClient(vc, ybc), diags
+	// create wrapper client
+	c := &api.ApiClient{
+		VanillaClient:  vc,
+		YugawareClient: ybc,
+		ApiKey:         apiKey,
+	}
+	err := c.Authenticate()
+	if err != nil {
+		return nil, diag.FromErr(err)
+	}
+	return c, diags
 }
