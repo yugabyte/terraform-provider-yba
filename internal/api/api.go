@@ -7,6 +7,7 @@ import (
 	client "github.com/yugabyte/platform-go-client"
 	"io"
 	"net/http"
+	"time"
 )
 
 type ApiClient struct {
@@ -16,15 +17,41 @@ type ApiClient struct {
 	CustomerId     string
 }
 
-func (c ApiClient) Authenticate() error {
+func NewApiClient(host string, apiKey string) (*ApiClient, error) {
+	// create swagger go client
+	cfg := client.NewConfiguration()
+	cfg.Host = host
+	cfg.Scheme = "http"
+	if apiKey != "" {
+		cfg.DefaultHeader = map[string]string{"X-AUTH-YW-API-TOKEN": apiKey}
+	}
+	ywc := client.NewAPIClient(cfg)
+
+	// create vanilla client for non-public APIs
+	vc := &VanillaClient{
+		Client: &http.Client{Timeout: 10 * time.Second},
+		Host:   host,
+	}
+
+	// create wrapper client
+	c := &ApiClient{
+		VanillaClient:  vc,
+		YugawareClient: ywc,
+		ApiKey:         apiKey,
+	}
 	r, _, err := c.YugawareClient.SessionManagementApi.GetSessionInfo(context.Background()).Execute()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if !r.HasCustomerUUID() {
-		return errors.New("could not retrieve customer id")
+		return nil, errors.New("could not retrieve customer id")
 	}
 	c.CustomerId = *r.CustomerUUID
+	return c, nil
+}
+
+func (c ApiClient) Authenticate() error {
+
 	return nil
 }
 

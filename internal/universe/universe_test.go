@@ -1,6 +1,7 @@
 package universe_test
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	sdkacctest "github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
@@ -102,18 +103,18 @@ func TestAccUniverse_Azure_UpdatePrimaryNodes(t *testing.T) {
 }
 
 func testAccCheckDestroyProviderAndUniverse(s *terraform.State) error {
-	conn := acctest.YWClient
+	conn := acctest.ApiClient.YugawareClient
 
 	for _, r := range s.RootModule().Resources {
 		if r.Type == "yb_universe" {
-			ctx, cUUID := acctest.GetCtxWithConnectionInfo(r.Primary)
-			_, _, err := conn.UniverseManagementApi.GetUniverse(ctx, cUUID, r.Primary.ID).Execute()
+			cUUID := acctest.ApiClient.CustomerId
+			_, _, err := conn.UniverseManagementApi.GetUniverse(context.Background(), cUUID, r.Primary.ID).Execute()
 			if err == nil || acctest.IsResourceNotFoundError(err) {
 				return errors.New("universe resource is not destroyed")
 			}
 		} else if r.Type == "yb_cloud_provider" {
-			ctx, cUUID := acctest.GetCtxWithConnectionInfo(r.Primary)
-			res, _, err := conn.CloudProvidersApi.GetListOfProviders(ctx, cUUID).Execute()
+			cUUID := acctest.ApiClient.CustomerId
+			res, _, err := conn.CloudProvidersApi.GetListOfProviders(context.Background(), cUUID).Execute()
 			if err != nil {
 				return err
 			}
@@ -138,9 +139,9 @@ func testAccCheckUniverseExists(name string, universe *client.UniverseResp) reso
 			return errors.New("no ID is set for universe resource")
 		}
 
-		conn := acctest.YWClient
-		ctx, cUUID := acctest.GetCtxWithConnectionInfo(r.Primary)
-		res, _, err := conn.UniverseManagementApi.GetUniverse(ctx, cUUID, r.Primary.ID).Execute()
+		conn := acctest.ApiClient.YugawareClient
+		cUUID := acctest.ApiClient.CustomerId
+		res, _, err := conn.UniverseManagementApi.GetUniverse(context.Background(), cUUID, r.Primary.ID).Execute()
 		if err != nil {
 			return err
 		}

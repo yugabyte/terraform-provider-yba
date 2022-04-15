@@ -1,6 +1,7 @@
 package cloud_provider_test
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	sdkacctest "github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
@@ -78,15 +79,15 @@ func TestAccCloudProvider_Azure(t *testing.T) {
 }
 
 func testAccCheckDestroyCloudProvider(s *terraform.State) error {
-	conn := acctest.YWClient
+	conn := acctest.ApiClient.YugawareClient
 
 	for _, r := range s.RootModule().Resources {
 		if r.Type != "yb_cloud_provider" {
 			continue
 		}
 
-		ctx, cUUID := acctest.GetCtxWithConnectionInfo(r.Primary)
-		res, _, err := conn.CloudProvidersApi.GetListOfProviders(ctx, cUUID).Execute()
+		cUUID := acctest.ApiClient.CustomerId
+		res, _, err := conn.CloudProvidersApi.GetListOfProviders(context.Background(), cUUID).Execute()
 		if err != nil {
 			return err
 		}
@@ -110,9 +111,9 @@ func testAccCheckCloudProviderExists(name string, provider *client.Provider) res
 			return errors.New("no ID is set for cloud provider resource")
 		}
 
-		conn := acctest.YWClient
-		ctx, cUUID := acctest.GetCtxWithConnectionInfo(r.Primary)
-		res, _, err := conn.CloudProvidersApi.GetListOfProviders(ctx, cUUID).Execute()
+		conn := acctest.ApiClient.YugawareClient
+		cUUID := acctest.ApiClient.CustomerId
+		res, _, err := conn.CloudProvidersApi.GetListOfProviders(context.Background(), cUUID).Execute()
 		if err != nil {
 			return err
 		}

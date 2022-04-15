@@ -1,6 +1,7 @@
 package user_test
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	sdkacctest "github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
@@ -50,15 +51,15 @@ func TestAccUser_ReadOnly(t *testing.T) {
 }
 
 func testAccCheckDestroyUser(s *terraform.State) error {
-	conn := acctest.YWClient
+	conn := acctest.ApiClient.YugawareClient
 
 	for _, r := range s.RootModule().Resources {
 		if r.Type != "yb_user" {
 			continue
 		}
 
-		ctx, cUUID := acctest.GetCtxWithConnectionInfo(r.Primary)
-		_, _, err := conn.UserManagementApi.GetUserDetails(ctx, cUUID, r.Primary.ID).Execute()
+		cUUID := acctest.ApiClient.CustomerId
+		_, _, err := conn.UserManagementApi.GetUserDetails(context.Background(), cUUID, r.Primary.ID).Execute()
 		if err == nil || acctest.IsResourceNotFoundError(err) {
 			return errors.New("user resource is not destroyed")
 		}
@@ -77,9 +78,9 @@ func testAccCheckUserExists(name string, user *client.UserWithFeatures) resource
 			return errors.New("no ID is set for user resource")
 		}
 
-		conn := acctest.YWClient
-		ctx, cUUID := acctest.GetCtxWithConnectionInfo(r.Primary)
-		res, _, err := conn.UserManagementApi.GetUserDetails(ctx, cUUID, r.Primary.ID).Execute()
+		conn := acctest.ApiClient.YugawareClient
+		cUUID := acctest.ApiClient.CustomerId
+		res, _, err := conn.UserManagementApi.GetUserDetails(context.Background(), cUUID, r.Primary.ID).Execute()
 		if err != nil {
 			return err
 		}
