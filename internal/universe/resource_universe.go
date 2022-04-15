@@ -467,9 +467,8 @@ func userIntentSchema() *schema.Resource {
 
 func resourceUniverseCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	c := meta.(*api.ApiClient).YugawareClient
+	cUUID := meta.(*api.ApiClient).CustomerId
 
-	cUUID, token := api.GetConnectionInfo(d)
-	ctx = api.SetContextApiKey(ctx, token)
 	req := buildUniverse(d)
 	r, _, err := c.UniverseClusterMutationsApi.CreateAllClusters(ctx, cUUID).UniverseConfigureTaskParams(req).Execute()
 	if err != nil {
@@ -625,9 +624,8 @@ func resourceUniverseRead(ctx context.Context, d *schema.ResourceData, meta inte
 	var diags diag.Diagnostics
 
 	c := meta.(*api.ApiClient).YugawareClient
+	cUUID := meta.(*api.ApiClient).CustomerId
 
-	cUUID, token := api.GetConnectionInfo(d)
-	ctx = api.SetContextApiKey(ctx, token)
 	r, _, err := c.UniverseManagementApi.GetUniverse(ctx, cUUID, d.Id()).Execute()
 	if err != nil {
 		return diag.FromErr(err)
@@ -770,9 +768,8 @@ func flattenDeviceInfo(di *client.DeviceInfo) []interface{} {
 func resourceUniverseUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	// Only updates user intent for each cluster
 	c := meta.(*api.ApiClient).YugawareClient
+	cUUID := meta.(*api.ApiClient).CustomerId
 
-	cUUID, token := api.GetConnectionInfo(d)
-	ctx = api.SetContextApiKey(ctx, token)
 	var taskIds []string
 	if d.HasChange("clusters") {
 		clusters := d.Get("clusters").([]interface{})
@@ -829,9 +826,8 @@ func resourceUniverseDelete(ctx context.Context, d *schema.ResourceData, meta in
 	var diags diag.Diagnostics
 
 	c := meta.(*api.ApiClient).YugawareClient
+	cUUID := meta.(*api.ApiClient).CustomerId
 
-	cUUID, token := api.GetConnectionInfo(d)
-	ctx = api.SetContextApiKey(ctx, token)
 	r, _, err := c.UniverseManagementApi.DeleteUniverse(ctx, cUUID, d.Id()).
 		IsForceDelete(d.Get("delete_options.0.force_delete").(bool)).
 		IsDeleteBackups(d.Get("delete_options.0.delete_backups").(bool)).
