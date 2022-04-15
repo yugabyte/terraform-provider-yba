@@ -39,14 +39,18 @@ func NewApiClient(host string, apiKey string) (*ApiClient, error) {
 		YugawareClient: ywc,
 		ApiKey:         apiKey,
 	}
-	r, _, err := c.YugawareClient.SessionManagementApi.GetSessionInfo(context.Background()).Execute()
-	if err != nil {
-		return nil, err
+
+	// authenticate if api token is provided
+	if apiKey != "" {
+		r, _, err := c.YugawareClient.SessionManagementApi.GetSessionInfo(context.Background()).Execute()
+		if err != nil {
+			return nil, err
+		}
+		if !r.HasCustomerUUID() {
+			return nil, errors.New("could not retrieve customer id")
+		}
+		c.CustomerId = *r.CustomerUUID
 	}
-	if !r.HasCustomerUUID() {
-		return nil, errors.New("could not retrieve customer id")
-	}
-	c.CustomerId = *r.CustomerUUID
 	return c, nil
 }
 
