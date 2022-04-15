@@ -38,8 +38,9 @@ func New() *schema.Provider {
 				DefaultFunc: schema.EnvDefaultFunc("YB_HOST", "localhost:9000"),
 			},
 			"api_token": {
-				Type:     schema.TypeString,
-				Optional: true,
+				Type:        schema.TypeString,
+				Optional:    true,
+				DefaultFunc: schema.EnvDefaultFunc("YB_API_KEY", ""),
 			},
 		},
 		DataSourcesMap: map[string]*schema.Resource{
