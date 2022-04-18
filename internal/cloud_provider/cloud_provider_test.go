@@ -129,10 +129,6 @@ func testAccCheckCloudProviderExists(name string, provider *client.Provider) res
 
 func cloudProviderGCPConfig(name string) string {
 	return fmt.Sprintf(`
-data "yb_customer_data" "customer" {
-  api_token = "%s"
-}
-
 resource "yb_cloud_provider" "gcp" {
   code = "gcp"
   config = merge(
@@ -148,16 +144,12 @@ resource "yb_cloud_provider" "gcp" {
   ssh_port        = 54422
   air_gap_install = false
 }
-`, acctest.TestApiKey(), acctest.TestGCPCredentials(), name)
+`, acctest.TestGCPCredentials(), name)
 }
 
 func cloudProviderAWSConfig(name string) string {
 	// TODO: remove the lifecycle ignore_changes block. This is needed because the current API is not returning vnet_name
 	return fmt.Sprintf(`
-data "yb_customer_data" "customer" {
-  api_token = "%s"
-}
-
 resource "yb_cloud_provider" "aws" {
   lifecycle {
     ignore_changes = [
@@ -182,15 +174,11 @@ resource "yb_cloud_provider" "aws" {
 	}
   }
 }
-`, acctest.TestApiKey(), acctest.TestAWSAccessKey(), acctest.TestAWSSecretAccessKey(), name)
+`, acctest.TestAWSAccessKey(), acctest.TestAWSSecretAccessKey(), name)
 }
 
 func cloudProviderAzureConfig(name string) string {
 	return fmt.Sprintf(`
-data "yb_customer_data" "customer" {
-  api_token = "%s"
-}
-
 resource "yb_cloud_provider" "azure" {
   code = "azu"
   config = { 
@@ -212,7 +200,6 @@ resource "yb_cloud_provider" "azure" {
   }
 }
 `,
-		acctest.TestApiKey(),
 		acctest.TestAzureSubscriptionID(),
 		acctest.TestAzureResourceGroup(),
 		acctest.TestAzureTenantID(),

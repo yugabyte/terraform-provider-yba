@@ -54,11 +54,6 @@ func NewApiClient(host string, apiKey string) (*ApiClient, error) {
 	return c, nil
 }
 
-func (c ApiClient) Authenticate() error {
-
-	return nil
-}
-
 type VanillaClient struct {
 	// TODO: remove this client, used for accessing non-public APIs
 	Client *http.Client

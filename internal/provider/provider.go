@@ -44,7 +44,6 @@ func New() *schema.Provider {
 			},
 		},
 		DataSourcesMap: map[string]*schema.Resource{
-			"yb_customer_data":   customer.Customer(),
 			"yb_provider_key":    cloud_provider.ProviderKey(),
 			"yb_storage_configs": backups.StorageConfigs(),
 		},

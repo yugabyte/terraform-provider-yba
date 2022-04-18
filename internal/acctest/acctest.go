@@ -42,7 +42,7 @@ var (
 func init() {
 	c, err := api.NewApiClient(os.Getenv(testHost), os.Getenv(testApiKey))
 	if err != nil {
-		panic("could not create API client required for test")
+		panic(err)
 	}
 	ApiClient = c
 	ProviderFactories = map[string]func() (*schema.Provider, error){

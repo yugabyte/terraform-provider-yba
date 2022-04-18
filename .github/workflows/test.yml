@@ -95,15 +95,13 @@ jobs:
         working-directory: ./acctest/azure
 
       - name: Set platform api key
-        run: echo "TF_ACC_TEST_API_KEY=$(terraform output --raw api_key)" >> $GITHUB_ENV
+        run: echo "YB_API_KEY=$(terraform output --raw api_key)" >> $GITHUB_ENV
         working-directory: ./acctest/azure
       # run acceptance tests
       - name: TF acceptance tests
         timeout-minutes: 120
         env:
           TF_ACC: "1"
-          YB_HOST: ${{ env.YB_HOST }}
-          YB_API_KEY: ${{ env.TF_ACC_TEST_API_KEY }}
           # TODO: this is hardcoded to release 790 (2.13.1.0-b69)
           YB_SOFTWARE_VERSION: "2.13.1.0-b69"
 
@@ -177,15 +175,13 @@ jobs:
         working-directory: ./acctest/aws
 
       - name: Set platform api key
-        run: echo "TF_ACC_TEST_API_KEY=$(terraform output --raw api_key)" >> $GITHUB_ENV
+        run: echo "YB_API_KEY=$(terraform output --raw api_key)" >> $GITHUB_ENV
         working-directory: ./acctest/aws
       # run acceptance tests
       - name: TF acceptance tests
         timeout-minutes: 120
         env:
           TF_ACC: "1"
-          YB_HOST: ${{ env.YB_HOST }}
-          YB_API_KEY: ${{ env.TF_ACC_TEST_API_KEY }}
           # TODO: this is hardcoded to release 790 (2.13.1.0-b69)
           YB_SOFTWARE_VERSION: "2.13.1.0-b69"
 
@@ -261,15 +257,13 @@ jobs:
         working-directory: ./acctest/gcp
 
       - name: Set platform api key
-        run: echo "TF_ACC_TEST_API_KEY=$(terraform output --raw api_key)" >> $GITHUB_ENV
+        run: echo "YB_API_KEY=$(terraform output --raw api_key)" >> $GITHUB_ENV
         working-directory: ./acctest/gcp
       # run acceptance tests
       - name: TF acceptance tests
         timeout-minutes: 120
         env:
           TF_ACC: "1"
-          YB_HOST: ${{ env.YB_HOST }}
-          YB_API_KEY: ${{ env.TF_ACC_TEST_API_KEY }}
           # TODO: this is hardcoded to release 790 (2.13.1.0-b69)
           YB_SOFTWARE_VERSION: "2.13.1.0-b69"
 
