@@ -5,7 +5,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/api"
-	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/customer"
 	"strconv"
 	"time"
 )
@@ -17,7 +16,6 @@ func StorageConfigs() *schema.Resource {
 		ReadContext: dataSourceStorageConfigsRead,
 
 		Schema: map[string]*schema.Schema{
-			"connection_info": customer.ConnectionInfoSchema(),
 			"uuid_list": {
 				Type:        schema.TypeList,
 				Elem:        &schema.Schema{Type: schema.TypeString},
@@ -31,9 +29,8 @@ func StorageConfigs() *schema.Resource {
 func dataSourceStorageConfigsRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	var diags diag.Diagnostics
 
-	cUUID, token := api.GetConnectionInfo(d)
-	ctx = api.SetContextApiKey(ctx, token)
 	c := meta.(*api.ApiClient).YugawareClient
+	cUUID := meta.(*api.ApiClient).CustomerId
 
 	r, _, err := c.CustomerConfigurationApi.GetListOfCustomerConfig(ctx, cUUID).Execute()
 	if err != nil {

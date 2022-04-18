@@ -33,10 +33,13 @@ module "azure_yb_anywhere" {
 }
 
 provider "yb" {
+  alias = "unauthenticated"
+  // these can be set as environment variables
   host = "${module.azure_yb_anywhere.public_ip}:80"
 }
 
 resource "yb_installation" "installation" {
+  provider = yb.unauthenticated
   public_ip                 = module.azure_yb_anywhere.public_ip
   private_ip                = module.azure_yb_anywhere.private_ip
   ssh_user                  = "sdu"
@@ -47,6 +50,7 @@ resource "yb_installation" "installation" {
 }
 
 resource "yb_customer_resource" "customer" {
+  provider = yb.unauthenticated
   depends_on = [module.azure_yb_anywhere, yb_installation.installation]
   code       = "admin"
   email      = "sdu@yugabyte.com"
@@ -54,12 +58,12 @@ resource "yb_customer_resource" "customer" {
   password   = "Password1@"
 }
 
-resource "yb_cloud_provider" "gcp" {
-  connection_info {
-    cuuid     = yb_customer_resource.customer.cuuid
-    api_token = yb_customer_resource.customer.api_token
-  }
+provider "yb" {
+  host = "${module.azure_yb_anywhere.public_ip}:80"
+  api_token = yb_customer_resource.customer.api_token
+}
 
+resource "yb_cloud_provider" "gcp" {
   code = "gcp"
   config = merge(
     { YB_FIREWALL_TAGS = "cluster-server" },
@@ -76,11 +80,6 @@ resource "yb_cloud_provider" "gcp" {
 }
 
 data "yb_provider_key" "gcp-key" {
-  connection_info {
-    cuuid     = yb_customer_resource.customer.cuuid
-    api_token = yb_customer_resource.customer.api_token
-  }
-
   provider_id = yb_cloud_provider.gcp.id
 }
 
@@ -91,11 +90,6 @@ locals {
 }
 
 resource "yb_universe" "gcp_universe" {
-  connection_info {
-    cuuid     = yb_customer_resource.customer.cuuid
-    api_token = yb_customer_resource.customer.api_token
-  }
-
   depends_on = [yb_cloud_provider.gcp]
   clusters {
     cluster_type = "PRIMARY"

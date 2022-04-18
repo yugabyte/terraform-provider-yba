@@ -1,6 +1,7 @@
 package cloud_provider_test
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	sdkacctest "github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
@@ -78,15 +79,15 @@ func TestAccCloudProvider_Azure(t *testing.T) {
 }
 
 func testAccCheckDestroyCloudProvider(s *terraform.State) error {
-	conn := acctest.YWClient
+	conn := acctest.ApiClient.YugawareClient
 
 	for _, r := range s.RootModule().Resources {
 		if r.Type != "yb_cloud_provider" {
 			continue
 		}
 
-		ctx, cUUID := acctest.GetCtxWithConnectionInfo(r.Primary)
-		res, _, err := conn.CloudProvidersApi.GetListOfProviders(ctx, cUUID).Execute()
+		cUUID := acctest.ApiClient.CustomerId
+		res, _, err := conn.CloudProvidersApi.GetListOfProviders(context.Background(), cUUID).Execute()
 		if err != nil {
 			return err
 		}
@@ -110,9 +111,9 @@ func testAccCheckCloudProviderExists(name string, provider *client.Provider) res
 			return errors.New("no ID is set for cloud provider resource")
 		}
 
-		conn := acctest.YWClient
-		ctx, cUUID := acctest.GetCtxWithConnectionInfo(r.Primary)
-		res, _, err := conn.CloudProvidersApi.GetListOfProviders(ctx, cUUID).Execute()
+		conn := acctest.ApiClient.YugawareClient
+		cUUID := acctest.ApiClient.CustomerId
+		res, _, err := conn.CloudProvidersApi.GetListOfProviders(context.Background(), cUUID).Execute()
 		if err != nil {
 			return err
 		}
@@ -128,16 +129,7 @@ func testAccCheckCloudProviderExists(name string, provider *client.Provider) res
 
 func cloudProviderGCPConfig(name string) string {
 	return fmt.Sprintf(`
-data "yb_customer_data" "customer" {
-  api_token = "%s"
-}
-
 resource "yb_cloud_provider" "gcp" {
-  connection_info {
-    cuuid     = data.yb_customer_data.customer.cuuid
-    api_token = data.yb_customer_data.customer.api_token
-  }
-
   code = "gcp"
   config = merge(
     { YB_FIREWALL_TAGS = "cluster-server" },
@@ -152,25 +144,17 @@ resource "yb_cloud_provider" "gcp" {
   ssh_port        = 54422
   air_gap_install = false
 }
-`, acctest.TestApiKey(), acctest.TestGCPCredentials(), name)
+`, acctest.TestGCPCredentials(), name)
 }
 
 func cloudProviderAWSConfig(name string) string {
 	// TODO: remove the lifecycle ignore_changes block. This is needed because the current API is not returning vnet_name
 	return fmt.Sprintf(`
-data "yb_customer_data" "customer" {
-  api_token = "%s"
-}
-
 resource "yb_cloud_provider" "aws" {
   lifecycle {
     ignore_changes = [
       regions[0].vnet_name,
     ]
-  }
-  connection_info {
-    cuuid     = data.yb_customer_data.customer.cuuid
-    api_token = data.yb_customer_data.customer.api_token
   }
 
   code = "aws"
@@ -190,21 +174,12 @@ resource "yb_cloud_provider" "aws" {
 	}
   }
 }
-`, acctest.TestApiKey(), acctest.TestAWSAccessKey(), acctest.TestAWSSecretAccessKey(), name)
+`, acctest.TestAWSAccessKey(), acctest.TestAWSSecretAccessKey(), name)
 }
 
 func cloudProviderAzureConfig(name string) string {
 	return fmt.Sprintf(`
-data "yb_customer_data" "customer" {
-  api_token = "%s"
-}
-
 resource "yb_cloud_provider" "azure" {
-  connection_info {
-    cuuid     = data.yb_customer_data.customer.cuuid
-    api_token = data.yb_customer_data.customer.api_token
-  }
-
   code = "azu"
   config = { 
 	AZURE_SUBSCRIPTION_ID = "%s"
@@ -225,7 +200,6 @@ resource "yb_cloud_provider" "azure" {
   }
 }
 `,
-		acctest.TestApiKey(),
 		acctest.TestAzureSubscriptionID(),
 		acctest.TestAzureResourceGroup(),
 		acctest.TestAzureTenantID(),
