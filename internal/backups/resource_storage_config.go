@@ -7,7 +7,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	client "github.com/yugabyte/platform-go-client"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/api"
-	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/customer"
 )
 
 func ResourceStorageConfig() *schema.Resource {
@@ -24,8 +23,6 @@ func ResourceStorageConfig() *schema.Resource {
 		},
 
 		Schema: map[string]*schema.Schema{
-			"connection_info": customer.ConnectionInfoSchema(),
-
 			"config_name": {
 				Type:        schema.TypeString,
 				Required:    true,
@@ -48,9 +45,8 @@ func ResourceStorageConfig() *schema.Resource {
 
 func resourceStorageConfigCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	c := meta.(*api.ApiClient).YugawareClient
+	cUUID := meta.(*api.ApiClient).CustomerId
 
-	cUUID, token := api.GetConnectionInfo(d)
-	ctx = api.SetContextApiKey(ctx, token)
 	req := client.CustomerConfig{
 		ConfigName:   d.Get("config_name").(string),
 		CustomerUUID: cUUID,
@@ -71,9 +67,8 @@ func resourceStorageConfigRead(ctx context.Context, d *schema.ResourceData, meta
 	var diags diag.Diagnostics
 
 	c := meta.(*api.ApiClient).YugawareClient
+	cUUID := meta.(*api.ApiClient).CustomerId
 
-	cUUID, token := api.GetConnectionInfo(d)
-	ctx = api.SetContextApiKey(ctx, token)
 	r, _, err := c.CustomerConfigurationApi.GetListOfCustomerConfig(ctx, cUUID).Execute()
 	if err != nil {
 		return diag.FromErr(err)
@@ -108,9 +103,8 @@ func findCustomerConfig(configs []client.CustomerConfigUI, uuid string) (*client
 
 func resourceStorageConfigUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	c := meta.(*api.ApiClient).YugawareClient
+	cUUID := meta.(*api.ApiClient).CustomerId
 
-	cUUID, token := api.GetConnectionInfo(d)
-	ctx = api.SetContextApiKey(ctx, token)
 	req := client.CustomerConfig{
 		ConfigName:   d.Get("config_name").(string),
 		CustomerUUID: cUUID,
@@ -130,9 +124,8 @@ func resourceStorageConfigDelete(ctx context.Context, d *schema.ResourceData, me
 	var diags diag.Diagnostics
 
 	c := meta.(*api.ApiClient).YugawareClient
+	cUUID := meta.(*api.ApiClient).CustomerId
 
-	cUUID, token := api.GetConnectionInfo(d)
-	ctx = api.SetContextApiKey(ctx, token)
 	_, _, err := c.CustomerConfigurationApi.DeleteCustomerConfig(ctx, cUUID, d.Id()).Execute()
 	if err != nil {
 		return diag.FromErr(err)

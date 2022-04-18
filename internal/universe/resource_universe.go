@@ -9,7 +9,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	client "github.com/yugabyte/platform-go-client"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/api"
-	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/customer"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/utils"
 	"time"
 )
@@ -28,8 +27,6 @@ func ResourceUniverse() *schema.Resource {
 		},
 
 		Schema: map[string]*schema.Schema{
-			"connection_info": customer.ConnectionInfoSchema(),
-
 			// Universe Delete Options
 			"delete_options": {
 				Type:     schema.TypeList,
@@ -470,9 +467,8 @@ func userIntentSchema() *schema.Resource {
 
 func resourceUniverseCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	c := meta.(*api.ApiClient).YugawareClient
+	cUUID := meta.(*api.ApiClient).CustomerId
 
-	cUUID, token := api.GetConnectionInfo(d)
-	ctx = api.SetContextApiKey(ctx, token)
 	req := buildUniverse(d)
 	r, _, err := c.UniverseClusterMutationsApi.CreateAllClusters(ctx, cUUID).UniverseConfigureTaskParams(req).Execute()
 	if err != nil {
@@ -628,9 +624,8 @@ func resourceUniverseRead(ctx context.Context, d *schema.ResourceData, meta inte
 	var diags diag.Diagnostics
 
 	c := meta.(*api.ApiClient).YugawareClient
+	cUUID := meta.(*api.ApiClient).CustomerId
 
-	cUUID, token := api.GetConnectionInfo(d)
-	ctx = api.SetContextApiKey(ctx, token)
 	r, _, err := c.UniverseManagementApi.GetUniverse(ctx, cUUID, d.Id()).Execute()
 	if err != nil {
 		return diag.FromErr(err)
@@ -773,11 +768,10 @@ func flattenDeviceInfo(di *client.DeviceInfo) []interface{} {
 func resourceUniverseUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	// Only updates user intent for each cluster
 	c := meta.(*api.ApiClient).YugawareClient
+	cUUID := meta.(*api.ApiClient).CustomerId
 
-	cUUID, token := api.GetConnectionInfo(d)
-	ctx = api.SetContextApiKey(ctx, token)
+	var taskIds []string
 	if d.HasChange("clusters") {
-		var taskIds []string
 		clusters := d.Get("clusters").([]interface{})
 		updateUni, _, err := c.UniverseManagementApi.GetUniverse(ctx, cUUID, d.Id()).Execute()
 		if err != nil {
@@ -809,18 +803,18 @@ func resourceUniverseUpdate(ctx context.Context, d *schema.ResourceData, meta in
 				taskIds = append(taskIds, *r.TaskUUID)
 			}
 		}
-		tflog.Debug(ctx, fmt.Sprintf("Waiting for universe %s to be updated", d.Id()))
-		for _, id := range taskIds {
-			err := utils.WaitForTask(ctx, id, cUUID, c, time.Hour)
-			if err != nil {
-				return diag.FromErr(err)
-			}
-		}
 	}
 	if d.HasChange("yb_software_version") {
 		req := client.SoftwareUpgradeParams{YbSoftwareVersion: d.Get("yb_software_version").(string)}
 		r, _, err := c.UniverseUpgradesManagementApi.UpgradeSoftware(ctx, cUUID, d.Id()).SoftwareUpgradeParams(req).Execute()
-		err = utils.WaitForTask(ctx, *r.TaskUUID, cUUID, c, time.Hour)
+		taskIds = append(taskIds, *r.TaskUUID)
+		if err != nil {
+			return diag.FromErr(err)
+		}
+	}
+	// wait for all tasks to complete
+	for _, id := range taskIds {
+		err := utils.WaitForTask(ctx, id, cUUID, c, time.Hour)
 		if err != nil {
 			return diag.FromErr(err)
 		}
@@ -832,9 +826,8 @@ func resourceUniverseDelete(ctx context.Context, d *schema.ResourceData, meta in
 	var diags diag.Diagnostics
 
 	c := meta.(*api.ApiClient).YugawareClient
+	cUUID := meta.(*api.ApiClient).CustomerId
 
-	cUUID, token := api.GetConnectionInfo(d)
-	ctx = api.SetContextApiKey(ctx, token)
 	r, _, err := c.UniverseManagementApi.DeleteUniverse(ctx, cUUID, d.Id()).
 		IsForceDelete(d.Get("delete_options.0.force_delete").(bool)).
 		IsDeleteBackups(d.Get("delete_options.0.delete_backups").(bool)).
