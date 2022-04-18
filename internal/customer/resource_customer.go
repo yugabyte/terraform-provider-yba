@@ -98,7 +98,6 @@ func resourceCustomerRead(ctx context.Context, d *schema.ResourceData, meta inte
 	var diags diag.Diagnostics
 
 	c := meta.(*api.ApiClient).YugawareClient
-	ctx = context.WithValue(ctx, client.ContextAPIKeys, map[string]client.APIKey{"apiKeyAuth": {Key: d.Get("api_token").(string)}})
 	r, _, err := c.SessionManagementApi.GetSessionInfo(ctx).Execute()
 	if err != nil {
 		return diag.FromErr(err)

@@ -11,8 +11,6 @@ import (
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/installation"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/universe"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/user"
-	"net/http"
-	"time"
 )
 
 func init() {
@@ -39,9 +37,13 @@ func New() *schema.Provider {
 				Optional:    true,
 				DefaultFunc: schema.EnvDefaultFunc("YB_HOST", "localhost:9000"),
 			},
+			"api_token": {
+				Type:        schema.TypeString,
+				Optional:    true,
+				DefaultFunc: schema.EnvDefaultFunc("YB_API_KEY", ""),
+			},
 		},
 		DataSourcesMap: map[string]*schema.Resource{
-			"yb_customer_data":   customer.Customer(),
 			"yb_provider_key":    cloud_provider.ProviderKey(),
 			"yb_storage_configs": backups.StorageConfigs(),
 		},
@@ -62,12 +64,11 @@ func providerConfigure(ctx context.Context, d *schema.ResourceData) (interface{}
 	var diags diag.Diagnostics
 
 	host := d.Get("host").(string)
+	apiKey := d.Get("api_token").(string)
 
-	ybc := api.NewYugawareClient(host, "http")
-	vc := &api.VanillaClient{
-		Client: &http.Client{Timeout: 10 * time.Second},
-		Host:   host,
+	c, err := api.NewApiClient(host, apiKey)
+	if err != nil {
+		return nil, diag.FromErr(err)
 	}
-
-	return api.NewApiClient(vc, ybc), diags
+	return c, diags
 }

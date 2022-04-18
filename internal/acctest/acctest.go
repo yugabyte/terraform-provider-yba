@@ -1,10 +1,7 @@
 package acctest
 
 import (
-	"context"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
-	client "github.com/yugabyte/platform-go-client"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/api"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/provider"
 	"os"
@@ -15,8 +12,8 @@ import (
 const (
 	// env variables/other constants for yugabyte provider
 	testHost              = "YB_HOST"
-	testApiKey            = "TF_ACC_TEST_API_KEY"
-	testYBSoftwareVersion = "TF_ACC_TEST_YB_SOFTWARE_VERSION"
+	testApiKey            = "YB_API_KEY"
+	testYBSoftwareVersion = "YB_SOFTWARE_VERSION"
 	ybProviderName        = "yb"
 
 	// env variables for gcp provider
@@ -39,11 +36,15 @@ const (
 
 var (
 	ProviderFactories map[string]func() (*schema.Provider, error)
-	YWClient          *client.APIClient
+	ApiClient         *api.ApiClient
 )
 
 func init() {
-	YWClient = api.NewYugawareClient(os.Getenv(testHost), "http")
+	c, err := api.NewApiClient(os.Getenv(testHost), os.Getenv(testApiKey))
+	if err != nil {
+		panic(err)
+	}
+	ApiClient = c
 	ProviderFactories = map[string]func() (*schema.Provider, error){
 		ybProviderName: func() (*schema.Provider, error) { return provider.New(), nil },
 	}
@@ -141,13 +142,6 @@ func TestAccPreCheck(t *testing.T) {
 	if v := os.Getenv(testYBSoftwareVersion); v == "" {
 		t.Fatal(testYBSoftwareVersion + " must be set for acceptance tests")
 	}
-}
-
-func GetCtxWithConnectionInfo(s *terraform.InstanceState) (context.Context, string) {
-	ctx := context.Background()
-	key := s.Attributes["connection_info.0.api_token"]
-	cUUID := s.Attributes["connection_info.0.cuuid"]
-	return api.SetContextApiKey(ctx, key), cUUID
 }
 
 func IsResourceNotFoundError(err error) bool {

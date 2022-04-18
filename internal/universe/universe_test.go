@@ -1,6 +1,7 @@
 package universe_test
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	sdkacctest "github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
@@ -102,18 +103,18 @@ func TestAccUniverse_Azure_UpdatePrimaryNodes(t *testing.T) {
 }
 
 func testAccCheckDestroyProviderAndUniverse(s *terraform.State) error {
-	conn := acctest.YWClient
+	conn := acctest.ApiClient.YugawareClient
 
 	for _, r := range s.RootModule().Resources {
 		if r.Type == "yb_universe" {
-			ctx, cUUID := acctest.GetCtxWithConnectionInfo(r.Primary)
-			_, _, err := conn.UniverseManagementApi.GetUniverse(ctx, cUUID, r.Primary.ID).Execute()
+			cUUID := acctest.ApiClient.CustomerId
+			_, _, err := conn.UniverseManagementApi.GetUniverse(context.Background(), cUUID, r.Primary.ID).Execute()
 			if err == nil || acctest.IsResourceNotFoundError(err) {
 				return errors.New("universe resource is not destroyed")
 			}
 		} else if r.Type == "yb_cloud_provider" {
-			ctx, cUUID := acctest.GetCtxWithConnectionInfo(r.Primary)
-			res, _, err := conn.CloudProvidersApi.GetListOfProviders(ctx, cUUID).Execute()
+			cUUID := acctest.ApiClient.CustomerId
+			res, _, err := conn.CloudProvidersApi.GetListOfProviders(context.Background(), cUUID).Execute()
 			if err != nil {
 				return err
 			}
@@ -138,9 +139,9 @@ func testAccCheckUniverseExists(name string, universe *client.UniverseResp) reso
 			return errors.New("no ID is set for universe resource")
 		}
 
-		conn := acctest.YWClient
-		ctx, cUUID := acctest.GetCtxWithConnectionInfo(r.Primary)
-		res, _, err := conn.UniverseManagementApi.GetUniverse(ctx, cUUID, r.Primary.ID).Execute()
+		conn := acctest.ApiClient.YugawareClient
+		cUUID := acctest.ApiClient.CustomerId
+		res, _, err := conn.UniverseManagementApi.GetUniverse(context.Background(), cUUID, r.Primary.ID).Execute()
 		if err != nil {
 			return err
 		}
@@ -174,20 +175,10 @@ func universeAzureConfigWithNodes(name string, nodes int) string {
 func universeConfigWithProviderWithNodes(p string, name string, nodes int) string {
 	return fmt.Sprintf(`
 data "yb_provider_key" "%s_key" {
-  connection_info {
-   	cuuid     = data.yb_customer_data.customer.cuuid
-    api_token = data.yb_customer_data.customer.api_token
-  }
-
   provider_id = yb_cloud_provider.%s.id
 }
 
 resource "yb_universe" "%s" {
-  connection_info {
-    cuuid     = data.yb_customer_data.customer.cuuid
-    api_token = data.yb_customer_data.customer.api_token
-  }
-
   clusters {
     cluster_type = "PRIMARY"
     user_intent {
@@ -237,16 +228,7 @@ func getUniverseInstanceType(p string) string {
 
 func cloudProviderGCPConfig(name string) string {
 	return fmt.Sprintf(`
-data "yb_customer_data" "customer" {
-  api_token = "%s"
-}
-
 resource "yb_cloud_provider" "gcp" {
-  connection_info {
-    cuuid     = data.yb_customer_data.customer.cuuid
-    api_token = data.yb_customer_data.customer.api_token
-  }
-
   code = "gcp"
   config = merge(
     { YB_FIREWALL_TAGS = "cluster-server" },
@@ -261,25 +243,17 @@ resource "yb_cloud_provider" "gcp" {
   ssh_port        = 54422
   air_gap_install = false
 }
-`, acctest.TestApiKey(), acctest.TestGCPCredentials(), name)
+`, acctest.TestGCPCredentials(), name)
 }
 
 func cloudProviderAWSConfig(name string) string {
 	// TODO: remove the lifecycle ignore_changes block. This is needed because the current API is not returning vnet_name
 	return fmt.Sprintf(`
-data "yb_customer_data" "customer" {
-  api_token = "%s"
-}
-
 resource "yb_cloud_provider" "aws" {
   lifecycle {
     ignore_changes = [
       regions[0].vnet_name,
     ]
-  }
-  connection_info {
-    cuuid     = data.yb_customer_data.customer.cuuid
-    api_token = data.yb_customer_data.customer.api_token
   }
 
   code = "aws"
@@ -299,21 +273,12 @@ resource "yb_cloud_provider" "aws" {
 	}
   }
 }
-`, acctest.TestApiKey(), acctest.TestAWSAccessKey(), acctest.TestAWSSecretAccessKey(), name)
+`, acctest.TestAWSAccessKey(), acctest.TestAWSSecretAccessKey(), name)
 }
 
 func cloudProviderAzureConfig(name string) string {
 	return fmt.Sprintf(`
-data "yb_customer_data" "customer" {
-  api_token = "%s"
-}
-
 resource "yb_cloud_provider" "azu" {
-  connection_info {
-    cuuid     = data.yb_customer_data.customer.cuuid
-    api_token = data.yb_customer_data.customer.api_token
-  }
-
   code = "azu"
   config = { 
 	AZURE_SUBSCRIPTION_ID = "%s"
@@ -334,7 +299,6 @@ resource "yb_cloud_provider" "azu" {
   }
 }
 `,
-		acctest.TestApiKey(),
 		acctest.TestAzureSubscriptionID(),
 		acctest.TestAzureResourceGroup(),
 		acctest.TestAzureTenantID(),

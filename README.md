@@ -13,6 +13,11 @@ In addition, there are modules included for installing and managing YugabyteDB A
 * GCP
 * Azure
 
+## Prerequisites
+
+This provider required some API changes that are only available in YugabyteDB versions `>=2.13.1`, `>=2.12.4`, or `>=2.8.5`. 
+The automated tests in this repository are hardcoded to use `2.13.1.0-b69` (replicated release sequence `790`).
+
 ## Installation
 
 Install the [Terraform CLI](https://www.terraform.io/downloads). Once the CLI is installed, there are a few steps for [manually installing](https://www.terraform.io/cli/config/config-file#explicit-installation-method-configuration) this provider since it is not in the Terraform registry:

@@ -2,39 +2,56 @@ package api
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	client "github.com/yugabyte/platform-go-client"
 	"io"
 	"net/http"
+	"time"
 )
-
-func SetContextApiKey(ctx context.Context, key string) context.Context {
-	return context.WithValue(ctx, client.ContextAPIKeys, map[string]client.APIKey{"apiKeyAuth": {Key: key}})
-}
-
-func GetConnectionInfo(d *schema.ResourceData) (string, string) {
-	m := d.Get("connection_info").([]interface{})[0].(map[string]interface{})
-	return m["cuuid"].(string), m["api_token"].(string)
-}
 
 type ApiClient struct {
 	VanillaClient  *VanillaClient
 	YugawareClient *client.APIClient
+	ApiKey         string
+	CustomerId     string
 }
 
-func NewYugawareClient(host string, scheme string) *client.APIClient {
+func NewApiClient(host string, apiKey string) (*ApiClient, error) {
+	// create swagger go client
 	cfg := client.NewConfiguration()
 	cfg.Host = host
-	cfg.Scheme = scheme
-	return client.NewAPIClient(cfg)
-}
-
-func NewApiClient(vc *VanillaClient, yc *client.APIClient) *ApiClient {
-	return &ApiClient{
-		VanillaClient:  vc,
-		YugawareClient: yc,
+	cfg.Scheme = "http"
+	if apiKey != "" {
+		cfg.DefaultHeader = map[string]string{"X-AUTH-YW-API-TOKEN": apiKey}
 	}
+	ywc := client.NewAPIClient(cfg)
+
+	// create vanilla client for non-public APIs
+	vc := &VanillaClient{
+		Client: &http.Client{Timeout: 10 * time.Second},
+		Host:   host,
+	}
+
+	// create wrapper client
+	c := &ApiClient{
+		VanillaClient:  vc,
+		YugawareClient: ywc,
+		ApiKey:         apiKey,
+	}
+
+	// authenticate if api token is provided
+	if apiKey != "" {
+		r, _, err := c.YugawareClient.SessionManagementApi.GetSessionInfo(context.Background()).Execute()
+		if err != nil {
+			return nil, err
+		}
+		if !r.HasCustomerUUID() {
+			return nil, errors.New("could not retrieve customer id")
+		}
+		c.CustomerId = *r.CustomerUUID
+	}
+	return c, nil
 }
 
 type VanillaClient struct {
