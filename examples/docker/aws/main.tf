@@ -39,7 +39,7 @@ provider "yb" {
 }
 
 resource "yb_installation" "installation" {
-  provider = yb.unauthenticated
+  provider                  = yb.unauthenticated
   public_ip                 = module.aws_yb_anywhere.public_ip
   private_ip                = module.aws_yb_anywhere.private_ip
   ssh_user                  = "ubuntu"
@@ -50,7 +50,7 @@ resource "yb_installation" "installation" {
 }
 
 resource "yb_customer_resource" "customer" {
-  provider = yb.unauthenticated
+  provider   = yb.unauthenticated
   depends_on = [yb_installation.installation]
   code       = "admin"
   email      = "sdu@yugabyte.com"
@@ -59,7 +59,7 @@ resource "yb_customer_resource" "customer" {
 }
 
 provider "yb" {
-  host = "${module.aws_yb_anywhere.public_ip}:80"
+  host      = "${module.aws_yb_anywhere.public_ip}:80"
   api_token = yb_customer_resource.customer.api_token
 }
 

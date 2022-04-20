@@ -18,20 +18,11 @@ Storage Config Resource
 ### Required
 
 - **config_name** (String)
-- **connection_info** (Block List, Min: 1, Max: 1) (see [below for nested schema](#nestedblock--connection_info))
 - **data** (Map of String)
 - **name** (String)
 
 ### Optional
 
 - **id** (String) The ID of this resource.
-
-<a id="nestedblock--connection_info"></a>
-### Nested Schema for `connection_info`
-
-Required:
-
-- **api_token** (String) The API Token for the customer. This can be found in the YugabyteDB Anywhere Portal and is also returned when a customer resource is created
-- **cuuid** (String) UUID for the customer associated with the resource/data source.
 
 

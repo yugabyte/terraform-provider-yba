@@ -1,11 +1,11 @@
 terraform {
   required_providers {
     kubernetes = {
-      source = "hashicorp/kubernetes"
+      source  = "hashicorp/kubernetes"
       version = ">= 2.0.3"
     }
     google = {
-      source  = "hashicorp/google"
+      source = "hashicorp/google"
     }
     helm = {
       source  = "hashicorp/helm"
@@ -18,14 +18,14 @@ terraform {
 provider "google" {}
 
 module "gke_cluster" {
-  source = "../../../modules/kubernetes/gke"
-  num_nodes = 2
-  cluster_name = "sdu-yb-anywhere"
-  network = "yugabyte-network"
-  subnet = "subnet-us-west1"
+  source             = "../../../modules/kubernetes/gke"
+  num_nodes          = 2
+  cluster_name       = "sdu-yb-anywhere"
+  network            = "yugabyte-network"
+  subnet             = "subnet-us-west1"
   docker_config_json = base64decode(yamldecode(file("~/.yugabyte/yugabyte-k8s-secret.yml"))["data"][".dockerconfigjson"])
-  cpu_max = 10
-  memory_max = 100
+  cpu_max            = 10
+  memory_max         = 100
 }
 
 output "public_ip" {
