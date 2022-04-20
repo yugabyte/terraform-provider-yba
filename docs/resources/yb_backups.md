@@ -17,7 +17,6 @@ Scheduled Backups for Universe
 
 ### Required
 
-- **connection_info** (Block List, Min: 1, Max: 1) (see [below for nested schema](#nestedblock--connection_info))
 - **storage_config_uuid** (String) UUID of the storage configuration to use. Can be retrieved from the storage config data source.
 - **uni_uuid** (String) The UUID of the universe that this backup schedule targets
 
@@ -32,13 +31,5 @@ Scheduled Backups for Universe
 - **sse** (Boolean)
 - **time_before_delete** (Number) Time before deleting the backup from storage, in milliseconds
 - **transactional_backup** (Boolean) Flag for indicating if backup is transactional across tables
-
-<a id="nestedblock--connection_info"></a>
-### Nested Schema for `connection_info`
-
-Required:
-
-- **api_token** (String) The API Token for the customer. This can be found in the YugabyteDB Anywhere Portal and is also returned when a customer resource is created
-- **cuuid** (String) UUID for the customer associated with the resource/data source.
 
 

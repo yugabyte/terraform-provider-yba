@@ -3,12 +3,12 @@
 page_title: "yb_installation Resource - terraform-provider-yugabyte-anywhere"
 subcategory: ""
 description: |-
-  Manages the installation of YugabyteDB Anywhere on an existing virtual machine. This resource does not track the remote state and is only provided as a convenience tool. To reinstall, taint this resource and re-apply.
+  Manages the installation of YugabyteDB Anywhere on an existing virtual machine. This resource does not track the remote state and is only provided as a convenience tool. To reinstall, taint this resource and re-apply. To see remote output, run with TF_LOG=INFO
 ---
 
 # yb_installation (Resource)
 
-Manages the installation of YugabyteDB Anywhere on an existing virtual machine. This resource does not track the remote state and is only provided as a convenience tool. To reinstall, taint this resource and re-apply.
+Manages the installation of YugabyteDB Anywhere on an existing virtual machine. This resource does not track the remote state and is only provided as a convenience tool. To reinstall, taint this resource and re-apply. To see remote output, run with TF_LOG=INFO
 
 
 

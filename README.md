@@ -38,3 +38,18 @@ More information can be found in the `README` located in the `examples` director
 In the directory of the example you wish to run (i.e. `examples/docker/gcp`):
 * `terraform init` installs the required providers
 * `terraform apply` generates a plan, which, when approved, will create the desired resources
+
+## Acceptance Testing
+
+Self-hosted runners have been set up in AWS, Azure, and GCP.
+There are also separate projects, each with their own service account credentials.
+All of the credentials (for accessing the projects and runner instances) are in Keybase under `teams/yugabyte/terraform-acctest`.
+
+* `acctest-gce.json` for accessing Google project `yugabyte-terraform-test` and the runner instance
+* `aws_creds.csv` for accessing AWS account `yugabyte-terraform-test`
+* `aws-acctest.pem` for accessing AWS runner instance
+* `azure_creds.txt` for accessing Azure app deployment (resource group is `yugabyte-terraform-test`)
+* `azure-acctest.pem` for accessing Azure runner instance
+* `replicated.conf` is the replicated configuration used in the acceptance tests (the file is copied onto each runner instance)
+* `acctest.rli` is the development replicated license used in acceptance tests (the file is copied onto each runner instance)
+* `application_settings.conf` is the application settings used in acceptance tests (the file is copied onto each runner instance)

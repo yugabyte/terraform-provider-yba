@@ -1,11 +1,11 @@
 terraform {
   required_providers {
     kubernetes = {
-      source = "hashicorp/kubernetes"
+      source  = "hashicorp/kubernetes"
       version = ">= 2.0.3"
     }
     azurerm = {
-      source  = "hashicorp/azurerm"
+      source = "hashicorp/azurerm"
     }
     helm = {
       source  = "hashicorp/helm"
@@ -19,10 +19,10 @@ provider "azurerm" {
 }
 
 module "aks_cluster" {
-  source = "../../../modules/kubernetes/aks"
-  cluster_name = "sdu-yb-anywhere"
-  region_name = "westus2"
-  num_nodes = 2
+  source             = "../../../modules/kubernetes/aks"
+  cluster_name       = "sdu-yb-anywhere"
+  region_name        = "westus2"
+  num_nodes          = 2
   docker_config_json = base64decode(yamldecode(file("~/.yugabyte/yugabyte-k8s-secret.yml"))["data"][".dockerconfigjson"])
 }
 

@@ -17,4 +17,5 @@ description: |-
 
 ### Optional
 
+- **api_token** (String)
 - **host** (String)
