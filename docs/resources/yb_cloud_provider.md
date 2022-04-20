@@ -17,7 +17,6 @@ Cloud Provider Resource
 
 ### Required
 
-- **connection_info** (Block List, Min: 1, Max: 1) (see [below for nested schema](#nestedblock--connection_info))
 - **regions** (Block List, Min: 1) (see [below for nested schema](#nestedblock--regions))
 
 ### Optional
@@ -39,15 +38,6 @@ Cloud Provider Resource
 - **ssh_private_key_content** (String) Private key to use for ssh commands
 - **ssh_user** (String) User to use for ssh commands
 
-<a id="nestedblock--connection_info"></a>
-### Nested Schema for `connection_info`
-
-Required:
-
-- **api_token** (String) The API Token for the customer. This can be found in the YugabyteDB Anywhere Portal and is also returned when a customer resource is created
-- **cuuid** (String) UUID for the customer associated with the resource/data source.
-
-
 <a id="nestedblock--regions"></a>
 ### Nested Schema for `regions`
 
@@ -55,6 +45,8 @@ Optional:
 
 - **code** (String) Region code. Varies by cloud provider
 - **config** (Map of String)
+- **latitude** (Number)
+- **longitude** (Number)
 - **name** (String) Name of the region. Varies by cloud provider
 - **security_group_id** (String) Security group ID to use for this region. Only set for AWS/Azure providers
 - **vnet_name** (String) Name of the virtual network/VPC ID to use for this region. Only set for AWS/Azure providers
@@ -63,8 +55,6 @@ Optional:
 
 Read-Only:
 
-- **latitude** (Number)
-- **longitude** (Number)
 - **uuid** (String) Region UUID
 
 <a id="nestedblock--regions--zones"></a>

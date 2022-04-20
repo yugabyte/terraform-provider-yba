@@ -21,11 +21,11 @@ locals {
 module "azure_yb_anywhere" {
   source = "../../../modules/docker/azure"
 
-  cluster_name        = "sdu-test-yugaware"
-  ssh_user            = "sdu"
-  region_name         = "westus2"
-  subnet_name         = "yugabyte-subnet-westus2"
-  vnet_name           = "yugabyte-vnet-us-west2"
+  cluster_name   = "sdu-test-yugaware"
+  ssh_user       = "sdu"
+  region_name    = "westus2"
+  subnet_name    = "yugabyte-subnet-westus2"
+  vnet_name      = "yugabyte-vnet-us-west2"
   resource_group = "yugabyte-rg"
   // files
   ssh_private_key = "/Users/stevendu/.ssh/yugaware-azure"
@@ -39,7 +39,7 @@ provider "yb" {
 }
 
 resource "yb_installation" "installation" {
-  provider = yb.unauthenticated
+  provider                  = yb.unauthenticated
   public_ip                 = module.azure_yb_anywhere.public_ip
   private_ip                = module.azure_yb_anywhere.private_ip
   ssh_user                  = "sdu"
@@ -50,7 +50,7 @@ resource "yb_installation" "installation" {
 }
 
 resource "yb_customer_resource" "customer" {
-  provider = yb.unauthenticated
+  provider   = yb.unauthenticated
   depends_on = [module.azure_yb_anywhere, yb_installation.installation]
   code       = "admin"
   email      = "sdu@yugabyte.com"
@@ -59,7 +59,7 @@ resource "yb_customer_resource" "customer" {
 }
 
 provider "yb" {
-  host = "${module.azure_yb_anywhere.public_ip}:80"
+  host      = "${module.azure_yb_anywhere.public_ip}:80"
   api_token = yb_customer_resource.customer.api_token
 }
 
