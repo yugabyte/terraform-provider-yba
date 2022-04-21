@@ -66,6 +66,11 @@ func ResourceInstallation() *schema.Resource {
 			StateContext: schema.ImportStatePassthroughContext,
 		},
 
+		Timeouts: &schema.ResourceTimeout{
+			Create: schema.DefaultTimeout(30 * time.Minute),
+			Delete: schema.DefaultTimeout(10 * time.Minute),
+		},
+
 		Schema: map[string]*schema.Schema{
 			"public_ip": {
 				Type:        schema.TypeString,
@@ -212,7 +217,7 @@ func resourceInstallationCreate(ctx context.Context, d *schema.ResourceData, met
 	user := d.Get("ssh_user").(string)
 	pk := d.Get("ssh_private_key").(string)
 
-	sshClient, err := waitForIP(ctx, user, publicIP, pk, 5*time.Minute)
+	sshClient, err := waitForIP(ctx, user, publicIP, pk, d.Timeout(schema.TimeoutCreate))
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -237,7 +242,7 @@ func resourceInstallationCreate(ctx context.Context, d *schema.ResourceData, met
 	}
 
 	c := meta.(*api.ApiClient).YugawareClient
-	err = waitForStart(ctx, c, 20*time.Minute)
+	err = waitForStart(ctx, c, d.Timeout(schema.TimeoutCreate))
 	if err != nil {
 		return diag.FromErr(err)
 	}

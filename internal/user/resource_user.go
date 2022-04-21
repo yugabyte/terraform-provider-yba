@@ -7,6 +7,7 @@ import (
 	client "github.com/yugabyte/platform-go-client"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/api"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/utils"
+	"time"
 )
 
 // ResourceUser TODO: none of these functions will work until the date issue is resolved https://yugabyte.atlassian.net/browse/PLAT-3305
@@ -21,6 +22,12 @@ func ResourceUser() *schema.Resource {
 
 		Importer: &schema.ResourceImporter{
 			StateContext: schema.ImportStatePassthroughContext,
+		},
+
+		Timeouts: &schema.ResourceTimeout{
+			Create: schema.DefaultTimeout(5 * time.Minute),
+			Update: schema.DefaultTimeout(5 * time.Minute),
+			Delete: schema.DefaultTimeout(5 * time.Minute),
 		},
 
 		Schema: map[string]*schema.Schema{

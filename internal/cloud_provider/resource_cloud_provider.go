@@ -26,6 +26,11 @@ func ResourceCloudProvider() *schema.Resource {
 			StateContext: schema.ImportStatePassthroughContext,
 		},
 
+		Timeouts: &schema.ResourceTimeout{
+			Create: schema.DefaultTimeout(10 * time.Minute),
+			Delete: schema.DefaultTimeout(5 * time.Minute),
+		},
+
 		Schema: map[string]*schema.Schema{
 			"air_gap_install": {
 				Type:        schema.TypeBool,
@@ -157,7 +162,7 @@ func resourceCloudProviderCreate(ctx context.Context, d *schema.ResourceData, me
 	d.SetId(*r.ResourceUUID)
 	if r.TaskUUID != nil {
 		tflog.Debug(ctx, fmt.Sprintf("Waiting for provider %s to be active", d.Id()))
-		err = utils.WaitForTask(ctx, *r.TaskUUID, cUUID, c, 10*time.Minute)
+		err = utils.WaitForTask(ctx, *r.TaskUUID, cUUID, c, d.Timeout(schema.TimeoutCreate))
 		if err != nil {
 			return diag.FromErr(err)
 		}
