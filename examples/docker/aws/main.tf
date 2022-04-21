@@ -13,6 +13,8 @@ terraform {
 locals {
   dir          = "/Users/stevendu/code/terraform-provider-yugabyte-anywhere/modules/resources"
   cluster_name = "sdu-test-yugaware"
+  google_creds = "/Users/stevendu/.yugabyte/yugabyte-gce.json"
+  software_version = "2.13.1.0-b69"
 }
 
 provider "aws" {
@@ -25,7 +27,7 @@ module "aws_yb_anywhere" {
   cluster_name        = local.cluster_name
   ssh_user            = "ubuntu"
   ssh_keypair         = "yb-dev-aws-2"
-  security_group_name = "sdu_test_sg"
+  security_group_name = "${local.cluster_name}_sg"
   vpc_id              = "***REMOVED***"
   subnet_id           = "***REMOVED***"
   // files
@@ -67,10 +69,10 @@ resource "yb_cloud_provider" "gcp" {
   code = "gcp"
   config = merge(
     { YB_FIREWALL_TAGS = "cluster-server" },
-    jsondecode(file("/Users/stevendu/.yugabyte/yugabyte-gce.json"))
+    jsondecode(file(local.google_creds))
   )
   dest_vpc_id = "***REMOVED***"
-  name        = "sdu-test-gcp-provider"
+  name        = "${local.cluster_name}-provider"
   regions {
     code = "us-west1"
     name = "us-west1"
@@ -83,21 +85,15 @@ data "yb_provider_key" "gcp-key" {
   provider_id = yb_cloud_provider.gcp.id
 }
 
-locals {
-  region_list  = yb_cloud_provider.gcp.regions[*].uuid
-  provider_id  = yb_cloud_provider.gcp.id
-  provider_key = data.yb_provider_key.gcp-key.id
-}
-
 resource "yb_universe" "gcp_universe" {
   depends_on = [yb_cloud_provider.gcp]
   clusters {
     cluster_type = "PRIMARY"
     user_intent {
-      universe_name      = "sdu-test-gcp-universe"
+      universe_name      = "${local.cluster_name}-gcp-universe"
       provider_type      = "gcp"
-      provider           = local.provider_id
-      region_list        = local.region_list
+      provider           = yb_cloud_provider.gcp.id
+      region_list        = yb_cloud_provider.gcp.regions[*].uuid
       num_nodes          = 3
       replication_factor = 3
       instance_type      = "n1-standard-1"
@@ -111,8 +107,8 @@ resource "yb_universe" "gcp_universe" {
       enable_ysql                   = true
       enable_node_to_node_encrypt   = true
       enable_client_to_node_encrypt = true
-      yb_software_version           = "2.12.1.0-b41"
-      access_key_code               = local.provider_key
+      yb_software_version           = local.software_version
+      access_key_code               = data.yb_provider_key.gcp-key.id
     }
   }
   communication_ports {}

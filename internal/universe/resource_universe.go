@@ -17,13 +17,19 @@ func ResourceUniverse() *schema.Resource {
 	return &schema.Resource{
 		Description: "Universe Resource",
 
-		CreateWithoutTimeout: resourceUniverseCreate,
-		ReadContext:          resourceUniverseRead,
-		UpdateContext:        resourceUniverseUpdate,
-		DeleteContext:        resourceUniverseDelete,
+		CreateContext: resourceUniverseCreate,
+		ReadContext:   resourceUniverseRead,
+		UpdateContext: resourceUniverseUpdate,
+		DeleteContext: resourceUniverseDelete,
 
 		Importer: &schema.ResourceImporter{
 			StateContext: schema.ImportStatePassthroughContext,
+		},
+
+		Timeouts: &schema.ResourceTimeout{
+			Create: schema.DefaultTimeout(60 * time.Minute),
+			Update: schema.DefaultTimeout(30 * time.Minute),
+			Delete: schema.DefaultTimeout(30 * time.Minute),
 		},
 
 		Schema: map[string]*schema.Schema{
@@ -477,7 +483,7 @@ func resourceUniverseCreate(ctx context.Context, d *schema.ResourceData, meta in
 
 	d.SetId(*r.ResourceUUID)
 	tflog.Debug(ctx, fmt.Sprintf("Waiting for universe %s to be active", d.Id()))
-	err = utils.WaitForTask(ctx, *r.TaskUUID, cUUID, c, time.Hour)
+	err = utils.WaitForTask(ctx, *r.TaskUUID, cUUID, c, d.Timeout(schema.TimeoutCreate))
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -814,7 +820,7 @@ func resourceUniverseUpdate(ctx context.Context, d *schema.ResourceData, meta in
 	}
 	// wait for all tasks to complete
 	for _, id := range taskIds {
-		err := utils.WaitForTask(ctx, id, cUUID, c, time.Hour)
+		err := utils.WaitForTask(ctx, id, cUUID, c, d.Timeout(schema.TimeoutUpdate))
 		if err != nil {
 			return diag.FromErr(err)
 		}
@@ -838,7 +844,7 @@ func resourceUniverseDelete(ctx context.Context, d *schema.ResourceData, meta in
 	}
 
 	tflog.Debug(ctx, fmt.Sprintf("Waiting for universe %s to be deleted", d.Id()))
-	err = utils.WaitForTask(ctx, *r.TaskUUID, cUUID, c, time.Hour)
+	err = utils.WaitForTask(ctx, *r.TaskUUID, cUUID, c, d.Timeout(schema.TimeoutDelete))
 	if err != nil {
 		return diag.FromErr(err)
 	}
