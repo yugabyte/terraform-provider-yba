@@ -199,8 +199,9 @@ github.com/google/go-cmp v0.5.2/go.mod h1:v8dTdLbMG2kIc/vJvl+f65V22dbkXbowE6jgT/
 github.com/google/go-cmp v0.5.3/go.mod h1:v8dTdLbMG2kIc/vJvl+f65V22dbkXbowE6jgT/gNBxE=
 github.com/google/go-cmp v0.5.4/go.mod h1:v8dTdLbMG2kIc/vJvl+f65V22dbkXbowE6jgT/gNBxE=
 github.com/google/go-cmp v0.5.5/go.mod h1:v8dTdLbMG2kIc/vJvl+f65V22dbkXbowE6jgT/gNBxE=
-github.com/google/go-cmp v0.5.6 h1:BKbKCqvP6I+rmFHt06ZmyQtvB8xAkWdhFyr0ZUNZcxQ=
 github.com/google/go-cmp v0.5.6/go.mod h1:v8dTdLbMG2kIc/vJvl+f65V22dbkXbowE6jgT/gNBxE=
+github.com/google/go-cmp v0.5.8 h1:e6P7q2lk1O+qJJb4BtCQXlK8vWEO8V1ZeuEdJNOqZyg=
+github.com/google/go-cmp v0.5.8/go.mod h1:17dUlkBOakJ0+DkrSSNjCkIjxS6bF9zb3elmeNGIjoY=
 github.com/google/martian v2.1.0+incompatible h1:/CP5g8u/VJHijgedC/Legn3BAbAaWPgecwXBIDzw5no=
 github.com/google/martian v2.1.0+incompatible/go.mod h1:9I4somxYTbIHy5NJKHRl3wXiIaQGbYVAs8BPL6v8lEs=
 github.com/google/martian/v3 v3.0.0/go.mod h1:y5Zk1BBys9G+gd6Jrk0W3cC1+ELVxBWuIGO+w/tUAp0=
@@ -247,8 +248,8 @@ github.com/hashicorp/go-getter v1.5.3/go.mod h1:BrrV/1clo8cCYu6mxvboYg+KutTiFnXj
 github.com/hashicorp/go-hclog v0.0.0-20180709165350-ff2cf002a8dd/go.mod h1:9bjs9uLqI8l75knNv3lV1kA55veR+WUPSiKIWcQHudI=
 github.com/hashicorp/go-hclog v0.14.1/go.mod h1:whpDNt7SSdeAju8AWKIWsul05p54N/39EeqMAyrmvFQ=
 github.com/hashicorp/go-hclog v0.16.1/go.mod h1:whpDNt7SSdeAju8AWKIWsul05p54N/39EeqMAyrmvFQ=
-github.com/hashicorp/go-hclog v1.0.0 h1:bkKf0BeBXcSYa7f5Fyi9gMuQ8gNsxeiNpZjR6VxNZeo=
-github.com/hashicorp/go-hclog v1.0.0/go.mod h1:whpDNt7SSdeAju8AWKIWsul05p54N/39EeqMAyrmvFQ=
+github.com/hashicorp/go-hclog v1.2.0 h1:La19f8d7WIlm4ogzNHB0JGqs5AUDAZ2UfCY4sJXcJdM=
+github.com/hashicorp/go-hclog v1.2.0/go.mod h1:whpDNt7SSdeAju8AWKIWsul05p54N/39EeqMAyrmvFQ=
 github.com/hashicorp/go-multierror v1.0.0/go.mod h1:dHtQlpGsu+cZNNAkkCN/P3hoUDHhCYQXV3UM06sGGrk=
 github.com/hashicorp/go-multierror v1.1.1 h1:H5DkEtf6CXdFp0N0Em5UCwQpXMWke8IA0+lD48awMYo=
 github.com/hashicorp/go-multierror v1.1.1/go.mod h1:iw975J/qwKPdAO1clOe2L8331t/9/fmwbPZ6JB6eMoM=
@@ -281,8 +282,8 @@ github.com/hashicorp/terraform-plugin-docs v0.5.1/go.mod h1:SQwEgy0/B0UPQ07rNEG1
 github.com/hashicorp/terraform-plugin-go v0.5.0 h1:+gCDdF0hcYCm0YBTxrP4+K1NGIS5ZKZBKDORBewLJmg=
 github.com/hashicorp/terraform-plugin-go v0.5.0/go.mod h1:PAVN26PNGpkkmsvva1qfriae5Arky3xl3NfzKa8XFVM=
 github.com/hashicorp/terraform-plugin-log v0.2.0/go.mod h1:E1kJmapEHzqu1x6M++gjvhzM2yMQNXPVWZRCB8sgYjg=
-github.com/hashicorp/terraform-plugin-log v0.2.1 h1:hl0G6ctSx7DRTE62VNsPWrq7d+JWy1kjk9ApOFrCq3I=
-github.com/hashicorp/terraform-plugin-log v0.2.1/go.mod h1:RW/n0x4dyITmenuirZ1ViPQGP5JQdPTZ4Wwc0rLKi94=
+github.com/hashicorp/terraform-plugin-log v0.4.0 h1:F3eVnm8r2EfQCe2k9blPIiF/r2TT01SHijXnS7bujvc=
+github.com/hashicorp/terraform-plugin-log v0.4.0/go.mod h1:9KclxdunFownr4pIm1jdmwKRmE4d6HVG2c9XDq47rpg=
 github.com/hashicorp/terraform-plugin-sdk/v2 v2.10.1 h1:B9AocC+dxrCqcf4vVhztIkSkt3gpRjUkEka8AmZWGlQ=
 github.com/hashicorp/terraform-plugin-sdk/v2 v2.10.1/go.mod h1:FjM9DXWfP0w/AeOtJoSKHBZ01LqmaO6uP4bXhv3fekw=
 github.com/hashicorp/terraform-registry-address v0.0.0-20210412075316-9b2996cce896 h1:1FGtlkJw87UsTMg5s8jrekrHmUPUJaMcu6ELiVhQrNw=
@@ -416,8 +417,6 @@ github.com/vmihailenco/msgpack/v4 v4.3.12/go.mod h1:gborTTJjAo/GWTqqRjrLCn9pgNN+
 github.com/vmihailenco/tagparser v0.1.1/go.mod h1:OeAg3pn3UbLjkWt+rN9oFYB6u/cQgqMEUPoW2WPyhdI=
 github.com/xanzy/ssh-agent v0.3.0 h1:wUMzuKtKilRgBAD1sUb8gOwwRr2FGoBVumcjoOACClI=
 github.com/xanzy/ssh-agent v0.3.0/go.mod h1:3s9xbODqPuuhK9JV1R321M/FlMZSBvE5aY6eAcqrDh0=
-github.com/yugabyte/platform-go-client v0.0.0-20220308232516-f7d106d1bdaa h1:P8P6Mma02cAK4LJPYaeoGpsfucp24/wqTW8sVCxoxSI=
-github.com/yugabyte/platform-go-client v0.0.0-20220308232516-f7d106d1bdaa/go.mod h1:DCweVAOmhBcxKl4aAmsBDVI6K1VZXHkLRcCCLgZnwj0=
 github.com/yugabyte/platform-go-client v0.0.0-20220316000403-72690ff08ac1 h1:IHJD5PTbYnDZSGkwo185RTSSEr8Qg3vCk6FCkRUaiaQ=
 github.com/yugabyte/platform-go-client v0.0.0-20220316000403-72690ff08ac1/go.mod h1:DCweVAOmhBcxKl4aAmsBDVI6K1VZXHkLRcCCLgZnwj0=
 github.com/yuin/goldmark v1.1.25/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9decYSb74=
@@ -452,8 +451,6 @@ golang.org/x/crypto v0.0.0-20210322153248-0c34fe9e7dc2/go.mod h1:T9bdIzuCu7OtxOm
 golang.org/x/crypto v0.0.0-20210421170649-83a5a9bb288b/go.mod h1:T9bdIzuCu7OtxOm1hfPfRQxPLYneinmdGuTeoZ9dtd4=
 golang.org/x/crypto v0.0.0-20210513164829-c07d793c2f9a/go.mod h1:P+XmwS30IXTQdn5tA2iutPOUgjI07+tq3H3K9MVA1s8=
 golang.org/x/crypto v0.0.0-20210616213533-5ff15b29337e/go.mod h1:GvvjBRRGRdwPK5ydBHafDWAxML/pGHZbMvKqRZ5+Abc=
-golang.org/x/crypto v0.0.0-20220112180741-5e0467b6c7ce h1:Roh6XWxHFKrPgC/EQhVubSAGQ6Ozk6IdxHSzt1mR0EI=
-golang.org/x/crypto v0.0.0-20220112180741-5e0467b6c7ce/go.mod h1:IxCIyHEi3zRg3s0A5j5BB6A9Jmi73HwBIUl50j+osU4=
 golang.org/x/crypto v0.0.0-20220315160706-3147a52a75dd h1:XcWmESyNjXJMLahc3mqVQJcgSTDxFxhETVlfk9uGc38=
 golang.org/x/crypto v0.0.0-20220315160706-3147a52a75dd/go.mod h1:IxCIyHEi3zRg3s0A5j5BB6A9Jmi73HwBIUl50j+osU4=
 golang.org/x/exp v0.0.0-20190121172915-509febef88a4/go.mod h1:CJ0aWSM057203Lf6IL+f9T1iT9GByDxfZKAQTCR3kQA=
