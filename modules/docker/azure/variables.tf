@@ -43,3 +43,8 @@ variable "ssh_public_key" {
   description = "Path to SSH public key to be use when creating the instances"
   type        = string
 }
+
+variable "security_group" {
+  description = "Security group for the VM"
+  type = string
+}
