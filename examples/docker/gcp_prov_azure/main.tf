@@ -71,11 +71,11 @@ resource "yb_customer_resource" "customer" {
 resource "yb_cloud_provider" "azure" {
   code = "azu"
   config = {
-    "AZURE_SUBSCRIPTION_ID" = "a0fdddea-9fb1-473b-b069-fd3e0b1125db"
-    "AZURE_RG" = "yugabyte-rg"
-    "AZURE_TENANT_ID" = "810c029b-d266-4f13-a23a-54b66cfb5f83"
-    "AZURE_CLIENT_SECRET" = "9un6.0~ix8iFKs4JpY5iP5_1p~RRyihJ_l"
-    "AZURE_CLIENT_ID" = "d43d538c-d84d-42ab-b7b7-8df00cdabff8"
+    "AZURE_SUBSCRIPTION_ID" = "<azure-subscription-id>"
+    "AZURE_RG" = "<azure-resource-group>"
+    "AZURE_TENANT_ID" = "<azure-tenant-id>"
+    "AZURE_CLIENT_SECRET" = "<azure-client-secret>"
+    "AZURE_CLIENT_ID" = "<azure-client-id>"
   }
   
   name        = "${local.cluster_name}-provider"
