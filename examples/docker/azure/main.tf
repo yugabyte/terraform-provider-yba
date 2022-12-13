@@ -15,21 +15,23 @@ provider "azurerm" {
 }
 
 locals {
-  dir = "/Users/stevendu/code/terraform-provider-yugabyte-anywhere/modules/resources"
+  home = "/home/deeptikumar"
+  dir = "${local.home}/code/terraform-provider-yugabytedb-anywhere/modules/resources"
 }
 
 module "azure_yb_anywhere" {
   source = "../../../modules/docker/azure"
 
-  cluster_name   = "sdu-test-yugaware"
-  ssh_user       = "sdu"
+  cluster_name   = "test-yugaware-azure"
+  ssh_user       = "centos"
   region_name    = "westus2"
   subnet_name    = "yugabyte-subnet-westus2"
   vnet_name      = "yugabyte-vnet-us-west2"
   resource_group = "yugabyte-rg"
   // files
-  ssh_private_key = "/Users/stevendu/.ssh/yugaware-azure"
-  ssh_public_key  = "/Users/stevendu/.ssh/yugaware-azure.pub"
+  ssh_private_key = "${local.home}/.ssh/yugaware-azure"
+  ssh_public_key  = "${local.home}/.ssh/yugaware-azure.pub"
+  security_group = "sg-139dde6c"
 }
 
 provider "yb" {
@@ -38,23 +40,23 @@ provider "yb" {
   host = "${module.azure_yb_anywhere.public_ip}:80"
 }
 
-resource "yb_installation" "installation" {
-  provider                  = yb.unauthenticated
-  public_ip                 = module.azure_yb_anywhere.public_ip
-  private_ip                = module.azure_yb_anywhere.private_ip
-  ssh_user                  = "sdu"
-  ssh_private_key           = file("/Users/stevendu/.ssh/yugaware-azure")
-  replicated_config_file    = "${local.dir}/replicated.conf"
-  replicated_license_file   = "/Users/stevendu/.yugabyte/yugabyte-dev.rli"
-  application_settings_file = "${local.dir}/application_settings.conf"
+module "installation" {
+  source = "../../../modules/installation"
+
+  public_ip = module.azure_yb_anywhere.public_ip
+  private_ip = module.azure_yb_anywhere.private_ip
+  ssh_user = "centos"
+  ssh_private_key_file = "${local.home}/.ssh/yugaware-azure"
+  replicated_directory = local.dir
+  replicated_license_file_path = "${local.home}/.yugabyte/yugabyte-dev.rli"
 }
 
 resource "yb_customer_resource" "customer" {
   provider   = yb.unauthenticated
   depends_on = [module.azure_yb_anywhere, yb_installation.installation]
   code       = "admin"
-  email      = "sdu@yugabyte.com"
-  name       = "sdu"
+  email      = "demo@yugabyte.com"
+  name       = "demo"
   password   = "Password1@"
 }
 
@@ -67,15 +69,15 @@ resource "yb_cloud_provider" "gcp" {
   code = "gcp"
   config = merge(
     { YB_FIREWALL_TAGS = "cluster-server" },
-    jsondecode(file("/Users/stevendu/.yugabyte/yugabyte-gce.json"))
+    jsondecode(file("${local.home}/.yugabyte/yugabyte-gce.json"))
   )
   dest_vpc_id = "yugabyte-network"
-  name        = "sdu-test-gcp-provider"
+  name        = "test-gcp-in-azure-provider"
   regions {
     code = "us-west1"
     name = "us-west1"
   }
-  ssh_port        = 54422
+  ssh_port        = 22
   air_gap_install = false
 }
 
@@ -94,7 +96,7 @@ resource "yb_universe" "gcp_universe" {
   clusters {
     cluster_type = "PRIMARY"
     user_intent {
-      universe_name      = "sdu-test-gcp-universe-on-azure"
+      universe_name      = "test-gcp-universe-on-azure"
       provider_type      = "gcp"
       provider           = local.provider_id
       region_list        = local.region_list
@@ -111,7 +113,7 @@ resource "yb_universe" "gcp_universe" {
       enable_ysql                   = true
       enable_node_to_node_encrypt   = true
       enable_client_to_node_encrypt = true
-      yb_software_version           = "2.13.1.0-b24"
+      yb_software_version           = "2.17.1.0-b238"
       access_key_code               = local.provider_key
     }
   }
