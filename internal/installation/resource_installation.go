@@ -4,6 +4,10 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"net"
+	"os"
+	"time"
+
 	"github.com/bramvdbogaerde/go-scp"
 	"github.com/google/uuid"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
@@ -13,9 +17,6 @@ import (
 	client "github.com/yugabyte/platform-go-client"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/api"
 	"golang.org/x/crypto/ssh"
-	"net"
-	"os"
-	"time"
 )
 
 var (
@@ -217,7 +218,7 @@ func resourceInstallationCreate(ctx context.Context, d *schema.ResourceData, met
 	user := d.Get("ssh_user").(string)
 	pk := d.Get("ssh_private_key").(string)
 
-	sshClient, err := waitForIP(ctx, user, publicIP, pk, d.Timeout(schema.TimeoutCreate))
+	sshClient, err := waitForIP(ctx, user, privateIP, pk, d.Timeout(schema.TimeoutCreate))
 	if err != nil {
 		return diag.FromErr(err)
 	}
