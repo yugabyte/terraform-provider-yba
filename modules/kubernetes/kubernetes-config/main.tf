@@ -36,6 +36,10 @@ resource "helm_release" "yb-release" {
   version = var.chart_version
   namespace = kubernetes_namespace.yb_anywhere.metadata[0].name
   wait = true
+  set {
+    name = "yugaware.service.type"
+    value = var.service_type
+  }
 }
 
 data "kubernetes_service" "yb_anywhere" {
