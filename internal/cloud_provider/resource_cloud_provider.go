@@ -4,14 +4,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
+	"time"
+
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	client "github.com/yugabyte/platform-go-client"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/api"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/utils"
-	"net/http"
-	"time"
 )
 
 func ResourceCloudProvider() *schema.Resource {
@@ -138,10 +139,8 @@ func resourceCloudProviderCreate(ctx context.Context, d *schema.ResourceData, me
 	cUUID := meta.(*api.ApiClient).CustomerId
 
 	req := client.Provider{
-		AirGapInstall:        utils.GetBoolPointer(d.Get("air_gap_install").(bool)),
 		Code:                 utils.GetStringPointer(d.Get("code").(string)),
 		Config:               utils.StringMap(d.Get("config").(map[string]interface{})),
-		CustomHostCidrs:      utils.StringSlice(d.Get("custom_host_cidrs").([]interface{})),
 		DestVpcId:            utils.GetStringPointer(d.Get("dest_vpc_id").(string)),
 		HostVpcId:            utils.GetStringPointer(d.Get("host_vpc_id").(string)),
 		HostVpcRegion:        utils.GetStringPointer(d.Get("host_vpc_region").(string)),
@@ -149,10 +148,13 @@ func resourceCloudProviderCreate(ctx context.Context, d *schema.ResourceData, me
 		HostedZoneName:       utils.GetStringPointer(d.Get("hosted_zone_name").(string)),
 		KeyPairName:          utils.GetStringPointer(d.Get("key_pair_name").(string)),
 		Name:                 utils.GetStringPointer(d.Get("name").(string)),
-		SshPort:              utils.GetInt32Pointer(int32(d.Get("ssh_port").(int))),
 		SshPrivateKeyContent: utils.GetStringPointer(d.Get("ssh_private_key_content").(string)),
-		SshUser:              utils.GetStringPointer(d.Get("ssh_user").(string)),
-		Regions:              buildRegions(d.Get("regions").([]interface{})),
+		Details: client.ProviderDetails{
+			AirGapInstall: utils.GetBoolPointer(d.Get("air_gap_install").(bool)),
+			SshPort:       utils.GetInt32Pointer(int32(d.Get("ssh_port").(int))),
+			SshUser:       utils.GetStringPointer(d.Get("ssh_user").(string)),
+		},
+		Regions: buildRegions(d.Get("regions").([]interface{})),
 	}
 	r, _, err := c.CloudProvidersApi.CreateProviders(ctx, cUUID).CreateProviderRequest(req).Execute()
 	if err != nil {
@@ -196,16 +198,13 @@ func resourceCloudProviderRead(ctx context.Context, d *schema.ResourceData, meta
 		return diag.FromErr(err)
 	}
 
-	if err = d.Set("air_gap_install", p.AirGapInstall); err != nil {
+	if err = d.Set("air_gap_install", p.Details.AirGapInstall); err != nil {
 		return diag.FromErr(err)
 	}
 	if err = d.Set("code", p.Code); err != nil {
 		return diag.FromErr(err)
 	}
 	if err = d.Set("computed_config", p.Config); err != nil {
-		return diag.FromErr(err)
-	}
-	if err = d.Set("custom_host_cidrs", p.CustomHostCidrs); err != nil {
 		return diag.FromErr(err)
 	}
 	if err = d.Set("hosted_zone_id", p.HostedZoneId); err != nil {
@@ -217,13 +216,13 @@ func resourceCloudProviderRead(ctx context.Context, d *schema.ResourceData, meta
 	if err = d.Set("name", p.Name); err != nil {
 		return diag.FromErr(err)
 	}
-	if err = d.Set("ssh_port", p.SshPort); err != nil {
+	if err = d.Set("ssh_port", p.Details.SshPort); err != nil {
 		return diag.FromErr(err)
 	}
 	if err = d.Set("ssh_private_key_content", p.SshPrivateKeyContent); err != nil {
 		return diag.FromErr(err)
 	}
-	if err = d.Set("ssh_user", p.SshUser); err != nil {
+	if err = d.Set("ssh_user", p.Details.SshUser); err != nil {
 		return diag.FromErr(err)
 	}
 	if err = d.Set("regions", flattenRegions(p.Regions)); err != nil {
