@@ -68,8 +68,8 @@ provider "yb" {
 resource "yb_cloud_provider" "aws" {
   code = "aws"
   config = {
-    "AWS_ACCESS_KEY_ID" = "<access-key-id>",
-    "AWS_SECRET_ACCESS_KEY" = "<secret-access-key>"
+    "AWS_ACCESS_KEY_ID" = "AKIAWTVAQKRG2Z5AIQMM",
+    "AWS_SECRET_ACCESS_KEY" = "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"
   }
   
   name        = "${local.cluster_name}-provider"
@@ -109,6 +109,13 @@ locals {
   provider_key = data.yb_provider_key.aws-key.id
 }
 
+data "yb_release_version" "release_version"{
+  depends_on = [
+    yb_cloud_provider.aws
+  ]
+  version = ""
+}
+
 resource "yb_universe" "aws_universe" {
   clusters {
     cluster_type = "PRIMARY"
@@ -133,7 +140,7 @@ resource "yb_universe" "aws_universe" {
       enable_ysql                   = true
       enable_node_to_node_encrypt   = true
       enable_client_to_node_encrypt = true
-      yb_software_version           = "2.17.1.0-b238"
+      yb_software_version           = data.yb_release_version.release_version.id
       access_key_code               = local.provider_key
     }
   }

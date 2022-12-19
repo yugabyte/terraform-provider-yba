@@ -78,6 +78,9 @@ locals {
   provider_id  = yb_cloud_provider.aws.id
   provider_key = data.yb_provider_key.aws-key.id
 }
+data "yb_release_version" "release_version"{
+  version = ""
+}
 
 resource "yb_universe" "aws_universe" {
   clusters {
@@ -103,7 +106,7 @@ resource "yb_universe" "aws_universe" {
       enable_ysql                   = true
       enable_node_to_node_encrypt   = true
       enable_client_to_node_encrypt = true
-      yb_software_version           = "2.17.1.0-b238"
+      yb_software_version           = data.yb_release_version.release_version.id
       access_key_code               = local.provider_key
     }
   }
