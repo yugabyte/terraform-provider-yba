@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/api"
@@ -9,6 +10,7 @@ import (
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/cloud_provider"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/customer"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/installation"
+	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/releases"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/universe"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/user"
 )
@@ -46,6 +48,7 @@ func New() *schema.Provider {
 		DataSourcesMap: map[string]*schema.Resource{
 			"yb_provider_key":    cloud_provider.ProviderKey(),
 			"yb_storage_configs": backups.StorageConfigs(),
+			"yb_release_version": releases.ReleaseVersion(),
 		},
 		ResourcesMap: map[string]*schema.Resource{
 			"yb_installation":            installation.ResourceInstallation(),
@@ -55,6 +58,7 @@ func New() *schema.Provider {
 			"yb_user":                    user.ResourceUser(),
 			"yb_customer_resource":       customer.ResourceCustomer(),
 			"yb_storage_config_resource": backups.ResourceStorageConfig(),
+			//"yb_releases":				  releases.ResourceReleases(),
 		},
 		ConfigureContextFunc: providerConfigure,
 	}
