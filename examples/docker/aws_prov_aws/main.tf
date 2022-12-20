@@ -113,7 +113,6 @@ data "yb_release_version" "release_version"{
   depends_on = [
     yb_cloud_provider.aws
   ]
-  version = ""
 }
 
 resource "yb_universe" "aws_universe" {

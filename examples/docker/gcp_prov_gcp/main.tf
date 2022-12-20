@@ -13,7 +13,7 @@ terraform {
 locals {
   home         = "/home/deeptikumar"
   dir          = "${local.home}/code/terraform-provider-yugabytedb-anywhere/modules/resources"
-  cluster_name = "terraform-gcp"
+  cluster_name = "dkumar-terraform-gcp"
 }
 
 provider "google" {
@@ -97,7 +97,6 @@ data "yb_release_version" "release_version"{
   depends_on = [
     yb_cloud_provider.gcp
   ]
-  version = ""
 }
 
 resource "yb_universe" "gcp_universe" {
@@ -126,4 +125,9 @@ resource "yb_universe" "gcp_universe" {
     }
   }
   communication_ports {}
+}
+
+data "yb_release_version" "custom_version" {
+  #example to show how version is picked using prefix match
+  version = "2.11"
 }

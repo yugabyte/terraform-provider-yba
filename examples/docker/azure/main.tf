@@ -95,7 +95,7 @@ data "yb_release_version" "release_version"{
   depends_on = [
     yb_cloud_provider.gcp
   ]
-  version = ""
+   
 }
 
 resource "yb_universe" "gcp_universe" {

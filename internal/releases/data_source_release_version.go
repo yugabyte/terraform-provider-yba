@@ -3,6 +3,7 @@ package releases
 import (
 	"context"
 	"sort"
+	"strings"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
@@ -18,16 +19,22 @@ func ReleaseVersion() *schema.Resource {
 		Schema: map[string]*schema.Schema{
 			"version": {
 				Type:        schema.TypeString,
-				Required:    true,
-				Description: "Release Version",
+				Optional:    true,
+				Description: "Release version given by user",
+			},
+			"selected_version": {
+				Type:        schema.TypeString,
+				Computed:    true,
+				Description: "Selected release version. If version is empty, use lastest version available",
+			},
+			"version_list": {
+				Type:        schema.TypeList,
+				Elem:        &schema.Schema{Type: schema.TypeString},
+				Computed:    true,
+				Description: "List of releases matching the selected release. If selected_version is not provided, returns entire list",
 			},
 		},
 	}
-}
-
-type ReleaseResponse struct {
-	Version     string `json:"version"`
-	Data 		interface{} `json:"metadata"`
 }
 
 func dataSourceReleaseVersionRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
@@ -41,22 +48,29 @@ func dataSourceReleaseVersionRead(ctx context.Context, d *schema.ResourceData, m
 		return diag.FromErr(err)
 	}
 
-	if d.Get("version").(string) ==  "" {
+	versions := make([]string, 0)
+	for v := range r {
+		versions = append(versions, v)
+	}
+	sort.Sort(sort.Reverse(sort.StringSlice(versions)))
 
-		versions := make([]string, 0, len(r))
- 
-    	for v := range r{
-        	versions = append(versions, v)
-    	}
-    	sort.Sort(sort.Reverse(sort.StringSlice(versions)))
-
-		for _, version := range versions {
-			d.SetId(version)
-			d.Set("version", version)
-			break
-		}
+	if d.Get("version").(string) == "" {
+		d.Set("version_list", versions)
 	} else {
-		d.SetId(d.Get("version").(string))
+		matched_versions := make([]string, 0)
+		for _, version := range versions {
+			if strings.HasPrefix(version, d.Get("version").(string)) {
+				matched_versions = append(matched_versions, version)
+			}
+		}
+		d.Set("version_list", matched_versions)
+	}
+	
+	list_versions := d.Get("version_list").([]interface{})
+	for _, version := range list_versions {
+		d.SetId(version.(string))
+		d.Set("selected_version", version.(string))
+		break
 	}
 	return diags
 }

@@ -79,7 +79,7 @@ locals {
   provider_key = data.yb_provider_key.aws-key.id
 }
 data "yb_release_version" "release_version"{
-  version = ""
+   
 }
 
 resource "yb_universe" "aws_universe" {
