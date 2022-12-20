@@ -68,8 +68,8 @@ provider "yb" {
 resource "yb_cloud_provider" "aws" {
   code = "aws"
   config = {
-    "AWS_ACCESS_KEY_ID" = "AKIAWTVAQKRG2Z5AIQMM",
-    "AWS_SECRET_ACCESS_KEY" = "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"
+    "AWS_ACCESS_KEY_ID" = "<access-key-id>",
+    "AWS_SECRET_ACCESS_KEY" = "<secret-access-key>"
   }
   
   name        = "${local.cluster_name}-provider"

@@ -2,6 +2,7 @@ package releases
 
 import (
 	"context"
+	"sort"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
@@ -41,7 +42,15 @@ func dataSourceReleaseVersionRead(ctx context.Context, d *schema.ResourceData, m
 	}
 
 	if d.Get("version").(string) ==  "" {
-		for version := range r {
+
+		versions := make([]string, 0, len(r))
+ 
+    	for v := range r{
+        	versions = append(versions, v)
+    	}
+    	sort.Sort(sort.Reverse(sort.StringSlice(versions)))
+
+		for _, version := range versions {
 			d.SetId(version)
 			d.Set("version", version)
 			break
