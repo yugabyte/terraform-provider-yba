@@ -109,9 +109,29 @@ locals {
   provider_key = data.yb_provider_key.aws-key.id
 }
 
+resource "yb_releases" "new_s3" {
+  version = "2.17.1.0-b238"
+  s3 {
+    access_key_id = "<access-key-id>"
+    secret_access_key = "<secret-access-key>"
+    paths {
+      x86_64 = "s3://releases.yugabyte.com/2.17.1.0-b238/yugabyte-2.17.1.0-b238-centos-x86_64.tar.gz"
+    }
+  }
+} 
+
+resource "yb_releases" "new_http" {
+  version = "2.17.1.0-jlipgcat"
+  http {
+    paths {
+      x86_64 =         "https://s3.us-west-2.amazonaws.com/uploads.dev.yugabyte.com/jli/yugabyte-2.17.1.0-e7a8bf45b04326a3a4f8a600c0ce545f46ecc9d8-release-clang15-centos-x86_64.tar.gz"
+      x86_64_checksum = "sha1:e16f4ca6c2e7bde8c3fe32721bd1eb815dcbd9f6"
+    }
+  }
+} 
 data "yb_release_version" "release_version"{
   depends_on = [
-    yb_cloud_provider.aws
+    yb_customer_resource.customer
   ]
 }
 
@@ -140,6 +160,37 @@ resource "yb_universe" "aws_universe" {
       enable_node_to_node_encrypt   = true
       enable_client_to_node_encrypt = true
       yb_software_version           = data.yb_release_version.release_version.id
+      access_key_code               = local.provider_key
+    }
+  }
+  communication_ports {}
+}
+
+resource "yb_universe" "aws_universe_2" {
+  clusters {
+    cluster_type = "PRIMARY"
+    user_intent {
+      universe_name      = "terraform-aws-uni2"
+      provider_type      = "aws"
+      provider           = local.provider_id
+      region_list        = local.region_list
+      num_nodes          = 1
+      replication_factor = 1
+      instance_type      = "c5.large"
+      device_info {
+        num_volumes  = 1
+        volume_size  = 250
+        disk_iops = 3000
+        throughput = 125
+        storage_type = "GP3"
+        storage_class = "standard"
+      }
+      assign_public_ip              = true
+      use_time_sync                 = true
+      enable_ysql                   = true
+      enable_node_to_node_encrypt   = true
+      enable_client_to_node_encrypt = true
+      yb_software_version           = yb_releases.new_s3.id
       access_key_code               = local.provider_key
     }
   }
