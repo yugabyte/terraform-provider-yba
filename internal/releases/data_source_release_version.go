@@ -65,7 +65,7 @@ func dataSourceReleaseVersionRead(ctx context.Context, d *schema.ResourceData, m
 		}
 		d.Set("version_list", matched_versions)
 	}
-	
+
 	list_versions := d.Get("version_list").([]interface{})
 	for _, version := range list_versions {
 		d.SetId(version.(string))
