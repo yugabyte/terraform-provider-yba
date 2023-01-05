@@ -20,23 +20,23 @@ func HttpSchema() *schema.Resource {
 	}
 }
 
-func formatInputHttp(ctx context.Context, data []interface{}) map[string]interface{}{
+func formatInputHttp(ctx context.Context, data []interface{}) map[string]interface{} {
 
 	http := make(map[string]interface{})
 	for _, v := range data {
 		http = v.(map[string]interface{})
-		http["paths"] = formatInputPaths(ctx, http["paths"]) 
-		
-	} 
-	return http
-} 
+		http["paths"] = formatInputPaths(ctx, http["paths"])
 
-func formatOutputHttp(ctx context.Context, http map[string]interface{}) []map[string]interface{}{
-	
+	}
+	return http
+}
+
+func formatOutputHttp(ctx context.Context, http map[string]interface{}) []map[string]interface{} {
+
 	mapSlice := []map[string]interface{}{}
 	http["paths"] = append(mapSlice, http["paths"].(map[string]interface{}))
 
 	http_formatted := []map[string]interface{}{}
-	http_formatted = append(http_formatted,http)
+	http_formatted = append(http_formatted, http)
 	return http_formatted
-} 
+}

@@ -14,13 +14,13 @@ func PackageSchema() *schema.Schema {
 				"path": {
 					Type:        schema.TypeString,
 					Computed:    true,
-					Optional:	 true,
+					Optional:    true,
 					Description: "Path",
 				},
 				"arch": {
 					Type:        schema.TypeString,
 					Computed:    true,
-					Optional:	 true,
+					Optional:    true,
 					Description: "Architecture",
 				},
 			},
@@ -28,4 +28,3 @@ func PackageSchema() *schema.Schema {
 	}
 
 }
-

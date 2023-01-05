@@ -11,8 +11,8 @@ import (
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/api"
 )
 
-func ResourceReleases() *schema.Resource{
-	return &schema.Resource {
+func ResourceReleases() *schema.Resource {
+	return &schema.Resource{
 		Description: "YBDB Release Version Import Resource",
 
 		CreateContext: resourceReleasesCreate,
@@ -30,95 +30,91 @@ func ResourceReleases() *schema.Resource{
 		},
 
 		Schema: map[string]*schema.Schema{
-			"state":{
-				Type:		 schema.TypeString,
-				Default:	 nil,
-				Computed: 	 true,
-				Optional:	 true,
+			"state": {
+				Type:        schema.TypeString,
+				Default:     nil,
+				Computed:    true,
+				Optional:    true,
 				Description: "State of Release",
 			},
-			"image_tag":{
-				Type:		 schema.TypeString,
-				Computed: 	 true,
-				Optional:	 true,
+			"image_tag": {
+				Type:        schema.TypeString,
+				Computed:    true,
+				Optional:    true,
 				Description: "Docker Image Tag for the release",
-
 			},
-			"notes":{
-				Type:		 schema.TypeList,
-				Computed: 	 true,
-				Optional:	 true,
-				Elem:		 &schema.Schema{Type: schema.TypeString},
+			"notes": {
+				Type:        schema.TypeList,
+				Computed:    true,
+				Optional:    true,
+				Elem:        &schema.Schema{Type: schema.TypeString},
 				Description: "Release Notes",
 			},
-			"file_path":{
-				Type:		 schema.TypeString,
-				Computed: 	 true,
-				Optional:	 true,
+			"file_path": {
+				Type:        schema.TypeString,
+				Computed:    true,
+				Optional:    true,
 				Description: "File path where the release binary is stored",
 			},
-			"chart_path":{
-				Type:		 schema.TypeString,
-				Computed: 	 true,
-				Optional:	 true,
+			"chart_path": {
+				Type:        schema.TypeString,
+				Computed:    true,
+				Optional:    true,
 				Description: "File path where the release helm chart is stored",
 			},
-			"version":{
-				Type:		 schema.TypeString,
-				Required:	 true,
-				ForceNew:	 true,
+			"version": {
+				Type:        schema.TypeString,
+				Required:    true,
+				ForceNew:    true,
 				Description: "Version name of the Package",
 			},
 			"packages": PackageSchema(),
 			"s3": {
 				Type:        schema.TypeList,
 				MaxItems:    1,
-				ForceNew:	 true,
+				ForceNew:    true,
 				Elem:        S3Schema(),
-				Optional: 	 true,
+				Optional:    true,
 				Description: "Location of release binary in S3",
 			},
-			"gcs":{
+			"gcs": {
 				Type:        schema.TypeList,
 				MaxItems:    1,
-				ForceNew:	 true,
-				Optional: 	 true,
+				ForceNew:    true,
+				Optional:    true,
 				Elem:        GcsSchema(),
 				Description: "Location of release binary in GCS",
 			},
-			"http":{
+			"http": {
 				Type:        schema.TypeList,
 				MaxItems:    1,
-				ForceNew: 	 true,
-				Optional: 	 true,
+				ForceNew:    true,
+				Optional:    true,
 				Elem:        HttpSchema(),
 				Description: "Location of release binary in S3",
 			},
-
 		},
 	}
 }
 
-func resourceReleasesCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics{
+func resourceReleasesCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	var diags diag.Diagnostics
 
 	cUUID := meta.(*api.ApiClient).CustomerId
 	token := meta.(*api.ApiClient).ApiKey
 
-	
-	gcs			:= 			d.Get("gcs").([]interface{})
-	s3 			:=			d.Get("s3").([]interface{})
-	http		:=			d.Get("http").([]interface{})
-	version		:=			d.Get("version").(string)
+	gcs 	:= d.Get("gcs").([]interface{})
+	s3 		:= d.Get("s3").([]interface{})
+	http 	:= d.Get("http").([]interface{})
+	version := d.Get("version").(string)
 
+	s3_params 	:= formatInputS3(ctx, s3)
+	gcs_params 	:= formatInputGcs(ctx, gcs)
+	http_params := formatInputHttp(ctx, http)
 
-	s3_params 	:= formatInputS3(ctx,s3)
-	gcs_params  := formatInputGcs(ctx, gcs)
-	http_params	:= formatInputHttp(ctx, http)
-	
 	vc := meta.(*api.ApiClient).VanillaClient
 	err, resp := vc.ReleaseImport(ctx, cUUID, version, s3_params, gcs_params, http_params, token)
-	if err != nil{
+	if err != nil {
 		return diag.FromErr(err)
 	}
 	if resp {
@@ -127,7 +123,7 @@ func resourceReleasesCreate(ctx context.Context, d *schema.ResourceData, meta in
 	}
 
 	return diags
-	
+
 }
 func findReleases(ctx context.Context, releases map[string]map[string]interface{}, version string) (map[string]interface{}, error) {
 	for v, r := range releases {
@@ -138,8 +134,7 @@ func findReleases(ctx context.Context, releases map[string]map[string]interface{
 	return nil, errors.New(fmt.Sprintf("could not find release %s", version))
 }
 
-
-func resourceReleasesRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics{
+func resourceReleasesRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	var diags diag.Diagnostics
 	c := meta.(*api.ApiClient).YugawareClient
 	cUUID := meta.(*api.ApiClient).CustomerId
@@ -170,27 +165,27 @@ func resourceReleasesRead(ctx context.Context, d *schema.ResourceData, meta inte
 	if err = d.Set("chart_path", p["chartPath"]); err != nil {
 		return diag.FromErr(err)
 	}
-	if err = d.Set("packages" , p["packages"]); err != nil {
+	if err = d.Set("packages", p["packages"]); err != nil {
 		return diag.FromErr(err)
 	}
 
 	if p["s3"] != nil {
 		s3_formatted := formatOutputS3(ctx, p["s3"].(map[string]interface{}))
-		if err = d.Set("s3" , s3_formatted); err != nil {
+		if err = d.Set("s3", s3_formatted); err != nil {
 			return diag.FromErr(err)
 		}
 	}
 
 	if p["gcs"] != nil {
 		gcs_formatted := formatOutputGcs(ctx, p["gcs"].(map[string]interface{}))
-		if err = d.Set("gcs" , gcs_formatted); err != nil {
+		if err = d.Set("gcs", gcs_formatted); err != nil {
 			return diag.FromErr(err)
 		}
 	}
 
 	if p["http"] != nil {
 		http_formatted := formatOutputHttp(ctx, p["http"].(map[string]interface{}))
-		if err = d.Set("http" , http_formatted); err != nil {
+		if err = d.Set("http", http_formatted); err != nil {
 			return diag.FromErr(err)
 		}
 	}

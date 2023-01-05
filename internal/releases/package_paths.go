@@ -24,10 +24,10 @@ func PackagePathsSchema() *schema.Resource {
 	}
 }
 
-func formatInputPaths(ctx context.Context, paths interface{}) map[string]interface{}{
-	
-	path := make(map[string]interface{}) 
-	for _, p := range paths.([]interface{}){
+func formatInputPaths(ctx context.Context, paths interface{}) map[string]interface{} {
+
+	path := make(map[string]interface{})
+	for _, p := range paths.([]interface{}) {
 		path = p.(map[string]interface{})
 	}
 	return path
