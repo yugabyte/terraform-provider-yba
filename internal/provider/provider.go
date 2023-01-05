@@ -58,7 +58,7 @@ func New() *schema.Provider {
 			"yb_user":                    user.ResourceUser(),
 			"yb_customer_resource":       customer.ResourceCustomer(),
 			"yb_storage_config_resource": backups.ResourceStorageConfig(),
-			//"yb_releases":				  releases.ResourceReleases(),
+			"yb_releases":				  releases.ResourceReleases(),
 		},
 		ConfigureContextFunc: providerConfigure,
 	}
