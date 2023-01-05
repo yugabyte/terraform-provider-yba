@@ -103,13 +103,13 @@ func resourceReleasesCreate(ctx context.Context, d *schema.ResourceData, meta in
 	cUUID := meta.(*api.ApiClient).CustomerId
 	token := meta.(*api.ApiClient).ApiKey
 
-	gcs 	:= d.Get("gcs").([]interface{})
-	s3 		:= d.Get("s3").([]interface{})
-	http 	:= d.Get("http").([]interface{})
+	s3 := d.Get("s3").([]interface{})
+	gcs := d.Get("gcs").([]interface{})
+	http := d.Get("http").([]interface{})
 	version := d.Get("version").(string)
 
-	s3_params 	:= formatInputS3(ctx, s3)
-	gcs_params 	:= formatInputGcs(ctx, gcs)
+	s3_params := formatInputS3(ctx, s3)
+	gcs_params := formatInputGcs(ctx, gcs)
 	http_params := formatInputHttp(ctx, http)
 
 	vc := meta.(*api.ApiClient).VanillaClient
