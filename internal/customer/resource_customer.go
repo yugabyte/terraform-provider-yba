@@ -104,41 +104,25 @@ func resourceCustomerCreate(ctx context.Context, d *schema.ResourceData, meta in
 func resourceCustomerRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	var diags diag.Diagnostics
 
-	c := meta.(*api.ApiClient).YugawareClient
-	// Fetch active session details
-	r, _, err := c.SessionManagementApi.GetSessionInfo(ctx).Execute()
-	var api_token, cuuid string
+	//c := meta.(*api.ApiClient).YugawareClient
+	vc := meta.(*api.ApiClient).VanillaClient
+
+	new_api, err := api.NewApiClient(vc.Host, d.Get("api_token").(string))
+	new_client := new_api.YugawareClient
+	r, _, err := new_client.SessionManagementApi.GetSessionInfo(ctx).Execute()
+
 	if err != nil {
-		// if 403 Forbidden, then need to login again
-		if err.Error() != "403 Forbidden" {
-			return diag.FromErr(err)
-		}
-		tflog.Info(ctx, "Logging in to YBA")
-		// re-login
-		email := d.Get("email").(string)
-		password := d.Get("password").(string)
-		vc := meta.(*api.ApiClient).VanillaClient
-		err, resp := vc.Login(ctx, email, password)
-		if err != nil {
-			return diag.FromErr(err)
-		}
-		// customer details from login response
-		api_token = resp.AuthToken
-		cuuid = resp.CustomerUUID
-	} else {
-		// customer details from active session
-		api_token = *r.ApiToken
-		cuuid = *r.CustomerUUID
-	}
-
-	if err = d.Set("api_token", api_token); err != nil {
-		return diag.FromErr(err)
-	}
-	if err = d.Set("cuuid", cuuid); err != nil {
 		return diag.FromErr(err)
 	}
 
-	d.SetId(cuuid)
+	if err = d.Set("api_token", *r.ApiToken); err != nil {
+		return diag.FromErr(err)
+	}
+	if err = d.Set("cuuid", *r.CustomerUUID); err != nil {
+		return diag.FromErr(err)
+	}
+
+	d.SetId(*r.CustomerUUID)
 	return diags
 }
 
