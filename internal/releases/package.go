@@ -9,6 +9,7 @@ func PackageSchema() *schema.Schema {
 		Type:     schema.TypeList,
 		ForceNew: true,
 		Optional: true,
+		Computed: true,
 		Elem: &schema.Resource{
 			Schema: map[string]*schema.Schema{
 				"path": {
