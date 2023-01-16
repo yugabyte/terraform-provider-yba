@@ -2,7 +2,6 @@ package universe
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -797,13 +796,10 @@ func resourceUniverseUpdate(ctx context.Context, d *schema.ResourceData, meta in
 				UniverseUUID: utils.GetStringPointer(d.Id()),
 				Clusters:     updateUni.UniverseDetails.Clusters,
 			}
-			req_json, _ := json.Marshal(req)
-
-			fmt.Println(string(req_json))
+			
 			if cluster["cluster_type"] == "PRIMARY" {
 				r, _, err := c.UniverseClusterMutationsApi.UpdatePrimaryCluster(ctx, cUUID, d.Id()).UniverseConfigureTaskParams(req).Execute()
 				if err != nil {
-					tflog.Info(ctx, "ERROR HERE"+err.Error())
 					return diag.FromErr(err)
 				}
 				taskIds = append(taskIds, *r.TaskUUID)

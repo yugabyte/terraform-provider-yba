@@ -161,11 +161,27 @@ resource "yb_universe" "aws_universe" {
       enable_client_to_node_encrypt = true
       yb_software_version           = data.yb_release_version.release_version.id
       access_key_code               = local.provider_key
+      instance_tags = {
+        "yb_owner" = "dkumar"
+      }
+      master_gflags = {
+        "cdc_wal_retention_time_secs": "1",
+        "log_min_segments_to_retain": "1",
+        "log_cache_size_limit_mb": "0",
+        "global_log_cache_size_limit_mb": "0",
+        "log_stop_retaining_min_disk_mb": "9223372036854775807"
+      }
+      tserver_gflags = {
+        "log_min_segments_to_retain": "1",
+        "log_cache_size_limit_mb": "0",
+        "global_log_cache_size_limit_mb": "0",
+        "log_stop_retaining_min_disk_mb": "9223372036854775807"
+      }
     }
   }
   communication_ports {}
 }
-
+/*
 resource "yb_universe" "aws_universe_2" {
   clusters {
     cluster_type = "PRIMARY"
