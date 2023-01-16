@@ -66,6 +66,9 @@ provider "yb" {
 }
 
 resource "yb_cloud_provider" "gcp" {
+  lifecycle {
+    ignore_changes = all
+  }
   code = "gcp"
   config = merge(
     { YB_FIREWALL_TAGS = "cluster-server" },

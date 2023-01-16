@@ -43,6 +43,11 @@ func dataSourceReleaseVersionRead(ctx context.Context, d *schema.ResourceData, m
 	c := meta.(*api.ApiClient).YugawareClient
 	cUUID := meta.(*api.ApiClient).CustomerId
 
+	_, _, err := c.ReleaseManagementApi.Refresh(ctx, cUUID).Execute()
+	if err != nil {
+		return diag.FromErr(err)
+	}
+
 	r, _, err := c.ReleaseManagementApi.GetListOfReleases(ctx, cUUID).IncludeMetadata(true).Execute()
 	if err != nil {
 		return diag.FromErr(err)
