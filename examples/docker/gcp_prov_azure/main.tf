@@ -69,6 +69,9 @@ resource "yb_customer_resource" "customer" {
 
 
 resource "yb_cloud_provider" "azure" {
+  lifecycle {
+    ignore_changes = all
+  }
   code = "azu"
   config = {
     "AZURE_SUBSCRIPTION_ID" = "<azure-subscription-id>"

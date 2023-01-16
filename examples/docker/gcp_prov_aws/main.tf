@@ -70,6 +70,9 @@ resource "yb_customer_resource" "customer" {
 
 
 resource "yb_cloud_provider" "aws" {
+  lifecycle {
+    ignore_changes = all
+  }
   code = "aws"
   config = {
     "AWS_ACCESS_KEY_ID" = "<access-key-id>",
