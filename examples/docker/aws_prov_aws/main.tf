@@ -66,6 +66,10 @@ provider "yb" {
 }
 
 resource "yb_cloud_provider" "aws" {
+
+  lifecycle {
+    ignore_changes = all
+  }
   code = "aws"
   config = {
     "AWS_ACCESS_KEY_ID" = "<access-key-id>",
@@ -211,4 +215,4 @@ resource "yb_universe" "aws_universe_2" {
     }
   }
   communication_ports {}
-}
+}*/
