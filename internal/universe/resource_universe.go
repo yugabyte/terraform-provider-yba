@@ -2,15 +2,17 @@ package universe
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
+
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	client "github.com/yugabyte/platform-go-client"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/api"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/utils"
-	"time"
 )
 
 func ResourceUniverse() *schema.Resource {
@@ -795,9 +797,13 @@ func resourceUniverseUpdate(ctx context.Context, d *schema.ResourceData, meta in
 				UniverseUUID: utils.GetStringPointer(d.Id()),
 				Clusters:     updateUni.UniverseDetails.Clusters,
 			}
+			req_json, _ := json.Marshal(req)
+
+			fmt.Println(string(req_json))
 			if cluster["cluster_type"] == "PRIMARY" {
 				r, _, err := c.UniverseClusterMutationsApi.UpdatePrimaryCluster(ctx, cUUID, d.Id()).UniverseConfigureTaskParams(req).Execute()
 				if err != nil {
+					tflog.Info(ctx, "ERROR HERE"+err.Error())
 					return diag.FromErr(err)
 				}
 				taskIds = append(taskIds, *r.TaskUUID)
@@ -813,6 +819,18 @@ func resourceUniverseUpdate(ctx context.Context, d *schema.ResourceData, meta in
 	if d.HasChange("yb_software_version") {
 		req := client.SoftwareUpgradeParams{YbSoftwareVersion: d.Get("yb_software_version").(string)}
 		r, _, err := c.UniverseUpgradesManagementApi.UpgradeSoftware(ctx, cUUID, d.Id()).SoftwareUpgradeParams(req).Execute()
+		taskIds = append(taskIds, *r.TaskUUID)
+		if err != nil {
+			return diag.FromErr(err)
+		}
+	}
+
+	if d.HasChange("master_gflags") || d.HasChange("tserver_gflags") {
+		req := client.GFlagsUpgradeParams{
+			MasterGFlags:  d.Get("master_gflags").(map[string]string),
+			TserverGFlags: d.Get("tserver_gflags").(map[string]string),
+		}
+		r, _, err := c.UniverseUpgradesManagementApi.UpgradeGFlags(ctx, cUUID, d.Id()).GflagsUpgradeParams(req).Execute()
 		taskIds = append(taskIds, *r.TaskUUID)
 		if err != nil {
 			return diag.FromErr(err)
