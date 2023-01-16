@@ -104,7 +104,6 @@ func resourceCustomerCreate(ctx context.Context, d *schema.ResourceData, meta in
 func resourceCustomerRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	var diags diag.Diagnostics
 
-	//c := meta.(*api.ApiClient).YugawareClient
 	vc := meta.(*api.ApiClient).VanillaClient
 
 	new_api, err := api.NewApiClient(vc.Host, d.Get("api_token").(string))
