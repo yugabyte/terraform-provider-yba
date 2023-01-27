@@ -123,17 +123,6 @@ func resourceCustomerRead(ctx context.Context, d *schema.ResourceData, meta inte
 	if err = d.Set("cuuid", *r.CustomerUUID); err != nil {
 		return diag.FromErr(err)
 	}
-
-	res, _, err := new_client.CustomerManagementApi.CustomerDetail(ctx, *r.CustomerUUID).Execute()
-
-	if err = d.Set("code", res.Code); err != nil {
-		return diag.FromErr(err)
-	}
-
-	if err = d.Set("name", res.Name); err != nil {
-		return diag.FromErr(err)
-	}
-
 	d.SetId(*r.CustomerUUID)
 	return diags
 }
