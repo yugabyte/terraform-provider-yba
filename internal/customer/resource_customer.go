@@ -105,8 +105,11 @@ func resourceCustomerRead(ctx context.Context, d *schema.ResourceData, meta inte
 	var diags diag.Diagnostics
 
 	vc := meta.(*api.ApiClient).VanillaClient
-
-	new_api, err := api.NewApiClient(vc.Host, d.Get("api_token").(string))
+	api_key := meta.(*api.ApiClient).ApiKey
+	if d.Get("api_token").(string) != "" {
+		api_key = d.Get("api_token").(string)
+	}
+	new_api, err := api.NewApiClient(vc.Host, api_key)
 	new_client := new_api.YugawareClient
 	r, _, err := new_client.SessionManagementApi.GetSessionInfo(ctx).Execute()
 
@@ -120,7 +123,6 @@ func resourceCustomerRead(ctx context.Context, d *schema.ResourceData, meta inte
 	if err = d.Set("cuuid", *r.CustomerUUID); err != nil {
 		return diag.FromErr(err)
 	}
-
 	d.SetId(*r.CustomerUUID)
 	return diags
 }
