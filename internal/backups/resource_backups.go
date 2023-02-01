@@ -4,12 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
+
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	client "github.com/yugabyte/platform-go-client"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/api"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/utils"
-	"time"
 )
 
 func ResourceBackups() *schema.Resource {
@@ -94,6 +95,13 @@ func ResourceBackups() *schema.Resource {
 				ForceNew:    true,
 				Description: "Type of the backup. Permitted values: YQL_TABLE_TYPE, REDIS_TABLE_TYPE, PGSQL_TABLE_TYPE, TRANSACTION_STATUS_TABLE_TYPE",
 			},
+			"table_uuid_list": {
+				Type:        schema.TypeList,
+				Optional:    true,
+				Elem:        &schema.Schema{Type: schema.TypeString},
+				ForceNew:    true,
+				Description: "List of Table UUIDs, required if backup_type = REDIS_TABLE_TYPE",
+			},
 		},
 	}
 }
@@ -101,6 +109,12 @@ func ResourceBackups() *schema.Resource {
 func resourceBackupsCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	c := meta.(*api.ApiClient).YugawareClient
 	cUUID := meta.(*api.ApiClient).CustomerId
+
+	if d.Get("backup_type").(string) == "REDIS_TABLE_TYPE" {
+		if len(d.Get("table_uuid_list").([]interface{})) == 0 {
+			return diag.FromErr(errors.New(fmt.Sprintf("Table UUID List cannot be empty for 'REDIS_TABLE_TYPE'")))
+		}
+	}
 
 	req := client.MultiTableBackupRequestParams{
 		Keyspace:            utils.GetStringPointer(d.Get("keyspace").(string)),
@@ -112,6 +126,7 @@ func resourceBackupsCreate(ctx context.Context, d *schema.ResourceData, meta int
 		BackupType:          utils.GetStringPointer(d.Get("backup_type").(string)),
 		CronExpression:      utils.GetStringPointer(d.Get("cron_expression").(string)),
 		SchedulingFrequency: utils.GetInt64Pointer(int64(d.Get("frequency").(int))),
+		TableUUIDList:       utils.StringSlice(d.Get("table_uuid_list").([]interface{})),
 	}
 	r, _, err := c.BackupsApi.CreateMultiTableBackup(ctx, cUUID, d.Get("uni_uuid").(string)).TableBackup(req).Execute()
 	if err != nil {
@@ -155,6 +170,11 @@ func findBackup(backups []client.Schedule, sUUID string) (*client.Schedule, erro
 func resourceBackupsUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	c := meta.(*api.ApiClient).YugawareClient
 	cUUID := meta.(*api.ApiClient).CustomerId
+
+	// since a change was introduced in 2.13.2 which requires an extra field for this API, and that change was made after the
+	// generation of the platform-go-client, Updating Backup schedules are currently disabled
+
+	return diag.FromErr(errors.New(fmt.Sprintf("Editing Backup Schedule is currently not supported")))
 
 	req := client.EditBackupScheduleParams{
 		CronExpression: utils.GetStringPointer(d.Get("cron_expression").(string)),
