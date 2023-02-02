@@ -2,11 +2,10 @@ package backups
 
 import (
 	"context"
+
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/api"
-	"strconv"
-	"time"
 )
 
 func StorageConfigs() *schema.Resource {
@@ -21,6 +20,11 @@ func StorageConfigs() *schema.Resource {
 				Elem:        &schema.Schema{Type: schema.TypeString},
 				Computed:    true,
 				Description: "List of storage configuration UUIDs. These can be used in the backup resource.",
+			},
+			"config_name": {
+				Type:        schema.TypeString,
+				Optional:    true,
+				Description: "Config name will accept the storage config to be used by the user. The selected UUID will be stored in the ID",
 			},
 		},
 	}
@@ -38,16 +42,27 @@ func dataSourceStorageConfigsRead(ctx context.Context, d *schema.ResourceData, m
 	}
 
 	var ids []string
+	var configName string
 	for _, config := range r {
 		if config.Type == "STORAGE" {
 			ids = append(ids, *config.ConfigUUID)
+			configName = d.Get("config_name").(string)
+			if configName != "" {
+				if config.ConfigName == configName {
+					d.SetId(*config.ConfigUUID)
+				}
+			}
 		}
 	}
 	if err = d.Set("uuid_list", ids); err != nil {
 		return diag.FromErr(err)
 	}
-
-	// always run
-	d.SetId(strconv.FormatInt(time.Now().Unix(), 10))
+	if configName == "" {
+		if len(ids) != 0 {
+			d.SetId(ids[0])
+		} else {
+			d.SetId("")
+		}
+	}
 	return diags
 }
