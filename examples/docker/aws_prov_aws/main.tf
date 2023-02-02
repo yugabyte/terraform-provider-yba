@@ -11,10 +11,13 @@ terraform {
 }
 
 locals {
-  home         = "/home/deeptikumar"
-  dir          = "${local.home}/code/terraform-provider-yugabytedb-anywhere/modules/resources"
-  cluster_name = "terraform-aws"
-  google_creds = "${local.home}/.yugabyte/yugabyte-gce.json"
+  home                  = "/home/deeptikumar"
+  dir                   = "${local.home}/code/terraform-provider-yugabytedb-anywhere/modules/resources"
+  cluster_name          = "terraform-aws-dkumar"
+  google_creds          = "${local.home}/.yugabyte/yugabyte-gce.json"
+  aws_access_key_id     = "<placeholder for aws access key id>"
+  aws_secret_access_key = "<placeholder for aws secret access key>"
+
 }
 
 provider "aws" {
@@ -72,8 +75,8 @@ resource "yb_cloud_provider" "aws" {
   }
   code = "aws"
   config = {
-    "AWS_ACCESS_KEY_ID" = "<access-key-id>",
-    "AWS_SECRET_ACCESS_KEY" = "<secret-access-key>"
+    "AWS_ACCESS_KEY_ID" = local.aws_access_key_id,
+    "AWS_SECRET_ACCESS_KEY" = local.aws_secret_access_key
   }
   
   name        = "${local.cluster_name}-provider"
@@ -114,10 +117,15 @@ locals {
 }
 
 resource "yb_releases" "new_s3" {
+  lifecycle {
+    ignore_changes = [
+      s3,
+    ]
+  }
   version = "2.17.1.0-b238"
   s3 {
-    access_key_id = "<access-key-id>"
-    secret_access_key = "<secret-access-key>"
+    access_key_id = local.aws_access_key_id
+    secret_access_key = local.aws_secret_access_key
     paths {
       x86_64 = "s3://releases.yugabyte.com/2.17.1.0-b238/yugabyte-2.17.1.0-b238-centos-x86_64.tar.gz"
     }
@@ -166,7 +174,9 @@ resource "yb_universe" "aws_universe" {
       yb_software_version           = data.yb_release_version.release_version.id
       access_key_code               = local.provider_key
       instance_tags = {
-        "yb_owner" = "dkumar"
+        "yb_owner" = "dkumar",
+        "yb_task" = "dev"
+        "yb_dept" = "dev"
       }
       master_gflags = {
         "cdc_wal_retention_time_secs": "1",
@@ -185,34 +195,72 @@ resource "yb_universe" "aws_universe" {
   }
   communication_ports {}
 }
+
+resource "yb_storage_config_resource" "aws_storage" {
+
+  name = "S3"
+  backup_location = "s3://dkumar-test"
+  config_name = "dkumar-terraform"
+  s3_access_key_id = local.aws_access_key_id
+  s3_secret_access_key = local.aws_secret_access_key
+
+}
+
+data "yb_storage_configs" "configs"{
+  depends_on = [yb_customer_resource.customer]
+}
+
+resource "yb_storage_config_resource" "gcs_storage" {
+
+  name = "GCS"
+  backup_location = "gs://dkumar-test"
+  config_name = "dkumar-terraform-gcs"
+  gcs_creds_json = jsondecode(file(local.google_creds))
+
+
+}
+data "yb_storage_configs" "configs_gcs" {
+    config_name = yb_storage_config_resource.gcs_storage.config_name
+}
+
 /*
-resource "yb_universe" "aws_universe_2" {
-  clusters {
-    cluster_type = "PRIMARY"
-    user_intent {
-      universe_name      = "terraform-aws-uni2"
-      provider_type      = "aws"
-      provider           = local.provider_id
-      region_list        = local.region_list
-      num_nodes          = 1
-      replication_factor = 1
-      instance_type      = "c5.large"
-      device_info {
-        num_volumes  = 1
-        volume_size  = 250
-        disk_iops = 3000
-        throughput = 125
-        storage_type = "GP3"
-        storage_class = "standard"
-      }
-      assign_public_ip              = true
-      use_time_sync                 = true
-      enable_ysql                   = true
-      enable_node_to_node_encrypt   = true
-      enable_client_to_node_encrypt = true
-      yb_software_version           = yb_releases.new_s3.id
-      access_key_code               = local.provider_key
-    }
-  }
-  communication_ports {}
-}*/
+resource "yb_backups" "aws_universe_backup_redis" {
+
+  uni_uuid = yb_universe.aws_universe.id
+  keyspace = "system_redis"
+  storage_config_uuid = data.yb_storage_configs.configs_gcs.id
+  time_before_delete = 864000
+  sse = false
+  transactional_backup = false
+  frequency = 864000
+  parallelism = 8
+  backup_type ="REDIS_TABLE_TYPE"
+  table_uuid_list = ["6ce286b2-7098-4dc7-b3e2-f3d8f21e25e7"]
+}
+
+resource "yb_backups" "aws_universe_backup_ycql" {
+
+  uni_uuid = yb_universe.aws_universe.id
+  keyspace = "ybdemo_keyspace"
+  storage_config_uuid = data.yb_storage_configs.configs.id
+  time_before_delete = 864000
+  sse = false
+  transactional_backup = false
+  frequency = 864000
+  parallelism = 8
+  backup_type ="YQL_TABLE_TYPE"
+}
+/*
+resource "yb_backups" "aws_universe_backup_ysql" {
+
+  uni_uuid = yb_universe.aws_universe.id
+  keyspace = "postgres"
+  storage_config_uuid = data.yb_storage_configs.configs.id
+   time_before_delete = 864000
+  sse = false
+  transactional_backup = false
+  frequency = 864000
+  parallelism = 8
+  backup_type ="PGSQL_TABLE_TYPE"
+}
+*/
