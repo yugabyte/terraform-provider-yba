@@ -1,0 +1,8 @@
+{
+  "phabricator.uri" : "https://phabricator.dev.yugabyte.com",
+  "repository.callsign": "TPYA",
+  "git:arc.feature.start.default" : "origin/main",
+  "arc.land.onto.default": "main",
+  "arc.land.remote.default": "origin",
+  "arc.feature.start.default" : "main"
+}
