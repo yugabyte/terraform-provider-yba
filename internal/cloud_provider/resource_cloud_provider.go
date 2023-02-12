@@ -4,14 +4,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
+	"time"
+
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	client "github.com/yugabyte/platform-go-client"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/api"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/utils"
-	"net/http"
-	"time"
 )
 
 func ResourceCloudProvider() *schema.Resource {
@@ -59,14 +60,6 @@ func ResourceCloudProvider() *schema.Resource {
 				Computed:    true,
 				Description: "Same as config field except some additional values may have been returned by the server.",
 			},
-			"custom_host_cidrs": {
-				Type:        schema.TypeList,
-				Elem:        &schema.Schema{Type: schema.TypeString},
-				Optional:    true,
-				Computed:    true,
-				ForceNew:    true,
-				Description: "", // TODO: document
-			},
 			"dest_vpc_id": {
 				Type:        schema.TypeString,
 				Optional:    true,
@@ -80,18 +73,6 @@ func ResourceCloudProvider() *schema.Resource {
 				Description: "", // TODO: document
 			},
 			"host_vpc_region": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				ForceNew:    true,
-				Description: "", // TODO: document
-			},
-			"hosted_zone_id": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				ForceNew:    true,
-				Description: "", // TODO: document
-			},
-			"hosted_zone_name": {
 				Type:        schema.TypeString,
 				Optional:    true,
 				ForceNew:    true,
@@ -141,12 +122,9 @@ func resourceCloudProviderCreate(ctx context.Context, d *schema.ResourceData, me
 		AirGapInstall:        utils.GetBoolPointer(d.Get("air_gap_install").(bool)),
 		Code:                 utils.GetStringPointer(d.Get("code").(string)),
 		Config:               utils.StringMap(d.Get("config").(map[string]interface{})),
-		CustomHostCidrs:      utils.StringSlice(d.Get("custom_host_cidrs").([]interface{})),
 		DestVpcId:            utils.GetStringPointer(d.Get("dest_vpc_id").(string)),
 		HostVpcId:            utils.GetStringPointer(d.Get("host_vpc_id").(string)),
 		HostVpcRegion:        utils.GetStringPointer(d.Get("host_vpc_region").(string)),
-		HostedZoneId:         utils.GetStringPointer(d.Get("hosted_zone_id").(string)),
-		HostedZoneName:       utils.GetStringPointer(d.Get("hosted_zone_name").(string)),
 		KeyPairName:          utils.GetStringPointer(d.Get("key_pair_name").(string)),
 		Name:                 utils.GetStringPointer(d.Get("name").(string)),
 		SshPort:              utils.GetInt32Pointer(int32(d.Get("ssh_port").(int))),
@@ -203,15 +181,6 @@ func resourceCloudProviderRead(ctx context.Context, d *schema.ResourceData, meta
 		return diag.FromErr(err)
 	}
 	if err = d.Set("computed_config", p.Config); err != nil {
-		return diag.FromErr(err)
-	}
-	if err = d.Set("custom_host_cidrs", p.CustomHostCidrs); err != nil {
-		return diag.FromErr(err)
-	}
-	if err = d.Set("hosted_zone_id", p.HostedZoneId); err != nil {
-		return diag.FromErr(err)
-	}
-	if err = d.Set("hosted_zone_name", p.HostedZoneName); err != nil {
 		return diag.FromErr(err)
 	}
 	if err = d.Set("name", p.Name); err != nil {
