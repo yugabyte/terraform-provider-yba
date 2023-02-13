@@ -39,7 +39,10 @@ variable "subnet_id" {
   type        = string
 }
 
-
+variable "tags" {
+  description = "Any tags that need to be added to the Virtual Machine"
+  type        = map
+}
 // file-paths
 variable "ssh_private_key" {
   description = "Path to private key to use when connecting to the instances"
