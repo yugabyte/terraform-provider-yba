@@ -33,7 +33,6 @@ module "azure_yb_anywhere" {
   ssh_public_key  = "${local.home}/.ssh/yugaware-azure.pub"
   security_group = "sg-139dde6c"
   tags                = {
-        // the key pairs are user defined, only the block of tags is compulsory
         "Owner" = "<placeholder for user>",
         "Task" = "<placeholder for task>"
         "Department" = "<placeholder for department>"

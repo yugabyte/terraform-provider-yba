@@ -44,7 +44,8 @@ variable "network_tags" {
 
 variable "tags" {
   description = "Any tags that need to be added to the Virtual Machine"
-  type        = map
+  type        = map(string)
+  default     = {} 
 }
 
 // file-paths

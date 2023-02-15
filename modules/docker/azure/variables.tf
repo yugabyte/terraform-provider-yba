@@ -36,7 +36,8 @@ variable "resource_group" {
 
 variable "tags" {
   description = "Any tags that need to be added to the Virtual Machine"
-  type        = map
+  type        = map(string)
+  default     = {} 
 }
 
 // files

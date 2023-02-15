@@ -34,7 +34,6 @@ module "aws_yb_anywhere" {
   vpc_id              = "vpc-0fe36f6b"
   subnet_id           = "subnet-f840ce9c"
   tags                = {
-        // the key pairs are user defined, only the block of tags is compulsory
         "Owner" = "<placeholder for user>",
         "Task" = "<placeholder for task>"
         "Department" = "<placeholder for department>"

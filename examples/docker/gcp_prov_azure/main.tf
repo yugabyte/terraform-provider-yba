@@ -32,7 +32,6 @@ module "gcp_yb_anywhere" {
   vpc_network    = "yugabyte-network"
   vpc_subnetwork = "subnet-us-west1"
   tags                = {
-        // the key pairs are user defined, only the block of tags is compulsory
         "Owner" = "<placeholder for user>",
         "Task" = "<placeholder for task>"
         "Department" = "<placeholder for department>"
