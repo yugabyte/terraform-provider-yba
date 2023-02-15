@@ -32,6 +32,11 @@ module "azure_yb_anywhere" {
   ssh_private_key = "${local.home}/.ssh/yugaware-azure"
   ssh_public_key  = "${local.home}/.ssh/yugaware-azure.pub"
   security_group = "sg-139dde6c"
+  tags                = {
+        "Owner" = "<placeholder for user>",
+        "Task" = "<placeholder for task>"
+        "Department" = "<placeholder for department>"
+      }
 }
 
 provider "yb" {

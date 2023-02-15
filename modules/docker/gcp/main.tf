@@ -30,6 +30,8 @@ resource "google_compute_instance" "yb_anywhere_node" {
     sshKeys = "${var.ssh_user}:${file(var.ssh_public_key)}"
   }
 
+  labels  = var.tags
+
   network_interface {
     network    = var.vpc_network
     subnetwork = var.vpc_subnetwork
