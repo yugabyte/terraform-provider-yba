@@ -50,6 +50,7 @@ module "installation" {
 
   public_ip = module.azure_yb_anywhere.public_ip
   private_ip = module.azure_yb_anywhere.private_ip
+  host_ip_for_connection = module.gcp_yb_anywhere.private_ip
   ssh_user = "centos"
   ssh_private_key_file = "${local.home}/.ssh/yugaware-azure"
   replicated_directory = local.dir
