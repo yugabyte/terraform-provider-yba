@@ -5,9 +5,9 @@ resource "azurerm_public_ip" "yb_public_ip" {
   allocation_method   = "Static"
   sku                 = "Standard"
 
-  tags = {
+  tags = merge(var.tags,{
     environment = var.cluster_name
-  }
+  })
 }
 
 resource "azurerm_network_security_group" "yb_sg" {
@@ -29,9 +29,9 @@ resource "azurerm_network_security_group" "yb_sg" {
     destination_address_prefix = "*"
   }
 
-  tags = {
+  tags = merge(var.tags,{
     environment = var.cluster_name
-  }
+  })
 }
 
 data "azurerm_subnet" "subnet" {
@@ -59,9 +59,9 @@ resource "azurerm_network_interface" "yb_network_interface" {
     public_ip_address_id          = azurerm_public_ip.yb_public_ip.id
   }
 
-  tags = {
+  tags = merge(var.tags,{
     environment = var.cluster_name
-  }
+  })
 }
 
 resource "azurerm_virtual_machine" "yb_anywhere_node" {
@@ -71,9 +71,9 @@ resource "azurerm_virtual_machine" "yb_anywhere_node" {
   location            = var.region_name
   delete_os_disk_on_termination = true
 
-  tags = {
+  tags = merge(var.tags,{
     environment = var.cluster_name
-  }
+  })
 
   storage_image_reference {
     publisher = "Canonical"
