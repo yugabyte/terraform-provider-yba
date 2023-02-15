@@ -33,6 +33,11 @@ module "aws_yb_anywhere" {
   security_group_name = "${local.cluster_name}_sg"
   vpc_id              = "vpc-0fe36f6b"
   subnet_id           = "subnet-f840ce9c"
+  tags                = {
+        "Owner" = "<placeholder for user>",
+        "Task" = "<placeholder for task>"
+        "Department" = "<placeholder for department>"
+      }
   // files
   ssh_private_key = "${local.home}/.yugabyte/yb-dev-aws-2.pem"
 }
@@ -122,12 +127,12 @@ resource "yb_releases" "new_s3" {
       s3,
     ]
   }
-  version = "2.17.1.0-b238"
+  version = "2.17.2.0-b77"
   s3 {
     access_key_id = local.aws_access_key_id
     secret_access_key = local.aws_secret_access_key
     paths {
-      x86_64 = "s3://releases.yugabyte.com/2.17.1.0-b238/yugabyte-2.17.1.0-b238-centos-x86_64.tar.gz"
+      x86_64 = "s3://releases.yugabyte.com/2.17.2.0-b77/yugabyte-2.17.2.0-b77-centos-x86_64.tar.gz"
     }
   }
 } 

@@ -32,6 +32,11 @@ module "gcp_yb_anywhere" {
   network_tags   = [local.cluster_name, "http-server", "https-server"]
   vpc_network    = "yugabyte-network"
   vpc_subnetwork = "subnet-us-west1"
+  tags                = {
+        "Owner" = "<placeholder for user>",
+        "Task" = "<placeholder for task>"
+        "Department" = "<placeholder for department>"
+      }
   // files
   ssh_private_key = "${local.home}/.ssh/yugaware-1-gcp"
   ssh_public_key  = "${local.home}/.ssh/yugaware-1-gcp.pub"
