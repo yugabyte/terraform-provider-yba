@@ -34,9 +34,10 @@ module "aws_yb_anywhere" {
   vpc_id              = "vpc-0fe36f6b"
   subnet_id           = "subnet-f840ce9c"
   tags                = {
-        "yb_owner" = "<placeholder for user>",
-        "yb_task" = "dev"
-        "yb_dept" = "dev"
+        // the key pairs are user defined, only the block of tags is compulsory
+        "Owner" = "<placeholder for user>",
+        "Task" = "<placeholder for task>"
+        "Department" = "<placeholder for department>"
       }
   // files
   ssh_private_key = "${local.home}/.yugabyte/yb-dev-aws-2.pem"

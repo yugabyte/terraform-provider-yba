@@ -31,10 +31,11 @@ module "gcp_yb_anywhere" {
   network_tags   = [local.cluster_name, "http-server", "https-server"]
   vpc_network    = "yugabyte-network"
   vpc_subnetwork = "subnet-us-west1"
-  tags           = {
-        "yb_owner" = "<placeholder for user>",
-        "yb_task" = "dev"
-        "yb_dept" = "dev"
+  tags                = {
+        // the key pairs are user defined, only the block of tags is compulsory
+        "Owner" = "<placeholder for user>",
+        "Task" = "<placeholder for task>"
+        "Department" = "<placeholder for department>"
       }
   // files
   ssh_private_key = "${local.home}/.ssh/yugaware-1-gcp"
