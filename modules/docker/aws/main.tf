@@ -129,7 +129,8 @@ resource "aws_instance" "yb_anywhere_node" {
     volume_size = var.volume_size
   }
 
-  tags = {
-    Name = var.cluster_name
-  }
+  tags = merge( var.tags,
+    {
+      Name = var.cluster_name
+    })
 }
