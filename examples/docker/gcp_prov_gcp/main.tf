@@ -52,6 +52,7 @@ module "installation" {
 
   public_ip = module.gcp_yb_anywhere.public_ip
   private_ip = module.gcp_yb_anywhere.private_ip
+  ssh_host_ip = module.gcp_yb_anywhere.private_ip
   ssh_user = "centos"
   ssh_private_key_file = "${local.home}/.ssh/yugaware-1-gcp"
   replicated_directory = local.dir

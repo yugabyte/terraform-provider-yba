@@ -53,6 +53,7 @@ module "installation" {
 
   public_ip = module.aws_yb_anywhere.public_ip
   private_ip = module.aws_yb_anywhere.private_ip
+  ssh_host_ip = module.aws_yb_anywhere.public_ip
   ssh_user = "ubuntu"
   ssh_private_key_file = "${local.home}/.yugabyte/yb-dev-aws-2.pem"
   replicated_directory = local.dir
