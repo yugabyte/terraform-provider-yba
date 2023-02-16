@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/api"
@@ -155,27 +156,34 @@ func resourceReleasesRead(ctx context.Context, d *schema.ResourceData, meta inte
 	}
 
 	if err = d.Set("image_tag", p["imageTag"]); err != nil {
+		tflog.Error(ctx, "Image Tag Error")
 		return diag.FromErr(err)
 	}
 	if err = d.Set("state", p["state"]); err != nil {
+		tflog.Error(ctx, "State Error")
 		return diag.FromErr(err)
 	}
 	if err = d.Set("notes", p["notes"]); err != nil {
+		tflog.Error(ctx, "Notes Error")
 		return diag.FromErr(err)
 	}
 	if err = d.Set("file_path", p["filePath"]); err != nil {
+		tflog.Error(ctx, "File Path Error")
 		return diag.FromErr(err)
 	}
 	if err = d.Set("chart_path", p["chartPath"]); err != nil {
+		tflog.Error(ctx, "Chart Path Error")
 		return diag.FromErr(err)
 	}
 	if err = d.Set("packages", p["packages"]); err != nil {
+		tflog.Error(ctx, "Packages Error")
 		return diag.FromErr(err)
 	}
 
 	if p["s3"] != nil {
 		s3_formatted := formatOutputS3(ctx, p["s3"].(map[string]interface{}))
 		if err = d.Set("s3", s3_formatted); err != nil {
+			tflog.Error(ctx, "S3 Assignment Error")
 			return diag.FromErr(err)
 		}
 	}
@@ -183,6 +191,7 @@ func resourceReleasesRead(ctx context.Context, d *schema.ResourceData, meta inte
 	if p["gcs"] != nil {
 		gcs_formatted := formatOutputGcs(ctx, p["gcs"].(map[string]interface{}))
 		if err = d.Set("gcs", gcs_formatted); err != nil {
+			tflog.Error(ctx, "GCS Assignment Error")
 			return diag.FromErr(err)
 		}
 	}
@@ -190,6 +199,7 @@ func resourceReleasesRead(ctx context.Context, d *schema.ResourceData, meta inte
 	if p["http"] != nil {
 		http_formatted := formatOutputHttp(ctx, p["http"].(map[string]interface{}))
 		if err = d.Set("http", http_formatted); err != nil {
+			tflog.Error(ctx, "HTTP Assignment Error")
 			return diag.FromErr(err)
 		}
 	}
