@@ -84,10 +84,10 @@ func ResourceInstallation() *schema.Resource {
 				Required:    true,
 				Description: "Private ip of the existing virtual machine",
 			},
-			"host_ip_for_connection": {
+			"ssh_host_ip": {
 				Type:        schema.TypeString,
 				Required:    true,
-				Description: "IP required for SSHing into existing virtual machine",
+				Description: "IP address of VM for SSH. Typically same as public_ip or private_ip.",
 			},
 			"ssh_private_key": {
 				Type:        schema.TypeString,
@@ -200,7 +200,7 @@ func waitForIP(ctx context.Context, user string, ip string, pk string, timeout t
 		Timeout: timeout,
 
 		Refresh: func() (result interface{}, state string, err error) {
-			tflog.Info(ctx, "Pinging YBA Host to set up session")
+			tflog.Info(ctx, fmt.Sprintf("Trying SSH connection to host using ip: %s", ip))
 			c, err := newSSHClient(user, ip, pk)
 			if err != nil {
 				return nil, "Waiting", nil
@@ -222,7 +222,7 @@ func resourceInstallationCreate(ctx context.Context, d *schema.ResourceData, met
 
 	publicIP := d.Get("public_ip").(string)
 	privateIP := d.Get("private_ip").(string)
-	hostIPForSSH := d.Get("host_ip_for_connection").(string)
+	hostIPForSSH := d.Get("ssh_host_ip").(string)
 	user := d.Get("ssh_user").(string)
 	pk := d.Get("ssh_private_key").(string)
 

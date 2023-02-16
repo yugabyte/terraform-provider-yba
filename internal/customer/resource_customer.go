@@ -110,6 +110,9 @@ func resourceCustomerRead(ctx context.Context, d *schema.ResourceData, meta inte
 		api_key = d.Get("api_token").(string)
 	}
 	new_api, err := api.NewApiClient(vc.Host, api_key)
+	if err != nil {
+		return diag.FromErr(err)
+	}
 	new_client := new_api.YugawareClient
 	r, _, err := new_client.SessionManagementApi.GetSessionInfo(ctx).Execute()
 
