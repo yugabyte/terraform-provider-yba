@@ -59,7 +59,7 @@ module "installation" {
   replicated_directory = local.dir
   replicated_license_file_path = "${local.home}/.yugabyte/yugabyte-dev.rli"
 }
-/*
+
 resource "yb_customer_resource" "customer" {
   provider   = yb.unauthenticated
   depends_on = [module.installation]
