@@ -3,6 +3,7 @@ package installation
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -68,7 +69,7 @@ func ResourceInstallation() *schema.Resource {
 		},
 
 		Timeouts: &schema.ResourceTimeout{
-			Create: schema.DefaultTimeout(30 * time.Minute),
+			Create: schema.DefaultTimeout(10 * time.Minute),
 			Delete: schema.DefaultTimeout(10 * time.Minute),
 		},
 
@@ -82,6 +83,11 @@ func ResourceInstallation() *schema.Resource {
 				Type:        schema.TypeString,
 				Required:    true,
 				Description: "Private ip of the existing virtual machine",
+			},
+			"ssh_host_ip": {
+				Type:        schema.TypeString,
+				Required:    true,
+				Description: "IP address of VM for SSH. Typically same as public_ip or private_ip.",
 			},
 			"ssh_private_key": {
 				Type:        schema.TypeString,
@@ -149,7 +155,7 @@ func newSSHClient(user string, ip string, key string) (*ssh.Client, error) {
 }
 
 func runCommand(ctx context.Context, client *ssh.Client, cmd string) (string, error) {
-	tflog.Info(ctx, fmt.Sprintf("running command %s", cmd))
+	tflog.Info(ctx, fmt.Sprintf("Running command: %s", cmd))
 	session, err := client.NewSession()
 	if err != nil {
 		return "", err
@@ -165,7 +171,7 @@ func runCommand(ctx context.Context, client *ssh.Client, cmd string) (string, er
 }
 
 func scpFile(ctx context.Context, sshClient *ssh.Client, localFile string, remoteFile string) error {
-	tflog.Info(ctx, fmt.Sprintf("copying %s to %s", localFile, remoteFile))
+	tflog.Info(ctx, fmt.Sprintf("Copying local file %s to remote host under filename %s", localFile, remoteFile))
 
 	c, err := scp.NewClientBySSH(sshClient)
 	if err != nil {
@@ -194,6 +200,7 @@ func waitForIP(ctx context.Context, user string, ip string, pk string, timeout t
 		Timeout: timeout,
 
 		Refresh: func() (result interface{}, state string, err error) {
+			tflog.Info(ctx, fmt.Sprintf("Trying SSH connection to host using ip: %s", ip))
 			c, err := newSSHClient(user, ip, pk)
 			if err != nil {
 				return nil, "Waiting", nil
@@ -215,11 +222,13 @@ func resourceInstallationCreate(ctx context.Context, d *schema.ResourceData, met
 
 	publicIP := d.Get("public_ip").(string)
 	privateIP := d.Get("private_ip").(string)
+	hostIPForSSH := d.Get("ssh_host_ip").(string)
 	user := d.Get("ssh_user").(string)
 	pk := d.Get("ssh_private_key").(string)
 
-	sshClient, err := waitForIP(ctx, user, privateIP, pk, d.Timeout(schema.TimeoutCreate))
+	sshClient, err := waitForIP(ctx, user, hostIPForSSH, pk, d.Timeout(schema.TimeoutCreate))
 	if err != nil {
+		tflog.Error(ctx, "Timeout: Couldn't connect to YBA host")
 		return diag.FromErr(err)
 	}
 	defer sshClient.Close()
@@ -231,6 +240,7 @@ func resourceInstallationCreate(ctx context.Context, d *schema.ResourceData, met
 		}
 		err = scpFile(ctx, sshClient, local, remote)
 		if err != nil {
+			tflog.Error(ctx, "Error occurred while transferring files required for installation")
 			return diag.FromErr(err)
 		}
 	}
@@ -239,12 +249,15 @@ func resourceInstallationCreate(ctx context.Context, d *schema.ResourceData, met
 		m, err := runCommand(ctx, sshClient, cmd)
 		if err != nil {
 			tflog.Error(ctx, m)
+			return diag.FromErr(errors.New(m))
 		}
 	}
 
 	c := meta.(*api.ApiClient).YugawareClient
-	err = waitForStart(ctx, c, d.Timeout(schema.TimeoutCreate))
+	// Giving 20 mins for YBA application to start
+	err = waitForStart(ctx, c, 2*d.Timeout(schema.TimeoutCreate))
 	if err != nil {
+		tflog.Error(ctx, "Timeout: YBA Application is not running")
 		return diag.FromErr(err)
 	}
 
@@ -260,11 +273,12 @@ func waitForStart(ctx context.Context, c *client.APIClient, timeout time.Duratio
 		Timeout: timeout,
 
 		Refresh: func() (result interface{}, state string, err error) {
+			tflog.Info(ctx, "Waiting for Application to start")
 			_, _, err = c.SessionManagementApi.AppVersion(ctx).Execute()
 			if err != nil {
 				return "Waiting", "Waiting", nil
 			}
-
+			tflog.Info(ctx, "Application started")
 			return "Ready", "Ready", nil
 		},
 	}
