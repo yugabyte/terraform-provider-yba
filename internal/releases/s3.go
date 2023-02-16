@@ -54,7 +54,8 @@ func formatOutputS3(ctx context.Context, s3 map[string]interface{}) []map[string
 	s3["secret_access_key"] = s3["secretAccessKey"]
 	delete(s3, "secretAccessKey")
 	mapSlice := []map[string]interface{}{}
-	s3["paths"] = append(mapSlice, s3["paths"].(map[string]interface{}))
+	paths_formatted := formatOutputPaths(ctx, s3["paths"].(map[string]interface{}))
+	s3["paths"] = append(mapSlice, paths_formatted)
 
 	s3_formatted := []map[string]interface{}{}
 	s3_formatted = append(s3_formatted, s3)

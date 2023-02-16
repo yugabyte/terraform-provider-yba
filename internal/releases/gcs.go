@@ -44,7 +44,8 @@ func formatOutputGcs(ctx context.Context, gcs map[string]interface{}) []map[stri
 	gcs["credentials_json"] = gcs["credentialsJson"]
 	delete(gcs, "credentialsJson")
 	mapSlice := []map[string]interface{}{}
-	gcs["paths"] = append(mapSlice, gcs["paths"].(map[string]interface{}))
+	paths_formatted := formatOutputPaths(ctx, gcs["paths"].(map[string]interface{}))
+	gcs["paths"] = append(mapSlice, paths_formatted)
 
 	gcs_formatted := []map[string]interface{}{}
 	gcs_formatted = append(gcs_formatted, gcs)
