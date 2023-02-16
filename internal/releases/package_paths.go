@@ -32,3 +32,13 @@ func formatInputPaths(ctx context.Context, paths interface{}) map[string]interfa
 	}
 	return path
 }
+
+func formatOutputPaths(ctx context.Context, paths map[string]interface{}) map[string]interface{} {
+
+	if checksum, exists := paths["x86_64Checksum"]; exists {
+		paths["x86_64_checksum"] = checksum
+		delete(paths, "x86_64Checksum")
+	}
+	return paths
+
+}
