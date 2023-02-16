@@ -34,7 +34,8 @@ func formatInputHttp(ctx context.Context, data []interface{}) map[string]interfa
 func formatOutputHttp(ctx context.Context, http map[string]interface{}) []map[string]interface{} {
 
 	mapSlice := []map[string]interface{}{}
-	http["paths"] = append(mapSlice, http["paths"].(map[string]interface{}))
+	paths_formatted := formatOutputPaths(ctx, http["paths"].(map[string]interface{}))
+	http["paths"] = append(mapSlice, paths_formatted)
 
 	http_formatted := []map[string]interface{}{}
 	http_formatted = append(http_formatted, http)
