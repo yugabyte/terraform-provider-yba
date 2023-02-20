@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-log/tflog"
@@ -172,6 +173,7 @@ func cloudListSchema() *schema.Resource {
 		Schema: map[string]*schema.Schema{
 			"uuid": {
 				Type:        schema.TypeString,
+				Optional:    true,
 				Computed:    true,
 				Description: "", // TODO: document
 			},
@@ -190,6 +192,7 @@ func cloudListSchema() *schema.Resource {
 						"uuid": {
 							Type:        schema.TypeString,
 							Computed:    true,
+							Optional:    true,
 							Description: "Region UUID",
 						},
 						"code": {
@@ -492,7 +495,16 @@ func resourceUniverseCreate(ctx context.Context, d *schema.ResourceData, meta in
 }
 
 func buildUniverse(d *schema.ResourceData) client.UniverseConfigureTaskParams {
+	clusters := buildClusters(d.Get("clusters").([]interface{}))
 	return client.UniverseConfigureTaskParams{
+		ClientRootCA:       utils.GetStringPointer(d.Get("client_root_ca").(string)),
+		Clusters:           clusters,
+		CommunicationPorts: buildCommunicationPorts(utils.MapFromSingletonList(d.Get("communication_ports").([]interface{}))),
+	}
+}
+
+func buildUniverseDefinitionTaskParams(d *schema.ResourceData) client.UniverseDefinitionTaskParams {
+	return client.UniverseDefinitionTaskParams{
 		ClientRootCA:       utils.GetStringPointer(d.Get("client_root_ca").(string)),
 		Clusters:           buildClusters(d.Get("clusters").([]interface{})),
 		CommunicationPorts: buildCommunicationPorts(utils.MapFromSingletonList(d.Get("communication_ports").([]interface{}))),
@@ -625,6 +637,44 @@ func buildDeviceInfo(di map[string]interface{}) *client.DeviceInfo {
 		VolumeSize:   utils.GetInt32Pointer(int32(di["volume_size"].(int))),
 		StorageType:  utils.GetStringPointer(di["storage_type"].(string)),
 	}
+}
+
+func buildNodeDetailsRespArrayToNodeDetailsArray(nodes *[]client.NodeDetailsResp) *[]client.NodeDetails {
+	var nodesDetails []client.NodeDetails
+	for _, v := range *nodes {
+		nodeDetail := client.NodeDetails{
+			AzUuid:                v.AzUuid,
+			CloudInfo:             v.CloudInfo,
+			CronsActive:           v.CronsActive,
+			DisksAreMountedByUUID: v.DisksAreMountedByUUID,
+			IsMaster:              v.IsMaster,
+			IsRedisServer:         v.IsRedisServer,
+			IsTserver:             v.IsTserver,
+			IsYqlServer:           v.IsYqlServer,
+			IsYsqlServer:          v.IsYsqlServer,
+			MachineImage:          v.MachineImage,
+			MasterHttpPort:        v.MasterHttpPort,
+			MasterRpcPort:         v.MasterRpcPort,
+			MasterState:           v.MasterState,
+			NodeExporterPort:      v.NodeExporterPort,
+			NodeIdx:               v.NodeIdx,
+			NodeName:              v.NodeName,
+			NodeUuid:              v.NodeUuid,
+			PlacementUuid:         v.PlacementUuid,
+			RedisServerHttpPort:   v.RedisServerHttpPort,
+			RedisServerRpcPort:    v.RedisServerRpcPort,
+			State:                 v.State,
+			TserverHttpPort:       v.TserverHttpPort,
+			TserverRpcPort:        v.TserverRpcPort,
+			YbPrebuiltAmi:         v.YbPrebuiltAmi,
+			YqlServerHttpPort:     v.YqlServerHttpPort,
+			YqlServerRpcPort:      v.YqlServerRpcPort,
+			YsqlServerHttpPort:    v.YsqlServerHttpPort,
+			YsqlServerRpcPort:     v.YsqlServerRpcPort,
+		}
+		nodesDetails = append(nodesDetails, nodeDetail)
+	}
+	return &nodesDetails
 }
 
 func resourceUniverseRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
@@ -772,12 +822,48 @@ func flattenDeviceInfo(di *client.DeviceInfo) []interface{} {
 	return utils.CreateSingletonList(v)
 }
 
+func editUniverseParameters(ctx context.Context, old_user_intent client.UserIntent, new_user_intent client.UserIntent) (bool, client.UserIntent) {
+	if !reflect.DeepEqual(*old_user_intent.InstanceTags, *new_user_intent.InstanceTags) ||
+		!reflect.DeepEqual(*old_user_intent.RegionList, new_user_intent.RegionList) ||
+		*old_user_intent.NumNodes != *new_user_intent.NumNodes ||
+		*old_user_intent.InstanceType != *new_user_intent.InstanceType ||
+		*old_user_intent.DeviceInfo.NumVolumes != *new_user_intent.DeviceInfo.NumVolumes {
+		edit_num_volume := true
+		num_volumes := *old_user_intent.DeviceInfo.NumVolumes
+		if (*old_user_intent.DeviceInfo.NumVolumes != *new_user_intent.DeviceInfo.NumVolumes) &&
+			(*old_user_intent.InstanceType == *new_user_intent.InstanceType) {
+			tflog.Info(ctx, "Cannot edit Number of Volumes per instance without an edit to Instance Type, Ignoring Change")
+			edit_num_volume = false
+		}
+		old_user_intent = new_user_intent
+		if !edit_num_volume {
+			old_user_intent.DeviceInfo.NumVolumes = &num_volumes
+		}
+		return true, old_user_intent
+	}
+	return false, old_user_intent
+
+}
+/*
+	** [WIP] editing AZ Zones
+func editClusterZone(ctx context.Context, old_cluster client.Cluster, new_cluster client.Cluster) (bool, client.Cluster) {
+	if !reflect.DeepEqual(old_cluster.PlacementInfo.CloudList, new_cluster.PlacementInfo.CloudList) &&
+		reflect.DeepEqual(old_cluster.UserIntent.RegionList, new_cluster.UserIntent.RegionList) {
+		old_cluster.PlacementInfo.CloudList = new_cluster.PlacementInfo.CloudList
+		//need to change node detail set
+		return true, old_cluster
+	}
+	return false, old_cluster
+}
+*/
+
 func resourceUniverseUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	// Only updates user intent for each cluster
+	// cloud Info can have changes in zones
 	c := meta.(*api.ApiClient).YugawareClient
 	cUUID := meta.(*api.ApiClient).CustomerId
 
-	var taskIds []string
+	//var taskIds []string
 	if d.HasChange("clusters") {
 		clusters := d.Get("clusters").([]interface{})
 		updateUni, _, err := c.UniverseManagementApi.GetUniverse(ctx, cUUID, d.Id()).Execute()
@@ -786,59 +872,276 @@ func resourceUniverseUpdate(ctx context.Context, d *schema.ResourceData, meta in
 		}
 		newUni := buildUniverse(d)
 
+		if len(clusters) > 2 {
+			tflog.Error(ctx, "Cannot have more than 1 Read only cluster")
+		} else {
+			if len(updateUni.UniverseDetails.Clusters) < len(clusters) {
+				tflog.Error(ctx, "Currently not supporting adding Read Replicas after universe creation")
+				/*err, req := formatCreateReadOnlyClusterRequestBody(ctx, d, updateUni)
+				if err != nil {
+					return diag.FromErr(err)
+				}
+				r, _, err := c.UniverseClusterMutationsApi.CreateReadOnlyCluster(ctx, cUUID, d.Id()).UniverseConfigureTaskParams(req).Execute()
+				if err != nil {
+					return diag.FromErr(err)
+				}
+				tflog.Info(ctx, "CreateReadOnlyCluster task is executing")
+				err = utils.WaitForTask(ctx, *r.TaskUUID, cUUID, c, d.Timeout(schema.TimeoutUpdate))
+				if err != nil {
+					return diag.FromErr(err)
+				}*/
+			} else if len(updateUni.UniverseDetails.Clusters) > len(clusters) {
+				var clusterUuid string
+				for _, v := range updateUni.UniverseDetails.Clusters {
+					if v.ClusterType == "ASYNC" {
+						clusterUuid = *v.Uuid
+					}
+				}
+
+				r, _, err := c.UniverseClusterMutationsApi.DeleteReadonlyCluster(ctx, cUUID, d.Id(), clusterUuid).
+					IsForceDelete(d.Get("delete_options.0.force_delete").(bool)).Execute()
+				if err != nil {
+					return diag.FromErr(err)
+				}
+				tflog.Info(ctx, "DeleteReadOnlyCluster task is executing")
+				err = utils.WaitForTask(ctx, *r.TaskUUID, cUUID, c, d.Timeout(schema.TimeoutUpdate))
+				if err != nil {
+					return diag.FromErr(err)
+				}
+			}
+		}
 		for i, v := range clusters {
 			if !d.HasChange(fmt.Sprintf("clusters.%d", i)) {
 				continue
 			}
 			cluster := v.(map[string]interface{})
-			updateUni.UniverseDetails.Clusters[i].UserIntent = newUni.Clusters[i].UserIntent
-			req := client.UniverseConfigureTaskParams{
-				UniverseUUID: utils.GetStringPointer(d.Id()),
-				Clusters:     updateUni.UniverseDetails.Clusters,
-			}
-			
+
+			old_user_intent := updateUni.UniverseDetails.Clusters[i].UserIntent
+			new_user_intent := newUni.Clusters[i].UserIntent
 			if cluster["cluster_type"] == "PRIMARY" {
-				r, _, err := c.UniverseClusterMutationsApi.UpdatePrimaryCluster(ctx, cUUID, d.Id()).UniverseConfigureTaskParams(req).Execute()
-				if err != nil {
-					return diag.FromErr(err)
+
+				//Software Upgrade
+				if *old_user_intent.YbSoftwareVersion != *new_user_intent.YbSoftwareVersion {
+					updateUni.UniverseDetails.Clusters[i].UserIntent = new_user_intent
+					req := client.SoftwareUpgradeParams{
+						YbSoftwareVersion: *new_user_intent.YbSoftwareVersion,
+						Clusters:          updateUni.UniverseDetails.Clusters,
+						UpgradeOption:     "Rolling",
+					}
+					r, _, err := c.UniverseUpgradesManagementApi.UpgradeSoftware(ctx, cUUID, d.Id()).SoftwareUpgradeParams(req).Execute()
+					if err != nil {
+						return diag.FromErr(err)
+					}
+					tflog.Info(ctx, "UpgradeSoftware task is executing")
+					err = utils.WaitForTask(ctx, *r.TaskUUID, cUUID, c, d.Timeout(schema.TimeoutUpdate))
+					if err != nil {
+						return diag.FromErr(err)
+					}
 				}
-				taskIds = append(taskIds, *r.TaskUUID)
+
+				updateUni, _, err = c.UniverseManagementApi.GetUniverse(ctx, cUUID, d.Id()).Execute()
+				if err != nil {
+					return diag.FromErr(errors.New(fmt.Sprintf("Unable to find universe %s", d.Id())))
+				}
+				old_user_intent = updateUni.UniverseDetails.Clusters[i].UserIntent
+
+				//GFlag Update
+				if !reflect.DeepEqual(*old_user_intent.MasterGFlags, *new_user_intent.MasterGFlags) ||
+					!reflect.DeepEqual(*old_user_intent.TserverGFlags, *new_user_intent.TserverGFlags) {
+					updateUni.UniverseDetails.Clusters[i].UserIntent = new_user_intent
+					req := client.GFlagsUpgradeParams{
+						MasterGFlags:  *new_user_intent.MasterGFlags,
+						TserverGFlags: *new_user_intent.TserverGFlags,
+						Clusters:      updateUni.UniverseDetails.Clusters,
+						UpgradeOption: "Rolling",
+					}
+					r, _, err := c.UniverseUpgradesManagementApi.UpgradeGFlags(ctx, cUUID, d.Id()).GflagsUpgradeParams(req).Execute()
+					if err != nil {
+						return diag.FromErr(err)
+					}
+					tflog.Info(ctx, "UpgradeGFlags task is executing")
+					err = utils.WaitForTask(ctx, *r.TaskUUID, cUUID, c, d.Timeout(schema.TimeoutUpdate))
+					if err != nil {
+						return diag.FromErr(err)
+					}
+				}
+
+				updateUni, _, err = c.UniverseManagementApi.GetUniverse(ctx, cUUID, d.Id()).Execute()
+				if err != nil {
+					return diag.FromErr(errors.New(fmt.Sprintf("Unable to find universe %s", d.Id())))
+				}
+				old_user_intent = updateUni.UniverseDetails.Clusters[i].UserIntent
+
+				//TLS Toggle
+				if *old_user_intent.EnableClientToNodeEncrypt != *new_user_intent.EnableClientToNodeEncrypt ||
+					*old_user_intent.EnableNodeToNodeEncrypt != *new_user_intent.EnableNodeToNodeEncrypt {
+					updateUni.UniverseDetails.Clusters[i].UserIntent = new_user_intent
+					req := client.TlsToggleParams{
+						EnableClientToNodeEncrypt: *new_user_intent.EnableClientToNodeEncrypt,
+						EnableNodeToNodeEncrypt:   *new_user_intent.EnableNodeToNodeEncrypt,
+						Clusters:                  updateUni.UniverseDetails.Clusters,
+						UpgradeOption:             "Non-Rolling",
+					}
+					r, _, err := c.UniverseUpgradesManagementApi.UpgradeTls(ctx, cUUID, d.Id()).TlsToggleParams(req).Execute()
+					if err != nil {
+						return diag.FromErr(err)
+					}
+					tflog.Info(ctx, "UpgradeTLS task is executing")
+					err = utils.WaitForTask(ctx, *r.TaskUUID, cUUID, c, d.Timeout(schema.TimeoutUpdate))
+					if err != nil {
+						return diag.FromErr(err)
+					}
+				}
+
+				updateUni, _, err = c.UniverseManagementApi.GetUniverse(ctx, cUUID, d.Id()).Execute()
+				if err != nil {
+					return diag.FromErr(errors.New(fmt.Sprintf("Unable to find universe %s", d.Id())))
+				}
+				old_user_intent = updateUni.UniverseDetails.Clusters[i].UserIntent
+
+				//SystemD upgrade
+				if (*&new_user_intent.UseSystemd != nil) && (*old_user_intent.UseSystemd != *new_user_intent.UseSystemd) &&
+					(*old_user_intent.UseSystemd == false) {
+					updateUni.UniverseDetails.Clusters[i].UserIntent = new_user_intent
+					req := client.SystemdUpgradeParams{
+
+						Clusters:      updateUni.UniverseDetails.Clusters,
+						UpgradeOption: "Rolling",
+					}
+					r, _, err := c.UniverseUpgradesManagementApi.UpgradeSystemd(ctx, cUUID, d.Id()).SystemdUpgradeParams(req).Execute()
+					if err != nil {
+						return diag.FromErr(err)
+					}
+					tflog.Info(ctx, "UpgradeSystemd task is executing")
+					err = utils.WaitForTask(ctx, *r.TaskUUID, cUUID, c, d.Timeout(schema.TimeoutUpdate))
+					if err != nil {
+						return diag.FromErr(err)
+					}
+				} else if *old_user_intent.UseSystemd == true {
+					tflog.Error(ctx, "Cannot disable Systemd")
+				}
+
+				updateUni, _, err = c.UniverseManagementApi.GetUniverse(ctx, cUUID, d.Id()).Execute()
+				if err != nil {
+					return diag.FromErr(errors.New(fmt.Sprintf("Unable to find universe %s", d.Id())))
+				}
+				old_user_intent = updateUni.UniverseDetails.Clusters[i].UserIntent
+
+				// Resize Nodes
+				if *old_user_intent.DeviceInfo.VolumeSize != *new_user_intent.DeviceInfo.VolumeSize {
+					if *old_user_intent.DeviceInfo.VolumeSize < *new_user_intent.DeviceInfo.VolumeSize {
+						//Only volume size should be changed to do smart resize, other changes handled in UpgradeCluster
+						updateUni.UniverseDetails.Clusters[i].UserIntent.DeviceInfo.VolumeSize = new_user_intent.DeviceInfo.VolumeSize
+						req := client.ResizeNodeParams{
+							UpgradeOption:  "Rolling",
+							Clusters:       updateUni.UniverseDetails.Clusters,
+							NodeDetailsSet: buildNodeDetailsRespArrayToNodeDetailsArray(updateUni.UniverseDetails.NodeDetailsSet),
+						}
+						r, _, err := c.UniverseUpgradesManagementApi.ResizeNode(ctx, cUUID, d.Id()).ResizeNodeParams(req).Execute()
+						if err != nil {
+							return diag.FromErr(err)
+						}
+						tflog.Info(ctx, "ResizeNode task is executing")
+						//taskIds = append(taskIds, *r.TaskUUID)
+						err = utils.WaitForTask(ctx, *r.TaskUUID, cUUID, c, d.Timeout(schema.TimeoutUpdate))
+						if err != nil {
+							return diag.FromErr(err)
+						}
+					} else {
+						tflog.Error(ctx, "Volume Size cannot be decreased")
+					}
+				}
+
+				updateUni, _, err = c.UniverseManagementApi.GetUniverse(ctx, cUUID, d.Id()).Execute()
+				if err != nil {
+					return diag.FromErr(errors.New(fmt.Sprintf("Unable to find universe %s", d.Id())))
+				}
+				old_user_intent = updateUni.UniverseDetails.Clusters[i].UserIntent
+
+				// Num of nodes, Instance Type, Num of Volumes, Volume Size, User Tags changes
+				var edit_allowed, edit_zone_allowed bool
+				edit_allowed, updateUni.UniverseDetails.Clusters[i].UserIntent = editUniverseParameters(ctx, old_user_intent, new_user_intent)
+				edit_zone_allowed, updateUni.UniverseDetails.Clusters[i] = editClusterZone(ctx, updateUni.UniverseDetails.Clusters[i], newUni.Clusters[i])
+				if edit_allowed || edit_zone_allowed {
+					req := client.UniverseConfigureTaskParams{
+						UniverseUUID:   utils.GetStringPointer(d.Id()),
+						Clusters:       updateUni.UniverseDetails.Clusters,
+						NodeDetailsSet: buildNodeDetailsRespArrayToNodeDetailsArray(updateUni.UniverseDetails.NodeDetailsSet),
+					}
+					r, _, err := c.UniverseClusterMutationsApi.UpdatePrimaryCluster(ctx, cUUID, d.Id()).UniverseConfigureTaskParams(req).Execute()
+					if err != nil {
+						return diag.FromErr(err)
+					}
+					//taskIds = append(taskIds, *r.TaskUUID)
+					tflog.Info(ctx, "UpdatePrimaryCluster task is executing")
+					err = utils.WaitForTask(ctx, *r.TaskUUID, cUUID, c, d.Timeout(schema.TimeoutUpdate))
+					if err != nil {
+						return diag.FromErr(err)
+					}
+				}
+
 			} else {
-				r, _, err := c.UniverseClusterMutationsApi.UpdateReadOnlyCluster(ctx, cUUID, d.Id()).UniverseConfigureTaskParams(req).Execute()
+
+				//Ignore Software, GFlags, SystemD, TLS Upgrade changes to Read-Only Cluster
+				updateUni, _, err := c.UniverseManagementApi.GetUniverse(ctx, cUUID, d.Id()).Execute()
 				if err != nil {
-					return diag.FromErr(err)
+					return diag.FromErr(errors.New(fmt.Sprintf("Unable to find universe %s", d.Id())))
 				}
-				taskIds = append(taskIds, *r.TaskUUID)
+				old_user_intent := updateUni.UniverseDetails.Clusters[i].UserIntent
+				if *old_user_intent.YbSoftwareVersion != *new_user_intent.YbSoftwareVersion {
+					tflog.Info(ctx, "Software Upgrade is applied only via change in Primary Cluster User Intent, ignoring")
+				}
+				if !reflect.DeepEqual(*old_user_intent.MasterGFlags, *new_user_intent.MasterGFlags) ||
+					!reflect.DeepEqual(*old_user_intent.TserverGFlags, *new_user_intent.TserverGFlags) {
+					tflog.Info(ctx, "GFlags Upgrade is applied only via change in Primary Cluster User Intent, ignoring")
+				}
+				if *old_user_intent.DeviceInfo.VolumeSize != *new_user_intent.DeviceInfo.VolumeSize {
+					tflog.Error(ctx, "Volume Resize of Read Replica currently not be edited")
+				}
+				if (new_user_intent.UseSystemd != nil) && (*old_user_intent.UseSystemd != *new_user_intent.UseSystemd) {
+					tflog.Info(ctx, "System Upgrade is applied only via change in Primary Cluster User Intent, ignoring")
+				}
+				if *old_user_intent.EnableClientToNodeEncrypt != *new_user_intent.EnableClientToNodeEncrypt ||
+					*old_user_intent.EnableNodeToNodeEncrypt != *new_user_intent.EnableNodeToNodeEncrypt {
+					tflog.Info(ctx, "TLS Toggle is applied only via change in Primary Cluster User Intent, ignoring")
+				}
+
+				// Num of nodes, Instance Type, Num of Volumes, User Tags changes
+				var edit_allowed bool
+				edit_allowed, updateUni.UniverseDetails.Clusters[i].UserIntent = editUniverseParameters(ctx, old_user_intent, new_user_intent)
+				if edit_allowed {
+					req := client.UniverseConfigureTaskParams{
+						UniverseUUID:   utils.GetStringPointer(d.Id()),
+						Clusters:       updateUni.UniverseDetails.Clusters,
+						NodeDetailsSet: buildNodeDetailsRespArrayToNodeDetailsArray(updateUni.UniverseDetails.NodeDetailsSet),
+					}
+					r, _, err := c.UniverseClusterMutationsApi.UpdateReadOnlyCluster(ctx, cUUID, d.Id()).UniverseConfigureTaskParams(req).Execute()
+					if err != nil {
+						return diag.FromErr(err)
+					}
+					tflog.Info(ctx, "UpdateReadOnlyCluster task is executing")
+					err = utils.WaitForTask(ctx, *r.TaskUUID, cUUID, c, d.Timeout(schema.TimeoutUpdate))
+					if err != nil {
+						return diag.FromErr(err)
+					}
+				}
+
+				if (*old_user_intent.EnableClientToNodeEncrypt != *new_user_intent.EnableClientToNodeEncrypt) ||
+					(*old_user_intent.EnableNodeToNodeEncrypt != *new_user_intent.EnableNodeToNodeEncrypt) {
+					tflog.Info(ctx, "TLS Upgrade is applied only via change in Primary Cluster User Intent, ignoring")
+				}
 			}
-		}
-	}
-	if d.HasChange("yb_software_version") {
-		req := client.SoftwareUpgradeParams{YbSoftwareVersion: d.Get("yb_software_version").(string)}
-		r, _, err := c.UniverseUpgradesManagementApi.UpgradeSoftware(ctx, cUUID, d.Id()).SoftwareUpgradeParams(req).Execute()
-		taskIds = append(taskIds, *r.TaskUUID)
-		if err != nil {
-			return diag.FromErr(err)
+
 		}
 	}
 
-	if d.HasChange("master_gflags") || d.HasChange("tserver_gflags") {
-		req := client.GFlagsUpgradeParams{
-			MasterGFlags:  d.Get("master_gflags").(map[string]string),
-			TserverGFlags: d.Get("tserver_gflags").(map[string]string),
-		}
-		r, _, err := c.UniverseUpgradesManagementApi.UpgradeGFlags(ctx, cUUID, d.Id()).GflagsUpgradeParams(req).Execute()
-		taskIds = append(taskIds, *r.TaskUUID)
-		if err != nil {
-			return diag.FromErr(err)
-		}
-	}
 	// wait for all tasks to complete
-	for _, id := range taskIds {
+	/*for _, id := range taskIds {
 		err := utils.WaitForTask(ctx, id, cUUID, c, d.Timeout(schema.TimeoutUpdate))
 		if err != nil {
 			return diag.FromErr(err)
 		}
-	}
+	}*/
 	return resourceUniverseRead(ctx, d, meta)
 }
 

@@ -133,5 +133,34 @@ resource "yb_universe" "gcp_universe" {
       access_key_code               = local.provider_key
     }
   }
+  clusters {
+    cluster_type = "ASYNC"
+    user_intent {
+      universe_name      = "terraform-gcp-universe-dkumar"
+      provider_type      = "gcp"
+      provider           = local.provider_id
+      region_list        = local.region_list
+      num_nodes          = 3
+      replication_factor = 3
+      instance_type      = "n1-standard-1"
+      device_info {
+        num_volumes  = 1
+        volume_size  = 200
+        storage_type = "Persistent"
+      }
+      assign_public_ip              = true
+      use_time_sync                 = true
+      enable_ysql                   = true
+      enable_node_to_node_encrypt   = true
+      enable_client_to_node_encrypt = true
+      yb_software_version           = data.yb_release_version.release_version.id
+      access_key_code               = local.provider_key
+      instance_tags = {
+        "yb_owner" = "dkumar",
+        "yb_task" = "dev"
+        "yb_dept" = "dev"
+      }
+    }
+  }
   communication_ports {}
 }
