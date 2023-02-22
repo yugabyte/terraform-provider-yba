@@ -1061,7 +1061,7 @@ func resourceUniverseUpdate(ctx context.Context, d *schema.ResourceData, meta in
 				// Num of nodes, Instance Type, Num of Volumes, Volume Size, User Tags changes
 				var edit_allowed, edit_zone_allowed bool
 				edit_allowed, updateUni.UniverseDetails.Clusters[i].UserIntent = editUniverseParameters(ctx, old_user_intent, new_user_intent)
-				edit_zone_allowed, updateUni.UniverseDetails.Clusters[i] = editClusterZone(ctx, updateUni.UniverseDetails.Clusters[i], newUni.Clusters[i])
+				//edit_zone_allowed, updateUni.UniverseDetails.Clusters[i] = editClusterZone(ctx, updateUni.UniverseDetails.Clusters[i], newUni.Clusters[i])
 				if edit_allowed || edit_zone_allowed {
 					req := client.UniverseConfigureTaskParams{
 						UniverseUUID:   utils.GetStringPointer(d.Id()),
