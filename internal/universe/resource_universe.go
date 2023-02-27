@@ -844,18 +844,6 @@ func editUniverseParameters(ctx context.Context, old_user_intent client.UserInte
 	return false, old_user_intent
 
 }
-/*
-	** [WIP] editing AZ Zones
-func editClusterZone(ctx context.Context, old_cluster client.Cluster, new_cluster client.Cluster) (bool, client.Cluster) {
-	if !reflect.DeepEqual(old_cluster.PlacementInfo.CloudList, new_cluster.PlacementInfo.CloudList) &&
-		reflect.DeepEqual(old_cluster.UserIntent.RegionList, new_cluster.UserIntent.RegionList) {
-		old_cluster.PlacementInfo.CloudList = new_cluster.PlacementInfo.CloudList
-		//need to change node detail set
-		return true, old_cluster
-	}
-	return false, old_cluster
-}
-*/
 
 func resourceUniverseUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	// Only updates user intent for each cluster
@@ -863,7 +851,6 @@ func resourceUniverseUpdate(ctx context.Context, d *schema.ResourceData, meta in
 	c := meta.(*api.ApiClient).YugawareClient
 	cUUID := meta.(*api.ApiClient).CustomerId
 
-	//var taskIds []string
 	if d.HasChange("clusters") {
 		clusters := d.Get("clusters").([]interface{})
 		updateUni, _, err := c.UniverseManagementApi.GetUniverse(ctx, cUUID, d.Id()).Execute()
@@ -877,19 +864,6 @@ func resourceUniverseUpdate(ctx context.Context, d *schema.ResourceData, meta in
 		} else {
 			if len(updateUni.UniverseDetails.Clusters) < len(clusters) {
 				tflog.Error(ctx, "Currently not supporting adding Read Replicas after universe creation")
-				/*err, req := formatCreateReadOnlyClusterRequestBody(ctx, d, updateUni)
-				if err != nil {
-					return diag.FromErr(err)
-				}
-				r, _, err := c.UniverseClusterMutationsApi.CreateReadOnlyCluster(ctx, cUUID, d.Id()).UniverseConfigureTaskParams(req).Execute()
-				if err != nil {
-					return diag.FromErr(err)
-				}
-				tflog.Info(ctx, "CreateReadOnlyCluster task is executing")
-				err = utils.WaitForTask(ctx, *r.TaskUUID, cUUID, c, d.Timeout(schema.TimeoutUpdate))
-				if err != nil {
-					return diag.FromErr(err)
-				}*/
 			} else if len(updateUni.UniverseDetails.Clusters) > len(clusters) {
 				var clusterUuid string
 				for _, v := range updateUni.UniverseDetails.Clusters {
@@ -1042,7 +1016,6 @@ func resourceUniverseUpdate(ctx context.Context, d *schema.ResourceData, meta in
 							return diag.FromErr(err)
 						}
 						tflog.Info(ctx, "ResizeNode task is executing")
-						//taskIds = append(taskIds, *r.TaskUUID)
 						err = utils.WaitForTask(ctx, *r.TaskUUID, cUUID, c, d.Timeout(schema.TimeoutUpdate))
 						if err != nil {
 							return diag.FromErr(err)
@@ -1061,7 +1034,6 @@ func resourceUniverseUpdate(ctx context.Context, d *schema.ResourceData, meta in
 				// Num of nodes, Instance Type, Num of Volumes, Volume Size, User Tags changes
 				var edit_allowed, edit_zone_allowed bool
 				edit_allowed, updateUni.UniverseDetails.Clusters[i].UserIntent = editUniverseParameters(ctx, old_user_intent, new_user_intent)
-				//edit_zone_allowed, updateUni.UniverseDetails.Clusters[i] = editClusterZone(ctx, updateUni.UniverseDetails.Clusters[i], newUni.Clusters[i])
 				if edit_allowed || edit_zone_allowed {
 					req := client.UniverseConfigureTaskParams{
 						UniverseUUID:   utils.GetStringPointer(d.Id()),
@@ -1072,7 +1044,6 @@ func resourceUniverseUpdate(ctx context.Context, d *schema.ResourceData, meta in
 					if err != nil {
 						return diag.FromErr(err)
 					}
-					//taskIds = append(taskIds, *r.TaskUUID)
 					tflog.Info(ctx, "UpdatePrimaryCluster task is executing")
 					err = utils.WaitForTask(ctx, *r.TaskUUID, cUUID, c, d.Timeout(schema.TimeoutUpdate))
 					if err != nil {
@@ -1135,13 +1106,6 @@ func resourceUniverseUpdate(ctx context.Context, d *schema.ResourceData, meta in
 		}
 	}
 
-	// wait for all tasks to complete
-	/*for _, id := range taskIds {
-		err := utils.WaitForTask(ctx, id, cUUID, c, d.Timeout(schema.TimeoutUpdate))
-		if err != nil {
-			return diag.FromErr(err)
-		}
-	}*/
 	return resourceUniverseRead(ctx, d, meta)
 }
 
