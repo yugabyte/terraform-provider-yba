@@ -180,7 +180,7 @@ resource "yb_universe" "aws_universe" {
       yb_software_version           = data.yb_release_version.release_version.id
       access_key_code               = local.provider_key
       instance_tags = {
-        "yb_owner" = "dkumar",
+        "yb_owner" = "$USER",
         "yb_task" = "dev"
         "yb_dept" = "dev"
       }

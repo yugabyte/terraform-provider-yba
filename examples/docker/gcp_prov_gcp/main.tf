@@ -11,7 +11,7 @@ terraform {
 }
 
 locals {
-  home         = "/home/deeptikumar"
+  home         = "<home directory path>"
   dir          = "${local.home}/code/terraform-provider-yugabytedb-anywhere/modules/resources"
   cluster_name = "dkumar-terraform-gcp"
 }
@@ -50,12 +50,12 @@ provider "yb" {
 module "installation" {
   source = "../../../modules/installation"
 
-  public_ip = module.gcp_yb_anywhere.public_ip
-  private_ip = module.gcp_yb_anywhere.private_ip
-  ssh_host_ip = module.gcp_yb_anywhere.private_ip
-  ssh_user = "centos"
-  ssh_private_key_file = "${local.home}/.ssh/yugaware-1-gcp"
-  replicated_directory = local.dir
+  public_ip                    = module.gcp_yb_anywhere.public_ip
+  private_ip                   = module.gcp_yb_anywhere.private_ip
+  ssh_host_ip                  = module.gcp_yb_anywhere.private_ip
+  ssh_user                     = "centos"
+  ssh_private_key_file         = "${local.home}/.ssh/yugaware-1-gcp"
+  replicated_directory         = local.dir
   replicated_license_file_path = "${local.home}/.yugabyte/yugabyte-dev.rli"
 }
 
@@ -87,6 +87,7 @@ resource "yb_cloud_provider" "gcp" {
   regions {
     code = "us-west1"
     name = "us-west1"
+    zones { subnet = "subnet-us-west1" }
   }
   ssh_port        = 22
   air_gap_install = false
@@ -131,6 +132,40 @@ resource "yb_universe" "gcp_universe" {
       enable_client_to_node_encrypt = true
       yb_software_version           = data.yb_release_version.release_version.id
       access_key_code               = local.provider_key
+      instance_tags = {
+        "yb_owner" = "$USER",
+        "yb_task"  = "dev"
+        "yb_dept"  = "dev"
+      }
+    }
+  }
+  clusters {
+    cluster_type = "ASYNC"
+    user_intent {
+      universe_name      = "terraform-gcp-universe"
+      provider_type      = "gcp"
+      provider           = local.provider_id
+      region_list        = local.region_list
+      num_nodes          = 3
+      replication_factor = 3
+      instance_type      = "n1-standard-1"
+      device_info {
+        num_volumes  = 1
+        volume_size  = 200
+        storage_type = "Persistent"
+      }
+      assign_public_ip              = true
+      use_time_sync                 = true
+      enable_ysql                   = true
+      enable_node_to_node_encrypt   = true
+      enable_client_to_node_encrypt = true
+      yb_software_version           = data.yb_release_version.release_version.id
+      access_key_code               = local.provider_key
+      instance_tags = {
+        "yb_owner" = "$USER",
+        "yb_task"  = "dev"
+        "yb_dept"  = "dev"
+      }
     }
   }
   communication_ports {}
