@@ -11,13 +11,16 @@ terraform {
 }
 
 locals {
-  home                  = "/home/deeptikumar"
+  home                  = "<placeholder for home directory>"
   dir                   = "${local.home}/code/terraform-provider-yugabytedb-anywhere/modules/resources"
-  cluster_name          = "terraform-aws-dkumar"
+  cluster_name          = "terraform-aws"
   google_creds          = "${local.home}/.yugabyte/yugabyte-gce.json"
   aws_access_key_id     = "<placeholder for aws access key id>"
   aws_secret_access_key = "<placeholder for aws secret access key>"
 
+  s3_backup_location    = "s3://dkumar-test" // added for testing
+  gcs_backup_location   = "gs://dkumar-test"// added for testing
+  az_backup_location    = "https://storagetestazure.blob.core.windows.net/dkumar-blob"// added for testing
 }
 
 provider "aws" {
@@ -205,11 +208,8 @@ resource "yb_universe" "aws_universe" {
 resource "yb_storage_config_resource" "aws_storage" {
 
   name = "S3"
-  backup_location = "s3://dkumar-test"
-  config_name = "dkumar-terraform"
-  s3_access_key_id = local.aws_access_key_id
-  s3_secret_access_key = local.aws_secret_access_key
-
+  backup_location = local.s3_backup_location
+  config_name = "terraform-s3-config"
 }
 
 data "yb_storage_configs" "configs"{
@@ -219,11 +219,15 @@ data "yb_storage_configs" "configs"{
 resource "yb_storage_config_resource" "gcs_storage" {
 
   name = "GCS"
-  backup_location = "gs://dkumar-test"
-  config_name = "dkumar-terraform-gcs"
-  gcs_creds_json = jsondecode(file(local.google_creds))
+  backup_location = local.gcs_backup_location
+  config_name = "terraform-gcs-config"
+}
 
+resource "yb_storage_config_resource" "az_storage" {
 
+  name = "AZ"
+  backup_location = local.az_backup_location
+  config_name = "terraform-az-config"
 }
 data "yb_storage_configs" "configs_gcs" {
     config_name = yb_storage_config_resource.gcs_storage.config_name
