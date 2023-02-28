@@ -3,7 +3,7 @@ package backups
 import (
 	"context"
 	"errors"
-	"fmt"
+	"reflect"
 	"strings"
 	"time"
 
@@ -11,8 +11,10 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	client "github.com/yugabyte/platform-go-client"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/api"
+	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/utils"
 )
 
+// ResourceStorageConfig defines the schema to maintain the storage config resources
 func ResourceStorageConfig() *schema.Resource {
 	return &schema.Resource{
 		Description: "Create Storage Configurations",
@@ -44,34 +46,6 @@ func ResourceStorageConfig() *schema.Resource {
 				Computed:    true,
 				Description: "Location and Credentials",
 			},
-			"s3_access_key_id": &schema.Schema{
-				Type:          schema.TypeString,
-				Optional:      true,
-				Sensitive:     true,
-				ConflictsWith: []string{"gcs_creds_json", "azure_sas_token"},
-				RequiredWith:  []string{"s3_secret_access_key"},
-				Description:   "S3 Access Key ID",
-			},
-			"s3_secret_access_key": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				Sensitive:   true,
-				Description: "S3 Secret Access Key",
-			},
-			"gcs_creds_json": {
-				Type:          schema.TypeMap,
-				Optional:      true,
-				Elem:          schema.TypeString,
-				Sensitive:     true,
-				ConflictsWith: []string{"s3_access_key_id", "azure_sas_token"},
-				Description:   "Credentials for GCS, contents of GCE JSON file",
-			},
-			"azure_sas_token": {
-				Type:          schema.TypeString,
-				Optional:      true,
-				ConflictsWith: []string{"s3_access_key_id", "gcs_creds_json"},
-				Description:   "Credentials for AZURE, requires Azure SAS Token",
-			},
 			"backup_location": {
 				Type:        schema.TypeString,
 				Required:    true,
@@ -93,49 +67,54 @@ func buildData(ctx context.Context, d *schema.ResourceData) (map[string]interfac
 	}
 
 	if d.Get("name").(string) == "GCS" {
-		if len(d.Get("gcs_creds_json").(map[string]interface{})) == 0 {
-			return nil, errors.New(fmt.Sprintf("GCE JSON Credentials not provided when name = 'GCS'"))
+		gcsCredsJSON, err := utils.GetGcpCredentials()
+		if err != nil {
+			return nil, err
 		}
-		var gcs_cred_string string
-		gcs_cred_string = "{ "
-		for key, val := range d.Get("gcs_creds_json").(map[string]interface{}) {
+		v := reflect.ValueOf(gcsCredsJSON)
+		var gcsCredString string
+		gcsCredString = "{ "
+		for i := 0; i < v.NumField(); i++ {
 			var s string
-			if key == "private_key" {
-				val_string := strings.Replace(val.(string), "\n", "\\n", -1)
-				s = "\"" + key + "\"" + ": " + "\"" + val_string + "\""
+			field := utils.GcsGetJSONTag(v.Type().Field(i))
+
+			if field == "private_key" {
+				valString := strings.Replace(v.Field(i).Interface().(string), "\n", "\\n", -1)
+				s = "\"" + field + "\"" + ": " + "\"" + valString + "\""
 
 			} else {
-				s = "\"" + key + "\"" + ": " + "\"" + val.(string) + "\""
+				s = "\"" + field + "\"" + ": " + "\"" + v.Field(i).Interface().(string) + "\""
 			}
-			if gcs_cred_string[len(gcs_cred_string)-2] != '{' {
-				gcs_cred_string = gcs_cred_string + " , " + s
+			if gcsCredString[len(gcsCredString)-2] != '{' {
+				gcsCredString = gcsCredString + " , " + s
 			} else {
-				gcs_cred_string = gcs_cred_string + s
+				gcsCredString = gcsCredString + s
 			}
 		}
-		gcs_cred_string = gcs_cred_string + "}"
-
-		data["GCS_CREDENTIALS_JSON"] = gcs_cred_string
+		gcsCredString = gcsCredString + "}"
+		data["GCS_CREDENTIALS_JSON"] = gcsCredString
 	}
 
 	if d.Get("name").(string) == "S3" {
-		if d.Get("s3_access_key_id").(string) == "" {
-			return nil, errors.New(fmt.Sprintf("AWS Access Key ID and Secret Key not provided when name = 'S3'"))
+		awsCreds, err := utils.AwsCredentialsFromEnv()
+		if err != nil {
+			return nil, err
 		}
-		data["AWS_ACCESS_KEY_ID"] = d.Get("s3_access_key_id").(string)
-		data["AWS_SECRET_ACCESS_KEY"] = d.Get("s3_secret_access_key").(string)
+		data["AWS_ACCESS_KEY_ID"] = awsCreds.AccessKeyID
+		data["AWS_SECRET_ACCESS_KEY"] = awsCreds.SecretAccessKey
 	}
-
 	if d.Get("name").(string) == "AZ" {
-		if d.Get("azure_sas_token").(string) == "" {
-			return nil, errors.New(fmt.Sprintf("Azure SAS Token not provided when name = 'AZ'"))
+		azureCreds, err := utils.AzureCredentialsFromEnv()
+		if err != nil {
+			return nil, err
 		}
-		data["AZURE_STORAGE_SAS_TOKEN"] = d.Get("azure_sas_token").(string)
+		data["AZURE_STORAGE_SAS_TOKEN"] = azureCreds
 	}
 	return data, nil
 }
 
-func resourceStorageConfigCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceStorageConfigCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) (
+		diag.Diagnostics) {
 	c := meta.(*api.ApiClient).YugawareClient
 	cUUID := meta.(*api.ApiClient).CustomerId
 
@@ -160,7 +139,8 @@ func resourceStorageConfigCreate(ctx context.Context, d *schema.ResourceData, me
 	return resourceStorageConfigRead(ctx, d, meta)
 }
 
-func resourceStorageConfigRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceStorageConfigRead(ctx context.Context, d *schema.ResourceData, meta interface{}) (
+		diag.Diagnostics) {
 	var diags diag.Diagnostics
 
 	c := meta.(*api.ApiClient).YugawareClient
@@ -189,7 +169,8 @@ func resourceStorageConfigRead(ctx context.Context, d *schema.ResourceData, meta
 	return diags
 }
 
-func findCustomerConfig(configs []client.CustomerConfigUI, uuid string) (*client.CustomerConfigUI, error) {
+func findCustomerConfig(configs []client.CustomerConfigUI, uuid string) (
+		*client.CustomerConfigUI, error) {
 	for _, c := range configs {
 		if *c.ConfigUUID == uuid {
 			return &c, nil
@@ -198,7 +179,8 @@ func findCustomerConfig(configs []client.CustomerConfigUI, uuid string) (*client
 	return nil, errors.New("Could not find config with id " + uuid)
 }
 
-func resourceStorageConfigUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceStorageConfigUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) (
+		diag.Diagnostics) {
 	c := meta.(*api.ApiClient).YugawareClient
 	cUUID := meta.(*api.ApiClient).CustomerId
 
@@ -223,7 +205,8 @@ func resourceStorageConfigUpdate(ctx context.Context, d *schema.ResourceData, me
 	return resourceStorageConfigRead(ctx, d, meta)
 }
 
-func resourceStorageConfigDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceStorageConfigDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) (
+		diag.Diagnostics) {
 	var diags diag.Diagnostics
 
 	c := meta.(*api.ApiClient).YugawareClient
