@@ -75,17 +75,7 @@ resource "yb_customer_resource" "customer" {
 
 
 resource "yb_cloud_provider" "azure" {
-  lifecycle {
-    ignore_changes = all
-  }
   code = "azu"
-  config = {
-    "AZURE_SUBSCRIPTION_ID" = "<azure-subscription-id>"
-    "AZURE_RG" = "<azure-resource-group>"
-    "AZURE_TENANT_ID" = "<azure-tenant-id>"
-    "AZURE_CLIENT_SECRET" = "<azure-client-secret>"
-    "AZURE_CLIENT_ID" = "<azure-client-id>"
-  }
   
   name        = "${local.cluster_name}-provider"
   regions {

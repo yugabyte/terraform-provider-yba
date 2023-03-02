@@ -78,16 +78,7 @@ provider "yb" {
 }
 
 resource "yb_cloud_provider" "aws" {
-
-  lifecycle {
-    ignore_changes = all
-  }
   code = "aws"
-  config = {
-    "AWS_ACCESS_KEY_ID" = local.aws_access_key_id,
-    "AWS_SECRET_ACCESS_KEY" = local.aws_secret_access_key
-  }
-  
   name        = "${local.cluster_name}-provider"
   regions {
     code = "us-west-2"
@@ -126,17 +117,10 @@ locals {
 }
 
 resource "yb_releases" "new_s3" {
-  lifecycle {
-    ignore_changes = [
-      s3,
-    ]
-  }
-  version = "2.17.2.0-b77"
+  version = "2.17.2.0-b144"
   s3 {
-    access_key_id = local.aws_access_key_id
-    secret_access_key = local.aws_secret_access_key
     paths {
-      x86_64 = "s3://releases.yugabyte.com/2.17.2.0-b77/yugabyte-2.17.2.0-b77-centos-x86_64.tar.gz"
+      x86_64 = "s3://releases.yugabyte.com/2.17.2.0-b144/yugabyte-2.17.2.0-b144-centos-x86_64.tar.gz"
     }
   }
 } 
