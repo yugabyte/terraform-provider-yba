@@ -26,9 +26,18 @@ type GCPCredentials struct {
 	Type                    string `json:"type"`
 }
 
-// GetGcpCredentials retrieves the GCE credentials from env variable and returns GCPCredentials
+// AzureCredentials required for cloud provider
+type AzureCredentials struct {
+	TenantID       string `json:"tenant_id"`
+	SubscriptionID string `json:"subscription_id"`
+	ClientSecret   string `json:"client_secret"`
+	ClientID       string `json:"client_id"`
+	ResourceGroup  string `json:"resource_group"`
+}
+
+// GcpGetCredentials retrieves the GCE credentials from env variable and returns GCPCredentials
 // struct
-func GetGcpCredentials() (GCPCredentials, error) {
+func GcpGetCredentials() (GCPCredentials, error) {
 	gcsCredsByteArray, err := GcpCredentialsFromEnv()
 	if err != nil {
 		return GCPCredentials{}, err
@@ -60,8 +69,8 @@ func GcpCredentialsFromFilePath(filePath string) ([]byte, error) {
 	return gcsCredsByteArray, nil
 }
 
-// GcsGetJSONTag returns the JSON field name of the struct field
-func GcsGetJSONTag(val reflect.StructField) string {
+// GcpGetJSONTag returns the JSON field name of the struct field
+func GcpGetJSONTag(val reflect.StructField) string {
 	switch jsonTag := val.Tag.Get("json"); jsonTag {
 	case "-":
 	case "":
@@ -77,8 +86,53 @@ func GcsGetJSONTag(val reflect.StructField) string {
 	return ""
 }
 
-// AwsCredentialsFromEnv retrives "AWS_ACCESS_KEY_ID" and "AWS_SECRET_ACCESS_KEY" from env
-// variables
+// GcpGetCredentialsAsString returns the GCE JSON file contents as a string
+func GcpGetCredentialsAsString() (string, error) {
+	gcsCredsJSON, err := GcpGetCredentials()
+	if err != nil {
+		return "", err
+	}
+	v := reflect.ValueOf(gcsCredsJSON)
+	var gcsCredString string
+	gcsCredString = "{ "
+	for i := 0; i < v.NumField(); i++ {
+		var s string
+		field := GcpGetJSONTag(v.Type().Field(i))
+
+		if field == "private_key" {
+			valString := strings.Replace(v.Field(i).Interface().(string), "\n", "\\n", -1)
+			s = "\"" + field + "\"" + ": " + "\"" + valString + "\""
+
+		} else {
+			s = "\"" + field + "\"" + ": " + "\"" + v.Field(i).Interface().(string) + "\""
+		}
+		if gcsCredString[len(gcsCredString)-2] != '{' {
+			gcsCredString = gcsCredString + " , " + s
+		} else {
+			gcsCredString = gcsCredString + s
+		}
+	}
+	gcsCredString = gcsCredString + "}"
+	return gcsCredString, nil
+}
+
+// GcpGetCredentialsAsMap returns the GCE JSON file contents as a map
+func GcpGetCredentialsAsMap() (map[string]interface{}, error) {
+	gcsCredsMap := make(map[string]interface{})
+	gcsCredsJSON, err := GcpGetCredentials()
+	if err != nil {
+		return nil, err
+	}
+	v := reflect.ValueOf(gcsCredsJSON)
+	for i := 0; i < v.NumField(); i++ {
+		tag := GcpGetJSONTag(v.Type().Field(i))
+		gcsCredsMap[tag] = v.Field(i).Interface().(string)
+	}
+	return gcsCredsMap, nil
+}
+
+// AwsCredentialsFromEnv retrives values of "AWS_ACCESS_KEY_ID" and "AWS_SECRET_ACCESS_KEY" from
+// env variables
 func AwsCredentialsFromEnv() (awsCreds.Value, error) {
 
 	awsCredentials, err := awsCreds.NewEnvCredentials().Get()
@@ -88,12 +142,40 @@ func AwsCredentialsFromEnv() (awsCreds.Value, error) {
 	return awsCredentials, nil
 }
 
-// AzureCredentialsFromEnv retrives "AZURE_STORAGE_SAS_TOKEN" from env
-// variables
-func AzureCredentialsFromEnv() (string, error) {
+// AzureStorageCredentialsFromEnv retrives value of "AZURE_STORAGE_SAS_TOKEN" from env variables
+func AzureStorageCredentialsFromEnv() (string, error) {
 	azureSasToken, isPresent := os.LookupEnv("AZURE_STORAGE_SAS_TOKEN")
 	if !isPresent {
 		return "", errors.New("AZURE_STORAGE_SAS_TOKEN env variable not found")
 	}
 	return azureSasToken, nil
+}
+
+// AzureCredentialsFromEnv retrives azure credentials from env variables
+func AzureCredentialsFromEnv() (AzureCredentials, error) {
+
+	// get client id, client secret, tenat id, resource group and subscription id
+	var azureCreds AzureCredentials
+	var isPresent bool
+	azureCreds.ClientID, isPresent = os.LookupEnv("AZURE_CLIENT_ID")
+	if !isPresent {
+		return AzureCredentials{}, errors.New("AZURE_CLIENT_ID env variable not found")
+	}
+	azureCreds.ClientSecret, isPresent = os.LookupEnv("AZURE_CLIENT_SECRET")
+	if !isPresent {
+		return AzureCredentials{}, errors.New("AZURE_CLIENT_SECRET env variable not found")
+	}
+	azureCreds.SubscriptionID, isPresent = os.LookupEnv("AZURE_SUBSCRIPTION_ID")
+	if !isPresent {
+		return AzureCredentials{}, errors.New("AZURE_SUBSCRIPTION_ID env variable not found")
+	}
+	azureCreds.TenantID, isPresent = os.LookupEnv("AZURE_TENANT_ID")
+	if !isPresent {
+		return AzureCredentials{}, errors.New("AZURE_TENANT_ID env variable not found")
+	}
+	azureCreds.ResourceGroup, isPresent = os.LookupEnv("AZURE_RG")
+	if !isPresent {
+		return AzureCredentials{}, errors.New("AZURE_RG env variable not found")
+	}
+	return azureCreds, nil
 }

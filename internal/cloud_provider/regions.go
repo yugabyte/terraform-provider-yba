@@ -11,6 +11,12 @@ func RegionsSchema() *schema.Schema {
 		Type:     schema.TypeList,
 		Required: true,
 		ForceNew: true,
+
+		DiffSuppressFunc: func(k, old, new string, d *schema.ResourceData) bool {
+			// Regions cannot be altered in the present cloud provider config
+			// Therefore if a region is present (id is not null), all changes are ignored
+			return d.Id() != ""
+		},
 		Elem: &schema.Resource{
 			Schema: map[string]*schema.Schema{
 				"uuid": {

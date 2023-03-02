@@ -3,8 +3,6 @@ package backups
 import (
 	"context"
 	"errors"
-	"reflect"
-	"strings"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
@@ -67,31 +65,10 @@ func buildData(ctx context.Context, d *schema.ResourceData) (map[string]interfac
 	}
 
 	if d.Get("name").(string) == "GCS" {
-		gcsCredsJSON, err := utils.GetGcpCredentials()
+		gcsCredString, err := utils.GcpGetCredentialsAsString()
 		if err != nil {
 			return nil, err
 		}
-		v := reflect.ValueOf(gcsCredsJSON)
-		var gcsCredString string
-		gcsCredString = "{ "
-		for i := 0; i < v.NumField(); i++ {
-			var s string
-			field := utils.GcsGetJSONTag(v.Type().Field(i))
-
-			if field == "private_key" {
-				valString := strings.Replace(v.Field(i).Interface().(string), "\n", "\\n", -1)
-				s = "\"" + field + "\"" + ": " + "\"" + valString + "\""
-
-			} else {
-				s = "\"" + field + "\"" + ": " + "\"" + v.Field(i).Interface().(string) + "\""
-			}
-			if gcsCredString[len(gcsCredString)-2] != '{' {
-				gcsCredString = gcsCredString + " , " + s
-			} else {
-				gcsCredString = gcsCredString + s
-			}
-		}
-		gcsCredString = gcsCredString + "}"
 		data["GCS_CREDENTIALS_JSON"] = gcsCredString
 	}
 
@@ -104,7 +81,7 @@ func buildData(ctx context.Context, d *schema.ResourceData) (map[string]interfac
 		data["AWS_SECRET_ACCESS_KEY"] = awsCreds.SecretAccessKey
 	}
 	if d.Get("name").(string) == "AZ" {
-		azureCreds, err := utils.AzureCredentialsFromEnv()
+		azureCreds, err := utils.AzureStorageCredentialsFromEnv()
 		if err != nil {
 			return nil, err
 		}
