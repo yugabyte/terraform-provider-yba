@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/utils"
 )
 
 func GcsSchema() *schema.Resource {
@@ -11,7 +12,7 @@ func GcsSchema() *schema.Resource {
 		Schema: map[string]*schema.Schema{
 			"credentials_json": {
 				Type:        schema.TypeString,
-				Required:    true,
+				Computed:    true,
 				Description: "GCS Credentials in from json file",
 			},
 			"paths": {
@@ -26,17 +27,20 @@ func GcsSchema() *schema.Resource {
 
 }
 
-func formatInputGcs(ctx context.Context, data []interface{}) map[string]interface{} {
+func formatInputGcs(ctx context.Context, data []interface{}) (map[string]interface{}, error) {
 
 	gcs := make(map[string]interface{})
 	for _, v := range data {
 		gcs = v.(map[string]interface{})
-		gcs["credentialsJson"] = gcs["credentials_json"]
-		delete(gcs, "credentials_json")
+		var err error
+		gcs["credentialsJson"], err = utils.GcpGetCredentialsAsString()
+		if err != nil {
+			return nil, err
+		}
 		gcs["paths"] = formatInputPaths(ctx, gcs["paths"])
 
 	}
-	return gcs
+	return gcs, nil
 }
 
 func formatOutputGcs(ctx context.Context, gcs map[string]interface{}) []map[string]interface{} {

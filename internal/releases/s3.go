@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/utils"
 )
 
 func S3Schema() *schema.Resource {
@@ -11,13 +12,13 @@ func S3Schema() *schema.Resource {
 		Schema: map[string]*schema.Schema{
 			"access_key_id": {
 				Type:        schema.TypeString,
-				Required:    true,
+				Computed:    true,
 				Sensitive:   true,
 				Description: "S3 Access Key ID",
 			},
 			"secret_access_key": {
 				Type:        schema.TypeString,
-				Required:    true,
+				Computed:    true,
 				Sensitive:   true,
 				Description: "S3 Secret Access Key",
 			},
@@ -32,19 +33,21 @@ func S3Schema() *schema.Resource {
 	}
 }
 
-func formatInputS3(ctx context.Context, data []interface{}) map[string]interface{} {
+func formatInputS3(ctx context.Context, data []interface{}) (map[string]interface{}, error) {
 
 	s3 := make(map[string]interface{})
+	awsCreds, err := utils.AwsCredentialsFromEnv()
+	if err != nil {
+		return nil, err
+	}
 	for _, v := range data {
 		s3 = v.(map[string]interface{})
-		s3["accessKeyId"] = s3["access_key_id"]
-		delete(s3, "access_key_id")
-		s3["secretAccessKey"] = s3["secret_access_key"]
-		delete(s3, "secret_access_key")
+		s3["accessKeyId"] = awsCreds.AccessKeyID
+		s3["secretAccessKey"] = awsCreds.SecretAccessKey
 		s3["paths"] = formatInputPaths(ctx, s3["paths"])
 
 	}
-	return s3
+	return s3, nil
 }
 
 func formatOutputS3(ctx context.Context, s3 map[string]interface{}) []map[string]interface{} {

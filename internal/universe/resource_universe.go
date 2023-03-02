@@ -9,6 +9,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/customdiff"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	client "github.com/yugabyte/platform-go-client"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/api"
@@ -30,10 +31,11 @@ func ResourceUniverse() *schema.Resource {
 
 		Timeouts: &schema.ResourceTimeout{
 			Create: schema.DefaultTimeout(60 * time.Minute),
-			Update: schema.DefaultTimeout(30 * time.Minute),
+			Update: schema.DefaultTimeout(60 * time.Minute),
 			Delete: schema.DefaultTimeout(30 * time.Minute),
 		},
 
+		CustomizeDiff: resourceUniverseDiff(),
 		Schema: map[string]*schema.Schema{
 			// Universe Delete Options
 			"delete_options": {
@@ -63,8 +65,18 @@ func ResourceUniverse() *schema.Resource {
 
 			// Universe Fields
 			"client_root_ca": {
-				Type:        schema.TypeString,
-				Optional:    true,
+				Type:     schema.TypeString,
+				Optional: true,
+				DiffSuppressFunc: func(k, old, new string, d *schema.ResourceData) bool {
+					// When TLS is enabled and this field is not set in the config file, a new root
+					// certificate is created and this is populated. Subsequent runs will throw a
+					// diff since this field is empty in the config file. This is to ignore the
+					// difference in that case
+					if len(old) > 0 && new == "" {
+						return true
+					}
+					return false
+				},
 				Description: "", // TODO: document
 			},
 			"clusters": {
@@ -474,7 +486,226 @@ func userIntentSchema() *schema.Resource {
 		},
 	}
 }
+func getClutserByType(clusters []client.Cluster, clusterType string) (client.Cluster, bool) {
 
+	for _, v := range clusters {
+		if v.ClusterType == clusterType {
+			return v, true
+		}
+	}
+	return client.Cluster{}, false
+}
+func resourceUniverseDiff() schema.CustomizeDiffFunc {
+	return customdiff.All(
+		customdiff.ValidateChange("clusters", func(ctx context.Context, old, new, m interface{}) error {
+			// if not a new universe, prevent adding read replicas
+			newClusterSet := buildClusters(new.([]interface{}))
+			if len(old.([]interface{})) != 0 {
+				oldClusterSet := buildClusters(old.([]interface{}))
+				if len(oldClusterSet) < len(newClusterSet) {
+					return errors.New("Cannot add Read Replica to existing universe")
+				}
+			}
+			return nil
+		}),
+		customdiff.ValidateChange("clusters", func(ctx context.Context, old, new, m interface{}) error {
+			// if not a new universe, prevent systemD disablement
+			newClusterSet := buildClusters(new.([]interface{}))
+			if len(old.([]interface{})) != 0 {
+				oldClusterSet := buildClusters(old.([]interface{}))
+				oldPrimaryCluster, isPresent := getClutserByType(oldClusterSet, "PRIMARY")
+				if isPresent {
+					newPrimaryCluster, isNewPresent := getClutserByType(newClusterSet, "PRIMARY")
+					if isNewPresent {
+						if (oldPrimaryCluster.UserIntent.UseSystemd != nil) &&
+							(*oldPrimaryCluster.UserIntent.UseSystemd == true &&
+								((newPrimaryCluster.UserIntent.UseSystemd == nil) ||
+									(*newPrimaryCluster.UserIntent.UseSystemd == false))) {
+							return errors.New("Cannot disable SystemD")
+						}
+					}
+				}
+			}
+			return nil
+		}),
+		customdiff.ValidateChange("clusters", func(ctx context.Context, old, new, m interface{}) error {
+			// if not a new universe, prevent decrease in volume size in primary
+			newClusterSet := buildClusters(new.([]interface{}))
+			if len(old.([]interface{})) != 0 {
+				oldClusterSet := buildClusters(old.([]interface{}))
+				oldPrimaryCluster, isPresent := getClutserByType(oldClusterSet, "PRIMARY")
+				if isPresent {
+					newPrimaryCluster, isNewPresent := getClutserByType(newClusterSet, "PRIMARY")
+					if isNewPresent {
+						if *oldPrimaryCluster.UserIntent.DeviceInfo.VolumeSize >
+							*newPrimaryCluster.UserIntent.DeviceInfo.VolumeSize {
+							return errors.New("Cannot decrease Volume Size of nodes in " +
+								"Primary Cluster")
+						}
+					}
+				}
+			}
+			return nil
+		}),
+		customdiff.ValidateChange("clusters", func(ctx context.Context, old, new, m interface{}) error {
+			// if not a new universe, prevent change in number of nodes if instance type hasn't
+			// change in Primary
+			newClusterSet := buildClusters(new.([]interface{}))
+			if len(old.([]interface{})) != 0 {
+				oldClusterSet := buildClusters(old.([]interface{}))
+				oldPrimaryCluster, isPresent := getClutserByType(oldClusterSet, "PRIMARY")
+				if isPresent {
+					newPrimaryCluster, isNewPresent := getClutserByType(newClusterSet, "PRIMARY")
+					if isNewPresent {
+						if (*oldPrimaryCluster.UserIntent.InstanceType ==
+							*newPrimaryCluster.UserIntent.InstanceType) &&
+							(*oldPrimaryCluster.UserIntent.DeviceInfo.NumVolumes !=
+								*newPrimaryCluster.UserIntent.DeviceInfo.NumVolumes) {
+							return errors.New("Cannot change number of volumes per node " +
+								"without change in instance type in Primary Cluster")
+						}
+					}
+				}
+			}
+			return nil
+		}),
+		customdiff.ValidateChange("clusters", func(ctx context.Context, old, new, m interface{}) error {
+			// if not a new universe, prevent decrease in volume size in read replica
+			newClusterSet := buildClusters(new.([]interface{}))
+			if len(old.([]interface{})) != 0 {
+				oldClusterSet := buildClusters(old.([]interface{}))
+				oldPrimaryCluster, isPresent := getClutserByType(oldClusterSet, "ASYNC")
+				if isPresent {
+					newPrimaryCluster, isNewPresent := getClutserByType(newClusterSet, "ASYNC")
+					if isNewPresent {
+						if *oldPrimaryCluster.UserIntent.DeviceInfo.VolumeSize >
+							*newPrimaryCluster.UserIntent.DeviceInfo.VolumeSize {
+							return errors.New("Cannot decrease Volume Size of nodes in " +
+								"Read Replica Cluster")
+						}
+					}
+				}
+			}
+			return nil
+		}),
+		customdiff.ValidateChange("clusters", func(ctx context.Context, old, new, m interface{}) error {
+			// if not a new universe, prevent change in number of nodes if instance type hasn't
+			// change in Read Replica
+			newClusterSet := buildClusters(new.([]interface{}))
+			if len(old.([]interface{})) != 0 {
+				oldClusterSet := buildClusters(old.([]interface{}))
+				oldPrimaryCluster, isPresent := getClutserByType(oldClusterSet, "ASYNC")
+				if isPresent {
+					newPrimaryCluster, isNewPresent := getClutserByType(newClusterSet, "ASYNC")
+					if isNewPresent {
+						if (*oldPrimaryCluster.UserIntent.InstanceType ==
+							*newPrimaryCluster.UserIntent.InstanceType) &&
+							((*oldPrimaryCluster.UserIntent.DeviceInfo.NumVolumes !=
+								*newPrimaryCluster.UserIntent.DeviceInfo.NumVolumes) ||
+								(*oldPrimaryCluster.UserIntent.DeviceInfo.VolumeSize !=
+									*newPrimaryCluster.UserIntent.DeviceInfo.VolumeSize)) {
+							return errors.New("Cannot change number of volumes or volume size " +
+								"per node without change in instance type in Read Replica Cluster")
+						}
+					}
+				}
+			}
+			return nil
+		}),
+		customdiff.ValidateChange("clusters", func(ctx context.Context, old, new, m interface{}) error {
+			// check if universe name of the clusters are the same
+			newClusterSet := buildClusters(new.([]interface{}))
+			newPrimary, isPresent := getClutserByType(newClusterSet, "PRIMARY")
+			newReadOnly, isRRPresnt := getClutserByType(newClusterSet, "ASYNC")
+			if isPresent && isRRPresnt {
+				if newPrimary.UserIntent.UniverseName == nil {
+					return errors.New("Universe name cannot be empty")
+				}
+				if newReadOnly.UserIntent.UniverseName == nil {
+					return errors.New("Universe name cannot be empty")
+				}
+				if *newPrimary.UserIntent.UniverseName != *newReadOnly.UserIntent.UniverseName {
+					return errors.New("Cannot have different universe names for Primary " +
+						"and Read Only clusters")
+				}
+			}
+			return nil
+		}),
+		customdiff.ValidateChange("clusters", func(ctx context.Context, old, new, m interface{}) error {
+			// check if software version of the clusters are the same
+			newClusterSet := buildClusters(new.([]interface{}))
+			newPrimary, isPresent := getClutserByType(newClusterSet, "PRIMARY")
+			newReadOnly, isRRPresnt := getClutserByType(newClusterSet, "ASYNC")
+			if (len(old.([]interface{})) != 0) {
+				if isPresent && isRRPresnt {
+					if (newPrimary.UserIntent.YbSoftwareVersion != nil) &&
+						(newReadOnly.UserIntent.YbSoftwareVersion != nil) &&
+						(*newPrimary.UserIntent.YbSoftwareVersion !=
+							*newReadOnly.UserIntent.YbSoftwareVersion) {
+						return errors.New("Cannot have different software versions for Primary " +
+							"and Read Only clusters")
+					}
+				}
+			}
+			return nil
+		}),
+		customdiff.ValidateChange("clusters", func(ctx context.Context, old, new, m interface{}) error {
+			// check if systemD setting of the clusters are the same
+			newClusterSet := buildClusters(new.([]interface{}))
+			newPrimary, isPresent := getClutserByType(newClusterSet, "PRIMARY")
+			newReadOnly, isRRPresnt := getClutserByType(newClusterSet, "ASYNC")
+			if isPresent && isRRPresnt {
+				if (newPrimary.UserIntent.UseSystemd != nil) &&
+					(newReadOnly.UserIntent.UseSystemd != nil) &&
+					(*newPrimary.UserIntent.UseSystemd != *newReadOnly.UserIntent.UseSystemd) {
+					return errors.New("Cannot have different systemD settings for Primary " +
+						"and Read Only clusters")
+				}
+			}
+			return nil
+		}),
+		customdiff.ValidateChange("clusters", func(ctx context.Context, old, new, m interface{}) error {
+			// check if Gflags setting of the clusters are the same
+			newClusterSet := buildClusters(new.([]interface{}))
+			newPrimary, isPresent := getClutserByType(newClusterSet, "PRIMARY")
+			newReadOnly, isRRPresnt := getClutserByType(newClusterSet, "ASYNC")
+			if isPresent && isRRPresnt {
+				if (newPrimary.UserIntent.MasterGFlags != nil) &&
+					(newReadOnly.UserIntent.MasterGFlags != nil) &&
+					(newPrimary.UserIntent.TserverGFlags != nil) &&
+					(newReadOnly.UserIntent.TserverGFlags != nil) &&
+					(!reflect.DeepEqual(*newPrimary.UserIntent.MasterGFlags,
+						*newReadOnly.UserIntent.MasterGFlags) ||
+					!reflect.DeepEqual(*newPrimary.UserIntent.TserverGFlags,
+						*newReadOnly.UserIntent.TserverGFlags)) {
+					return errors.New("Cannot have different Gflags settings for Primary " +
+						"and Read Only clusters")
+				}
+			}
+			return nil
+		}),
+		customdiff.ValidateChange("clusters", func(ctx context.Context, old, new, m interface{}) error {
+			// check if TLS setting of the clusters are the same
+			newClusterSet := buildClusters(new.([]interface{}))
+			newPrimary, isPresent := getClutserByType(newClusterSet, "PRIMARY")
+			newReadOnly, isRRPresnt := getClutserByType(newClusterSet, "ASYNC")
+			if isPresent && isRRPresnt {
+				if (newPrimary.UserIntent.EnableClientToNodeEncrypt != nil) &&
+					(newReadOnly.UserIntent.EnableClientToNodeEncrypt != nil) &&
+					(newPrimary.UserIntent.EnableNodeToNodeEncrypt != nil) &&
+					(newReadOnly.UserIntent.EnableNodeToNodeEncrypt != nil) &&
+					(*newPrimary.UserIntent.EnableClientToNodeEncrypt !=
+						*newReadOnly.UserIntent.EnableClientToNodeEncrypt ||
+					*newPrimary.UserIntent.EnableNodeToNodeEncrypt !=
+						*newReadOnly.UserIntent.EnableNodeToNodeEncrypt) {
+					return errors.New("Cannot have different TLS settings for Primary " +
+						"and Read Only clusters")
+				}
+			}
+			return nil
+		}),
+	)
+}
 func resourceUniverseCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	c := meta.(*api.ApiClient).YugawareClient
 	cUUID := meta.(*api.ApiClient).CustomerId
@@ -492,189 +723,6 @@ func resourceUniverseCreate(ctx context.Context, d *schema.ResourceData, meta in
 		return diag.FromErr(err)
 	}
 	return resourceUniverseRead(ctx, d, meta)
-}
-
-func buildUniverse(d *schema.ResourceData) client.UniverseConfigureTaskParams {
-	clusters := buildClusters(d.Get("clusters").([]interface{}))
-	return client.UniverseConfigureTaskParams{
-		ClientRootCA:       utils.GetStringPointer(d.Get("client_root_ca").(string)),
-		Clusters:           clusters,
-		CommunicationPorts: buildCommunicationPorts(utils.MapFromSingletonList(d.Get("communication_ports").([]interface{}))),
-	}
-}
-
-func buildUniverseDefinitionTaskParams(d *schema.ResourceData) client.UniverseDefinitionTaskParams {
-	return client.UniverseDefinitionTaskParams{
-		ClientRootCA:       utils.GetStringPointer(d.Get("client_root_ca").(string)),
-		Clusters:           buildClusters(d.Get("clusters").([]interface{})),
-		CommunicationPorts: buildCommunicationPorts(utils.MapFromSingletonList(d.Get("communication_ports").([]interface{}))),
-	}
-}
-
-func buildCommunicationPorts(cp map[string]interface{}) *client.CommunicationPorts {
-	if len(cp) == 0 {
-		return &client.CommunicationPorts{}
-	}
-	return &client.CommunicationPorts{
-		MasterHttpPort:      utils.GetInt32Pointer(int32(cp["master_http_port"].(int))),
-		MasterRpcPort:       utils.GetInt32Pointer(int32(cp["master_rpc_port"].(int))),
-		NodeExporterPort:    utils.GetInt32Pointer(int32(cp["node_exporter_port"].(int))),
-		RedisServerHttpPort: utils.GetInt32Pointer(int32(cp["redis_server_http_port"].(int))),
-		RedisServerRpcPort:  utils.GetInt32Pointer(int32(cp["redis_server_rpc_port"].(int))),
-		TserverHttpPort:     utils.GetInt32Pointer(int32(cp["tserver_http_port"].(int))),
-		TserverRpcPort:      utils.GetInt32Pointer(int32(cp["tserver_rpc_port"].(int))),
-		YqlServerHttpPort:   utils.GetInt32Pointer(int32(cp["yql_server_http_port"].(int))),
-		YqlServerRpcPort:    utils.GetInt32Pointer(int32(cp["yql_server_rpc_port"].(int))),
-		YsqlServerHttpPort:  utils.GetInt32Pointer(int32(cp["ysql_server_http_port"].(int))),
-		YsqlServerRpcPort:   utils.GetInt32Pointer(int32(cp["ysql_server_rpc_port"].(int))),
-	}
-}
-
-func buildClusters(clusters []interface{}) (res []client.Cluster) {
-	for _, v := range clusters {
-		cluster := v.(map[string]interface{})
-		c := client.Cluster{
-			ClusterType: cluster["cluster_type"].(string),
-			UserIntent:  buildUserIntent(utils.MapFromSingletonList(cluster["user_intent"].([]interface{}))),
-		}
-		if len(cluster["cloud_list"].([]interface{})) > 0 {
-			c.PlacementInfo = &client.PlacementInfo{
-				CloudList: buildCloudList(cluster["cloud_list"].([]interface{})),
-			}
-		}
-
-		res = append(res, c)
-	}
-	return res
-}
-
-func buildCloudList(cl []interface{}) (res []client.PlacementCloud) {
-	for _, v := range cl {
-		c := v.(map[string]interface{})
-		pc := client.PlacementCloud{
-			Code:       utils.GetStringPointer(c["code"].(string)),
-			RegionList: buildRegionList(c["region_list"].([]interface{})),
-		}
-		res = append(res, pc)
-	}
-	return res
-}
-
-func buildRegionList(cl []interface{}) *[]client.PlacementRegion {
-	var res []client.PlacementRegion
-	for _, v := range cl {
-		r := v.(map[string]interface{})
-		pr := client.PlacementRegion{
-			Code:   utils.GetStringPointer(r["code"].(string)),
-			AzList: buildAzList(r["az_list"].([]interface{})),
-		}
-		res = append(res, pr)
-	}
-	return &res
-}
-
-func buildAzList(cl []interface{}) *[]client.PlacementAZ {
-	var res []client.PlacementAZ
-	for _, v := range cl {
-		az := v.(map[string]interface{})
-		paz := client.PlacementAZ{
-			IsAffinitized:     utils.GetBoolPointer(az["is_affinitized"].(bool)),
-			Name:              utils.GetStringPointer(az["name"].(string)),
-			NumNodesInAZ:      utils.GetInt32Pointer(int32(az["num_nodes"].(int))),
-			ReplicationFactor: utils.GetInt32Pointer(int32(az["replication_factor"].(int))),
-			SecondarySubnet:   utils.GetStringPointer(az["secondary_subnet"].(string)),
-			Subnet:            utils.GetStringPointer(az["subnet"].(string)),
-		}
-		res = append(res, paz)
-	}
-	return &res
-}
-
-func buildUserIntent(ui map[string]interface{}) client.UserIntent {
-	return client.UserIntent{
-		AssignStaticPublicIP:      utils.GetBoolPointer(ui["assign_static_ip"].(bool)),
-		AwsArnString:              utils.GetStringPointer(ui["aws_arn_string"].(string)),
-		EnableExposingService:     utils.GetStringPointer(ui["enable_exposing_service"].(string)),
-		EnableIPV6:                utils.GetBoolPointer(ui["enable_ipv6"].(bool)),
-		EnableYCQL:                utils.GetBoolPointer(ui["enable_ycql"].(bool)),
-		EnableYCQLAuth:            utils.GetBoolPointer(ui["enable_ycql_auth"].(bool)),
-		EnableYSQLAuth:            utils.GetBoolPointer(ui["enable_ysql_auth"].(bool)),
-		InstanceTags:              utils.StringMap(ui["instance_tags"].(map[string]interface{})),
-		PreferredRegion:           utils.GetStringPointer(ui["preferred_region"].(string)),
-		UseHostname:               utils.GetBoolPointer(ui["use_host_name"].(bool)),
-		UseSystemd:                utils.GetBoolPointer(ui["use_systemd"].(bool)),
-		YsqlPassword:              utils.GetStringPointer(ui["ysql_password"].(string)),
-		YcqlPassword:              utils.GetStringPointer(ui["ycql_password"].(string)),
-		UniverseName:              utils.GetStringPointer(ui["universe_name"].(string)),
-		ProviderType:              utils.GetStringPointer(ui["provider_type"].(string)),
-		Provider:                  utils.GetStringPointer(ui["provider"].(string)),
-		RegionList:                utils.StringSlice(ui["region_list"].([]interface{})),
-		NumNodes:                  utils.GetInt32Pointer(int32(ui["num_nodes"].(int))),
-		ReplicationFactor:         utils.GetInt32Pointer(int32(ui["replication_factor"].(int))),
-		InstanceType:              utils.GetStringPointer(ui["instance_type"].(string)),
-		DeviceInfo:                buildDeviceInfo(utils.MapFromSingletonList(ui["device_info"].([]interface{}))),
-		AssignPublicIP:            utils.GetBoolPointer(ui["assign_public_ip"].(bool)),
-		UseTimeSync:               utils.GetBoolPointer(ui["use_time_sync"].(bool)),
-		EnableYSQL:                utils.GetBoolPointer(ui["enable_ysql"].(bool)),
-		EnableYEDIS:               utils.GetBoolPointer(ui["enable_yedis"].(bool)),
-		EnableNodeToNodeEncrypt:   utils.GetBoolPointer(ui["enable_node_to_node_encrypt"].(bool)),
-		EnableClientToNodeEncrypt: utils.GetBoolPointer(ui["enable_client_to_node_encrypt"].(bool)),
-		EnableVolumeEncryption:    utils.GetBoolPointer(ui["enable_volume_encryption"].(bool)),
-		YbSoftwareVersion:         utils.GetStringPointer(ui["yb_software_version"].(string)),
-		AccessKeyCode:             utils.GetStringPointer(ui["access_key_code"].(string)),
-		TserverGFlags:             utils.StringMap(ui["tserver_gflags"].(map[string]interface{})),
-		MasterGFlags:              utils.StringMap(ui["master_gflags"].(map[string]interface{})),
-	}
-}
-
-func buildDeviceInfo(di map[string]interface{}) *client.DeviceInfo {
-	return &client.DeviceInfo{
-		DiskIops:     utils.GetInt32Pointer(int32(di["disk_iops"].(int))),
-		MountPoints:  utils.GetStringPointer(di["mount_points"].(string)),
-		StorageClass: utils.GetStringPointer(di["storage_class"].(string)),
-		Throughput:   utils.GetInt32Pointer(int32(di["throughput"].(int))),
-		NumVolumes:   utils.GetInt32Pointer(int32(di["num_volumes"].(int))),
-		VolumeSize:   utils.GetInt32Pointer(int32(di["volume_size"].(int))),
-		StorageType:  utils.GetStringPointer(di["storage_type"].(string)),
-	}
-}
-
-func buildNodeDetailsRespArrayToNodeDetailsArray(nodes *[]client.NodeDetailsResp) *[]client.NodeDetails {
-	var nodesDetails []client.NodeDetails
-	for _, v := range *nodes {
-		nodeDetail := client.NodeDetails{
-			AzUuid:                v.AzUuid,
-			CloudInfo:             v.CloudInfo,
-			CronsActive:           v.CronsActive,
-			DisksAreMountedByUUID: v.DisksAreMountedByUUID,
-			IsMaster:              v.IsMaster,
-			IsRedisServer:         v.IsRedisServer,
-			IsTserver:             v.IsTserver,
-			IsYqlServer:           v.IsYqlServer,
-			IsYsqlServer:          v.IsYsqlServer,
-			MachineImage:          v.MachineImage,
-			MasterHttpPort:        v.MasterHttpPort,
-			MasterRpcPort:         v.MasterRpcPort,
-			MasterState:           v.MasterState,
-			NodeExporterPort:      v.NodeExporterPort,
-			NodeIdx:               v.NodeIdx,
-			NodeName:              v.NodeName,
-			NodeUuid:              v.NodeUuid,
-			PlacementUuid:         v.PlacementUuid,
-			RedisServerHttpPort:   v.RedisServerHttpPort,
-			RedisServerRpcPort:    v.RedisServerRpcPort,
-			State:                 v.State,
-			TserverHttpPort:       v.TserverHttpPort,
-			TserverRpcPort:        v.TserverRpcPort,
-			YbPrebuiltAmi:         v.YbPrebuiltAmi,
-			YqlServerHttpPort:     v.YqlServerHttpPort,
-			YqlServerRpcPort:      v.YqlServerRpcPort,
-			YsqlServerHttpPort:    v.YsqlServerHttpPort,
-			YsqlServerRpcPort:     v.YsqlServerRpcPort,
-		}
-		nodesDetails = append(nodesDetails, nodeDetail)
-	}
-	return &nodesDetails
 }
 
 func resourceUniverseRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
@@ -701,143 +749,41 @@ func resourceUniverseRead(ctx context.Context, d *schema.ResourceData, meta inte
 	return diags
 }
 
-func flattenCommunicationPorts(cp *client.CommunicationPorts) []interface{} {
-	v := map[string]interface{}{
-		"master_http_port":       cp.MasterHttpPort,
-		"master_rpc_port":        cp.MasterRpcPort,
-		"node_exporter_port":     cp.NodeExporterPort,
-		"redis_server_http_port": cp.RedisServerHttpPort,
-		"redis_server_rpc_port":  cp.RedisServerRpcPort,
-		"tserver_http_port":      cp.TserverHttpPort,
-		"tserver_rpc_port":       cp.TserverRpcPort,
-		"yql_server_http_port":   cp.YqlServerHttpPort,
-		"yql_server_rpc_port":    cp.YqlServerRpcPort,
-		"ysql_server_http_port":  cp.YsqlServerHttpPort,
-		"ysql_server_rpc_port":   cp.YsqlServerRpcPort,
-	}
-	return utils.CreateSingletonList(v)
-}
-
-func flattenClusters(clusters []client.Cluster) (res []map[string]interface{}) {
-	for _, cluster := range clusters {
-		c := map[string]interface{}{
-			"uuid":         cluster.Uuid,
-			"cluster_type": cluster.ClusterType,
-			"user_intent":  flattenUserIntent(cluster.UserIntent),
-			"cloud_list":   flattenCloudList(cluster.PlacementInfo.CloudList),
-		}
-		res = append(res, c)
-	}
-	return res
-}
-
-func flattenCloudList(cl []client.PlacementCloud) (res []interface{}) {
-	for _, c := range cl {
-		pc := map[string]interface{}{
-			"uuid":        c.Uuid,
-			"code":        c.Code,
-			"region_list": flattenRegionList(*c.RegionList),
-		}
-		res = append(res, pc)
-	}
-	return res
-}
-
-func flattenRegionList(cl []client.PlacementRegion) (res []interface{}) {
-	for _, r := range cl {
-		pr := map[string]interface{}{
-			"uuid":    r.Uuid,
-			"code":    r.Code,
-			"az_list": flattenAzList(*r.AzList),
-		}
-		res = append(res, pr)
-	}
-	return res
-}
-
-func flattenAzList(cl []client.PlacementAZ) (res []interface{}) {
-	for _, az := range cl {
-		paz := map[string]interface{}{
-			"uuid":               az.Uuid,
-			"is_affinitized":     az.IsAffinitized,
-			"name":               az.Name,
-			"num_nodes":          az.NumNodesInAZ,
-			"replication_factor": az.ReplicationFactor,
-			"secondary_subnet":   az.SecondarySubnet,
-			"subnet":             az.Subnet,
-		}
-		res = append(res, paz)
-	}
-	return res
-}
-
-func flattenUserIntent(ui client.UserIntent) []interface{} {
-	v := map[string]interface{}{
-		"assign_static_ip":              ui.AssignStaticPublicIP,
-		"aws_arn_string":                ui.AwsArnString,
-		"enable_exposing_service":       ui.EnableExposingService,
-		"enable_ipv6":                   ui.EnableIPV6,
-		"enable_ycql":                   ui.EnableYCQL,
-		"enable_ycql_auth":              ui.EnableYCQLAuth,
-		"enable_ysql_auth":              ui.EnableYSQLAuth,
-		"instance_tags":                 ui.GetInstanceTags(),
-		"preferred_region":              ui.PreferredRegion,
-		"use_host_name":                 ui.UseHostname,
-		"use_systemd":                   ui.UseSystemd,
-		"ysql_password":                 ui.YsqlPassword,
-		"ycql_password":                 ui.YcqlPassword,
-		"universe_name":                 ui.UniverseName,
-		"provider_type":                 ui.ProviderType,
-		"provider":                      ui.Provider,
-		"region_list":                   ui.RegionList,
-		"num_nodes":                     ui.NumNodes,
-		"replication_factor":            ui.ReplicationFactor,
-		"instance_type":                 ui.InstanceType,
-		"device_info":                   flattenDeviceInfo(ui.DeviceInfo),
-		"assign_public_ip":              ui.AssignPublicIP,
-		"use_time_sync":                 ui.UseTimeSync,
-		"enable_ysql":                   ui.EnableYSQL,
-		"enable_yedis":                  ui.EnableYEDIS,
-		"enable_node_to_node_encrypt":   ui.EnableNodeToNodeEncrypt,
-		"enable_client_to_node_encrypt": ui.EnableClientToNodeEncrypt,
-		"enable_volume_encryption":      ui.EnableVolumeEncryption,
-		"yb_software_version":           ui.YbSoftwareVersion,
-		"access_key_code":               ui.AccessKeyCode,
-		"tserver_gflags":                ui.GetTserverGFlags(),
-		"master_gflags":                 ui.GetMasterGFlags(),
-	}
-	return utils.CreateSingletonList(v)
-}
-
-func flattenDeviceInfo(di *client.DeviceInfo) []interface{} {
-	v := map[string]interface{}{
-		"disk_iops":     di.DiskIops,
-		"mount_points":  di.MountPoints,
-		"storage_class": di.StorageClass,
-		"throughput":    di.Throughput,
-		"num_volumes":   di.NumVolumes,
-		"volume_size":   di.VolumeSize,
-		"storage_type":  di.StorageType,
-	}
-	return utils.CreateSingletonList(v)
-}
-
 func editUniverseParameters(ctx context.Context, old_user_intent client.UserIntent, new_user_intent client.UserIntent) (bool, client.UserIntent) {
 	if !reflect.DeepEqual(*old_user_intent.InstanceTags, *new_user_intent.InstanceTags) ||
 		!reflect.DeepEqual(*old_user_intent.RegionList, new_user_intent.RegionList) ||
 		*old_user_intent.NumNodes != *new_user_intent.NumNodes ||
 		*old_user_intent.InstanceType != *new_user_intent.InstanceType ||
-		*old_user_intent.DeviceInfo.NumVolumes != *new_user_intent.DeviceInfo.NumVolumes {
+		*old_user_intent.DeviceInfo.NumVolumes != *new_user_intent.DeviceInfo.NumVolumes ||
+		*old_user_intent.DeviceInfo.VolumeSize != *new_user_intent.DeviceInfo.VolumeSize {
 		edit_num_volume := true
+		edit_volume_size := true // this is only for RR cluster, primary cluster resize is handled
+		// by resize node task
 		num_volumes := *old_user_intent.DeviceInfo.NumVolumes
+		volume_size := *old_user_intent.DeviceInfo.VolumeSize
 		if (*old_user_intent.DeviceInfo.NumVolumes != *new_user_intent.DeviceInfo.NumVolumes) &&
 			(*old_user_intent.InstanceType == *new_user_intent.InstanceType) {
-			tflog.Info(ctx, "Cannot edit Number of Volumes per instance without an edit to Instance Type, Ignoring Change")
+			tflog.Error(ctx, "Cannot edit Number of Volumes per instance without an edit to"+
+				" Instance Type, Ignoring Change")
 			edit_num_volume = false
+		}
+		if (*old_user_intent.DeviceInfo.VolumeSize != *new_user_intent.DeviceInfo.VolumeSize) &&
+			(*old_user_intent.InstanceType == *new_user_intent.InstanceType) {
+			tflog.Error(ctx, "Cannot edit Volume size per instance without an edit to Instance "+
+				"Type, Ignoring Change for ReadOnly Cluster")
+			tflog.Info(ctx, "Above error is not for Primary Cluster. Node resize applied through" +
+				"a separate task")
+			edit_volume_size = false
+		} else if *old_user_intent.DeviceInfo.VolumeSize > *new_user_intent.DeviceInfo.VolumeSize {
+			tflog.Error(ctx, "Cannot decrease volume size per instance, Ignoring Change")
+			edit_volume_size = false
 		}
 		old_user_intent = new_user_intent
 		if !edit_num_volume {
 			old_user_intent.DeviceInfo.NumVolumes = &num_volumes
+		}
+		if !edit_volume_size {
+			old_user_intent.DeviceInfo.VolumeSize = &volume_size
 		}
 		return true, old_user_intent
 	}
@@ -974,7 +920,7 @@ func resourceUniverseUpdate(ctx context.Context, d *schema.ResourceData, meta in
 				old_user_intent = updateUni.UniverseDetails.Clusters[i].UserIntent
 
 				//SystemD upgrade
-				if (*&new_user_intent.UseSystemd != nil) && (*old_user_intent.UseSystemd != *new_user_intent.UseSystemd) &&
+				if (new_user_intent.UseSystemd != nil) && (*old_user_intent.UseSystemd != *new_user_intent.UseSystemd) &&
 					(*old_user_intent.UseSystemd == false) {
 					updateUni.UniverseDetails.Clusters[i].UserIntent = new_user_intent
 					req := client.SystemdUpgradeParams{
@@ -991,7 +937,8 @@ func resourceUniverseUpdate(ctx context.Context, d *schema.ResourceData, meta in
 					if err != nil {
 						return diag.FromErr(err)
 					}
-				} else if *old_user_intent.UseSystemd == true {
+				} else if *old_user_intent.UseSystemd == true &&
+					new_user_intent.UseSystemd == nil || *new_user_intent.UseSystemd == false {
 					tflog.Error(ctx, "Cannot disable Systemd")
 				}
 
@@ -1002,7 +949,10 @@ func resourceUniverseUpdate(ctx context.Context, d *schema.ResourceData, meta in
 				old_user_intent = updateUni.UniverseDetails.Clusters[i].UserIntent
 
 				// Resize Nodes
-				if *old_user_intent.DeviceInfo.VolumeSize != *new_user_intent.DeviceInfo.VolumeSize {
+				// Call separate task only when instance type is same, else will be handled in
+				// UpdatePrimaryCluster
+				if (*old_user_intent.InstanceType == *new_user_intent.InstanceType) &&
+					(*old_user_intent.DeviceInfo.VolumeSize != *new_user_intent.DeviceInfo.VolumeSize) {
 					if *old_user_intent.DeviceInfo.VolumeSize < *new_user_intent.DeviceInfo.VolumeSize {
 						//Only volume size should be changed to do smart resize, other changes handled in UpgradeCluster
 						updateUni.UniverseDetails.Clusters[i].UserIntent.DeviceInfo.VolumeSize = new_user_intent.DeviceInfo.VolumeSize
@@ -1066,9 +1016,6 @@ func resourceUniverseUpdate(ctx context.Context, d *schema.ResourceData, meta in
 					!reflect.DeepEqual(*old_user_intent.TserverGFlags, *new_user_intent.TserverGFlags) {
 					tflog.Info(ctx, "GFlags Upgrade is applied only via change in Primary Cluster User Intent, ignoring")
 				}
-				if *old_user_intent.DeviceInfo.VolumeSize != *new_user_intent.DeviceInfo.VolumeSize {
-					tflog.Error(ctx, "Volume Resize of Read Replica currently not be edited")
-				}
 				if (new_user_intent.UseSystemd != nil) && (*old_user_intent.UseSystemd != *new_user_intent.UseSystemd) {
 					tflog.Info(ctx, "System Upgrade is applied only via change in Primary Cluster User Intent, ignoring")
 				}
@@ -1077,7 +1024,7 @@ func resourceUniverseUpdate(ctx context.Context, d *schema.ResourceData, meta in
 					tflog.Info(ctx, "TLS Toggle is applied only via change in Primary Cluster User Intent, ignoring")
 				}
 
-				// Num of nodes, Instance Type, Num of Volumes, User Tags changes
+				// Num of nodes, Instance Type, Num of Volumes, Volume Size User Tags changes
 				var edit_allowed bool
 				edit_allowed, updateUni.UniverseDetails.Clusters[i].UserIntent = editUniverseParameters(ctx, old_user_intent, new_user_intent)
 				if edit_allowed {
