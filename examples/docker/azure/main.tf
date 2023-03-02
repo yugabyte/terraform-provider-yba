@@ -72,14 +72,7 @@ provider "yb" {
 }
 
 resource "yb_cloud_provider" "gcp" {
-  lifecycle {
-    ignore_changes = all
-  }
   code = "gcp"
-  config = merge(
-    { YB_FIREWALL_TAGS = "cluster-server" },
-    jsondecode(file("${local.home}/.yugabyte/yugabyte-gce.json"))
-  )
   dest_vpc_id = "***REMOVED***"
   name        = "test-gcp-in-azure-provider"
   regions {

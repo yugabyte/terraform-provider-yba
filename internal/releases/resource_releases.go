@@ -109,8 +109,14 @@ func resourceReleasesCreate(ctx context.Context, d *schema.ResourceData, meta in
 	http := d.Get("http").([]interface{})
 	version := d.Get("version").(string)
 
-	s3_params := formatInputS3(ctx, s3)
-	gcs_params := formatInputGcs(ctx, gcs)
+	s3_params, err := formatInputS3(ctx, s3)
+	if err != nil {
+		return diag.FromErr(err)
+	}
+	gcs_params, err := formatInputGcs(ctx, gcs)
+	if err != nil {
+		return diag.FromErr(err)
+	}
 	http_params := formatInputHttp(ctx, http)
 
 	vc := meta.(*api.ApiClient).VanillaClient
@@ -132,7 +138,7 @@ func findReleases(ctx context.Context, releases map[string]map[string]interface{
 			return r, nil
 		}
 	}
-	return nil, errors.New(fmt.Sprintf("could not find release %s", version))
+	return nil, errors.New(fmt.Sprintf("Could not find release %s", version))
 }
 
 func resourceReleasesRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {

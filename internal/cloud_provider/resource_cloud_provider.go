@@ -49,16 +49,8 @@ func ResourceCloudProvider() *schema.Resource {
 				Type:        schema.TypeMap,
 				Elem:        &schema.Schema{Type: schema.TypeString},
 				ForceNew:    true,
-				Optional:    true,
-				Description: "Configuration values to be set for the provider. AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY must be set for AWS providers. The contents of your google credentials must be included here for GCP providers. AZURE_SUBSCRIPTION_ID, AZURE_RG, AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET must be set for AZURE providers.",
-			},
-			"computed_config": {
-				Type:        schema.TypeMap,
-				Elem:        &schema.Schema{Type: schema.TypeString},
-				Optional:    true,
-				ForceNew:    true,
 				Computed:    true,
-				Description: "Same as config field except some additional values may have been returned by the server.",
+				Description: "Configuration values to be set for the provider. AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY must be set for AWS providers. The contents of your google credentials must be included here for GCP providers. AZURE_SUBSCRIPTION_ID, AZURE_RG, AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET must be set for AZURE providers.",
 			},
 			"dest_vpc_id": {
 				Type:        schema.TypeString,
@@ -92,10 +84,14 @@ func ResourceCloudProvider() *schema.Resource {
 			},
 			"regions": RegionsSchema(),
 			"ssh_port": {
-				Type:        schema.TypeInt,
-				Optional:    true,
-				Computed:    true,
-				ForceNew:    true,
+				Type:     schema.TypeInt,
+				Optional: true,
+				Computed: true,
+				ForceNew: true,
+
+				DiffSuppressFunc: func(k, old, new string, d *schema.ResourceData) bool {
+					return d.Id() != ""
+				},
 				Description: "Port to use for ssh commands",
 			},
 			"ssh_private_key_content": {
@@ -113,15 +109,47 @@ func ResourceCloudProvider() *schema.Resource {
 		},
 	}
 }
+func buildConfig(cloudCode string) (map[string]interface{}, error) {
+	config := make(map[string]interface{})
+	var err error
+	if cloudCode == "gcp" {
+		config, err = utils.GcpGetCredentialsAsMap()
+		if err != nil {
+			return nil, err
+		}
+	} else if cloudCode == "aws" {
+		awsCreds, err := utils.AwsCredentialsFromEnv()
+		if err != nil {
+			return nil, err
+		}
+		config["AWS_ACCESS_KEY_ID"] = awsCreds.AccessKeyID
+		config["AWS_SECRET_ACCESS_KEY"] = awsCreds.SecretAccessKey
 
+	} else if cloudCode == "azu" {
+		azureCreds, err := utils.AzureCredentialsFromEnv()
+		if err != nil {
+			return nil, err
+		}
+		config["AZURE_CLIENT_ID"] = azureCreds.ClientID
+		config["AZURE_CLIENT_SECRET"] = azureCreds.ClientSecret
+		config["AZURE_SUBSCRIPTION_ID"] = azureCreds.SubscriptionID
+		config["AZURE_TENANT_ID"] = azureCreds.TenantID
+		config["AZURE_RG"] = azureCreds.ResourceGroup
+	}
+	return config, nil
+}
 func resourceCloudProviderCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	c := meta.(*api.ApiClient).YugawareClient
 	cUUID := meta.(*api.ApiClient).CustomerId
 
+	config, err := buildConfig(d.Get("code").(string))
+	if err != nil {
+		return diag.FromErr(err)
+	}
 	req := client.Provider{
 		AirGapInstall:        utils.GetBoolPointer(d.Get("air_gap_install").(bool)),
 		Code:                 utils.GetStringPointer(d.Get("code").(string)),
-		Config:               utils.StringMap(d.Get("config").(map[string]interface{})),
+		Config:               utils.StringMap(config),
 		DestVpcId:            utils.GetStringPointer(d.Get("dest_vpc_id").(string)),
 		HostVpcId:            utils.GetStringPointer(d.Get("host_vpc_id").(string)),
 		HostVpcRegion:        utils.GetStringPointer(d.Get("host_vpc_region").(string)),
@@ -180,7 +208,7 @@ func resourceCloudProviderRead(ctx context.Context, d *schema.ResourceData, meta
 	if err = d.Set("code", p.Code); err != nil {
 		return diag.FromErr(err)
 	}
-	if err = d.Set("computed_config", p.Config); err != nil {
+	if err = d.Set("config", p.Config); err != nil {
 		return diag.FromErr(err)
 	}
 	if err = d.Set("name", p.Name); err != nil {
