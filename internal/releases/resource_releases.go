@@ -2,7 +2,6 @@ package releases
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
@@ -12,6 +11,7 @@ import (
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/api"
 )
 
+// ResourceReleases creates and maintains resource for releases
 func ResourceReleases() *schema.Resource {
 	return &schema.Resource{
 		Description: "YBDB Release Version Import Resource",
@@ -98,7 +98,8 @@ func ResourceReleases() *schema.Resource {
 	}
 }
 
-func resourceReleasesCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceReleasesCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) (
+	diag.Diagnostics) {
 	var diags diag.Diagnostics
 
 	cUUID := meta.(*api.ApiClient).CustomerId
@@ -109,18 +110,18 @@ func resourceReleasesCreate(ctx context.Context, d *schema.ResourceData, meta in
 	http := d.Get("http").([]interface{})
 	version := d.Get("version").(string)
 
-	s3_params, err := formatInputS3(ctx, s3)
+	s3Params, err := formatInputS3(ctx, s3)
 	if err != nil {
 		return diag.FromErr(err)
 	}
-	gcs_params, err := formatInputGcs(ctx, gcs)
+	gcsParams, err := formatInputGcs(ctx, gcs)
 	if err != nil {
 		return diag.FromErr(err)
 	}
-	http_params := formatInputHttp(ctx, http)
+	httpParams := formatInputHttp(ctx, http)
 
 	vc := meta.(*api.ApiClient).VanillaClient
-	err, resp := vc.ReleaseImport(ctx, cUUID, version, s3_params, gcs_params, http_params, token)
+	resp, err := vc.ReleaseImport(ctx, cUUID, version, s3Params, gcsParams, httpParams, token)
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -132,16 +133,18 @@ func resourceReleasesCreate(ctx context.Context, d *schema.ResourceData, meta in
 	return diags
 
 }
-func findReleases(ctx context.Context, releases map[string]map[string]interface{}, version string) (map[string]interface{}, error) {
+func findReleases(ctx context.Context, releases map[string]map[string]interface{},
+	version string) (map[string]interface{}, error) {
 	for v, r := range releases {
 		if v == version {
 			return r, nil
 		}
 	}
-	return nil, errors.New(fmt.Sprintf("Could not find release %s", version))
+	return nil, fmt.Errorf("Could not find release %s", version)
 }
 
-func resourceReleasesRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceReleasesRead(ctx context.Context, d *schema.ResourceData, meta interface{}) (
+	diag.Diagnostics) {
 	var diags diag.Diagnostics
 	c := meta.(*api.ApiClient).YugawareClient
 	cUUID := meta.(*api.ApiClient).CustomerId
@@ -187,24 +190,24 @@ func resourceReleasesRead(ctx context.Context, d *schema.ResourceData, meta inte
 	}
 
 	if p["s3"] != nil {
-		s3_formatted := formatOutputS3(ctx, p["s3"].(map[string]interface{}))
-		if err = d.Set("s3", s3_formatted); err != nil {
+		s3Formatted := formatOutputS3(ctx, p["s3"].(map[string]interface{}))
+		if err = d.Set("s3", s3Formatted); err != nil {
 			tflog.Error(ctx, "S3 Assignment Error")
 			return diag.FromErr(err)
 		}
 	}
 
 	if p["gcs"] != nil {
-		gcs_formatted := formatOutputGcs(ctx, p["gcs"].(map[string]interface{}))
-		if err = d.Set("gcs", gcs_formatted); err != nil {
+		gcsFormatted := formatOutputGcs(ctx, p["gcs"].(map[string]interface{}))
+		if err = d.Set("gcs", gcsFormatted); err != nil {
 			tflog.Error(ctx, "GCS Assignment Error")
 			return diag.FromErr(err)
 		}
 	}
 
 	if p["http"] != nil {
-		http_formatted := formatOutputHttp(ctx, p["http"].(map[string]interface{}))
-		if err = d.Set("http", http_formatted); err != nil {
+		httpFormatted := formatOutputHttp(ctx, p["http"].(map[string]interface{}))
+		if err = d.Set("http", httpFormatted); err != nil {
 			tflog.Error(ctx, "HTTP Assignment Error")
 			return diag.FromErr(err)
 		}
@@ -214,7 +217,8 @@ func resourceReleasesRead(ctx context.Context, d *schema.ResourceData, meta inte
 
 }
 
-func resourceReleasesDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceReleasesDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) (
+	diag.Diagnostics) {
 	var diags diag.Diagnostics
 
 	c := meta.(*api.ApiClient).YugawareClient

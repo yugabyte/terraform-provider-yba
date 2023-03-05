@@ -4,12 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"testing"
+
 	sdkacctest "github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
 	client "github.com/yugabyte/platform-go-client"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/acctest"
-	"testing"
 )
 
 func TestAccUniverse_GCP_UpdatePrimaryNodes(t *testing.T) {
@@ -108,13 +109,15 @@ func testAccCheckDestroyProviderAndUniverse(s *terraform.State) error {
 	for _, r := range s.RootModule().Resources {
 		if r.Type == "yb_universe" {
 			cUUID := acctest.ApiClient.CustomerId
-			_, _, err := conn.UniverseManagementApi.GetUniverse(context.Background(), cUUID, r.Primary.ID).Execute()
+			_, _, err := conn.UniverseManagementApi.GetUniverse(context.Background(), cUUID,
+				r.Primary.ID).Execute()
 			if err == nil || acctest.IsResourceNotFoundError(err) {
 				return errors.New("universe resource is not destroyed")
 			}
 		} else if r.Type == "yb_cloud_provider" {
 			cUUID := acctest.ApiClient.CustomerId
-			res, _, err := conn.CloudProvidersApi.GetListOfProviders(context.Background(), cUUID).Execute()
+			res, _, err := conn.CloudProvidersApi.GetListOfProviders(context.Background(),
+				cUUID).Execute()
 			if err != nil {
 				return err
 			}
@@ -129,7 +132,8 @@ func testAccCheckDestroyProviderAndUniverse(s *terraform.State) error {
 	return nil
 }
 
-func testAccCheckUniverseExists(name string, universe *client.UniverseResp) resource.TestCheckFunc {
+func testAccCheckUniverseExists(name string, universe *client.UniverseResp) (
+	resource.TestCheckFunc) {
 	return func(s *terraform.State) error {
 		r, ok := s.RootModule().Resources[name]
 		if !ok {
@@ -141,7 +145,8 @@ func testAccCheckUniverseExists(name string, universe *client.UniverseResp) reso
 
 		conn := acctest.ApiClient.YugawareClient
 		cUUID := acctest.ApiClient.CustomerId
-		res, _, err := conn.UniverseManagementApi.GetUniverse(context.Background(), cUUID, r.Primary.ID).Execute()
+		res, _, err := conn.UniverseManagementApi.GetUniverse(context.Background(), cUUID,
+			r.Primary.ID).Execute()
 		if err != nil {
 			return err
 		}
@@ -154,22 +159,25 @@ func testAccCheckNumNodes(universe *client.UniverseResp, expected int32) resourc
 	return func(s *terraform.State) error {
 		found := universe.UniverseDetails.Clusters[0].UserIntent.GetNumNodes()
 		if found != expected {
-			return errors.New(fmt.Sprintf("expected %d nodes; found %d", expected, found))
+			return fmt.Errorf("expected %d nodes; found %d", expected, found)
 		}
 		return nil
 	}
 }
 
 func universeGcpConfigWithNodes(name string, nodes int) string {
-	return cloudProviderGCPConfig(fmt.Sprintf(name+"-provider")) + universeConfigWithProviderWithNodes("gcp", name, nodes)
+	return cloudProviderGCPConfig(fmt.Sprintf(name+"-provider")) +
+		universeConfigWithProviderWithNodes("gcp", name, nodes)
 }
 
 func universeAwsConfigWithNodes(name string, nodes int) string {
-	return cloudProviderAWSConfig(fmt.Sprintf(name+"-provider")) + universeConfigWithProviderWithNodes("aws", name, nodes)
+	return cloudProviderAWSConfig(fmt.Sprintf(name+"-provider")) +
+		universeConfigWithProviderWithNodes("aws", name, nodes)
 }
 
 func universeAzureConfigWithNodes(name string, nodes int) string {
-	return cloudProviderAzureConfig(fmt.Sprintf(name+"-provider")) + universeConfigWithProviderWithNodes("azu", name, nodes)
+	return cloudProviderAzureConfig(fmt.Sprintf(name+"-provider")) +
+		universeConfigWithProviderWithNodes("azu", name, nodes)
 }
 
 func universeConfigWithProviderWithNodes(p string, name string, nodes int) string {
@@ -205,7 +213,8 @@ resource "yb_universe" "%s" {
   }
   communication_ports {}
 }
-`, p, p, p, name, p, p, p, nodes, getUniverseInstanceType(p), getUniverseStorageType(p), acctest.TestYBSoftwareVersion(), p)
+`, p, p, p, name, p, p, p, nodes, getUniverseInstanceType(p),
+		getUniverseStorageType(p), acctest.TestYBSoftwareVersion(), p)
 }
 
 func getUniverseStorageType(p string) string {
@@ -247,7 +256,8 @@ resource "yb_cloud_provider" "gcp" {
 }
 
 func cloudProviderAWSConfig(name string) string {
-	// TODO: remove the lifecycle ignore_changes block. This is needed because the current API is not returning vnet_name
+	// TODO: remove the lifecycle ignore_changes block. This is needed because the current API
+	// is not returning vnet_name
 	return fmt.Sprintf(`
 resource "yb_cloud_provider" "aws" {
   lifecycle {
@@ -257,7 +267,7 @@ resource "yb_cloud_provider" "aws" {
   }
 
   code = "aws"
-  config = { 
+  config = {
 	AWS_ACCESS_KEY_ID = "%s"
 	AWS_SECRET_ACCESS_KEY = "%s"
   }
@@ -280,7 +290,7 @@ func cloudProviderAzureConfig(name string) string {
 	return fmt.Sprintf(`
 resource "yb_cloud_provider" "azu" {
   code = "azu"
-  config = { 
+  config = {
 	AZURE_SUBSCRIPTION_ID = "%s"
 	AZURE_RG = "%s"
 	AZURE_TENANT_ID = "%s"
