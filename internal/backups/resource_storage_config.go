@@ -147,7 +147,7 @@ func resourceStorageConfigRead(ctx context.Context, d *schema.ResourceData, meta
 }
 
 func findCustomerConfig(configs []client.CustomerConfigUI, uuid string) (
-		*client.CustomerConfigUI, error) {
+	*client.CustomerConfigUI, error) {
 	for _, c := range configs {
 		if *c.ConfigUUID == uuid {
 			return &c, nil

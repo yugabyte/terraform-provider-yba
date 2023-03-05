@@ -31,6 +31,7 @@ func init() {
 	// }
 }
 
+// New creates a new terraform provider with input values
 func New() *schema.Provider {
 	return &schema.Provider{
 		Schema: map[string]*schema.Schema{
@@ -49,6 +50,7 @@ func New() *schema.Provider {
 			"yb_provider_key":    cloud_provider.ProviderKey(),
 			"yb_storage_configs": backups.StorageConfigs(),
 			"yb_release_version": releases.ReleaseVersion(),
+			//"yb_backup_info": 		backups.BackupsLists(),
 		},
 		ResourcesMap: map[string]*schema.Resource{
 			"yb_installation":            installation.ResourceInstallation(),
@@ -58,13 +60,15 @@ func New() *schema.Provider {
 			"yb_user":                    user.ResourceUser(),
 			"yb_customer_resource":       customer.ResourceCustomer(),
 			"yb_storage_config_resource": backups.ResourceStorageConfig(),
-			"yb_releases":				  releases.ResourceReleases(),
+			"yb_releases":                releases.ResourceReleases(),
+			//"yb_restore":				 backups.ResourceRestore(),
 		},
 		ConfigureContextFunc: providerConfigure,
 	}
 }
 
-func providerConfigure(ctx context.Context, d *schema.ResourceData) (interface{}, diag.Diagnostics) {
+func providerConfigure(ctx context.Context, d *schema.ResourceData) (interface{},
+	diag.Diagnostics) {
 	var diags diag.Diagnostics
 
 	host := d.Get("host").(string)

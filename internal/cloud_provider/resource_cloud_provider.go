@@ -2,7 +2,6 @@ package cloud_provider
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -15,6 +14,7 @@ import (
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/utils"
 )
 
+// ResourceCloudProvider creates and maintains resource for cloud providers
 func ResourceCloudProvider() *schema.Resource {
 	return &schema.Resource{
 		Description: "Cloud Provider Resource",
@@ -46,11 +46,15 @@ func ResourceCloudProvider() *schema.Resource {
 				Description: "Code of the cloud provider. Permitted values: gcp, aws, azu",
 			},
 			"config": {
-				Type:        schema.TypeMap,
-				Elem:        &schema.Schema{Type: schema.TypeString},
-				ForceNew:    true,
-				Computed:    true,
-				Description: "Configuration values to be set for the provider. AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY must be set for AWS providers. The contents of your google credentials must be included here for GCP providers. AZURE_SUBSCRIPTION_ID, AZURE_RG, AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET must be set for AZURE providers.",
+				Type:     schema.TypeMap,
+				Elem:     &schema.Schema{Type: schema.TypeString},
+				ForceNew: true,
+				Computed: true,
+				Description: "Configuration values to be set for the provider. " +
+					"AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY must be set for AWS providers." +
+					" The contents of your google credentials must be included here for GCP " +
+					"providers. AZURE_SUBSCRIPTION_ID, AZURE_RG, AZURE_TENANT_ID, AZURE_CLIENT_ID," +
+					" AZURE_CLIENT_SECRET must be set for AZURE providers.",
 			},
 			"dest_vpc_id": {
 				Type:        schema.TypeString,
@@ -138,7 +142,8 @@ func buildConfig(cloudCode string) (map[string]interface{}, error) {
 	}
 	return config, nil
 }
-func resourceCloudProviderCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceCloudProviderCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) (
+	diag.Diagnostics) {
 	c := meta.(*api.ApiClient).YugawareClient
 	cUUID := meta.(*api.ApiClient).CustomerId
 
@@ -183,10 +188,11 @@ func findProvider(providers []client.Provider, uuid string) (*client.Provider, e
 			return &p, nil
 		}
 	}
-	return nil, errors.New(fmt.Sprintf("could not find provider %s", uuid))
+	return nil, fmt.Errorf("could not find provider %s", uuid)
 }
 
-func resourceCloudProviderRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceCloudProviderRead(ctx context.Context, d *schema.ResourceData, meta interface{}) (
+	diag.Diagnostics) {
 	var diags diag.Diagnostics
 
 	c := meta.(*api.ApiClient).YugawareClient
@@ -229,7 +235,8 @@ func resourceCloudProviderRead(ctx context.Context, d *schema.ResourceData, meta
 	return diags
 }
 
-func resourceCloudProviderDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceCloudProviderDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) (
+	diag.Diagnostics) {
 	// TODO: this uses a non-public API
 	var diags diag.Diagnostics
 
@@ -237,7 +244,8 @@ func resourceCloudProviderDelete(ctx context.Context, d *schema.ResourceData, me
 	cUUID := meta.(*api.ApiClient).CustomerId
 	token := meta.(*api.ApiClient).ApiKey
 	pUUID := d.Id()
-	_, err := vc.MakeRequest(http.MethodDelete, fmt.Sprintf("api/v1/customers/%s/providers/%s", cUUID, pUUID), nil, token)
+	_, err := vc.MakeRequest(http.MethodDelete, fmt.Sprintf("api/v1/customers/%s/providers/%s",
+		cUUID, pUUID), nil, token)
 	if err != nil {
 		return diag.FromErr(err)
 	}
