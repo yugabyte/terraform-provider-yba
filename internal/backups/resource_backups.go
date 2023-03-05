@@ -2,7 +2,6 @@ package backups
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
@@ -13,6 +12,7 @@ import (
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/utils"
 )
 
+// ResourceBackups creates and maintains resource for backup schedules
 func ResourceBackups() *schema.Resource {
 	return &schema.Resource{
 		Description: "Scheduled Backups for Universe",
@@ -33,7 +33,7 @@ func ResourceBackups() *schema.Resource {
 		},
 
 		Schema: map[string]*schema.Schema{
-			"uni_uuid": {
+			"universe_uuid": {
 				Type:        schema.TypeString,
 				Required:    true,
 				ForceNew:    true,
@@ -60,10 +60,11 @@ func ResourceBackups() *schema.Resource {
 				Description: "Keyspace to backup",
 			},
 			"storage_config_uuid": {
-				Type:        schema.TypeString,
-				Required:    true,
-				ForceNew:    true,
-				Description: "UUID of the storage configuration to use. Can be retrieved from the storage config data source.",
+				Type:     schema.TypeString,
+				Required: true,
+				ForceNew: true,
+				Description: "UUID of the storage configuration to use. Can be " +
+					"retrieved from the storage config data source.",
 			},
 			"time_before_delete": {
 				Type:        schema.TypeInt,
@@ -90,10 +91,11 @@ func ResourceBackups() *schema.Resource {
 				Description: "Number of concurrent commands to run on nodes over SSH",
 			},
 			"backup_type": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				ForceNew:    true,
-				Description: "Type of the backup. Permitted values: YQL_TABLE_TYPE, REDIS_TABLE_TYPE, PGSQL_TABLE_TYPE, TRANSACTION_STATUS_TABLE_TYPE",
+				Type:     schema.TypeString,
+				Optional: true,
+				ForceNew: true,
+				Description: "Type of the backup. Permitted values: YQL_TABLE_TYPE, " +
+					"REDIS_TABLE_TYPE, PGSQL_TABLE_TYPE, TRANSACTION_STATUS_TABLE_TYPE",
 			},
 			"table_uuid_list": {
 				Type:        schema.TypeList,
@@ -106,13 +108,15 @@ func ResourceBackups() *schema.Resource {
 	}
 }
 
-func resourceBackupsCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceBackupsCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) (
+	diag.Diagnostics) {
 	c := meta.(*api.ApiClient).YugawareClient
 	cUUID := meta.(*api.ApiClient).CustomerId
 
 	if d.Get("backup_type").(string) == "REDIS_TABLE_TYPE" {
 		if len(d.Get("table_uuid_list").([]interface{})) == 0 {
-			return diag.FromErr(errors.New(fmt.Sprintf("Table UUID List cannot be empty for 'REDIS_TABLE_TYPE'")))
+			return diag.FromErr(fmt.Errorf("Table UUID List cannot be empty for " +
+				"'REDIS_TABLE_TYPE'"))
 		}
 	}
 
@@ -128,7 +132,10 @@ func resourceBackupsCreate(ctx context.Context, d *schema.ResourceData, meta int
 		SchedulingFrequency: utils.GetInt64Pointer(int64(d.Get("frequency").(int))),
 		TableUUIDList:       utils.StringSlice(d.Get("table_uuid_list").([]interface{})),
 	}
-	r, _, err := c.BackupsApi.CreateMultiTableBackup(ctx, cUUID, d.Get("uni_uuid").(string)).TableBackup(req).Execute()
+
+	// V1 schedule backup
+	r, _, err := c.BackupsApi.CreateMultiTableBackup(ctx, cUUID, d.Get("universe_uuid").(string)).
+		TableBackup(req).Execute()
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -137,12 +144,14 @@ func resourceBackupsCreate(ctx context.Context, d *schema.ResourceData, meta int
 	return resourceBackupsRead(ctx, d, meta)
 }
 
-func resourceBackupsRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceBackupsRead(ctx context.Context, d *schema.ResourceData, meta interface{}) (
+	diag.Diagnostics) {
 	var diags diag.Diagnostics
 
 	c := meta.(*api.ApiClient).YugawareClient
 	cUUID := meta.(*api.ApiClient).CustomerId
 
+	// V1 schedule list
 	r, _, err := c.ScheduleManagementApi.ListSchedules(ctx, cUUID).Execute()
 	b, err := findBackup(r, d.Id())
 	if err != nil {
@@ -164,17 +173,19 @@ func findBackup(backups []client.Schedule, sUUID string) (*client.Schedule, erro
 			return &b, nil
 		}
 	}
-	return nil, errors.New(fmt.Sprintf("Can't find backup schedule %s", sUUID))
+	return nil, fmt.Errorf("Can't find backup schedule %s", sUUID)
 }
 
-func resourceBackupsUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceBackupsUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) (
+	diag.Diagnostics) {
 	c := meta.(*api.ApiClient).YugawareClient
 	cUUID := meta.(*api.ApiClient).CustomerId
 
-	// since a change was introduced in 2.13.2 which requires an extra field for this API, and that change was made after the
-	// generation of the platform-go-client, Updating Backup schedules are currently disabled
+	// since a change was introduced in 2.13.2 which requires an extra field for this API, and that
+	// change was made after the generation of the platform-go-client, Updating Backup schedules
+	// are currently disabled
 
-	return diag.FromErr(errors.New(fmt.Sprintf("Editing Backup Schedule is currently not supported")))
+	return diag.FromErr(fmt.Errorf("Editing Backup Schedule is currently not supported"))
 
 	req := client.EditBackupScheduleParams{
 		CronExpression: utils.GetStringPointer(d.Get("cron_expression").(string)),
@@ -187,10 +198,12 @@ func resourceBackupsUpdate(ctx context.Context, d *schema.ResourceData, meta int
 	return resourceBackupsRead(ctx, d, meta)
 }
 
-func resourceBackupsDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceBackupsDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) (
+	diag.Diagnostics) {
 	c := meta.(*api.ApiClient).YugawareClient
 	cUUID := meta.(*api.ApiClient).CustomerId
 
+	// V1 schedule delete
 	_, _, err := c.ScheduleManagementApi.DeleteSchedule(ctx, cUUID, d.Id()).Execute()
 	if err != nil {
 		return diag.FromErr(err)

@@ -1,0 +1,22 @@
+{
+    "linters": {
+        "go-files-length": {
+            "type": "text",
+            "text.max-line-length": 100,
+            "include": "(^internal/.*[.]go$)",
+            "severity": {
+                "2": "disabled"
+            }
+        },
+        "go-files": {
+            "type": "golint",
+            "include": "(^internal/.*[.]go$)",
+            "exclude": [
+                "(^docs/)",
+                "(^examples/)",
+                "(^modules/)"
+
+            ]
+        }
+    }
+}

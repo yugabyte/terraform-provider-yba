@@ -14,9 +14,6 @@ locals {
   home                  = "<placeholder for home directory>"
   dir                   = "${local.home}/code/terraform-provider-yugabytedb-anywhere/modules/resources"
   cluster_name          = "terraform-aws"
-  google_creds          = "${local.home}/.yugabyte/yugabyte-gce.json"
-  aws_access_key_id     = "<placeholder for aws access key id>"
-  aws_secret_access_key = "<placeholder for aws secret access key>"
 
   s3_backup_location    = "s3://dkumar-test" // added for testing
   gcs_backup_location   = "gs://dkumar-test"// added for testing
@@ -220,7 +217,7 @@ data "yb_storage_configs" "configs_gcs" {
 /*
 resource "yb_backups" "aws_universe_backup_redis" {
 
-  uni_uuid = yb_universe.aws_universe.id
+  universe_uuid = yb_universe.aws_universe.id
   keyspace = "system_redis"
   storage_config_uuid = data.yb_storage_configs.configs_gcs.id
   time_before_delete = 864000
@@ -234,7 +231,7 @@ resource "yb_backups" "aws_universe_backup_redis" {
 
 resource "yb_backups" "aws_universe_backup_ycql" {
 
-  uni_uuid = yb_universe.aws_universe.id
+  universe_uuid = yb_universe.aws_universe.id
   keyspace = "ybdemo_keyspace"
   storage_config_uuid = data.yb_storage_configs.configs.id
   time_before_delete = 864000
@@ -244,10 +241,10 @@ resource "yb_backups" "aws_universe_backup_ycql" {
   parallelism = 8
   backup_type ="YQL_TABLE_TYPE"
 }
-/*
+
 resource "yb_backups" "aws_universe_backup_ysql" {
 
-  uni_uuid = yb_universe.aws_universe.id
+  universe_uuid = yb_universe.aws_universe.id
   keyspace = "postgres"
   storage_config_uuid = data.yb_storage_configs.configs.id
    time_before_delete = 864000
