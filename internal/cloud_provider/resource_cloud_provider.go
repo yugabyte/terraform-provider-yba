@@ -94,6 +94,12 @@ func ResourceCloudProvider() *schema.Resource {
 				ForceNew: true,
 
 				DiffSuppressFunc: func(k, old, new string, d *schema.ResourceData) bool {
+					// Port changes are currently not supported in Edit Provider.
+					// Currently, YBA Provider details does not returns the port value 22
+					// despite storing the correct port value in the schema. This leads to
+					// change detection in the config file, which forces replacement due to
+					// the ForceNew tag being set to true. Will confirm if this is a bug in
+					// YBA
 					return d.Id() != ""
 				},
 				Description: "Port to use for ssh commands",

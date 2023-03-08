@@ -2,11 +2,13 @@ package utils
 
 import (
 	"context"
+	"time"
+
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
 	client "github.com/yugabyte/platform-go-client"
-	"time"
 )
 
+// StringSlice accepts array of interface and returns a pointer to slice of string
 func StringSlice(in []interface{}) *[]string {
 	var out []string
 	for _, v := range in {
@@ -15,6 +17,7 @@ func StringSlice(in []interface{}) *[]string {
 	return &out
 }
 
+// StringMap accepts a string -> interface map and returns pointer to string -> string map
 func StringMap(in map[string]interface{}) *map[string]string {
 	out := make(map[string]string)
 	for k, v := range in {
@@ -23,6 +26,7 @@ func StringMap(in map[string]interface{}) *map[string]string {
 	return &out
 }
 
+// MapFromSingletonList returns a map of string -> interface from a slice of interface
 func MapFromSingletonList(in []interface{}) map[string]interface{} {
 	if len(in) == 0 {
 		return make(map[string]interface{})
@@ -30,6 +34,7 @@ func MapFromSingletonList(in []interface{}) map[string]interface{} {
 	return in[0].(map[string]interface{})
 }
 
+// GetBoolPointer returns a pointer to bool value
 func GetBoolPointer(in bool) *bool {
 	if !in {
 		return nil
@@ -37,6 +42,7 @@ func GetBoolPointer(in bool) *bool {
 	return &in
 }
 
+// GetStringPointer returns a pointer to string value
 func GetStringPointer(in string) *string {
 	if in == "" {
 		return nil
@@ -44,6 +50,7 @@ func GetStringPointer(in string) *string {
 	return &in
 }
 
+// GetInt32Pointer returns a pointer to int32 value
 func GetInt32Pointer(in int32) *int32 {
 	if in == 0 {
 		return nil
@@ -51,6 +58,7 @@ func GetInt32Pointer(in int32) *int32 {
 	return &in
 }
 
+// GetInt64Pointer returns a pointer to int64 value
 func GetInt64Pointer(in int64) *int64 {
 	if in == 0 {
 		return nil
@@ -58,6 +66,7 @@ func GetInt64Pointer(in int64) *int64 {
 	return &in
 }
 
+// GetFloat64Pointer returns a pointer to float64 type
 func GetFloat64Pointer(in float64) *float64 {
 	if in == 0 {
 		return nil
@@ -65,16 +74,21 @@ func GetFloat64Pointer(in float64) *float64 {
 	return &in
 }
 
+// CreateSingletonList returns a list of single entry from an interface
 func CreateSingletonList(in interface{}) []interface{} {
 	return []interface{}{in}
 }
 
 var (
+	// PendingTaskStates lists incomplete task states
 	PendingTaskStates = []string{"Created", "Initializing", "Running"}
+	// SuccessTaskStates lists successful task states
 	SuccessTaskStates = []string{"Success"}
 )
 
-func WaitForTask(ctx context.Context, tUUID string, cUUID string, c *client.APIClient, timeout time.Duration) error {
+// WaitForTask waits for State change for a YBA task
+func WaitForTask(ctx context.Context, tUUID string, cUUID string, c *client.APIClient,
+	timeout time.Duration) error {
 	wait := &resource.StateChangeConf{
 		Delay:   1 * time.Second,
 		Pending: PendingTaskStates,
