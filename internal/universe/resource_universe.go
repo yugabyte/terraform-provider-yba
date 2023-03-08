@@ -488,7 +488,8 @@ func userIntentSchema() *schema.Resource {
 		},
 	}
 }
-func getClutserByType(clusters []client.Cluster, clusterType string) (client.Cluster, bool) {
+
+func getClusterByType(clusters []client.Cluster, clusterType string) (client.Cluster, bool) {
 
 	for _, v := range clusters {
 		if v.ClusterType == clusterType {
@@ -497,6 +498,7 @@ func getClutserByType(clusters []client.Cluster, clusterType string) (client.Clu
 	}
 	return client.Cluster{}, false
 }
+
 func resourceUniverseDiff() schema.CustomizeDiffFunc {
 	return customdiff.All(
 		customdiff.ValidateChange("clusters", func(ctx context.Context, old, new, m interface{}) error {
@@ -515,9 +517,9 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 			newClusterSet := buildClusters(new.([]interface{}))
 			if len(old.([]interface{})) != 0 {
 				oldClusterSet := buildClusters(old.([]interface{}))
-				oldPrimaryCluster, isPresent := getClutserByType(oldClusterSet, "PRIMARY")
+				oldPrimaryCluster, isPresent := getClusterByType(oldClusterSet, "PRIMARY")
 				if isPresent {
-					newPrimaryCluster, isNewPresent := getClutserByType(newClusterSet, "PRIMARY")
+					newPrimaryCluster, isNewPresent := getClusterByType(newClusterSet, "PRIMARY")
 					if isNewPresent {
 						if (oldPrimaryCluster.UserIntent.UseSystemd != nil) &&
 							(*oldPrimaryCluster.UserIntent.UseSystemd == true &&
@@ -535,9 +537,9 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 			newClusterSet := buildClusters(new.([]interface{}))
 			if len(old.([]interface{})) != 0 {
 				oldClusterSet := buildClusters(old.([]interface{}))
-				oldPrimaryCluster, isPresent := getClutserByType(oldClusterSet, "PRIMARY")
+				oldPrimaryCluster, isPresent := getClusterByType(oldClusterSet, "PRIMARY")
 				if isPresent {
-					newPrimaryCluster, isNewPresent := getClutserByType(newClusterSet, "PRIMARY")
+					newPrimaryCluster, isNewPresent := getClusterByType(newClusterSet, "PRIMARY")
 					if isNewPresent {
 						if *oldPrimaryCluster.UserIntent.DeviceInfo.VolumeSize >
 							*newPrimaryCluster.UserIntent.DeviceInfo.VolumeSize {
@@ -555,9 +557,9 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 			newClusterSet := buildClusters(new.([]interface{}))
 			if len(old.([]interface{})) != 0 {
 				oldClusterSet := buildClusters(old.([]interface{}))
-				oldPrimaryCluster, isPresent := getClutserByType(oldClusterSet, "PRIMARY")
+				oldPrimaryCluster, isPresent := getClusterByType(oldClusterSet, "PRIMARY")
 				if isPresent {
-					newPrimaryCluster, isNewPresent := getClutserByType(newClusterSet, "PRIMARY")
+					newPrimaryCluster, isNewPresent := getClusterByType(newClusterSet, "PRIMARY")
 					if isNewPresent {
 						if (*oldPrimaryCluster.UserIntent.InstanceType ==
 							*newPrimaryCluster.UserIntent.InstanceType) &&
@@ -576,9 +578,9 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 			newClusterSet := buildClusters(new.([]interface{}))
 			if len(old.([]interface{})) != 0 {
 				oldClusterSet := buildClusters(old.([]interface{}))
-				oldPrimaryCluster, isPresent := getClutserByType(oldClusterSet, "ASYNC")
+				oldPrimaryCluster, isPresent := getClusterByType(oldClusterSet, "ASYNC")
 				if isPresent {
-					newPrimaryCluster, isNewPresent := getClutserByType(newClusterSet, "ASYNC")
+					newPrimaryCluster, isNewPresent := getClusterByType(newClusterSet, "ASYNC")
 					if isNewPresent {
 						if *oldPrimaryCluster.UserIntent.DeviceInfo.VolumeSize >
 							*newPrimaryCluster.UserIntent.DeviceInfo.VolumeSize {
@@ -596,9 +598,9 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 			newClusterSet := buildClusters(new.([]interface{}))
 			if len(old.([]interface{})) != 0 {
 				oldClusterSet := buildClusters(old.([]interface{}))
-				oldPrimaryCluster, isPresent := getClutserByType(oldClusterSet, "ASYNC")
+				oldPrimaryCluster, isPresent := getClusterByType(oldClusterSet, "ASYNC")
 				if isPresent {
-					newPrimaryCluster, isNewPresent := getClutserByType(newClusterSet, "ASYNC")
+					newPrimaryCluster, isNewPresent := getClusterByType(newClusterSet, "ASYNC")
 					if isNewPresent {
 						if (*oldPrimaryCluster.UserIntent.InstanceType ==
 							*newPrimaryCluster.UserIntent.InstanceType) &&
@@ -617,8 +619,8 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 		customdiff.ValidateChange("clusters", func(ctx context.Context, old, new, m interface{}) error {
 			// check if universe name of the clusters are the same
 			newClusterSet := buildClusters(new.([]interface{}))
-			newPrimary, isPresent := getClutserByType(newClusterSet, "PRIMARY")
-			newReadOnly, isRRPresnt := getClutserByType(newClusterSet, "ASYNC")
+			newPrimary, isPresent := getClusterByType(newClusterSet, "PRIMARY")
+			newReadOnly, isRRPresnt := getClusterByType(newClusterSet, "ASYNC")
 			if isPresent && isRRPresnt {
 				if newPrimary.UserIntent.UniverseName == nil {
 					return errors.New("Universe name cannot be empty")
@@ -636,8 +638,8 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 		customdiff.ValidateChange("clusters", func(ctx context.Context, old, new, m interface{}) error {
 			// check if software version of the clusters are the same
 			newClusterSet := buildClusters(new.([]interface{}))
-			newPrimary, isPresent := getClutserByType(newClusterSet, "PRIMARY")
-			newReadOnly, isRRPresnt := getClutserByType(newClusterSet, "ASYNC")
+			newPrimary, isPresent := getClusterByType(newClusterSet, "PRIMARY")
+			newReadOnly, isRRPresnt := getClusterByType(newClusterSet, "ASYNC")
 			if len(old.([]interface{})) != 0 {
 				if isPresent && isRRPresnt {
 					if (newPrimary.UserIntent.YbSoftwareVersion != nil) &&
@@ -654,8 +656,8 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 		customdiff.ValidateChange("clusters", func(ctx context.Context, old, new, m interface{}) error {
 			// check if systemD setting of the clusters are the same
 			newClusterSet := buildClusters(new.([]interface{}))
-			newPrimary, isPresent := getClutserByType(newClusterSet, "PRIMARY")
-			newReadOnly, isRRPresnt := getClutserByType(newClusterSet, "ASYNC")
+			newPrimary, isPresent := getClusterByType(newClusterSet, "PRIMARY")
+			newReadOnly, isRRPresnt := getClusterByType(newClusterSet, "ASYNC")
 			if isPresent && isRRPresnt {
 				if (newPrimary.UserIntent.UseSystemd != nil) &&
 					(newReadOnly.UserIntent.UseSystemd != nil) &&
@@ -669,8 +671,8 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 		customdiff.ValidateChange("clusters", func(ctx context.Context, old, new, m interface{}) error {
 			// check if Gflags setting of the clusters are the same
 			newClusterSet := buildClusters(new.([]interface{}))
-			newPrimary, isPresent := getClutserByType(newClusterSet, "PRIMARY")
-			newReadOnly, isRRPresnt := getClutserByType(newClusterSet, "ASYNC")
+			newPrimary, isPresent := getClusterByType(newClusterSet, "PRIMARY")
+			newReadOnly, isRRPresnt := getClusterByType(newClusterSet, "ASYNC")
 			if isPresent && isRRPresnt {
 				if (newPrimary.UserIntent.MasterGFlags != nil) &&
 					(newReadOnly.UserIntent.MasterGFlags != nil) &&
@@ -689,8 +691,8 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 		customdiff.ValidateChange("clusters", func(ctx context.Context, old, new, m interface{}) error {
 			// check if TLS setting of the clusters are the same
 			newClusterSet := buildClusters(new.([]interface{}))
-			newPrimary, isPresent := getClutserByType(newClusterSet, "PRIMARY")
-			newReadOnly, isRRPresnt := getClutserByType(newClusterSet, "ASYNC")
+			newPrimary, isPresent := getClusterByType(newClusterSet, "PRIMARY")
+			newReadOnly, isRRPresnt := getClusterByType(newClusterSet, "ASYNC")
 			if isPresent && isRRPresnt {
 				if (newPrimary.UserIntent.EnableClientToNodeEncrypt != nil) &&
 					(newReadOnly.UserIntent.EnableClientToNodeEncrypt != nil) &&
@@ -951,7 +953,7 @@ func resourceUniverseUpdate(ctx context.Context, d *schema.ResourceData, meta in
 						return diag.FromErr(err)
 					}
 				} else if *oldUserIntent.UseSystemd == true &&
-					newUserIntent.UseSystemd == nil || *newUserIntent.UseSystemd == false {
+					(newUserIntent.UseSystemd == nil || *newUserIntent.UseSystemd == false) {
 					tflog.Error(ctx, "Cannot disable Systemd")
 				}
 
