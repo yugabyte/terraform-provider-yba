@@ -35,10 +35,10 @@ type AzureCredentials struct {
 	ResourceGroup  string `json:"resource_group"`
 }
 
-// GcpGetCredentials retrieves the GCE credentials from env variable and returns GCPCredentials
+// gcpGetCredentials retrieves the GCE credentials from env variable and returns gcpCredentials
 // struct
-func GcpGetCredentials() (GCPCredentials, error) {
-	gcsCredsByteArray, err := GcpCredentialsFromEnv()
+func gcpGetCredentials() (GCPCredentials, error) {
+	gcsCredsByteArray, err := gcpCredentialsFromEnv()
 	if err != nil {
 		return GCPCredentials{}, err
 	}
@@ -52,13 +52,13 @@ func GcpGetCredentials() (GCPCredentials, error) {
 
 }
 
-// GcpCredentialsFromEnv retrieves credentials from "GOOGLE_APPLICATION_CREDENTIALS"
-func GcpCredentialsFromEnv() ([]byte, error) {
-	return GcpCredentialsFromFilePath(os.Getenv("GOOGLE_APPLICATION_CREDENTIALS"))
+// gcpCredentialsFromEnv retrieves credentials from "GOOGLE_APPLICATION_CREDENTIALS"
+func gcpCredentialsFromEnv() ([]byte, error) {
+	return gcpCredentialsFromFilePath(os.Getenv("GOOGLE_APPLICATION_CREDENTIALS"))
 }
 
-// GcpCredentialsFromFilePath retrieves credentials from any given file path
-func GcpCredentialsFromFilePath(filePath string) ([]byte, error) {
+// gcpCredentialsFromFilePath retrieves credentials from any given file path
+func gcpCredentialsFromFilePath(filePath string) ([]byte, error) {
 	if filePath == "" {
 		return nil, fmt.Errorf("GOOGLE_APPLICATION_CREDENTIALS env variable is empty")
 	}
@@ -69,8 +69,8 @@ func GcpCredentialsFromFilePath(filePath string) ([]byte, error) {
 	return gcsCredsByteArray, nil
 }
 
-// GcpGetJSONTag returns the JSON field name of the struct field
-func GcpGetJSONTag(val reflect.StructField) string {
+// gcpGetJSONTag returns the JSON field name of the struct field
+func gcpGetJSONTag(val reflect.StructField) string {
 	switch jsonTag := val.Tag.Get("json"); jsonTag {
 	case "-":
 	case "":
@@ -88,7 +88,7 @@ func GcpGetJSONTag(val reflect.StructField) string {
 
 // GcpGetCredentialsAsString returns the GCE JSON file contents as a string
 func GcpGetCredentialsAsString() (string, error) {
-	gcsCredsJSON, err := GcpGetCredentials()
+	gcsCredsJSON, err := gcpGetCredentials()
 	if err != nil {
 		return "", err
 	}
@@ -97,7 +97,7 @@ func GcpGetCredentialsAsString() (string, error) {
 	gcsCredString = "{ "
 	for i := 0; i < v.NumField(); i++ {
 		var s string
-		field := GcpGetJSONTag(v.Type().Field(i))
+		field := gcpGetJSONTag(v.Type().Field(i))
 
 		if field == "private_key" {
 			valString := strings.Replace(v.Field(i).Interface().(string), "\n", "\\n", -1)
@@ -119,13 +119,13 @@ func GcpGetCredentialsAsString() (string, error) {
 // GcpGetCredentialsAsMap returns the GCE JSON file contents as a map
 func GcpGetCredentialsAsMap() (map[string]interface{}, error) {
 	gcsCredsMap := make(map[string]interface{})
-	gcsCredsJSON, err := GcpGetCredentials()
+	gcsCredsJSON, err := gcpGetCredentials()
 	if err != nil {
 		return nil, err
 	}
 	v := reflect.ValueOf(gcsCredsJSON)
 	for i := 0; i < v.NumField(); i++ {
-		tag := GcpGetJSONTag(v.Type().Field(i))
+		tag := gcpGetJSONTag(v.Type().Field(i))
 		gcsCredsMap[tag] = v.Field(i).Interface().(string)
 	}
 	return gcsCredsMap, nil
