@@ -521,10 +521,8 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 				if isPresent {
 					newPrimaryCluster, isNewPresent := getClusterByType(newClusterSet, "PRIMARY")
 					if isNewPresent {
-						if (oldPrimaryCluster.UserIntent.UseSystemd != nil) &&
-							(*oldPrimaryCluster.UserIntent.UseSystemd == true &&
-								((newPrimaryCluster.UserIntent.UseSystemd == nil) ||
-									(*newPrimaryCluster.UserIntent.UseSystemd == false))) {
+						if (oldPrimaryCluster.UserIntent.GetUseSystemd() == true &&
+								newPrimaryCluster.UserIntent.GetUseSystemd() == false) {
 							return errors.New("Cannot disable SystemD")
 						}
 					}
@@ -541,8 +539,8 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 				if isPresent {
 					newPrimaryCluster, isNewPresent := getClusterByType(newClusterSet, "PRIMARY")
 					if isNewPresent {
-						if *oldPrimaryCluster.UserIntent.DeviceInfo.VolumeSize >
-							*newPrimaryCluster.UserIntent.DeviceInfo.VolumeSize {
+						if oldPrimaryCluster.UserIntent.DeviceInfo.GetVolumeSize() >
+							newPrimaryCluster.UserIntent.DeviceInfo.GetVolumeSize() {
 							return errors.New("Cannot decrease Volume Size of nodes in " +
 								"Primary Cluster")
 						}
@@ -561,10 +559,10 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 				if isPresent {
 					newPrimaryCluster, isNewPresent := getClusterByType(newClusterSet, "PRIMARY")
 					if isNewPresent {
-						if (*oldPrimaryCluster.UserIntent.InstanceType ==
-							*newPrimaryCluster.UserIntent.InstanceType) &&
-							(*oldPrimaryCluster.UserIntent.DeviceInfo.NumVolumes !=
-								*newPrimaryCluster.UserIntent.DeviceInfo.NumVolumes) {
+						if (oldPrimaryCluster.UserIntent.GetInstanceType() ==
+							newPrimaryCluster.UserIntent.GetInstanceType()) &&
+							(oldPrimaryCluster.UserIntent.DeviceInfo.GetNumVolumes() !=
+								newPrimaryCluster.UserIntent.DeviceInfo.GetNumVolumes()) {
 							return errors.New("Cannot change number of volumes per node " +
 								"without change in instance type in Primary Cluster")
 						}
@@ -582,8 +580,8 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 				if isPresent {
 					newPrimaryCluster, isNewPresent := getClusterByType(newClusterSet, "ASYNC")
 					if isNewPresent {
-						if *oldPrimaryCluster.UserIntent.DeviceInfo.VolumeSize >
-							*newPrimaryCluster.UserIntent.DeviceInfo.VolumeSize {
+						if oldPrimaryCluster.UserIntent.DeviceInfo.GetVolumeSize() >
+							newPrimaryCluster.UserIntent.DeviceInfo.GetVolumeSize() {
 							return errors.New("Cannot decrease Volume Size of nodes in " +
 								"Read Replica Cluster")
 						}
@@ -602,12 +600,12 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 				if isPresent {
 					newPrimaryCluster, isNewPresent := getClusterByType(newClusterSet, "ASYNC")
 					if isNewPresent {
-						if (*oldPrimaryCluster.UserIntent.InstanceType ==
-							*newPrimaryCluster.UserIntent.InstanceType) &&
-							((*oldPrimaryCluster.UserIntent.DeviceInfo.NumVolumes !=
-								*newPrimaryCluster.UserIntent.DeviceInfo.NumVolumes) ||
-								(*oldPrimaryCluster.UserIntent.DeviceInfo.VolumeSize !=
-									*newPrimaryCluster.UserIntent.DeviceInfo.VolumeSize)) {
+						if (oldPrimaryCluster.UserIntent.GetInstanceType() ==
+							newPrimaryCluster.UserIntent.GetInstanceType()) &&
+							((oldPrimaryCluster.UserIntent.DeviceInfo.GetNumVolumes() !=
+								newPrimaryCluster.UserIntent.DeviceInfo.GetNumVolumes()) ||
+								(oldPrimaryCluster.UserIntent.DeviceInfo.GetVolumeSize() !=
+									newPrimaryCluster.UserIntent.DeviceInfo.GetVolumeSize())) {
 							return errors.New("Cannot change number of volumes or volume size " +
 								"per node without change in instance type in Read Replica Cluster")
 						}
@@ -616,7 +614,8 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 			}
 			return nil
 		}),
-		customdiff.ValidateChange("clusters", func(ctx context.Context, old, new, m interface{}) error {
+		customdiff.ValidateChange("clusters", func(ctx context.Context, old, new, m interface{}) (
+			error) {
 			// check if universe name of the clusters are the same
 			newClusterSet := buildClusters(new.([]interface{}))
 			newPrimary, isPresent := getClusterByType(newClusterSet, "PRIMARY")
@@ -628,24 +627,24 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 				if newReadOnly.UserIntent.UniverseName == nil {
 					return errors.New("Universe name cannot be empty")
 				}
-				if *newPrimary.UserIntent.UniverseName != *newReadOnly.UserIntent.UniverseName {
+				if newPrimary.UserIntent.GetUniverseName() !=
+					newReadOnly.UserIntent.GetUniverseName() {
 					return errors.New("Cannot have different universe names for Primary " +
 						"and Read Only clusters")
 				}
 			}
 			return nil
 		}),
-		customdiff.ValidateChange("clusters", func(ctx context.Context, old, new, m interface{}) error {
+		customdiff.ValidateChange("clusters", func(ctx context.Context, old, new, m interface{}) (
+			error) {
 			// check if software version of the clusters are the same
 			newClusterSet := buildClusters(new.([]interface{}))
 			newPrimary, isPresent := getClusterByType(newClusterSet, "PRIMARY")
 			newReadOnly, isRRPresnt := getClusterByType(newClusterSet, "ASYNC")
 			if len(old.([]interface{})) != 0 {
 				if isPresent && isRRPresnt {
-					if (newPrimary.UserIntent.YbSoftwareVersion != nil) &&
-						(newReadOnly.UserIntent.YbSoftwareVersion != nil) &&
-						(*newPrimary.UserIntent.YbSoftwareVersion !=
-							*newReadOnly.UserIntent.YbSoftwareVersion) {
+					if (newPrimary.UserIntent.GetYbSoftwareVersion() !=
+							newReadOnly.UserIntent.GetYbSoftwareVersion()) {
 						return errors.New("Cannot have different software versions for Primary " +
 							"and Read Only clusters")
 					}
@@ -653,35 +652,32 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 			}
 			return nil
 		}),
-		customdiff.ValidateChange("clusters", func(ctx context.Context, old, new, m interface{}) error {
+		customdiff.ValidateChange("clusters", func(ctx context.Context, old, new, m interface{}) (
+			error) {
 			// check if systemD setting of the clusters are the same
 			newClusterSet := buildClusters(new.([]interface{}))
 			newPrimary, isPresent := getClusterByType(newClusterSet, "PRIMARY")
 			newReadOnly, isRRPresnt := getClusterByType(newClusterSet, "ASYNC")
 			if isPresent && isRRPresnt {
-				if (newPrimary.UserIntent.UseSystemd != nil) &&
-					(newReadOnly.UserIntent.UseSystemd != nil) &&
-					(*newPrimary.UserIntent.UseSystemd != *newReadOnly.UserIntent.UseSystemd) {
+				if (newPrimary.UserIntent.GetUseSystemd() !=
+					newReadOnly.UserIntent.GetUseSystemd()) {
 					return errors.New("Cannot have different systemD settings for Primary " +
 						"and Read Only clusters")
 				}
 			}
 			return nil
 		}),
-		customdiff.ValidateChange("clusters", func(ctx context.Context, old, new, m interface{}) error {
+		customdiff.ValidateChange("clusters", func(ctx context.Context, old, new, m interface{}) (
+			error) {
 			// check if Gflags setting of the clusters are the same
 			newClusterSet := buildClusters(new.([]interface{}))
 			newPrimary, isPresent := getClusterByType(newClusterSet, "PRIMARY")
 			newReadOnly, isRRPresnt := getClusterByType(newClusterSet, "ASYNC")
 			if isPresent && isRRPresnt {
-				if (newPrimary.UserIntent.MasterGFlags != nil) &&
-					(newReadOnly.UserIntent.MasterGFlags != nil) &&
-					(newPrimary.UserIntent.TserverGFlags != nil) &&
-					(newReadOnly.UserIntent.TserverGFlags != nil) &&
-					(!reflect.DeepEqual(*newPrimary.UserIntent.MasterGFlags,
-						*newReadOnly.UserIntent.MasterGFlags) ||
-						!reflect.DeepEqual(*newPrimary.UserIntent.TserverGFlags,
-							*newReadOnly.UserIntent.TserverGFlags)) {
+				if (!reflect.DeepEqual(newPrimary.UserIntent.GetMasterGFlags(),
+						newReadOnly.UserIntent.GetMasterGFlags()) ||
+						!reflect.DeepEqual(newPrimary.UserIntent.GetTserverGFlags(),
+							newReadOnly.UserIntent.GetTserverGFlags())) {
 					return errors.New("Cannot have different Gflags settings for Primary " +
 						"and Read Only clusters")
 				}
@@ -694,14 +690,10 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 			newPrimary, isPresent := getClusterByType(newClusterSet, "PRIMARY")
 			newReadOnly, isRRPresnt := getClusterByType(newClusterSet, "ASYNC")
 			if isPresent && isRRPresnt {
-				if (newPrimary.UserIntent.EnableClientToNodeEncrypt != nil) &&
-					(newReadOnly.UserIntent.EnableClientToNodeEncrypt != nil) &&
-					(newPrimary.UserIntent.EnableNodeToNodeEncrypt != nil) &&
-					(newReadOnly.UserIntent.EnableNodeToNodeEncrypt != nil) &&
-					(*newPrimary.UserIntent.EnableClientToNodeEncrypt !=
-						*newReadOnly.UserIntent.EnableClientToNodeEncrypt ||
-						*newPrimary.UserIntent.EnableNodeToNodeEncrypt !=
-							*newReadOnly.UserIntent.EnableNodeToNodeEncrypt) {
+				if (newPrimary.UserIntent.GetEnableClientToNodeEncrypt() !=
+						newReadOnly.UserIntent.GetEnableClientToNodeEncrypt() ||
+						newPrimary.UserIntent.GetEnableNodeToNodeEncrypt() !=
+							newReadOnly.UserIntent.GetEnableNodeToNodeEncrypt()) {
 					return errors.New("Cannot have different TLS settings for Primary " +
 						"and Read Only clusters")
 				}
@@ -759,31 +751,33 @@ func resourceUniverseRead(ctx context.Context, d *schema.ResourceData, meta inte
 
 func editUniverseParameters(ctx context.Context, oldUserIntent client.UserIntent,
 	newUserIntent client.UserIntent) (bool, client.UserIntent) {
-	if !reflect.DeepEqual(*oldUserIntent.InstanceTags, *newUserIntent.InstanceTags) ||
-		!reflect.DeepEqual(*oldUserIntent.RegionList, newUserIntent.RegionList) ||
-		*oldUserIntent.NumNodes != *newUserIntent.NumNodes ||
-		*oldUserIntent.InstanceType != *newUserIntent.InstanceType ||
-		*oldUserIntent.DeviceInfo.NumVolumes != *newUserIntent.DeviceInfo.NumVolumes ||
-		*oldUserIntent.DeviceInfo.VolumeSize != *newUserIntent.DeviceInfo.VolumeSize {
+	if !reflect.DeepEqual(oldUserIntent.GetInstanceTags(), newUserIntent.GetInstanceTags()) ||
+		!reflect.DeepEqual(oldUserIntent.GetRegionList(), newUserIntent.GetRegionList()) ||
+		oldUserIntent.GetNumNodes() != newUserIntent.GetNumNodes() ||
+		oldUserIntent.GetInstanceType() != newUserIntent.GetInstanceType() ||
+		oldUserIntent.DeviceInfo.GetNumVolumes() != newUserIntent.DeviceInfo.GetNumVolumes() ||
+		oldUserIntent.DeviceInfo.GetVolumeSize() != newUserIntent.DeviceInfo.GetVolumeSize() {
 		editNumVolume := true
 		editVolumeSize := true // this is only for RR cluster, primary cluster resize is handled
 		// by resize node task
-		numVolumes := *oldUserIntent.DeviceInfo.NumVolumes
-		volumeSize := *oldUserIntent.DeviceInfo.VolumeSize
-		if (*oldUserIntent.DeviceInfo.NumVolumes != *newUserIntent.DeviceInfo.NumVolumes) &&
-			(*oldUserIntent.InstanceType == *newUserIntent.InstanceType) {
+		numVolumes := oldUserIntent.DeviceInfo.GetNumVolumes()
+		volumeSize := oldUserIntent.DeviceInfo.GetVolumeSize()
+		if (oldUserIntent.DeviceInfo.GetNumVolumes() !=
+			newUserIntent.DeviceInfo.GetNumVolumes()) &&
+			(oldUserIntent.GetInstanceType() == newUserIntent.GetInstanceType()) {
 			tflog.Error(ctx, "Cannot edit Number of Volumes per instance without an edit to"+
 				" Instance Type, Ignoring Change")
 			editNumVolume = false
 		}
-		if (*oldUserIntent.DeviceInfo.VolumeSize != *newUserIntent.DeviceInfo.VolumeSize) &&
-			(*oldUserIntent.InstanceType == *newUserIntent.InstanceType) {
+		if (oldUserIntent.DeviceInfo.GetVolumeSize() !=
+		newUserIntent.DeviceInfo.GetVolumeSize()) &&
+			(oldUserIntent.GetInstanceType() == newUserIntent.GetInstanceType()) {
 			tflog.Error(ctx, "Cannot edit Volume size per instance without an edit to Instance "+
 				"Type, Ignoring Change for ReadOnly Cluster")
 			tflog.Info(ctx, "Above error is not for Primary Cluster. Node resize applied through"+
 				"a separate task")
 			editVolumeSize = false
-		} else if *oldUserIntent.DeviceInfo.VolumeSize > *newUserIntent.DeviceInfo.VolumeSize {
+		} else if oldUserIntent.DeviceInfo.GetVolumeSize() > newUserIntent.DeviceInfo.GetVolumeSize() {
 			tflog.Error(ctx, "Cannot decrease volume size per instance, Ignoring Change")
 			editVolumeSize = false
 		}
@@ -852,10 +846,10 @@ func resourceUniverseUpdate(ctx context.Context, d *schema.ResourceData, meta in
 			if cluster["cluster_type"] == "PRIMARY" {
 
 				//Software Upgrade
-				if *oldUserIntent.YbSoftwareVersion != *newUserIntent.YbSoftwareVersion {
+				if oldUserIntent.GetYbSoftwareVersion() != newUserIntent.GetYbSoftwareVersion() {
 					updateUni.UniverseDetails.Clusters[i].UserIntent = newUserIntent
 					req := client.SoftwareUpgradeParams{
-						YbSoftwareVersion: *newUserIntent.YbSoftwareVersion,
+						YbSoftwareVersion: newUserIntent.GetYbSoftwareVersion(),
 						Clusters:          updateUni.UniverseDetails.Clusters,
 						UpgradeOption:     "Rolling",
 					}
@@ -878,12 +872,14 @@ func resourceUniverseUpdate(ctx context.Context, d *schema.ResourceData, meta in
 				oldUserIntent = updateUni.UniverseDetails.Clusters[i].UserIntent
 
 				//GFlag Update
-				if !reflect.DeepEqual(*oldUserIntent.MasterGFlags, *newUserIntent.MasterGFlags) ||
-					!reflect.DeepEqual(*oldUserIntent.TserverGFlags, *newUserIntent.TserverGFlags) {
+				if !reflect.DeepEqual(oldUserIntent.GetMasterGFlags(),
+						newUserIntent.GetMasterGFlags()) ||
+					!reflect.DeepEqual(oldUserIntent.GetTserverGFlags(),
+						newUserIntent.GetTserverGFlags()) {
 					updateUni.UniverseDetails.Clusters[i].UserIntent = newUserIntent
 					req := client.GFlagsUpgradeParams{
-						MasterGFlags:  *newUserIntent.MasterGFlags,
-						TserverGFlags: *newUserIntent.TserverGFlags,
+						MasterGFlags:  newUserIntent.GetMasterGFlags(),
+						TserverGFlags: newUserIntent.GetTserverGFlags(),
 						Clusters:      updateUni.UniverseDetails.Clusters,
 						UpgradeOption: "Rolling",
 					}
@@ -893,25 +889,37 @@ func resourceUniverseUpdate(ctx context.Context, d *schema.ResourceData, meta in
 						return diag.FromErr(err)
 					}
 					tflog.Info(ctx, "UpgradeGFlags task is executing")
-					err = utils.WaitForTask(ctx, *r.TaskUUID, cUUID, c, d.Timeout(schema.TimeoutUpdate))
+					err = utils.WaitForTask(ctx, *r.TaskUUID, cUUID, c,
+							d.Timeout(schema.TimeoutUpdate))
 					if err != nil {
 						return diag.FromErr(err)
 					}
 				}
 
-				updateUni, _, err = c.UniverseManagementApi.GetUniverse(ctx, cUUID, d.Id()).Execute()
+				updateUni, _, err = c.UniverseManagementApi.GetUniverse(ctx, cUUID,
+					d.Id()).Execute()
 				if err != nil {
 					return diag.FromErr(fmt.Errorf("Unable to find universe %s", d.Id()))
 				}
 				oldUserIntent = updateUni.UniverseDetails.Clusters[i].UserIntent
 
 				//TLS Toggle
-				if *oldUserIntent.EnableClientToNodeEncrypt != *newUserIntent.EnableClientToNodeEncrypt ||
-					*oldUserIntent.EnableNodeToNodeEncrypt != *newUserIntent.EnableNodeToNodeEncrypt {
-					updateUni.UniverseDetails.Clusters[i].UserIntent = newUserIntent
+				if (oldUserIntent.GetEnableClientToNodeEncrypt() !=
+						newUserIntent.GetEnableClientToNodeEncrypt()) ||
+					(oldUserIntent.GetEnableNodeToNodeEncrypt() !=
+						newUserIntent.GetEnableNodeToNodeEncrypt()) {
+					if newUserIntent.EnableClientToNodeEncrypt != nil {
+						updateUni.UniverseDetails.Clusters[i].UserIntent.EnableClientToNodeEncrypt =
+							newUserIntent.EnableClientToNodeEncrypt
+					}
+					if newUserIntent.EnableNodeToNodeEncrypt != nil {
+						updateUni.UniverseDetails.Clusters[i].UserIntent.EnableNodeToNodeEncrypt =
+							newUserIntent.EnableNodeToNodeEncrypt
+					}
+					//updateUni.UniverseDetails.Clusters[i].UserIntent = newUserIntent
 					req := client.TlsToggleParams{
-						EnableClientToNodeEncrypt: *newUserIntent.EnableClientToNodeEncrypt,
-						EnableNodeToNodeEncrypt:   *newUserIntent.EnableNodeToNodeEncrypt,
+						EnableClientToNodeEncrypt: newUserIntent.GetEnableClientToNodeEncrypt(),
+						EnableNodeToNodeEncrypt:   newUserIntent.GetEnableNodeToNodeEncrypt(),
 						Clusters:                  updateUni.UniverseDetails.Clusters,
 						UpgradeOption:             "Non-Rolling",
 					}
@@ -934,11 +942,10 @@ func resourceUniverseUpdate(ctx context.Context, d *schema.ResourceData, meta in
 				oldUserIntent = updateUni.UniverseDetails.Clusters[i].UserIntent
 
 				//SystemD upgrade
-				if (newUserIntent.UseSystemd != nil) && (*oldUserIntent.UseSystemd !=
-					*newUserIntent.UseSystemd) && (*oldUserIntent.UseSystemd == false) {
+				if (oldUserIntent.GetUseSystemd() == false &&
+						newUserIntent.GetUseSystemd() == true) {
 					updateUni.UniverseDetails.Clusters[i].UserIntent = newUserIntent
 					req := client.SystemdUpgradeParams{
-
 						Clusters:      updateUni.UniverseDetails.Clusters,
 						UpgradeOption: "Rolling",
 					}
@@ -952,8 +959,8 @@ func resourceUniverseUpdate(ctx context.Context, d *schema.ResourceData, meta in
 					if err != nil {
 						return diag.FromErr(err)
 					}
-				} else if *oldUserIntent.UseSystemd == true &&
-					(newUserIntent.UseSystemd == nil || *newUserIntent.UseSystemd == false) {
+				} else if (oldUserIntent.GetUseSystemd() == true &&
+							newUserIntent.GetUseSystemd() == false) {
 					tflog.Error(ctx, "Cannot disable Systemd")
 				}
 
@@ -966,9 +973,11 @@ func resourceUniverseUpdate(ctx context.Context, d *schema.ResourceData, meta in
 				// Resize Nodes
 				// Call separate task only when instance type is same, else will be handled in
 				// UpdatePrimaryCluster
-				if (*oldUserIntent.InstanceType == *newUserIntent.InstanceType) &&
-					(*oldUserIntent.DeviceInfo.VolumeSize != *newUserIntent.DeviceInfo.VolumeSize) {
-					if *oldUserIntent.DeviceInfo.VolumeSize < *newUserIntent.DeviceInfo.VolumeSize {
+				if (oldUserIntent.GetInstanceType() == newUserIntent.GetInstanceType()) &&
+					(oldUserIntent.DeviceInfo.GetVolumeSize() !=
+						newUserIntent.DeviceInfo.GetVolumeSize()) {
+					if (oldUserIntent.DeviceInfo.GetVolumeSize() <
+							newUserIntent.DeviceInfo.GetVolumeSize()) {
 						//Only volume size should be changed to do smart resize, other changes
 						//handled in UpgradeCluster
 						updateUni.UniverseDetails.Clusters[i].UserIntent.DeviceInfo.VolumeSize = (
@@ -1031,22 +1040,22 @@ func resourceUniverseUpdate(ctx context.Context, d *schema.ResourceData, meta in
 					return diag.FromErr(fmt.Errorf("Unable to find universe %s", d.Id()))
 				}
 				oldUserIntent := updateUni.UniverseDetails.Clusters[i].UserIntent
-				if *oldUserIntent.YbSoftwareVersion != *newUserIntent.YbSoftwareVersion {
+				if oldUserIntent.GetYbSoftwareVersion() != newUserIntent.GetYbSoftwareVersion() {
 					tflog.Info(ctx, "Software Upgrade is applied only via change in Primary "+
 						"Cluster User Intent, ignoring")
 				}
-				if !reflect.DeepEqual(*oldUserIntent.MasterGFlags, *newUserIntent.MasterGFlags) ||
-					!reflect.DeepEqual(*oldUserIntent.TserverGFlags, *newUserIntent.TserverGFlags) {
+				if !reflect.DeepEqual(oldUserIntent.GetMasterGFlags(), newUserIntent.GetMasterGFlags()) ||
+					!reflect.DeepEqual(oldUserIntent.GetTserverGFlags(), newUserIntent.GetTserverGFlags()) {
 					tflog.Info(ctx, "GFlags Upgrade is applied only via change in Primary "+
 						"Cluster User Intent, ignoring")
 				}
-				if (newUserIntent.UseSystemd != nil) && (*oldUserIntent.UseSystemd !=
-					*newUserIntent.UseSystemd) {
+				if oldUserIntent.GetUseSystemd() != newUserIntent.GetUseSystemd() {
 					tflog.Info(ctx, "System Upgrade is applied only via change in Primary "+
 						"Cluster User Intent, ignoring")
 				}
-				if *oldUserIntent.EnableClientToNodeEncrypt != *newUserIntent.EnableClientToNodeEncrypt ||
-					*oldUserIntent.EnableNodeToNodeEncrypt != *newUserIntent.EnableNodeToNodeEncrypt {
+				if (oldUserIntent.GetEnableClientToNodeEncrypt() !=
+						newUserIntent.GetEnableClientToNodeEncrypt()) ||
+					oldUserIntent.GetEnableNodeToNodeEncrypt() != newUserIntent.GetEnableNodeToNodeEncrypt() {
 					tflog.Info(ctx, "TLS Toggle is applied only via change in Primary Cluster"+
 						" User Intent, ignoring")
 				}
@@ -1072,12 +1081,6 @@ func resourceUniverseUpdate(ctx context.Context, d *schema.ResourceData, meta in
 					if err != nil {
 						return diag.FromErr(err)
 					}
-				}
-
-				if (*oldUserIntent.EnableClientToNodeEncrypt != *newUserIntent.EnableClientToNodeEncrypt) ||
-					(*oldUserIntent.EnableNodeToNodeEncrypt != *newUserIntent.EnableNodeToNodeEncrypt) {
-					tflog.Info(ctx, "TLS Upgrade is applied only via change in Primary "+
-						"Cluster User Intent, ignoring")
 				}
 			}
 
