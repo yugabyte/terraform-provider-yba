@@ -59,11 +59,10 @@ module "installation" {
 
 resource "yb_customer_resource" "customer" {
   provider   = yb.unauthenticated
-  depends_on = [module.azure_yb_anywhere, yb_installation.installation]
+  depends_on = [module.installation]
   code       = "admin"
   email      = "demo@yugabyte.com"
   name       = "demo"
-  password   = "Password1@"
 }
 
 provider "yb" {
@@ -124,6 +123,11 @@ resource "yb_universe" "gcp_universe" {
       enable_client_to_node_encrypt = true
       yb_software_version           = data.yb_release_version.release_version.id
       access_key_code               = local.provider_key
+       instance_tags = {
+        "yb_owner" = "$USER"
+        "yb_task" = "dev"
+        "yb_dept" = "dev"
+      }
     }
   }
   communication_ports {}

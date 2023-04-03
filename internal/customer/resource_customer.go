@@ -2,15 +2,20 @@ package customer
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"os"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/customdiff"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	client "github.com/yugabyte/platform-go-client"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/api"
 )
 
+// ResourceCustomer creates and maintains resource for customer
 func ResourceCustomer() *schema.Resource {
 	return &schema.Resource{
 		Description: "Customer Resource",
@@ -22,6 +27,8 @@ func ResourceCustomer() *schema.Resource {
 		Importer: &schema.ResourceImporter{
 			StateContext: schema.ImportStatePassthroughContext,
 		},
+
+		CustomizeDiff: resourceCustomerDiff(),
 
 		Timeouts: &schema.ResourceTimeout{
 			Create: schema.DefaultTimeout(5 * time.Minute),
@@ -47,12 +54,6 @@ func ResourceCustomer() *schema.Resource {
 				ForceNew:    true,
 				Description: "Name of the user.",
 			},
-			"password": {
-				Type:        schema.TypeString,
-				Required:    true,
-				ForceNew:    true,
-				Description: "Secure password for the user. Must contain an uppercase letter, number, and symbol",
-			},
 			"api_token": {
 				Type:        schema.TypeString,
 				Computed:    true,
@@ -70,18 +71,49 @@ func ResourceCustomer() *schema.Resource {
 	}
 }
 
-func resourceCustomerCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+// Validates if env variable is present only during create customer call
+func resourceCustomerDiff() schema.CustomizeDiffFunc {
+	return customdiff.All(customdiff.IfValueChange("email",
+		func(ctx context.Context, old, new, meta interface{}) bool {
+			return old.(string) == ""
+		},
+		func(ctx context.Context, d *schema.ResourceDiff, meta interface{}) error {
+			if _, bool := os.LookupEnv("YB_CUSTOMER_PASSWORD"); !bool {
+				return fmt.Errorf("YB_CUSTOMER_PASSWORD env variable is empty")
+			}
+			return nil
+		}),
+	)
+}
+
+// fetches password from the environment variable during create customer call
+func fetchCustomerPasswordFromEnv() (string, error) {
+	customerPassword, isPresent := os.LookupEnv("YB_CUSTOMER_PASSWORD")
+	if !isPresent {
+		return "", errors.New("YB_CUSTOMER_PASSWORD env variable not found")
+	}
+	return customerPassword, nil
+}
+
+func resourceCustomerCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) (
+	diag.Diagnostics) {
 	var diags diag.Diagnostics
 
 	c := meta.(*api.ApiClient).YugawareClient
+
+	password, err := fetchCustomerPasswordFromEnv()
+	if err != nil {
+		return diag.FromErr(err)
+	}
 
 	req := client.CustomerRegisterFormData{
 		Code:     d.Get("code").(string),
 		Email:    d.Get("email").(string),
 		Name:     d.Get("name").(string),
-		Password: d.Get("password").(string),
+		Password: password,
 	}
-	r, _, err := c.SessionManagementApi.RegisterCustomer(ctx).CustomerRegisterFormData(req).GenerateApiToken(true).Execute()
+	r, _, err := c.SessionManagementApi.RegisterCustomer(ctx).CustomerRegisterFormData(
+		req).GenerateApiToken(true).Execute()
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -101,20 +133,21 @@ func resourceCustomerCreate(ctx context.Context, d *schema.ResourceData, meta in
 	return diags
 }
 
-func resourceCustomerRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceCustomerRead(ctx context.Context, d *schema.ResourceData, meta interface{}) (
+	diag.Diagnostics) {
 	var diags diag.Diagnostics
 
 	vc := meta.(*api.ApiClient).VanillaClient
-	api_key := meta.(*api.ApiClient).ApiKey
+	apiKey := meta.(*api.ApiClient).ApiKey
 	if d.Get("api_token").(string) != "" {
-		api_key = d.Get("api_token").(string)
+		apiKey = d.Get("api_token").(string)
 	}
-	new_api, err := api.NewApiClient(vc.Host, api_key)
+	newAPI, err := api.NewApiClient(vc.Host, apiKey)
 	if err != nil {
 		return diag.FromErr(err)
 	}
-	new_client := new_api.YugawareClient
-	r, _, err := new_client.SessionManagementApi.GetSessionInfo(ctx).Execute()
+	newClient := newAPI.YugawareClient
+	r, _, err := newClient.SessionManagementApi.GetSessionInfo(ctx).Execute()
 
 	if err != nil {
 		return diag.FromErr(err)
@@ -130,7 +163,8 @@ func resourceCustomerRead(ctx context.Context, d *schema.ResourceData, meta inte
 	return diags
 }
 
-func resourceCustomerDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceCustomerDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) (
+	diag.Diagnostics) {
 	tflog.Debug(ctx, "marking as deleted; customer resources cannot be deleted or changed")
 	d.SetId("")
 	return diag.Diagnostics{}
