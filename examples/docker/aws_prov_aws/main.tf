@@ -66,7 +66,6 @@ resource "yb_customer_resource" "customer" {
   code       = "admin"
   email      = "demo@yugabyte.com"
   name       = "demo"
-  password   = "Password1@"
 }
 
 provider "yb" {
@@ -76,12 +75,12 @@ provider "yb" {
 
 resource "yb_cloud_provider" "aws" {
   code = "aws"
-  name        = "${local.cluster_name}-provider"
+  name = "${local.cluster_name}-provider"
   regions {
     code = "us-west-2"
     name = "us-west-2"
     security_group_id = "sg-139dde6c"
-    vnet_name = "vpc-0fe36f6b"
+    vnet_name         = "vpc-0fe36f6b"
     zones {
       code = "us-west-2a"
       name = "us-west-2a"
@@ -149,8 +148,8 @@ resource "yb_universe" "aws_universe" {
       replication_factor = 1
       instance_type      = "c5.large"
       device_info {
-        num_volumes  = 1
-        volume_size  = 250
+        num_volumes = 1
+        volume_size = 250
         disk_iops = 3000
         throughput = 125
         storage_type = "GP3"
@@ -190,10 +189,10 @@ resource "yb_storage_config_resource" "aws_storage" {
 
   name = "S3"
   backup_location = local.s3_backup_location
-  config_name = "terraform-s3-config"
+  config_name  = "terraform-s3-config"
 }
 
-data "yb_storage_configs" "configs"{
+data "yb_storage_configs" "configs" {
   depends_on = [yb_customer_resource.customer]
 }
 
@@ -211,7 +210,7 @@ resource "yb_storage_config_resource" "az_storage" {
   config_name = "terraform-az-config"
 }
 data "yb_storage_configs" "configs_gcs" {
-    config_name = yb_storage_config_resource.gcs_storage.config_name
+  config_name = yb_storage_config_resource.gcs_storage.config_name
 }
 
 /*

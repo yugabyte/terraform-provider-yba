@@ -70,7 +70,6 @@ resource "yb_customer_resource" "customer" {
   code       = "admin"
   email      = "demo@yugabyte.com"
   name       = "demo"
-  password   = "Password1@"
 }
 
 
