@@ -3,11 +3,14 @@ package cloud_provider
 import (
 	"context"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/customdiff"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 	client "github.com/yugabyte/platform-go-client"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/api"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/utils"
@@ -31,6 +34,8 @@ func ResourceCloudProvider() *schema.Resource {
 			Delete: schema.DefaultTimeout(5 * time.Minute),
 		},
 
+		CustomizeDiff: resourceCloudProviderDiff(),
+
 		Schema: map[string]*schema.Schema{
 			"air_gap_install": {
 				Type:        schema.TypeBool,
@@ -39,9 +44,11 @@ func ResourceCloudProvider() *schema.Resource {
 				Description: "Flag indicating if the universe should use an air-gapped installation",
 			},
 			"code": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				ForceNew:    true,
+				Type:     schema.TypeString,
+				Optional: true,
+				ForceNew: true,
+				ValidateDiagFunc: validation.ToDiagFunc(validation.StringInSlice(
+					[]string{"gcp", "aws", "azu"}, false)),
 				Description: "Code of the cloud provider. Permitted values: gcp, aws, azu",
 			},
 			"config": {
@@ -116,6 +123,63 @@ func ResourceCloudProvider() *schema.Resource {
 		},
 	}
 }
+func resourceCloudProviderDiff() schema.CustomizeDiffFunc {
+	return customdiff.All(
+		customdiff.ValidateValue("code", func(ctx context.Context, value,
+			meta interface{}) error {
+			errorMessage := "Empty env variable: "
+			switch code := value.(string); code {
+			case "gcp":
+				_, isPresent := os.LookupEnv(utils.GCPCredentialsEnv)
+				if !isPresent {
+					return fmt.Errorf("%s%s", errorMessage, utils.GCPCredentialsEnv)
+				}
+			case "aws":
+				var errorString string
+				_, isPresentAccessKeyID := os.LookupEnv(utils.AWSAccessKeyEnv)
+				if !isPresentAccessKeyID {
+					errorString = fmt.Sprintf("%s%s ", errorString, utils.AWSAccessKeyEnv)
+				}
+				_, isPresentSecretAccessKey := os.LookupEnv(utils.AWSSecretAccessKeyEnv)
+				if !isPresentSecretAccessKey {
+					errorString = fmt.Sprintf("%s%s ", errorString, utils.AWSSecretAccessKeyEnv)
+				}
+				if !(isPresentAccessKeyID && isPresentSecretAccessKey) {
+					errorString = fmt.Sprintf("%s%s", errorMessage, errorString)
+					return fmt.Errorf(errorString)
+				}
+			case "azu":
+				var errorString string
+				_, isPresentClientID := os.LookupEnv(utils.AzureClientIDEnv)
+				if !isPresentClientID {
+					errorString = fmt.Sprintf("%s%s ", errorString, utils.AzureClientIDEnv)
+				}
+				_, isPresentClientSecret := os.LookupEnv(utils.AzureClientSecretEnv)
+				if !isPresentClientSecret {
+					errorString = fmt.Sprintf("%s%s ", errorString, utils.AzureClientSecretEnv)
+				}
+				_, isPresentSubscriptionID := os.LookupEnv(utils.AzureSubscriptionIDEnv)
+				if !isPresentSubscriptionID {
+					errorString = fmt.Sprintf("%s%s ", errorString, utils.AzureSubscriptionIDEnv)
+				}
+				_, isPresentTenantID := os.LookupEnv(utils.AzureTenantIDEnv)
+				if !isPresentTenantID {
+					errorString = fmt.Sprintf("%s%s ", errorString, utils.AzureTenantIDEnv)
+				}
+				_, isPresentRG := os.LookupEnv(utils.AzureRGEnv)
+				if !isPresentRG {
+					errorString = fmt.Sprintf("%s%s ", errorString, utils.AzureRGEnv)
+				}
+				if !(isPresentClientID && isPresentClientSecret && isPresentRG &&
+					isPresentSubscriptionID && isPresentTenantID) {
+					errorString = fmt.Sprintf("%s%s", errorMessage, errorString)
+					return fmt.Errorf(errorString)
+				}
+			}
+			return nil
+		}),
+	)
+}
 
 func buildConfig(cloudCode string) (map[string]interface{}, error) {
 	config := make(map[string]interface{})
@@ -130,19 +194,19 @@ func buildConfig(cloudCode string) (map[string]interface{}, error) {
 		if err != nil {
 			return nil, err
 		}
-		config["AWS_ACCESS_KEY_ID"] = awsCreds.AccessKeyID
-		config["AWS_SECRET_ACCESS_KEY"] = awsCreds.SecretAccessKey
+		config[utils.AWSAccessKeyEnv] = awsCreds.AccessKeyID
+		config[utils.AWSSecretAccessKeyEnv] = awsCreds.SecretAccessKey
 
 	} else if cloudCode == "azu" {
 		azureCreds, err := utils.AzureCredentialsFromEnv()
 		if err != nil {
 			return nil, err
 		}
-		config["AZURE_CLIENT_ID"] = azureCreds.ClientID
-		config["AZURE_CLIENT_SECRET"] = azureCreds.ClientSecret
-		config["AZURE_SUBSCRIPTION_ID"] = azureCreds.SubscriptionID
-		config["AZURE_TENANT_ID"] = azureCreds.TenantID
-		config["AZURE_RG"] = azureCreds.ResourceGroup
+		config[utils.AzureClientIDEnv] = azureCreds.ClientID
+		config[utils.AzureClientSecretEnv] = azureCreds.ClientSecret
+		config[utils.AzureSubscriptionIDEnv] = azureCreds.SubscriptionID
+		config[utils.AzureTenantIDEnv] = azureCreds.TenantID
+		config[utils.AzureRGEnv] = azureCreds.ResourceGroup
 	}
 	return config, nil
 }

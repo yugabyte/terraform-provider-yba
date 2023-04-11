@@ -3,12 +3,15 @@ package releases
 import (
 	"context"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/customdiff"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/api"
+	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/utils"
 )
 
 // ResourceReleases creates and maintains resource for releases
@@ -29,6 +32,8 @@ func ResourceReleases() *schema.Resource {
 			Update: schema.DefaultTimeout(30 * time.Minute),
 			Delete: schema.DefaultTimeout(30 * time.Minute),
 		},
+
+		CustomizeDiff: resourceReleaseDiff(),
 
 		Schema: map[string]*schema.Schema{
 			"state": {
@@ -92,10 +97,48 @@ func ResourceReleases() *schema.Resource {
 				ForceNew:    true,
 				Optional:    true,
 				Elem:        HttpSchema(),
-				Description: "Location of release binary in S3",
+				Description: "Location of release binary in HTTP",
 			},
 		},
 	}
+}
+
+func resourceReleaseDiff() schema.CustomizeDiffFunc {
+	return customdiff.All(
+		customdiff.ValidateValue("s3", func(ctx context.Context, value,
+			meta interface{}) error {
+			s3 := value.([]interface{})
+			if len(s3) > 0 {
+				errorMessage := "Empty env variable: "
+				var errorString string
+				_, isPresentAccessKeyID := os.LookupEnv(utils.AWSAccessKeyEnv)
+				if !isPresentAccessKeyID {
+					errorString = fmt.Sprintf("%s%s ", errorString, utils.AWSAccessKeyEnv)
+				}
+				_, isPresentSecretAccessKey := os.LookupEnv(utils.AWSSecretAccessKeyEnv)
+				if !isPresentSecretAccessKey {
+					errorString = fmt.Sprintf("%s%s ", errorString, utils.AWSSecretAccessKeyEnv)
+				}
+				if !(isPresentAccessKeyID && isPresentSecretAccessKey) {
+					errorString = fmt.Sprintf("%s%s", errorMessage, errorString)
+					return fmt.Errorf(errorString)
+				}
+			}
+			return nil
+		}),
+		customdiff.ValidateValue("gcs", func(ctx context.Context, value,
+			meta interface{}) error {
+			errorMessage := "Empty env variable: "
+			gcs := value.([]interface{})
+			if len(gcs) > 0 {
+				_, isPresent := os.LookupEnv(utils.GCPCredentialsEnv)
+				if !isPresent {
+					return fmt.Errorf("%s%s", errorMessage, utils.GCPCredentialsEnv)
+				}
+			}
+			return nil
+		}),
+	)
 }
 
 func resourceReleasesCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) (

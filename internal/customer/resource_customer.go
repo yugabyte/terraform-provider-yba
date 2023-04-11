@@ -78,8 +78,9 @@ func resourceCustomerDiff() schema.CustomizeDiffFunc {
 			return old.(string) == ""
 		},
 		func(ctx context.Context, d *schema.ResourceDiff, meta interface{}) error {
-			if _, bool := os.LookupEnv("YB_CUSTOMER_PASSWORD"); !bool {
-				return fmt.Errorf("YB_CUSTOMER_PASSWORD env variable is empty")
+			errorMessage := "Empty env variable: "
+			if _, present := os.LookupEnv("YB_CUSTOMER_PASSWORD"); !present {
+				return fmt.Errorf("%sYB_CUSTOMER_PASSWORD", errorMessage)
 			}
 			return nil
 		}),
