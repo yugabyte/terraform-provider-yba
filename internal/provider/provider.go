@@ -50,7 +50,7 @@ func New() *schema.Provider {
 			"yb_provider_key":    cloud_provider.ProviderKey(),
 			"yb_storage_configs": backups.StorageConfigs(),
 			"yb_release_version": releases.ReleaseVersion(),
-			//"yb_backup_info": 		backups.BackupsLists(),
+			"yb_backup_info":     backups.Lists(),
 		},
 		ResourcesMap: map[string]*schema.Resource{
 			"yb_installation":            installation.ResourceInstallation(),
@@ -61,7 +61,7 @@ func New() *schema.Provider {
 			"yb_customer_resource":       customer.ResourceCustomer(),
 			"yb_storage_config_resource": backups.ResourceStorageConfig(),
 			"yb_releases":                releases.ResourceReleases(),
-			//"yb_restore":				 backups.ResourceRestore(),
+			"yb_restore":                 backups.ResourceRestore(),
 		},
 		ConfigureContextFunc: providerConfigure,
 	}
