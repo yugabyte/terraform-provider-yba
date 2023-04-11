@@ -218,26 +218,29 @@ resource "yb_backups" "aws_universe_backup_redis" {
 
   universe_uuid = yb_universe.aws_universe.id
   keyspace = "system_redis"
-  storage_config_uuid = data.yb_storage_configs.configs_gcs.id
-  time_before_delete = 864000
+  storage_config_uuid = data.yb_storage_configs.configs.id
+  time_before_delete = "24h"
   sse = false
   transactional_backup = false
-  frequency = 864000
+  frequency = "1h"
   parallelism = 8
   backup_type ="REDIS_TABLE_TYPE"
-  table_uuid_list = ["6ce286b2-7098-4dc7-b3e2-f3d8f21e25e7"]
+  schedule_name = "yedis_trial_v2"
+  table_uuid_list = ["bc646135-6489-4a88-b60b-decf89879845"]
 }
 
 resource "yb_backups" "aws_universe_backup_ycql" {
 
   universe_uuid = yb_universe.aws_universe.id
   keyspace = "ybdemo_keyspace"
-  storage_config_uuid = data.yb_storage_configs.configs.id
-  time_before_delete = 864000
+  storage_config_uuid = data.yb_storage_configs.configs_gcs.id
+  time_before_delete = "24h"
   sse = false
   transactional_backup = false
-  frequency = 864000
+  delete_backup = true
+  frequency = "1h"
   parallelism = 8
+  schedule_name = "ycql_trial_v2"
   backup_type ="YQL_TABLE_TYPE"
 }
 
@@ -246,11 +249,41 @@ resource "yb_backups" "aws_universe_backup_ysql" {
   universe_uuid = yb_universe.aws_universe.id
   keyspace = "postgres"
   storage_config_uuid = data.yb_storage_configs.configs.id
-   time_before_delete = 864000
+  time_before_delete = "24h30m"
   sse = false
   transactional_backup = false
-  frequency = 864000
+  frequency = "1.5h"
   parallelism = 8
+  delete_backup = true
+  schedule_name = "ysql_trial_v2"
   backup_type ="PGSQL_TABLE_TYPE"
+}
+/*
+data "yb_backup_info" "backup" {
+  universe_uuid = yb_universe.aws_universe.id
+}
+resource "yb_restore" "restore_ysql" {
+  universe_uuid = yb_universe.aws_universe.id
+  keyspace = "terraform-1"
+  storage_location = data.yb_backup_info.backup.storage_location
+  restore_type = data.yb_backup_info.backup.backup_type
+  parallelism = 8
+  storage_config_uuid = data.yb_backup_info.backup.storage_config_uuid
+}/*
+resource "yb_restore" "restore_ycql" {
+  universe_uuid = yb_universe.aws_universe.id
+  keyspace = "terraform_ycql"
+  storage_location = data.yb_backup_info.backup.storage_location
+  restore_type = data.yb_backup_info.backup.backup_type
+  parallelism = 8
+  storage_config_uuid = data.yb_backup_info.backup.storage_config_uuid
+}
+resource "yb_restore" "restore_yedis" {
+  universe_uuid = yb_universe.aws_universe.id
+  keyspace = "terraform_yedis"
+  storage_location = data.yb_backup_info.backup.storage_location
+  restore_type = data.yb_backup_info.backup.backup_type
+  parallelism = 8
+  storage_config_uuid = data.yb_backup_info.backup.storage_config_uuid
 }
 */
