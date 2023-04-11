@@ -3,10 +3,14 @@ package backups
 import (
 	"context"
 	"errors"
+	"fmt"
+	"os"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/customdiff"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 	client "github.com/yugabyte/platform-go-client"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/api"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/utils"
@@ -32,11 +36,15 @@ func ResourceStorageConfig() *schema.Resource {
 			Delete: schema.DefaultTimeout(5 * time.Minute),
 		},
 
+		CustomizeDiff: resourceStorageConfigDiff(),
+
 		Schema: map[string]*schema.Schema{
 			"name": {
-				Type:        schema.TypeString,
-				Required:    true,
-				ForceNew:    true,
+				Type:     schema.TypeString,
+				Required: true,
+				ForceNew: true,
+				ValidateDiagFunc: validation.ToDiagFunc(validation.StringInSlice(
+					[]string{"S3", "GCS", "AZ", "NFS"}, false)),
 				Description: "Name of config provider. Allowed values: S3, GCS, NFS, AZ",
 			},
 			"data": {
@@ -59,6 +67,41 @@ func ResourceStorageConfig() *schema.Resource {
 	}
 }
 
+func resourceStorageConfigDiff() schema.CustomizeDiffFunc {
+	return customdiff.All(
+		customdiff.ValidateValue("name", func(ctx context.Context, value,
+			meta interface{}) error {
+			errorMessage := "Empty env variable: "
+			switch code := value.(string); code {
+			case "GCS":
+				_, isPresent := os.LookupEnv(utils.GCPCredentialsEnv)
+				if !isPresent {
+					return fmt.Errorf("%s%s", errorMessage, utils.GCPCredentialsEnv)
+				}
+			case "S3":
+				var errorString string
+				_, isPresentAccessKeyID := os.LookupEnv(utils.AWSAccessKeyEnv)
+				if !isPresentAccessKeyID {
+					errorString = fmt.Sprintf("%s%s ", errorString, utils.AWSAccessKeyEnv)
+				}
+				_, isPresentSecretAccessKey := os.LookupEnv(utils.AWSSecretAccessKeyEnv)
+				if !isPresentSecretAccessKey {
+					errorString = fmt.Sprintf("%s%s ", errorString, utils.AWSSecretAccessKeyEnv)
+				}
+				if !(isPresentAccessKeyID && isPresentSecretAccessKey) {
+					errorString = fmt.Sprintf("%s%s", errorMessage, errorString)
+					return fmt.Errorf(errorString)
+				}
+			case "AZ":
+				if _, isPresent := os.LookupEnv(utils.AzureStorageSasTokenEnv); !isPresent {
+					return fmt.Errorf("%s%s", errorMessage, utils.AzureStorageSasTokenEnv)
+				}
+			}
+			return nil
+		}),
+	)
+}
+
 func buildData(ctx context.Context, d *schema.ResourceData) (map[string]interface{}, error) {
 	data := map[string]interface{}{
 		"BACKUP_LOCATION": d.Get("backup_location").(string),
@@ -77,15 +120,15 @@ func buildData(ctx context.Context, d *schema.ResourceData) (map[string]interfac
 		if err != nil {
 			return nil, err
 		}
-		data["AWS_ACCESS_KEY_ID"] = awsCreds.AccessKeyID
-		data["AWS_SECRET_ACCESS_KEY"] = awsCreds.SecretAccessKey
+		data[utils.AWSAccessKeyEnv] = awsCreds.AccessKeyID
+		data[utils.AWSSecretAccessKeyEnv] = awsCreds.SecretAccessKey
 	}
 	if d.Get("name").(string) == "AZ" {
 		azureCreds, err := utils.AzureStorageCredentialsFromEnv()
 		if err != nil {
 			return nil, err
 		}
-		data["AZURE_STORAGE_SAS_TOKEN"] = azureCreds
+		data[utils.AzureStorageSasTokenEnv] = azureCreds
 	}
 	return data, nil
 }
