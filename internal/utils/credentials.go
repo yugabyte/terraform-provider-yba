@@ -2,7 +2,6 @@ package utils
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -10,6 +9,30 @@ import (
 	"strings"
 
 	awsCreds "github.com/aws/aws-sdk-go/aws/credentials"
+)
+
+const (
+	// GCPCredentialsEnv env variable name for gcp provider/storage config/releases
+	GCPCredentialsEnv = "GOOGLE_APPLICATION_CREDENTIALS"
+
+	// AWSAccessKeyEnv env variable name for aws provider/storage config/releases
+	AWSAccessKeyEnv = "AWS_ACCESS_KEY_ID"
+	// AWSSecretAccessKeyEnv env variable name for aws provider/storage config/releases
+	AWSSecretAccessKeyEnv = "AWS_SECRET_ACCESS_KEY"
+
+	// AzureSubscriptionIDEnv env variable name for azure provider
+	AzureSubscriptionIDEnv = "AZURE_SUBSCRIPTION_ID"
+	// AzureRGEnv env variable name for azure provider
+	AzureRGEnv = "AZURE_RG"
+	// AzureTenantIDEnv env variable name for azure provider
+	AzureTenantIDEnv = "AZURE_TENANT_ID"
+	// AzureClientIDEnv env variable name for azure provider
+	AzureClientIDEnv = "AZURE_CLIENT_ID"
+	// AzureClientSecretEnv env variable name for azure provider
+	AzureClientSecretEnv = "AZURE_CLIENT_SECRET"
+
+	// AzureStorageSasTokenEnv env variable name azure storage config
+	AzureStorageSasTokenEnv = "AZURE_STORAGE_SAS_TOKEN"
 )
 
 // GCPCredentials is a struct to hold values retrieved by parsing the GCE credentials json file
@@ -54,17 +77,17 @@ func gcpGetCredentials() (GCPCredentials, error) {
 
 // gcpCredentialsFromEnv retrieves credentials from "GOOGLE_APPLICATION_CREDENTIALS"
 func gcpCredentialsFromEnv() ([]byte, error) {
-	return gcpCredentialsFromFilePath(os.Getenv("GOOGLE_APPLICATION_CREDENTIALS"))
+	return gcpCredentialsFromFilePath(os.Getenv(GCPCredentialsEnv))
 }
 
 // gcpCredentialsFromFilePath retrieves credentials from any given file path
 func gcpCredentialsFromFilePath(filePath string) ([]byte, error) {
 	if filePath == "" {
-		return nil, fmt.Errorf("GOOGLE_APPLICATION_CREDENTIALS env variable is empty")
+		return nil, fmt.Errorf("%s env variable is empty", GCPCredentialsEnv)
 	}
 	gcsCredsByteArray, err := ioutil.ReadFile(filePath)
 	if err != nil {
-		return nil, fmt.Errorf("Failed reading data from GOOGLE_APPLICATION_CREDENTIALS: %s", err)
+		return nil, fmt.Errorf("Failed reading data from %s: %s", GCPCredentialsEnv, err)
 	}
 	return gcsCredsByteArray, nil
 }
@@ -144,9 +167,9 @@ func AwsCredentialsFromEnv() (awsCreds.Value, error) {
 
 // AzureStorageCredentialsFromEnv retrives value of "AZURE_STORAGE_SAS_TOKEN" from env variables
 func AzureStorageCredentialsFromEnv() (string, error) {
-	azureSasToken, isPresent := os.LookupEnv("AZURE_STORAGE_SAS_TOKEN")
+	azureSasToken, isPresent := os.LookupEnv(AzureStorageSasTokenEnv)
 	if !isPresent {
-		return "", errors.New("AZURE_STORAGE_SAS_TOKEN env variable not found")
+		return "", fmt.Errorf("%s env variable not found", AzureStorageSasTokenEnv)
 	}
 	return azureSasToken, nil
 }
@@ -156,26 +179,32 @@ func AzureCredentialsFromEnv() (AzureCredentials, error) {
 
 	// get client id, client secret, tenat id, resource group and subscription id
 	var azureCreds AzureCredentials
-	var isPresent bool
-	azureCreds.ClientID, isPresent = os.LookupEnv("AZURE_CLIENT_ID")
-	if !isPresent {
-		return AzureCredentials{}, errors.New("AZURE_CLIENT_ID env variable not found")
+	var isPresentClientID, isPresentClientSecret, isPresentSubscriptionID bool
+	var isPresentTenantID, isPresentRG bool
+	errorString := "Empty env variable: "
+	azureCreds.ClientID, isPresentClientID = os.LookupEnv(AzureClientIDEnv)
+	if !isPresentClientID {
+		errorString = fmt.Sprintf("%s%s ", errorString, AzureClientIDEnv)
 	}
-	azureCreds.ClientSecret, isPresent = os.LookupEnv("AZURE_CLIENT_SECRET")
-	if !isPresent {
-		return AzureCredentials{}, errors.New("AZURE_CLIENT_SECRET env variable not found")
+	azureCreds.ClientSecret, isPresentClientSecret = os.LookupEnv(AzureClientSecretEnv)
+	if !isPresentClientSecret {
+		errorString = fmt.Sprintf("%s%s ", errorString, AzureClientSecretEnv)
 	}
-	azureCreds.SubscriptionID, isPresent = os.LookupEnv("AZURE_SUBSCRIPTION_ID")
-	if !isPresent {
-		return AzureCredentials{}, errors.New("AZURE_SUBSCRIPTION_ID env variable not found")
+	azureCreds.SubscriptionID, isPresentSubscriptionID = os.LookupEnv(AzureSubscriptionIDEnv)
+	if !isPresentSubscriptionID {
+		errorString = fmt.Sprintf("%s%s ", errorString, AzureSubscriptionIDEnv)
 	}
-	azureCreds.TenantID, isPresent = os.LookupEnv("AZURE_TENANT_ID")
-	if !isPresent {
-		return AzureCredentials{}, errors.New("AZURE_TENANT_ID env variable not found")
+	azureCreds.TenantID, isPresentTenantID = os.LookupEnv(AzureTenantIDEnv)
+	if !isPresentTenantID {
+		errorString = fmt.Sprintf("%s%s ", errorString, AzureTenantIDEnv)
 	}
-	azureCreds.ResourceGroup, isPresent = os.LookupEnv("AZURE_RG")
-	if !isPresent {
-		return AzureCredentials{}, errors.New("AZURE_RG env variable not found")
+	azureCreds.ResourceGroup, isPresentRG = os.LookupEnv(AzureRGEnv)
+	if !isPresentRG {
+		errorString = fmt.Sprintf("%s%s ", errorString, AzureRGEnv)
+	}
+	if !(isPresentClientID && isPresentClientSecret && isPresentRG &&
+		isPresentSubscriptionID && isPresentTenantID) {
+		return AzureCredentials{}, fmt.Errorf(errorString)
 	}
 	return azureCreds, nil
 }
