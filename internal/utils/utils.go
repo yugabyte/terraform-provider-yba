@@ -2,10 +2,26 @@ package utils
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"regexp"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
 	client "github.com/yugabyte/platform-go-client"
+)
+
+const (
+
+	// YBAAllowUniverseMinVersion specifies minimum version
+	// required to use Scheduled Backup resource via YBA Terraform
+	YBAAllowUniverseMinVersion = "2.17.1.0-b371"
+
+	// YBAAllowBackupMinVersion specifies minimum version
+	// required to use Universe resource via YBA Terraform
+	YBAAllowBackupMinVersion = "2.17.3.0-b43"
 )
 
 // StringSlice accepts array of interface and returns a pointer to slice of string
@@ -111,4 +127,169 @@ func WaitForTask(ctx context.Context, tUUID string, cUUID string, c *client.APIC
 	}
 
 	return nil
+}
+
+// CheckValidYBAVersion allows operation if version is higher than listed versions
+func CheckValidYBAVersion(ctx context.Context, c *client.APIClient, versions []string) (bool,
+	string, error) {
+
+	r, _, err := c.SessionManagementApi.AppVersion(ctx).Execute()
+	if err != nil {
+		return false, "", err
+	}
+	currentVersion := r["version"]
+	for _, v := range versions {
+		check, err := CompareYbVersions(currentVersion, v)
+		if err != nil {
+			return false, "", err
+		}
+		if check == 0 || check == 1 {
+			return true, currentVersion, err
+		}
+	}
+	return false, currentVersion, err
+}
+
+// CompareYbVersions returns -1 if version1 < version2, 0 if version1 = version2,
+// 1 if version1 > version2
+func CompareYbVersions(v1 string, v2 string) (int, error) {
+	ybaVersionRegex := "^(\\d+.\\d+.\\d+.\\d+)(-(b(\\d+)|(\\w+)))?$"
+	// After the second dash, a user can add anything, and it will be ignored.
+	v1Parts := strings.Split(v1, "-")
+	if len(v1Parts) > 2 {
+		v1 = fmt.Sprintf("%v%v", v1Parts[0]+"-", v1Parts[1])
+	}
+	v2Parts := strings.Split(v2, "-")
+	if len(v2Parts) > 2 {
+		v2 = fmt.Sprintf("%v%v", v2Parts[0]+"-", v2Parts[1])
+	}
+	versionPattern, err := regexp.Compile(ybaVersionRegex)
+	if err != nil {
+		return 0, err
+	}
+	v1Matcher := versionPattern.Match([]byte(v1))
+	v2Matcher := versionPattern.Match([]byte(v2))
+	if v1Matcher && v2Matcher {
+		v1Groups := versionPattern.FindAllStringSubmatch(v1, -1)
+		v2Groups := versionPattern.FindAllStringSubmatch(v2, -1)
+		v1Numbers := strings.Split(v1Groups[0][1], ".")
+		v2Numbers := strings.Split(v2Groups[0][1], ".")
+		for i := 0; i < 4; i++ {
+			var err error
+			a, err := strconv.Atoi(v1Numbers[i])
+			if err != nil {
+				return 0, err
+			}
+			b, err := strconv.Atoi(v2Numbers[i])
+			if err != nil {
+				return 0, err
+			}
+			if a > b {
+				return 1, nil
+			} else if a < b {
+				return -1, nil
+			}
+		}
+		v1BuildNumber := v1Groups[0][4]
+		v2BuildNumber := v2Groups[0][4]
+		// If one of the build number is null (i.e local build) then consider
+		// versions as equal as we cannot compare between local builds
+		// e.g: 2.5.2.0-b15 and 2.5.2.0-custom are considered equal
+		// 2.5.2.0-custom1 and 2.5.2.0-custom2 are considered equal too
+		if v1BuildNumber != "" && v2BuildNumber != "" {
+			var err error
+			a, err := strconv.Atoi(v1BuildNumber)
+			if err != nil {
+				return 0, err
+			}
+			b, err := strconv.Atoi(v2BuildNumber)
+			if err != nil {
+				return 0, err
+			}
+			if a > b {
+				return 1, nil
+			} else if a < b {
+				return -1, nil
+			} else {
+				return 0, nil
+			}
+		}
+		return 0, nil
+	}
+	return 0, errors.New("Unable to parse YB version strings")
+}
+
+// ConvertUnitToMs converts time from unit to milliseconds
+func ConvertUnitToMs(value float64, unit string) int64 {
+	var v int64
+	if strings.Compare(unit, "YEARS") == 0 {
+		v = int64(value * 12 * 30 * 24 * 60 * 60 * 1000)
+	} else if strings.Compare(unit, "MONTHS") == 0 {
+		v = int64(value * 30 * 24 * 60 * 60 * 1000)
+	} else if strings.Compare(unit, "DAYS") == 0 {
+		v = int64(value * 24 * 60 * 60 * 1000)
+	} else if strings.Compare(unit, "HOURS") == 0 {
+		v = int64(value * 60 * 60 * 1000)
+	} else if strings.Compare(unit, "MINUTES") == 0 {
+		v = int64(value * 60 * 1000)
+	} else if strings.Compare(unit, "SECONDS") == 0 {
+		v = int64(value * 1000)
+	}
+	return v
+}
+
+// ConvertMsToUnit converts time from milliseconds to unit
+func ConvertMsToUnit(value int64, unit string) float64 {
+	var v float64
+	if strings.Compare(unit, "YEARS") == 0 {
+		v = (float64(value) / 12 / 30 / 24 / 60 / 60 / 1000)
+	} else if strings.Compare(unit, "MONTHS") == 0 {
+		v = (float64(value) / 30 / 24 / 60 / 60 / 1000)
+	} else if strings.Compare(unit, "DAYS") == 0 {
+		v = (float64(value) / 24 / 60 / 60 / 1000)
+	} else if strings.Compare(unit, "HOURS") == 0 {
+		v = (float64(value) / 60 / 60 / 1000)
+	} else if strings.Compare(unit, "MINUTES") == 0 {
+		v = (float64(value) / 60 / 1000)
+	} else if strings.Compare(unit, "SECONDS") == 0 {
+		v = (float64(value) / 1000)
+	}
+	return v
+}
+
+// GetUnitOfTimeFromDuration takes time.Duration as input and caluclates the unit specified in
+// that duration
+func GetUnitOfTimeFromDuration(duration time.Duration) string {
+	if duration.Hours() >= float64(24*30*365) {
+		return "YEARS"
+	} else if duration.Hours() >= float64(24*30) {
+		return "MONTHS"
+	} else if duration.Hours() >= float64(24) {
+		return "DAYS"
+	} else if duration.Hours() >= float64(1) {
+		return "HOURS"
+	} else if duration.Minutes() >= float64(1) {
+		return "MINUTES"
+	} else if duration.Seconds() >= float64(1) {
+		return "SECONDS"
+	} else if duration.Milliseconds() > int64(0) {
+		return "MILLISECONDS"
+	} else if duration.Microseconds() > int64(0) {
+		return "MICROSECONDS"
+	} else if duration.Nanoseconds() > int64(0) {
+		return "NANOSECONDS"
+	}
+	return ""
+}
+
+// GetMsFromDurationString retrieves the ms notation of the duration mentioned in the input string
+// return value string holds the unit calculated from time.Duration
+// Throws error on improper duration format
+func GetMsFromDurationString(duration string) (int64, string, bool, error) {
+	number, err := time.ParseDuration(duration)
+	if err != nil {
+		return 0, "", false, err
+	}
+	unitFromDuration := GetUnitOfTimeFromDuration(number)
+	return number.Milliseconds(), unitFromDuration, true, err
 }

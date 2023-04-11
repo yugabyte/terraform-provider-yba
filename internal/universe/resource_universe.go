@@ -489,6 +489,15 @@ func userIntentSchema() *schema.Resource {
 	}
 }
 
+func universeYBAVersionCheck(ctx context.Context, c *client.APIClient) (bool, string, error) {
+	allowedVersions := []string{utils.YBAAllowUniverseMinVersion}
+	allowed, version, err := utils.CheckValidYBAVersion(ctx, c, allowedVersions)
+	if err != nil {
+		return false, "", err
+	}
+	return allowed, version, err
+}
+
 func getClusterByType(clusters []client.Cluster, clusterType string) (client.Cluster, bool) {
 
 	for _, v := range clusters {
@@ -707,6 +716,18 @@ func resourceUniverseCreate(ctx context.Context, d *schema.ResourceData, meta in
 	c := meta.(*api.ApiClient).YugawareClient
 	cUUID := meta.(*api.ApiClient).CustomerId
 
+	allowed, version, err := universeYBAVersionCheck(ctx, c)
+	if err != nil {
+		return diag.FromErr(err)
+	}
+
+	if !allowed {
+
+		return diag.FromErr(fmt.Errorf("Creating universes below version 2.17.1.0-b371 is not"+
+			" supported, currently on %s", version))
+
+	}
+
 	req := buildUniverse(d)
 	r, _, err := c.UniverseClusterMutationsApi.CreateAllClusters(ctx, cUUID).
 		UniverseConfigureTaskParams(req).Execute()
@@ -800,6 +821,18 @@ func resourceUniverseUpdate(ctx context.Context, d *schema.ResourceData, meta in
 	// cloud Info can have changes in zones
 	c := meta.(*api.ApiClient).YugawareClient
 	cUUID := meta.(*api.ApiClient).CustomerId
+
+	allowed, version, err := universeYBAVersionCheck(ctx, c)
+	if err != nil {
+		return diag.FromErr(err)
+	}
+
+	if !allowed {
+
+		return diag.FromErr(fmt.Errorf("Editing universes below version 2.17.1.0-b371 is not"+
+			" supported, currently on %s", version))
+
+	}
 
 	if d.HasChange("clusters") {
 		clusters := d.Get("clusters").([]interface{})

@@ -3,7 +3,6 @@ package cloud_provider
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-log/tflog"
@@ -88,20 +87,10 @@ func ResourceCloudProvider() *schema.Resource {
 			},
 			"regions": RegionsSchema(),
 			"ssh_port": {
-				Type:     schema.TypeInt,
-				Optional: true,
-				Computed: true,
-				ForceNew: true,
-
-				DiffSuppressFunc: func(k, old, new string, d *schema.ResourceData) bool {
-					// Port changes are currently not supported in Edit Provider.
-					// Currently, YBA Provider details does not returns the port value 22
-					// despite storing the correct port value in the schema. This leads to
-					// change detection in the config file, which forces replacement due to
-					// the ForceNew tag being set to true. Will confirm if this is a bug in
-					// YBA
-					return d.Id() != ""
-				},
+				Type:        schema.TypeInt,
+				Optional:    true,
+				Computed:    true,
+				ForceNew:    true,
 				Description: "Port to use for ssh commands",
 			},
 			"ssh_private_key_content": {
@@ -111,14 +100,23 @@ func ResourceCloudProvider() *schema.Resource {
 				Description: "Private key to use for ssh commands",
 			},
 			"ssh_user": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				ForceNew:    true,
+				Type:     schema.TypeString,
+				Optional: true,
+				ForceNew: true,
+				DiffSuppressFunc: func(k, old, new string, d *schema.ResourceData) bool {
+					// ssh_user field can be empty in the configuration block of the resource
+					// In that event YBA uses a default ssh user as per the cloud provider
+					// The discrepency of empty field in config file and value filled in state
+					// file, we check if ssh user is empty and ignore the difference if true
+
+					return len(old) > 0 && len(new) == 0
+				},
 				Description: "User to use for ssh commands",
 			},
 		},
 	}
 }
+
 func buildConfig(cloudCode string) (map[string]interface{}, error) {
 	config := make(map[string]interface{})
 	var err error
@@ -148,6 +146,7 @@ func buildConfig(cloudCode string) (map[string]interface{}, error) {
 	}
 	return config, nil
 }
+
 func resourceCloudProviderCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) (
 	diag.Diagnostics) {
 	c := meta.(*api.ApiClient).YugawareClient
@@ -243,15 +242,14 @@ func resourceCloudProviderRead(ctx context.Context, d *schema.ResourceData, meta
 
 func resourceCloudProviderDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) (
 	diag.Diagnostics) {
-	// TODO: this uses a non-public API
 	var diags diag.Diagnostics
 
-	vc := meta.(*api.ApiClient).VanillaClient
+	c := meta.(*api.ApiClient).YugawareClient
 	cUUID := meta.(*api.ApiClient).CustomerId
-	token := meta.(*api.ApiClient).ApiKey
+
 	pUUID := d.Id()
-	_, err := vc.MakeRequest(http.MethodDelete, fmt.Sprintf("api/v1/customers/%s/providers/%s",
-		cUUID, pUUID), nil, token)
+	_, _, err := c.CloudProvidersApi.Delete(ctx, cUUID, pUUID).Execute()
+
 	if err != nil {
 		return diag.FromErr(err)
 	}
