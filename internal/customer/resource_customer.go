@@ -13,6 +13,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	client "github.com/yugabyte/platform-go-client"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/api"
+	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/utils"
 )
 
 // ResourceCustomer creates and maintains resource for customer
@@ -101,7 +102,7 @@ func resourceCustomerCreate(ctx context.Context, d *schema.ResourceData, meta in
 	diag.Diagnostics) {
 	var diags diag.Diagnostics
 
-	c := meta.(*api.ApiClient).YugawareClient
+	c := meta.(*api.APIClient).YugawareClient
 
 	password, err := fetchCustomerPasswordFromEnv()
 	if err != nil {
@@ -114,10 +115,12 @@ func resourceCustomerCreate(ctx context.Context, d *schema.ResourceData, meta in
 		Name:     d.Get("name").(string),
 		Password: password,
 	}
-	r, _, err := c.SessionManagementApi.RegisterCustomer(ctx).CustomerRegisterFormData(
+	r, response, err := c.SessionManagementApi.RegisterCustomer(ctx).CustomerRegisterFormData(
 		req).GenerateApiToken(true).Execute()
 	if err != nil {
-		return diag.FromErr(err)
+		errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
+			"Customer", "Create")
+		return diag.FromErr(errMessage)
 	}
 
 	token := ""
@@ -139,20 +142,22 @@ func resourceCustomerRead(ctx context.Context, d *schema.ResourceData, meta inte
 	diag.Diagnostics) {
 	var diags diag.Diagnostics
 
-	vc := meta.(*api.ApiClient).VanillaClient
-	apiKey := meta.(*api.ApiClient).ApiKey
+	vc := meta.(*api.APIClient).VanillaClient
+	apiKey := meta.(*api.APIClient).APIKey
 	if d.Get("api_token").(string) != "" {
 		apiKey = d.Get("api_token").(string)
 	}
-	newAPI, err := api.NewApiClient(vc.Host, apiKey)
+	newAPI, err := api.NewAPIClient(vc.Host, apiKey)
 	if err != nil {
 		return diag.FromErr(err)
 	}
 	newClient := newAPI.YugawareClient
-	r, _, err := newClient.SessionManagementApi.GetSessionInfo(ctx).Execute()
+	r, response, err := newClient.SessionManagementApi.GetSessionInfo(ctx).Execute()
 
 	if err != nil {
-		return diag.FromErr(err)
+		errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
+			"Customer", "Read")
+		return diag.FromErr(errMessage)
 	}
 
 	if err = d.Set("api_token", *r.ApiToken); err != nil {

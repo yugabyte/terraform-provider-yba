@@ -11,6 +11,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
 	client "github.com/yugabyte/platform-go-client"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/acctest"
+	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/utils"
 )
 
 func TestAccUniverse_GCP_UpdatePrimaryNodes(t *testing.T) {
@@ -104,22 +105,24 @@ func TestAccUniverse_Azure_UpdatePrimaryNodes(t *testing.T) {
 }
 
 func testAccCheckDestroyProviderAndUniverse(s *terraform.State) error {
-	conn := acctest.ApiClient.YugawareClient
+	conn := acctest.APIClient.YugawareClient
 
 	for _, r := range s.RootModule().Resources {
 		if r.Type == "yb_universe" {
-			cUUID := acctest.ApiClient.CustomerId
+			cUUID := acctest.APIClient.CustomerID
 			_, _, err := conn.UniverseManagementApi.GetUniverse(context.Background(), cUUID,
 				r.Primary.ID).Execute()
 			if err == nil || acctest.IsResourceNotFoundError(err) {
 				return errors.New("universe resource is not destroyed")
 			}
 		} else if r.Type == "yb_cloud_provider" {
-			cUUID := acctest.ApiClient.CustomerId
-			res, _, err := conn.CloudProvidersApi.GetListOfProviders(context.Background(),
+			cUUID := acctest.APIClient.CustomerID
+			res, response, err := conn.CloudProvidersApi.GetListOfProviders(context.Background(),
 				cUUID).Execute()
 			if err != nil {
-				return err
+				errMessage := utils.ErrorFromHTTPResponse(response, err, utils.TestEntity,
+					"Universe", "Read - Cloud Provider")
+				return errMessage
 			}
 			for _, p := range res {
 				if *p.Uuid == r.Primary.ID {
@@ -132,8 +135,7 @@ func testAccCheckDestroyProviderAndUniverse(s *terraform.State) error {
 	return nil
 }
 
-func testAccCheckUniverseExists(name string, universe *client.UniverseResp) (
-	resource.TestCheckFunc) {
+func testAccCheckUniverseExists(name string, universe *client.UniverseResp) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
 		r, ok := s.RootModule().Resources[name]
 		if !ok {
@@ -143,12 +145,14 @@ func testAccCheckUniverseExists(name string, universe *client.UniverseResp) (
 			return errors.New("no ID is set for universe resource")
 		}
 
-		conn := acctest.ApiClient.YugawareClient
-		cUUID := acctest.ApiClient.CustomerId
-		res, _, err := conn.UniverseManagementApi.GetUniverse(context.Background(), cUUID,
+		conn := acctest.APIClient.YugawareClient
+		cUUID := acctest.APIClient.CustomerID
+		res, response, err := conn.UniverseManagementApi.GetUniverse(context.Background(), cUUID,
 			r.Primary.ID).Execute()
 		if err != nil {
-			return err
+			errMessage := utils.ErrorFromHTTPResponse(response, err, utils.TestEntity,
+				"Universe", "Read - Universe")
+			return errMessage
 		}
 		*universe = res
 		return nil

@@ -4,12 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"testing"
+
 	sdkacctest "github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
 	client "github.com/yugabyte/platform-go-client"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/acctest"
-	"testing"
+	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/utils"
 )
 
 func TestAccCloudProvider_GCP(t *testing.T) {
@@ -79,17 +81,20 @@ func TestAccCloudProvider_Azure(t *testing.T) {
 }
 
 func testAccCheckDestroyCloudProvider(s *terraform.State) error {
-	conn := acctest.ApiClient.YugawareClient
+	conn := acctest.APIClient.YugawareClient
 
 	for _, r := range s.RootModule().Resources {
 		if r.Type != "yb_cloud_provider" {
 			continue
 		}
 
-		cUUID := acctest.ApiClient.CustomerId
-		res, _, err := conn.CloudProvidersApi.GetListOfProviders(context.Background(), cUUID).Execute()
+		cUUID := acctest.APIClient.CustomerID
+		res, response, err := conn.CloudProvidersApi.GetListOfProviders(context.Background(),
+			cUUID).Execute()
 		if err != nil {
-			return err
+			errMessage := utils.ErrorFromHTTPResponse(response, err, utils.TestEntity,
+				"Cloud Provider Test", "Read")
+			return errMessage
 		}
 		for _, p := range res {
 			if *p.Uuid == r.Primary.ID {
@@ -101,7 +106,8 @@ func testAccCheckDestroyCloudProvider(s *terraform.State) error {
 	return nil
 }
 
-func testAccCheckCloudProviderExists(name string, provider *client.Provider) resource.TestCheckFunc {
+func testAccCheckCloudProviderExists(name string, provider *client.Provider) (
+	resource.TestCheckFunc) {
 	return func(s *terraform.State) error {
 		r, ok := s.RootModule().Resources[name]
 		if !ok {
@@ -111,11 +117,14 @@ func testAccCheckCloudProviderExists(name string, provider *client.Provider) res
 			return errors.New("no ID is set for cloud provider resource")
 		}
 
-		conn := acctest.ApiClient.YugawareClient
-		cUUID := acctest.ApiClient.CustomerId
-		res, _, err := conn.CloudProvidersApi.GetListOfProviders(context.Background(), cUUID).Execute()
+		conn := acctest.APIClient.YugawareClient
+		cUUID := acctest.APIClient.CustomerID
+		res, response, err := conn.CloudProvidersApi.GetListOfProviders(context.Background(),
+			cUUID).Execute()
 		if err != nil {
-			return err
+			errMessage := utils.ErrorFromHTTPResponse(response, err, utils.TestEntity,
+				"Cloud Provider", "Read")
+			return errMessage
 		}
 		for _, p := range res {
 			if *p.Uuid == r.Primary.ID {
@@ -148,7 +157,8 @@ resource "yb_cloud_provider" "gcp" {
 }
 
 func cloudProviderAWSConfig(name string) string {
-	// TODO: remove the lifecycle ignore_changes block. This is needed because the current API is not returning vnet_name
+	// TODO: remove the lifecycle ignore_changes block.
+	// This is needed because the current API is not returning vnet_name
 	return fmt.Sprintf(`
 resource "yb_cloud_provider" "aws" {
   lifecycle {
@@ -158,7 +168,7 @@ resource "yb_cloud_provider" "aws" {
   }
 
   code = "aws"
-  config = { 
+  config = {
 	AWS_ACCESS_KEY_ID = "%s"
 	AWS_SECRET_ACCESS_KEY = "%s"
   }
@@ -181,7 +191,7 @@ func cloudProviderAzureConfig(name string) string {
 	return fmt.Sprintf(`
 resource "yb_cloud_provider" "azure" {
   code = "azu"
-  config = { 
+  config = {
 	AZURE_SUBSCRIPTION_ID = "%s"
 	AZURE_RG = "%s"
 	AZURE_TENANT_ID = "%s"

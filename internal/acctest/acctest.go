@@ -1,18 +1,19 @@
 package acctest
 
 import (
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/api"
-	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/provider"
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/api"
+	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/provider"
 )
 
 const (
 	// env variables/other constants for yugabyte provider
 	testHost              = "YB_HOST"
-	testApiKey            = "YB_API_KEY"
+	testAPIKey            = "YB_API_KEY"
 	testYBSoftwareVersion = "YB_SOFTWARE_VERSION"
 	ybProviderName        = "yb"
 
@@ -35,61 +36,75 @@ const (
 )
 
 var (
+
+	// ProviderFactories maps schema.Provider to errors generated
 	ProviderFactories map[string]func() (*schema.Provider, error)
-	ApiClient         *api.ApiClient
+	// APIClient variable
+	APIClient *api.APIClient
 )
 
 func init() {
-	c, err := api.NewApiClient(os.Getenv(testHost), os.Getenv(testApiKey))
+	c, err := api.NewAPIClient(os.Getenv(testHost), os.Getenv(testAPIKey))
 	if err != nil {
 		panic(err)
 	}
-	ApiClient = c
+	APIClient = c
 	ProviderFactories = map[string]func() (*schema.Provider, error){
 		ybProviderName: func() (*schema.Provider, error) { return provider.New(), nil },
 	}
 }
 
-func TestApiKey() string {
-	return os.Getenv(testApiKey)
+// TestAPIKey getter
+func TestAPIKey() string {
+	return os.Getenv(testAPIKey)
 }
 
+// TestGCPCredentials getter
 func TestGCPCredentials() string {
 	return os.Getenv(testGCPCredentials)
 }
 
+// TestAWSAccessKey getter
 func TestAWSAccessKey() string {
 	return os.Getenv(testAWSAccessKey)
 }
 
+// TestAWSSecretAccessKey getter
 func TestAWSSecretAccessKey() string {
 	return os.Getenv(testAWSSecretAccessKey)
 }
 
+// TestAzureClientID getter
 func TestAzureClientID() string {
 	return os.Getenv(testAzureClientID)
 }
 
+// TestAzureSubscriptionID getter
 func TestAzureSubscriptionID() string {
 	return os.Getenv(testAzureSubscriptionID)
 }
 
+// TestAzureResourceGroup getter
 func TestAzureResourceGroup() string {
 	return os.Getenv(testAzureResourceGroup)
 }
 
+// TestAzureTenantID getter
 func TestAzureTenantID() string {
 	return os.Getenv(testAzureTenantID)
 }
 
+// TestAzureClientSecret getter
 func TestAzureClientSecret() string {
 	return os.Getenv(testAzureClientSecret)
 }
 
+// TestYBSoftwareVersion getter
 func TestYBSoftwareVersion() string {
 	return os.Getenv(testYBSoftwareVersion)
 }
 
+// TestAccPreCheckGCP Preflight checks for acceptance tests
 func TestAccPreCheckGCP(t *testing.T) {
 	if v := os.Getenv(testGCPCredentials); v == "" {
 		t.Fatal(testGCPCredentials + " must be set for acceptance tests")
@@ -105,6 +120,7 @@ func TestAccPreCheckGCP(t *testing.T) {
 	}
 }
 
+// TestAccPreCheckAWS Preflight checks for acceptance tests
 func TestAccPreCheckAWS(t *testing.T) {
 	if v := os.Getenv(testAWSAccessKey); v == "" {
 		t.Fatal(testAWSAccessKey + " must be set for acceptance tests")
@@ -114,6 +130,7 @@ func TestAccPreCheckAWS(t *testing.T) {
 	}
 }
 
+// TestAccPreCheckAzure Preflight checks for acceptance tests
 func TestAccPreCheckAzure(t *testing.T) {
 	if v := os.Getenv(testAzureClientID); v == "" {
 		t.Fatal(testAzureClientID + " must be set for acceptance tests")
@@ -132,18 +149,20 @@ func TestAccPreCheckAzure(t *testing.T) {
 	}
 }
 
+// TestAccPreCheck Preflight checks for acceptance tests
 func TestAccPreCheck(t *testing.T) {
 	if v := os.Getenv(testHost); v == "" {
 		t.Fatal(testHost + " must be set for acceptance tests")
 	}
-	if v := os.Getenv(testApiKey); v == "" {
-		t.Fatal(testApiKey + " must be set for acceptance tests")
+	if v := os.Getenv(testAPIKey); v == "" {
+		t.Fatal(testAPIKey + " must be set for acceptance tests")
 	}
 	if v := os.Getenv(testYBSoftwareVersion); v == "" {
 		t.Fatal(testYBSoftwareVersion + " must be set for acceptance tests")
 	}
 }
 
+// IsResourceNotFoundError function
 func IsResourceNotFoundError(err error) bool {
 	if strings.Contains(err.Error(), "404") {
 		return true
