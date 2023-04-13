@@ -100,8 +100,8 @@ func resourceRestoreDiff() schema.CustomizeDiffFunc {
 
 func resourceRestoreCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) (
 	diag.Diagnostics) {
-	c := meta.(*api.ApiClient).YugawareClient
-	cUUID := meta.(*api.ApiClient).CustomerId
+	c := meta.(*api.APIClient).YugawareClient
+	cUUID := meta.(*api.APIClient).CustomerID
 
 	allowed, version, err := backupYBAVersionCheck(ctx, c)
 	if err != nil {
@@ -131,9 +131,11 @@ func resourceRestoreCreate(ctx context.Context, d *schema.ResourceData, meta int
 	}
 
 	// V2 restore
-	r, _, err := c.BackupsApi.RestoreBackupV2(ctx, cUUID).Backup(req).Execute()
+	r, response, err := c.BackupsApi.RestoreBackupV2(ctx, cUUID).Backup(req).Execute()
 	if err != nil {
-		return diag.FromErr(err)
+		errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
+			"Restore", "Create")
+		return diag.FromErr(errMessage)
 	}
 
 	tflog.Debug(ctx, fmt.Sprintf("Waiting for restore %s to complete", d.Id()))
@@ -150,8 +152,8 @@ func resourceRestoreRead(ctx context.Context, d *schema.ResourceData, meta inter
 
 	// fetch restore from restore table
 	var diags diag.Diagnostics
-	c := meta.(*api.ApiClient).YugawareClient
-	cUUID := meta.(*api.ApiClient).CustomerId
+	c := meta.(*api.APIClient).YugawareClient
+	cUUID := meta.(*api.APIClient).CustomerID
 	allowed, version, err := backupYBAVersionCheck(ctx, c)
 	if err != nil {
 		return diag.FromErr(err)
@@ -187,9 +189,12 @@ func resourceRestoreRead(ctx context.Context, d *schema.ResourceData, meta inter
 	}
 	req.Filter.DateRangeEnd = &endDate
 
-	r, _, err := c.BackupsApi.ListBackupRestoresV2(ctx, cUUID).PageRestoresRequest(req).Execute()
+	r, response, err := c.BackupsApi.ListBackupRestoresV2(ctx, cUUID).PageRestoresRequest(
+		req).Execute()
 	if err != nil {
-		return diag.FromErr(err)
+		errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
+			"Restore", "Read")
+		return diag.FromErr(errMessage)
 	}
 
 	if len(r.Entities) > 0 {

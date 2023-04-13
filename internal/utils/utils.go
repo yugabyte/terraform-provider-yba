@@ -2,27 +2,32 @@ package utils
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
+	"reflect"
 	"regexp"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
 	client "github.com/yugabyte/platform-go-client"
 )
 
-const (
-
-	// YBAAllowUniverseMinVersion specifies minimum version
-	// required to use Scheduled Backup resource via YBA Terraform
-	YBAAllowUniverseMinVersion = "2.17.1.0-b371"
-
-	// YBAAllowBackupMinVersion specifies minimum version
-	// required to use Universe resource via YBA Terraform
-	YBAAllowBackupMinVersion = "2.17.3.0-b43"
-)
+type ybaStructuredError struct {
+	// User-visible unstructured error message
+	Error *interface{} `json:"error,omitempty"`
+	// Method for HTTP call that resulted in this error
+	HTTPMethod *string `json:"httpMethod,omitempty"`
+	// URI for HTTP request that resulted in this error
+	RequestURI *string `json:"requestUri,omitempty"`
+	// Always set to false to indicate failure
+	Success *bool `json:"success,omitempty"`
+}
 
 // StringSlice accepts array of interface and returns a pointer to slice of string
 func StringSlice(in []interface{}) *[]string {
@@ -112,11 +117,23 @@ func WaitForTask(ctx context.Context, tUUID string, cUUID string, c *client.APIC
 		Timeout: timeout,
 
 		Refresh: func() (result interface{}, state string, err error) {
-			r, _, err := c.CustomerTasksApi.TaskStatus(ctx, cUUID, tUUID).Execute()
+			r, response, err := c.CustomerTasksApi.TaskStatus(ctx, cUUID, tUUID).Execute()
 			if err != nil {
-				return nil, "", err
+				errMessage := ErrorFromHTTPResponse(response, err, "Task", "WaitForTask",
+					"Get Task Status")
+				return nil, "", errMessage
 			}
+			tflog.Info(ctx, fmt.Sprintf("Task \"%s\" completion percentage: %.0f%%", r["title"].(string),
+				r["percent"].(float64)))
 
+			subtasksDetailsList := r["details"].(map[string]interface{})["taskDetails"].([]interface{})
+			var subtasksStatus string
+			for _, task := range subtasksDetailsList {
+				taskMap := task.(map[string]interface{})
+				subtasksStatus = fmt.Sprintf("%sTitle: \"%s\", Status: \"%s\"; ",
+					subtasksStatus, taskMap["title"].(string), taskMap["state"].(string))
+			}
+			tflog.Info(ctx, fmt.Sprintf("Substasks: %s", subtasksStatus))
 			s := r["status"].(string)
 			return s, s, nil
 		},
@@ -133,9 +150,11 @@ func WaitForTask(ctx context.Context, tUUID string, cUUID string, c *client.APIC
 func CheckValidYBAVersion(ctx context.Context, c *client.APIClient, versions []string) (bool,
 	string, error) {
 
-	r, _, err := c.SessionManagementApi.AppVersion(ctx).Execute()
+	r, response, err := c.SessionManagementApi.AppVersion(ctx).Execute()
 	if err != nil {
-		return false, "", err
+		errMessage := ErrorFromHTTPResponse(response, err, "Validation",
+			"YBA Version", "Get App Version")
+		return false, "", errMessage
 	}
 	currentVersion := r["version"]
 	for _, v := range versions {
@@ -292,4 +311,45 @@ func GetMsFromDurationString(duration string) (int64, string, bool, error) {
 	}
 	unitFromDuration := GetUnitOfTimeFromDuration(number)
 	return number.Milliseconds(), unitFromDuration, true, err
+}
+
+// ErrorFromHTTPResponse extracts the error message from the HTTP response of the API
+func ErrorFromHTTPResponse(resp *http.Response, apiError error, entity, entityName,
+	operation string) error {
+	errorTag := fmt.Errorf("%s: %s, Operation: %s - %w", entity, entityName, operation, apiError)
+	if resp == nil {
+		return errorTag
+	}
+	response := *resp
+	errorBlock := ybaStructuredError{}
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		return fmt.Errorf("%w: %s", errorTag, "Error reading HTTP Response body")
+	}
+	if err = json.Unmarshal(body, &errorBlock); err != nil {
+		fmt.Println("Response body: ", response)
+		return fmt.Errorf("%w: %s %s", errorTag,
+			"Failed unmarshalling HTTP Response body", err.Error())
+	}
+	var errorString string
+	if reflect.TypeOf(*errorBlock.Error) == reflect.TypeOf(errorString) {
+		return fmt.Errorf("%w: %s", errorTag, (*errorBlock.Error).(string))
+	}
+
+	errorMap := (*errorBlock.Error).(map[string]interface{})
+	for k, v := range errorMap {
+		if k != "" {
+			errorString = fmt.Sprintf("Field: %s, Error:", k)
+		}
+		var checkType []interface{}
+		if reflect.TypeOf(v) == reflect.TypeOf(checkType) {
+			for _, s := range *StringSlice(v.([]interface{})) {
+				errorString = fmt.Sprintf("%s %s", errorString, s)
+			}
+		} else {
+			errorString = fmt.Sprintf("%s %s", errorString, v.(string))
+		}
+
+	}
+	return fmt.Errorf("%w: %s", errorTag, errorString)
 }

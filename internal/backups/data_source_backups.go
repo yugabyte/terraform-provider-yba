@@ -72,8 +72,8 @@ func Lists() *schema.Resource {
 func dataSourceBackupsListRead(ctx context.Context, d *schema.ResourceData, meta interface{}) (
 	diag.Diagnostics) {
 	var diags diag.Diagnostics
-	c := meta.(*api.ApiClient).YugawareClient
-	cUUID := meta.(*api.ApiClient).CustomerId
+	c := meta.(*api.APIClient).YugawareClient
+	cUUID := meta.(*api.APIClient).CustomerID
 	var err error
 
 	allowed, version, err := backupYBAVersionCheck(ctx, c)
@@ -131,9 +131,11 @@ func dataSourceBackupsListRead(ctx context.Context, d *schema.ResourceData, meta
 		req.Filter.DateRangeEnd = &endDate
 	}
 
-	r, _, err := c.BackupsApi.ListBackupsV2(ctx, cUUID).PageBackupsRequest(req).Execute()
+	r, response, err := c.BackupsApi.ListBackupsV2(ctx, cUUID).PageBackupsRequest(req).Execute()
 	if err != nil {
-		return diag.FromErr(err)
+		errMessage := utils.ErrorFromHTTPResponse(response, err, utils.DataSourceEntity,
+			"Backup", "Read")
+		return diag.FromErr(errMessage)
 	}
 
 	// Get the first entity from r

@@ -337,7 +337,7 @@ func resourceInstallationCreate(ctx context.Context, d *schema.ResourceData, met
 		}
 	}
 
-	c := meta.(*api.ApiClient).YugawareClient
+	c := meta.(*api.APIClient).YugawareClient
 	// Giving 20 mins for YBA application to start
 	err = waitForStart(ctx, c, 2*d.Timeout(schema.TimeoutCreate))
 	if err != nil {
