@@ -74,7 +74,7 @@ func providerConfigure(ctx context.Context, d *schema.ResourceData) (interface{}
 	host := d.Get("host").(string)
 	apiKey := d.Get("api_token").(string)
 
-	c, err := api.NewApiClient(host, apiKey)
+	c, err := api.NewAPIClient(host, apiKey)
 	if err != nil {
 		return nil, diag.FromErr(err)
 	}

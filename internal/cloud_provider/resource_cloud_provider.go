@@ -328,8 +328,8 @@ func buildConfig(d *schema.ResourceData) (map[string]interface{}, error) {
 
 func resourceCloudProviderCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) (
 	diag.Diagnostics) {
-	c := meta.(*api.ApiClient).YugawareClient
-	cUUID := meta.(*api.ApiClient).CustomerId
+	c := meta.(*api.APIClient).YugawareClient
+	cUUID := meta.(*api.APIClient).CustomerID
 
 	config, err := buildConfig(d)
 	if err != nil {
@@ -349,9 +349,12 @@ func resourceCloudProviderCreate(ctx context.Context, d *schema.ResourceData, me
 		SshUser:              utils.GetStringPointer(d.Get("ssh_user").(string)),
 		Regions:              buildRegions(d.Get("regions").([]interface{})),
 	}
-	r, _, err := c.CloudProvidersApi.CreateProviders(ctx, cUUID).CreateProviderRequest(req).Execute()
+	r, response, err := c.CloudProvidersApi.CreateProviders(ctx, cUUID).CreateProviderRequest(
+		req).Execute()
 	if err != nil {
-		return diag.FromErr(err)
+		errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
+			"Cloud Provider", "Create")
+		return diag.FromErr(errMessage)
 	}
 
 	d.SetId(*r.ResourceUUID)
@@ -379,12 +382,14 @@ func resourceCloudProviderRead(ctx context.Context, d *schema.ResourceData, meta
 	diag.Diagnostics) {
 	var diags diag.Diagnostics
 
-	c := meta.(*api.ApiClient).YugawareClient
-	cUUID := meta.(*api.ApiClient).CustomerId
+	c := meta.(*api.APIClient).YugawareClient
+	cUUID := meta.(*api.APIClient).CustomerID
 
-	r, _, err := c.CloudProvidersApi.GetListOfProviders(ctx, cUUID).Execute()
+	r, response, err := c.CloudProvidersApi.GetListOfProviders(ctx, cUUID).Execute()
 	if err != nil {
-		return diag.FromErr(err)
+		errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
+			"Cloud Provider", "Read")
+		return diag.FromErr(errMessage)
 	}
 
 	p, err := findProvider(r, d.Id())
@@ -423,14 +428,16 @@ func resourceCloudProviderDelete(ctx context.Context, d *schema.ResourceData, me
 	diag.Diagnostics) {
 	var diags diag.Diagnostics
 
-	c := meta.(*api.ApiClient).YugawareClient
-	cUUID := meta.(*api.ApiClient).CustomerId
+	c := meta.(*api.APIClient).YugawareClient
+	cUUID := meta.(*api.APIClient).CustomerID
 
 	pUUID := d.Id()
-	_, _, err := c.CloudProvidersApi.Delete(ctx, cUUID, pUUID).Execute()
+	_, response, err := c.CloudProvidersApi.Delete(ctx, cUUID, pUUID).Execute()
 
 	if err != nil {
-		return diag.FromErr(err)
+		errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
+			"Cloud Provider", "Delete")
+		return diag.FromErr(errMessage)
 	}
 
 	d.SetId("")

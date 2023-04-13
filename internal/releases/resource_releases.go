@@ -149,8 +149,8 @@ func resourceReleasesCreate(ctx context.Context, d *schema.ResourceData, meta in
 	diag.Diagnostics) {
 	var diags diag.Diagnostics
 
-	cUUID := meta.(*api.ApiClient).CustomerId
-	token := meta.(*api.ApiClient).ApiKey
+	cUUID := meta.(*api.APIClient).CustomerID
+	token := meta.(*api.APIClient).APIKey
 
 	s3 := d.Get("s3").([]interface{})
 	gcs := d.Get("gcs").([]interface{})
@@ -167,7 +167,7 @@ func resourceReleasesCreate(ctx context.Context, d *schema.ResourceData, meta in
 	}
 	httpParams := formatInputHttp(ctx, http)
 
-	vc := meta.(*api.ApiClient).VanillaClient
+	vc := meta.(*api.APIClient).VanillaClient
 	resp, err := vc.ReleaseImport(ctx, cUUID, version, s3Params, gcsParams, httpParams, token)
 	if err != nil {
 		return diag.FromErr(err)
@@ -193,16 +193,21 @@ func findReleases(ctx context.Context, releases map[string]map[string]interface{
 func resourceReleasesRead(ctx context.Context, d *schema.ResourceData, meta interface{}) (
 	diag.Diagnostics) {
 	var diags diag.Diagnostics
-	c := meta.(*api.ApiClient).YugawareClient
-	cUUID := meta.(*api.ApiClient).CustomerId
+	c := meta.(*api.APIClient).YugawareClient
+	cUUID := meta.(*api.APIClient).CustomerID
 
-	_, _, err := c.ReleaseManagementApi.Refresh(ctx, cUUID).Execute()
+	_, response, err := c.ReleaseManagementApi.Refresh(ctx, cUUID).Execute()
 	if err != nil {
-		return diag.FromErr(err)
+		errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
+			"Release", "Read - Refresh")
+		return diag.FromErr(errMessage)
 	}
-	r, _, err := c.ReleaseManagementApi.GetListOfReleases(ctx, cUUID).IncludeMetadata(true).Execute()
+	r, response, err := c.ReleaseManagementApi.GetListOfReleases(ctx, cUUID).IncludeMetadata(
+		true).Execute()
 	if err != nil {
-		return diag.FromErr(err)
+		errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
+			"Release", "Read")
+		return diag.FromErr(errMessage)
 	}
 
 	var p map[string]interface{}
@@ -268,12 +273,14 @@ func resourceReleasesDelete(ctx context.Context, d *schema.ResourceData, meta in
 	diag.Diagnostics) {
 	var diags diag.Diagnostics
 
-	c := meta.(*api.ApiClient).YugawareClient
-	cUUID := meta.(*api.ApiClient).CustomerId
+	c := meta.(*api.APIClient).YugawareClient
+	cUUID := meta.(*api.APIClient).CustomerID
 
-	_, _, err := c.ReleaseManagementApi.DeleteRelease(ctx, cUUID, d.Id()).Execute()
+	_, response, err := c.ReleaseManagementApi.DeleteRelease(ctx, cUUID, d.Id()).Execute()
 	if err != nil {
-		return diag.FromErr(err)
+		errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
+			"Release", "Delete")
+		return diag.FromErr(errMessage)
 	}
 	d.SetId("")
 	return diags

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"strconv"
 	"strings"
 	"time"
@@ -197,8 +198,8 @@ func backupYBAVersionCheck(ctx context.Context, c *client.APIClient) (bool, stri
 
 func resourceBackupsCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) (
 	diag.Diagnostics) {
-	c := meta.(*api.ApiClient).YugawareClient
-	cUUID := meta.(*api.ApiClient).CustomerId
+	c := meta.(*api.APIClient).YugawareClient
+	cUUID := meta.(*api.APIClient).CustomerID
 
 	allowed, version, err := backupYBAVersionCheck(ctx, c)
 	if err != nil {
@@ -255,9 +256,12 @@ func resourceBackupsCreate(ctx context.Context, d *schema.ResourceData, meta int
 	tflog.Info(ctx, fmt.Sprintf("Current version %s, using V2 Create Schedule Backup API",
 		version))
 
-	r, _, err = c.BackupsApi.CreatebackupSchedule(ctx, cUUID).Backup(req).Execute()
+	var response *http.Response
+	r, response, err = c.BackupsApi.CreatebackupSchedule(ctx, cUUID).Backup(req).Execute()
 	if err != nil {
-		return diag.FromErr(err)
+		errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
+			"Backups", "Create")
+		return diag.FromErr(errMessage)
 	}
 
 	d.SetId(r.GetScheduleUUID())
@@ -268,8 +272,8 @@ func resourceBackupsRead(ctx context.Context, d *schema.ResourceData, meta inter
 	diag.Diagnostics) {
 	var diags diag.Diagnostics
 
-	c := meta.(*api.ApiClient).YugawareClient
-	cUUID := meta.(*api.ApiClient).CustomerId
+	c := meta.(*api.APIClient).YugawareClient
+	cUUID := meta.(*api.APIClient).CustomerID
 
 	var b client.Schedule
 	allowed, version, err := backupYBAVersionCheck(ctx, c)
@@ -292,10 +296,12 @@ func resourceBackupsRead(ctx context.Context, d *schema.ResourceData, meta inter
 				d.Get("universe_uuid"))),
 		},
 	}
-	r, _, err := c.ScheduleManagementApi.ListSchedulesV2(ctx, cUUID).
+	r, response, err := c.ScheduleManagementApi.ListSchedulesV2(ctx, cUUID).
 		PageScheduleRequest(req).Execute()
 	if err != nil {
-		return diag.FromErr(err)
+		errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
+			"Backups", "Read")
+		return diag.FromErr(errMessage)
 	}
 	tflog.Info(ctx, fmt.Sprintf("Current version %s, using V2 Read Schedule Backup API", version))
 	b, err = findBackup(r.Entities, d.Id())
@@ -325,8 +331,8 @@ func findBackup(backups []client.Schedule, sUUID string) (client.Schedule, error
 
 func resourceBackupsUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) (
 	diag.Diagnostics) {
-	c := meta.(*api.ApiClient).YugawareClient
-	cUUID := meta.(*api.ApiClient).CustomerId
+	c := meta.(*api.APIClient).YugawareClient
+	cUUID := meta.(*api.APIClient).CustomerID
 
 	allowed, version, err := backupYBAVersionCheck(ctx, c)
 	if err != nil {
@@ -360,18 +366,20 @@ func resourceBackupsUpdate(ctx context.Context, d *schema.ResourceData, meta int
 		Frequency:         utils.GetInt64Pointer(frequency),
 		FrequencyTimeUnit: utils.GetStringPointer(frequencyUnit),
 	}
-	_, _, err = c.ScheduleManagementApi.EditBackupScheduleV2(ctx,
+	_, response, err := c.ScheduleManagementApi.EditBackupScheduleV2(ctx,
 		cUUID, d.Id()).Body(req).Execute()
 	if err != nil {
-		return diag.FromErr(err)
+		errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
+			"Backups", "Update")
+		return diag.FromErr(errMessage)
 	}
 	return resourceBackupsRead(ctx, d, meta)
 }
 
 func resourceBackupsDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) (
 	diag.Diagnostics) {
-	c := meta.(*api.ApiClient).YugawareClient
-	cUUID := meta.(*api.ApiClient).CustomerId
+	c := meta.(*api.APIClient).YugawareClient
+	cUUID := meta.(*api.APIClient).CustomerID
 	allowed, version, err := backupYBAVersionCheck(ctx, c)
 	if err != nil {
 		return diag.FromErr(err)
@@ -383,10 +391,12 @@ func resourceBackupsDelete(ctx context.Context, d *schema.ResourceData, meta int
 	}
 	if d.Get("delete_backup").(bool) {
 
-		backupsList, _, err := c.BackupsApi.ListOfBackups(ctx, cUUID,
+		backupsList, response, err := c.BackupsApi.ListOfBackups(ctx, cUUID,
 			d.Get("universe_uuid").(string)).Execute()
 		if err != nil {
-			return diag.FromErr(err)
+			errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
+				"Backups", "Delete - Fetch Backups")
+			return diag.FromErr(errMessage)
 		}
 
 		var req client.DeleteBackupParams
@@ -405,9 +415,11 @@ func resourceBackupsDelete(ctx context.Context, d *schema.ResourceData, meta int
 			req = client.DeleteBackupParams{
 				DeleteBackupInfos: deleteBackupInfoList,
 			}
-			_, _, err = c.BackupsApi.DeleteBackupsV2(ctx, cUUID).DeleteBackup(req).Execute()
+			_, response, err = c.BackupsApi.DeleteBackupsV2(ctx, cUUID).DeleteBackup(req).Execute()
 			if err != nil {
-				return diag.FromErr(err)
+				errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
+					"Backups", "Delete - Associated backups")
+				return diag.FromErr(errMessage)
 			}
 			tflog.Info(ctx, fmt.Sprintf("Deleted backups with scheduleUUID %s", d.Id()))
 		} else {
@@ -422,9 +434,11 @@ func resourceBackupsDelete(ctx context.Context, d *schema.ResourceData, meta int
 	tflog.Info(ctx, fmt.Sprintf("Current version %s, using V2 Delete Schedule Backup API",
 		version))
 
-	_, _, err = c.ScheduleManagementApi.DeleteScheduleV2(ctx, cUUID, d.Id()).Execute()
+	_, response, err := c.ScheduleManagementApi.DeleteScheduleV2(ctx, cUUID, d.Id()).Execute()
 	if err != nil {
-		return diag.FromErr(err)
+		errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
+			"Backups", "Delete")
+		return diag.FromErr(errMessage)
 	}
 
 	d.SetId("")
