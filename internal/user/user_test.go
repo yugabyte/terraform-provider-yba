@@ -4,12 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"testing"
+
 	sdkacctest "github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
 	client "github.com/yugabyte/platform-go-client"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/acctest"
-	"testing"
+	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/utils"
 )
 
 func TestAccUser_Admin(t *testing.T) {
@@ -51,15 +53,16 @@ func TestAccUser_ReadOnly(t *testing.T) {
 }
 
 func testAccCheckDestroyUser(s *terraform.State) error {
-	conn := acctest.ApiClient.YugawareClient
+	conn := acctest.APIClient.YugawareClient
 
 	for _, r := range s.RootModule().Resources {
 		if r.Type != "yb_user" {
 			continue
 		}
 
-		cUUID := acctest.ApiClient.CustomerId
-		_, _, err := conn.UserManagementApi.GetUserDetails(context.Background(), cUUID, r.Primary.ID).Execute()
+		cUUID := acctest.APIClient.CustomerID
+		_, _, err := conn.UserManagementApi.GetUserDetails(context.Background(), cUUID,
+			r.Primary.ID).Execute()
 		if err == nil || acctest.IsResourceNotFoundError(err) {
 			return errors.New("user resource is not destroyed")
 		}
@@ -78,11 +81,14 @@ func testAccCheckUserExists(name string, user *client.UserWithFeatures) resource
 			return errors.New("no ID is set for user resource")
 		}
 
-		conn := acctest.ApiClient.YugawareClient
-		cUUID := acctest.ApiClient.CustomerId
-		res, _, err := conn.UserManagementApi.GetUserDetails(context.Background(), cUUID, r.Primary.ID).Execute()
+		conn := acctest.APIClient.YugawareClient
+		cUUID := acctest.APIClient.CustomerID
+		res, response, err := conn.UserManagementApi.GetUserDetails(context.Background(), cUUID,
+			r.Primary.ID).Execute()
 		if err != nil {
-			return err
+			errMessage := utils.ErrorFromHTTPResponse(response, err, utils.TestEntity,
+				"User", "Read")
+			return errMessage
 		}
 		*user = res
 		return nil
@@ -100,5 +106,5 @@ resource "yb_user" "user" {
   password = "Password1@"
   role = "%s"
 }
-`, acctest.TestApiKey(), name, role)
+`, acctest.TestAPIKey(), name, role)
 }

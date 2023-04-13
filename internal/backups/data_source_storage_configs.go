@@ -6,8 +6,10 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/api"
+	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/utils"
 )
 
+// StorageConfigs lists the customer configured Storage configs used in Backups
 func StorageConfigs() *schema.Resource {
 	return &schema.Resource{
 		Description: "Retrieve list of storage configs",
@@ -22,23 +24,27 @@ func StorageConfigs() *schema.Resource {
 				Description: "List of storage configuration UUIDs. These can be used in the backup resource.",
 			},
 			"config_name": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				Description: "Config name will accept the storage config to be used by the user. The selected UUID will be stored in the ID",
+				Type:     schema.TypeString,
+				Optional: true,
+				Description: "Config name will accept the storage config to be used by the user. The " +
+					"selected UUID will be stored in the ID",
 			},
 		},
 	}
 }
 
-func dataSourceStorageConfigsRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func dataSourceStorageConfigsRead(ctx context.Context, d *schema.ResourceData, meta interface{}) (
+	diag.Diagnostics) {
 	var diags diag.Diagnostics
 
-	c := meta.(*api.ApiClient).YugawareClient
-	cUUID := meta.(*api.ApiClient).CustomerId
+	c := meta.(*api.APIClient).YugawareClient
+	cUUID := meta.(*api.APIClient).CustomerID
 
-	r, _, err := c.CustomerConfigurationApi.GetListOfCustomerConfig(ctx, cUUID).Execute()
+	r, response, err := c.CustomerConfigurationApi.GetListOfCustomerConfig(ctx, cUUID).Execute()
 	if err != nil {
-		return diag.FromErr(err)
+		errMessage := utils.ErrorFromHTTPResponse(response, err, utils.DataSourceEntity,
+			"Storage Configs", "Read")
+		return diag.FromErr(errMessage)
 	}
 
 	var ids []string

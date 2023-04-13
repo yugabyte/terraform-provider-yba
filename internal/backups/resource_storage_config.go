@@ -138,9 +138,9 @@ func buildData(ctx context.Context, d *schema.ResourceData) (map[string]interfac
 }
 
 func resourceStorageConfigCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) (
-		diag.Diagnostics) {
-	c := meta.(*api.ApiClient).YugawareClient
-	cUUID := meta.(*api.ApiClient).CustomerId
+	diag.Diagnostics) {
+	c := meta.(*api.APIClient).YugawareClient
+	cUUID := meta.(*api.APIClient).CustomerID
 
 	// type, name, config name, data [backup__location and credentials]
 	data, err := buildData(ctx, d)
@@ -154,9 +154,12 @@ func resourceStorageConfigCreate(ctx context.Context, d *schema.ResourceData, me
 		Name:         d.Get("name").(string),
 		Type:         "STORAGE",
 	}
-	r, _, err := c.CustomerConfigurationApi.CreateCustomerConfig(ctx, cUUID).Config(req).Execute()
+	r, response, err := c.CustomerConfigurationApi.CreateCustomerConfig(ctx, cUUID).Config(
+		req).Execute()
 	if err != nil {
-		return diag.FromErr(err)
+		errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
+			"Storage Config", "Create")
+		return diag.FromErr(errMessage)
 	}
 
 	d.SetId(*r.ConfigUUID)
@@ -167,12 +170,14 @@ func resourceStorageConfigRead(ctx context.Context, d *schema.ResourceData, meta
 		diag.Diagnostics) {
 	var diags diag.Diagnostics
 
-	c := meta.(*api.ApiClient).YugawareClient
-	cUUID := meta.(*api.ApiClient).CustomerId
+	c := meta.(*api.APIClient).YugawareClient
+	cUUID := meta.(*api.APIClient).CustomerID
 
-	r, _, err := c.CustomerConfigurationApi.GetListOfCustomerConfig(ctx, cUUID).Execute()
+	r, response, err := c.CustomerConfigurationApi.GetListOfCustomerConfig(ctx, cUUID).Execute()
 	if err != nil {
-		return diag.FromErr(err)
+		errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
+			"Storage Config", "Read")
+		return diag.FromErr(errMessage)
 	}
 	config, err := findCustomerConfig(r, d.Id())
 	if err != nil {
@@ -204,9 +209,9 @@ func findCustomerConfig(configs []client.CustomerConfigUI, uuid string) (
 }
 
 func resourceStorageConfigUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) (
-		diag.Diagnostics) {
-	c := meta.(*api.ApiClient).YugawareClient
-	cUUID := meta.(*api.ApiClient).CustomerId
+	diag.Diagnostics) {
+	c := meta.(*api.APIClient).YugawareClient
+	cUUID := meta.(*api.APIClient).CustomerID
 
 	data, err := buildData(ctx, d)
 	if err != nil {
@@ -221,9 +226,12 @@ func resourceStorageConfigUpdate(ctx context.Context, d *schema.ResourceData, me
 		Type:         "STORAGE",
 	}
 
-	_, _, err = c.CustomerConfigurationApi.EditCustomerConfig(ctx, cUUID, d.Id()).Config(req).Execute()
+	_, response, err := c.CustomerConfigurationApi.EditCustomerConfig(ctx, cUUID, d.Id()).Config(
+		req).Execute()
 	if err != nil {
-		return diag.FromErr(err)
+		errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
+			"Storage Config", "Update")
+		return diag.FromErr(errMessage)
 	}
 
 	return resourceStorageConfigRead(ctx, d, meta)
@@ -233,12 +241,14 @@ func resourceStorageConfigDelete(ctx context.Context, d *schema.ResourceData, me
 		diag.Diagnostics) {
 	var diags diag.Diagnostics
 
-	c := meta.(*api.ApiClient).YugawareClient
-	cUUID := meta.(*api.ApiClient).CustomerId
+	c := meta.(*api.APIClient).YugawareClient
+	cUUID := meta.(*api.APIClient).CustomerID
 
-	_, _, err := c.CustomerConfigurationApi.DeleteCustomerConfig(ctx, cUUID, d.Id()).Execute()
+	_, response, err := c.CustomerConfigurationApi.DeleteCustomerConfig(ctx, cUUID, d.Id()).Execute()
 	if err != nil {
-		return diag.FromErr(err)
+		errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
+			"Storage Config", "Delete")
+		return diag.FromErr(errMessage)
 	}
 
 	d.SetId("")

@@ -11,8 +11,8 @@ import (
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/utils"
 )
 
-// ResourceUser TODO: none of these functions will work until the date issue is
-// resolved https://yugabyte.atlassian.net/browse/PLAT-3305
+// ResourceUser TODO: none of these functions will work until the date issue is resolved
+// https://yugabyte.atlassian.net/browse/PLAT-3305
 func ResourceUser() *schema.Resource {
 	return &schema.Resource{
 		Description: "User Resource",
@@ -34,21 +34,23 @@ func ResourceUser() *schema.Resource {
 
 		Schema: map[string]*schema.Schema{
 			"email": {
-				Type:        schema.TypeString,
-				Required:    true,
-				ForceNew:    true,
-				Description: "Email for the user, which is used for login on the YugabyteDB Anywhere portal.",
+				Type:     schema.TypeString,
+				Required: true,
+				ForceNew: true,
+				Description: "Email for the user, which is used for login on the " +
+					"YugabyteDB Anywhere portal.",
 			},
 			"password": {
 				Type:     schema.TypeString,
 				Required: true,
-				Description: "Secure password for the user. Must contain an uppercase letter," +
-					" number, and symbol.",
+				Description: "Secure password for the user. Must contain an " +
+					"uppercase letter, number, and symbol.",
 			},
 			"role": {
-				Type:        schema.TypeString,
-				Required:    true,
-				Description: "User role. Permitted values: Admin, ReadOnly, SuperAdmin, BackupAdmin",
+				Type:     schema.TypeString,
+				Required: true,
+				Description: "User role. Permitted values: Admin, ReadOnly, SuperAdmin, " +
+					"BackupAdmin",
 			},
 			"features": {
 				Type:        schema.TypeMap,
@@ -68,8 +70,8 @@ func ResourceUser() *schema.Resource {
 
 func resourceUserCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) (
 	diag.Diagnostics) {
-	c := meta.(*api.ApiClient).YugawareClient
-	cUUID := meta.(*api.ApiClient).CustomerId
+	c := meta.(*api.APIClient).YugawareClient
+	cUUID := meta.(*api.APIClient).CustomerID
 
 	req := client.UserRegistrationData{
 		Email:           d.Get("email").(string),
@@ -77,9 +79,11 @@ func resourceUserCreate(ctx context.Context, d *schema.ResourceData, meta interf
 		ConfirmPassword: utils.GetStringPointer(d.Get("password").(string)),
 		Role:            d.Get("role").(string),
 	}
-	r, _, err := c.UserManagementApi.CreateUser(ctx, cUUID).User(req).Execute()
+	r, response, err := c.UserManagementApi.CreateUser(ctx, cUUID).User(req).Execute()
 	if err != nil {
-		return diag.FromErr(err)
+		errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
+			"User", "Create")
+		return diag.FromErr(errMessage)
 	}
 
 	d.SetId(*r.Uuid)
@@ -90,12 +94,14 @@ func resourceUserRead(ctx context.Context, d *schema.ResourceData, meta interfac
 	diag.Diagnostics) {
 	var diags diag.Diagnostics
 
-	c := meta.(*api.ApiClient).YugawareClient
-	cUUID := meta.(*api.ApiClient).CustomerId
+	c := meta.(*api.APIClient).YugawareClient
+	cUUID := meta.(*api.APIClient).CustomerID
 
-	r, _, err := c.UserManagementApi.GetUserDetails(ctx, cUUID, d.Id()).Execute()
+	r, response, err := c.UserManagementApi.GetUserDetails(ctx, cUUID, d.Id()).Execute()
 	if err != nil {
-		return diag.FromErr(err)
+		errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
+			"User", "Read")
+		return diag.FromErr(errMessage)
 	}
 
 	if err = d.Set("email", r.Email); err != nil {
@@ -112,14 +118,16 @@ func resourceUserRead(ctx context.Context, d *schema.ResourceData, meta interfac
 
 func resourceUserUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) (
 	diag.Diagnostics) {
-	c := meta.(*api.ApiClient).YugawareClient
-	cUUID := meta.(*api.ApiClient).CustomerId
+	c := meta.(*api.APIClient).YugawareClient
+	cUUID := meta.(*api.APIClient).CustomerID
 
 	if d.HasChange("role") {
-		_, _, err := c.UserManagementApi.UpdateUserRole(
-			ctx, cUUID, d.Id()).Role(d.Get("role").(string)).Execute()
+		_, response, err := c.UserManagementApi.UpdateUserRole(ctx, cUUID, d.Id()).Role(
+			d.Get("role").(string)).Execute()
 		if err != nil {
-			return diag.FromErr(err)
+			errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
+				"User", "Update - Role")
+			return diag.FromErr(errMessage)
 		}
 	}
 	if d.HasChange("password") {
@@ -129,9 +137,12 @@ func resourceUserUpdate(ctx context.Context, d *schema.ResourceData, meta interf
 			ConfirmPassword: utils.GetStringPointer(d.Get("password").(string)),
 			Role:            d.Get("role").(string),
 		}
-		_, _, err := c.UserManagementApi.UpdateUserPassword(ctx, cUUID, d.Id()).Users(req).Execute()
+		_, response, err := c.UserManagementApi.UpdateUserPassword(ctx, cUUID, d.Id()).Users(
+			req).Execute()
 		if err != nil {
-			return diag.FromErr(err)
+			errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
+				"User", "Update - Password")
+			return diag.FromErr(errMessage)
 		}
 	}
 	return resourceUserRead(ctx, d, meta)
@@ -140,12 +151,14 @@ func resourceUserDelete(ctx context.Context, d *schema.ResourceData, meta interf
 	diag.Diagnostics) {
 	var diags diag.Diagnostics
 
-	c := meta.(*api.ApiClient).YugawareClient
-	cUUID := meta.(*api.ApiClient).CustomerId
+	c := meta.(*api.APIClient).YugawareClient
+	cUUID := meta.(*api.APIClient).CustomerID
 
-	_, _, err := c.UserManagementApi.DeleteUser(ctx, cUUID, d.Id()).Execute()
+	_, response, err := c.UserManagementApi.DeleteUser(ctx, cUUID, d.Id()).Execute()
 	if err != nil {
-		return diag.FromErr(err)
+		errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
+			"User", "Delete")
+		return diag.FromErr(errMessage)
 	}
 
 	d.SetId("")
