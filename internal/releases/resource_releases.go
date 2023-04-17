@@ -17,7 +17,11 @@ import (
 // ResourceReleases creates and maintains resource for releases
 func ResourceReleases() *schema.Resource {
 	return &schema.Resource{
-		Description: "YBDB Release Version Import Resource",
+		Description: "YBDB Release Version Import Resource" +
+			"\nRequires AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY env variables to be set to" +
+			" retrieve release from S3 bucket." +
+			"\nRequires GOOGLE_APPLICATION_CREDENTIALS env variable to be set to" +
+			" retrieve release from GCS bucket.",
 
 		CreateContext: resourceReleasesCreate,
 		ReadContext:   resourceReleasesRead,

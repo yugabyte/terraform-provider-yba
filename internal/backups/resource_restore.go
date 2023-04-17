@@ -18,7 +18,9 @@ import (
 // ResourceRestore to trigger Restore Operation
 func ResourceRestore() *schema.Resource {
 	return &schema.Resource{
-		Description: "Restoring backups for Universe",
+		Description: "Restoring backups for Universe. This resource does not track the remote " +
+			"state and is only provided as a convenience tool. It is recommended to remove this " +
+			"resource after running terraform apply.",
 
 		CreateContext: resourceRestoreCreate,
 		ReadContext:   resourceRestoreRead,
@@ -55,7 +57,7 @@ func ResourceRestore() *schema.Resource {
 				Type:        schema.TypeBool,
 				Optional:    true,
 				Default:     false,
-				Description: "", // TODO: document
+				Description: "Is SSE",
 			},
 			"restore_type": {
 				Type:     schema.TypeString,
@@ -64,7 +66,7 @@ func ResourceRestore() *schema.Resource {
 				ValidateDiagFunc: validation.ToDiagFunc(validation.StringInSlice(
 					[]string{"YQL_TABLE_TYPE", "REDIS_TABLE_TYPE", "PGSQL_TABLE_TYPE",
 						"TRANSACTION_STATUS_TABLE_TYPE"}, false)),
-				Description: "Type of the backup. Permitted values: YQL_TABLE_TYPE, " +
+				Description: "Type of the restore. Permitted values: YQL_TABLE_TYPE, " +
 					"REDIS_TABLE_TYPE, PGSQL_TABLE_TYPE, TRANSACTION_STATUS_TABLE_TYPE",
 			},
 

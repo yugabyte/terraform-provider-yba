@@ -6,6 +6,7 @@ import (
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/utils"
 )
 
+// RegionsSchema manages Region level information of cloud providers
 func RegionsSchema() *schema.Schema {
 	return &schema.Schema{
 		Type:     schema.TypeList,
@@ -38,21 +39,21 @@ func RegionsSchema() *schema.Schema {
 					Optional:    true,
 					Computed:    true,
 					ForceNew:    true,
-					Description: "", // TODO: document
+					Description: "Config details corresponding to region",
 				},
 				"latitude": {
 					Type:        schema.TypeFloat,
 					ForceNew:    true,
 					Computed:    true,
 					Optional:    true,
-					Description: "", // TODO: document
+					Description: "Latitude of the region",
 				},
 				"longitude": {
 					Type:        schema.TypeFloat,
 					ForceNew:    true,
 					Optional:    true,
 					Computed:    true,
-					Description: "", // TODO: document
+					Description: "Longitude of the region",
 				},
 				"name": {
 					Type:        schema.TypeString,
@@ -69,18 +70,19 @@ func RegionsSchema() *schema.Schema {
 					Description: "Security group ID to use for this region. Only set for AWS/Azure providers",
 				},
 				"vnet_name": {
-					Type:        schema.TypeString,
-					Optional:    true,
-					Computed:    true,
-					ForceNew:    true,
-					Description: "Name of the virtual network/VPC ID to use for this region. Only set for AWS/Azure providers",
+					Type:     schema.TypeString,
+					Optional: true,
+					Computed: true,
+					ForceNew: true,
+					Description: "Name of the virtual network/VPC ID to use for this region." +
+						" Only set for AWS/Azure providers",
 				},
 				"yb_image": {
 					Type:        schema.TypeString,
 					Optional:    true,
 					Computed:    true,
 					ForceNew:    true,
-					Description: "", // TODO: document
+					Description: "AMI to be used in this region.",
 				},
 				"zones": {
 					Type:     schema.TypeList,
@@ -114,13 +116,13 @@ func RegionsSchema() *schema.Schema {
 								Optional:    true,
 								Computed:    true,
 								ForceNew:    true,
-								Description: "", // TODO: document
+								Description: "Configuration details corresponding to zone",
 							},
 							"kube_config_path": {
 								Type:        schema.TypeString,
 								Computed:    true,
 								ForceNew:    true,
-								Description: "", // TODO: document
+								Description: "Path to Kubernetes configuration file",
 							},
 							"name": {
 								Type:        schema.TypeString,
@@ -134,7 +136,7 @@ func RegionsSchema() *schema.Schema {
 								Optional:    true,
 								Computed:    true,
 								ForceNew:    true,
-								Description: "", // TODO: document
+								Description: "The secondary subnet in the AZ.",
 							},
 							"subnet": {
 								Type:        schema.TypeString,

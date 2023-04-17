@@ -19,7 +19,11 @@ import (
 // ResourceStorageConfig defines the schema to maintain the storage config resources
 func ResourceStorageConfig() *schema.Resource {
 	return &schema.Resource{
-		Description: "Create Storage Configurations",
+		Description: "Create Storage Configurations" +
+			"\nRequires AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY env variables to be set for" +
+			" S3 storage config." +
+			"\nRequires GOOGLE_APPLICATION_CREDENTIALS env variable for GCS storage config" +
+			"\nRequires AZURE_STORAGE_SAS_TOKEN env variable for Azure storage config",
 
 		CreateContext: resourceStorageConfigCreate,
 		ReadContext:   resourceStorageConfigRead,

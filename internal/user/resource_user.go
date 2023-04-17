@@ -2,15 +2,17 @@ package user
 
 import (
 	"context"
+	"time"
+
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	client "github.com/yugabyte/platform-go-client"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/api"
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/utils"
-	"time"
 )
 
-// ResourceUser TODO: none of these functions will work until the date issue is resolved https://yugabyte.atlassian.net/browse/PLAT-3305
+// ResourceUser TODO: none of these functions will work until the date issue is
+// resolved https://yugabyte.atlassian.net/browse/PLAT-3305
 func ResourceUser() *schema.Resource {
 	return &schema.Resource{
 		Description: "User Resource",
@@ -38,9 +40,10 @@ func ResourceUser() *schema.Resource {
 				Description: "Email for the user, which is used for login on the YugabyteDB Anywhere portal.",
 			},
 			"password": {
-				Type:        schema.TypeString,
-				Required:    true,
-				Description: "Secure password for the user. Must contain an uppercase letter, number, and symbol.",
+				Type:     schema.TypeString,
+				Required: true,
+				Description: "Secure password for the user. Must contain an uppercase letter," +
+					" number, and symbol.",
 			},
 			"role": {
 				Type:        schema.TypeString,
@@ -52,7 +55,7 @@ func ResourceUser() *schema.Resource {
 				Elem:        &schema.Schema{Type: schema.TypeString},
 				Optional:    true,
 				ForceNew:    true,
-				Description: "", // TODO: document
+				Description: "Features of a user, json format",
 			},
 			"is_primary": {
 				Type:        schema.TypeBool,
@@ -63,7 +66,8 @@ func ResourceUser() *schema.Resource {
 	}
 }
 
-func resourceUserCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceUserCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) (
+	diag.Diagnostics) {
 	c := meta.(*api.ApiClient).YugawareClient
 	cUUID := meta.(*api.ApiClient).CustomerId
 
@@ -82,7 +86,8 @@ func resourceUserCreate(ctx context.Context, d *schema.ResourceData, meta interf
 	return resourceUserRead(ctx, d, meta)
 }
 
-func resourceUserRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceUserRead(ctx context.Context, d *schema.ResourceData, meta interface{}) (
+	diag.Diagnostics) {
 	var diags diag.Diagnostics
 
 	c := meta.(*api.ApiClient).YugawareClient
@@ -105,12 +110,14 @@ func resourceUserRead(ctx context.Context, d *schema.ResourceData, meta interfac
 	return diags
 }
 
-func resourceUserUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceUserUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) (
+	diag.Diagnostics) {
 	c := meta.(*api.ApiClient).YugawareClient
 	cUUID := meta.(*api.ApiClient).CustomerId
 
 	if d.HasChange("role") {
-		_, _, err := c.UserManagementApi.UpdateUserRole(ctx, cUUID, d.Id()).Role(d.Get("role").(string)).Execute()
+		_, _, err := c.UserManagementApi.UpdateUserRole(
+			ctx, cUUID, d.Id()).Role(d.Get("role").(string)).Execute()
 		if err != nil {
 			return diag.FromErr(err)
 		}
@@ -129,7 +136,8 @@ func resourceUserUpdate(ctx context.Context, d *schema.ResourceData, meta interf
 	}
 	return resourceUserRead(ctx, d, meta)
 }
-func resourceUserDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceUserDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) (
+	diag.Diagnostics) {
 	var diags diag.Diagnostics
 
 	c := meta.(*api.ApiClient).YugawareClient
