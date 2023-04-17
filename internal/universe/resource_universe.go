@@ -63,7 +63,6 @@ func ResourceUniverse() *schema.Resource {
 					},
 				},
 			},
-
 			// Universe Fields
 			"client_root_ca": {
 				Type:     schema.TypeString,
