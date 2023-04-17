@@ -20,7 +20,12 @@ import (
 // ResourceCloudProvider creates and maintains resource for cloud providers
 func ResourceCloudProvider() *schema.Resource {
 	return &schema.Resource{
-		Description: "Cloud Provider Resource",
+		Description: "Cloud Provider Resource." +
+			"\nRequires AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY env variables to be set for" +
+			" AWS Cloud Provider." +
+			"\nRequires GOOGLE_APPLICATION_CREDENTIALS env variable for GCP Cloud Provider" +
+			"\nRequires AZURE_SUBSCRIPTION_ID, AZURE_RG, AZURE_TENANT_ID, AZURE_CLIENT_ID," +
+			" AZURE_CLIENT_SECRET env variables for Azure Cloud Provider",
 
 		CreateContext: resourceCloudProviderCreate,
 		ReadContext:   resourceCloudProviderRead,
@@ -67,25 +72,25 @@ func ResourceCloudProvider() *schema.Resource {
 				Type:        schema.TypeString,
 				Optional:    true,
 				ForceNew:    true,
-				Description: "", // TODO: document
+				Description: "Destination VPC network",
 			},
 			"host_vpc_id": {
 				Type:        schema.TypeString,
 				Optional:    true,
 				ForceNew:    true,
-				Description: "", // TODO: document
+				Description: "Host VPC Network",
 			},
 			"host_vpc_region": {
 				Type:        schema.TypeString,
 				Optional:    true,
 				ForceNew:    true,
-				Description: "", // TODO: document
+				Description: "Host VPC Region",
 			},
 			"key_pair_name": {
 				Type:        schema.TypeString,
 				Optional:    true,
 				ForceNew:    true,
-				Description: "", // TODO: document
+				Description: "Access Key Pair name",
 			},
 			"name": {
 				Type:        schema.TypeString,
