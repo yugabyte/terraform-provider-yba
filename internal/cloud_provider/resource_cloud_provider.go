@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-log/tflog"
@@ -120,6 +121,78 @@ func ResourceCloudProvider() *schema.Resource {
 				},
 				Description: "User to use for ssh commands",
 			},
+			"aws_config_settings": {
+				Type:     schema.TypeList,
+				Optional: true,
+				MaxItems: 1,
+				Elem: &schema.Resource{
+					Schema: map[string]*schema.Schema{
+						"hosted_zone_id": {
+							Type:        schema.TypeString,
+							Optional:    true,
+							ForceNew:    true,
+							Description: "Hosted Zone ID for AWS corresponsding to Amazon Route53",
+						},
+					}},
+				ForceNew:    true,
+				Description: "Settings that can be configured for AWS",
+			},
+			"azure_config_settings": {
+				Type:     schema.TypeList,
+				Optional: true,
+				MaxItems: 1,
+				Elem: &schema.Resource{
+					Schema: map[string]*schema.Schema{
+						"hosted_zone_id": {
+							Type:        schema.TypeString,
+							Optional:    true,
+							ForceNew:    true,
+							Description: "Private DNS Zone for Azure",
+						},
+					}},
+				ForceNew:    true,
+				Description: "Settings that can be configured for Azure",
+			},
+			"gcp_config_settings": {
+				Type:     schema.TypeList,
+				Optional: true,
+				MaxItems: 1,
+				Elem: &schema.Resource{
+					Schema: map[string]*schema.Schema{
+						"yb_firewall_tags": {
+							Type:        schema.TypeString,
+							Optional:    true,
+							ForceNew:    true,
+							Description: "Tags for firewall rules in GCP",
+						},
+						"use_host_vpc": {
+							Type:        schema.TypeBool,
+							Optional:    true,
+							ForceNew:    true,
+							Description: "Enabling Host VPC in GCP",
+						},
+						"use_host_credentials": {
+							Type:        schema.TypeBool,
+							Optional:    true,
+							ForceNew:    true,
+							Description: "Enabling Host Credentials in GCP",
+						},
+						"project_id": {
+							Type:        schema.TypeString,
+							Optional:    true,
+							ForceNew:    true,
+							Description: "Project ID that hosts universe nodes in GCP",
+						},
+						"network": {
+							Type:        schema.TypeString,
+							Optional:    true,
+							ForceNew:    true,
+							Description: "VPC network name in GCP",
+						},
+					}},
+				ForceNew:    true,
+				Description: "Settings that can be configured for GCP",
+			},
 		},
 	}
 }
@@ -181,13 +254,37 @@ func resourceCloudProviderDiff() schema.CustomizeDiffFunc {
 	)
 }
 
-func buildConfig(cloudCode string) (map[string]interface{}, error) {
+func buildConfig(d *schema.ResourceData) (map[string]interface{}, error) {
+	cloudCode := d.Get("code").(string)
 	config := make(map[string]interface{})
 	var err error
 	if cloudCode == "gcp" {
 		config, err = utils.GcpGetCredentialsAsMap()
 		if err != nil {
 			return nil, err
+		}
+		if len(d.Get("gcp_config_settings").([]interface{})) > 0 {
+			configSettings := utils.MapFromSingletonList(d.Get("gcp_config_settings").([]interface{}))
+			ybFirewallTags := configSettings["yb_firewall_tags"].(string)
+			if len(ybFirewallTags) > 0 {
+				config["YB_FIREWALL_TAGS"] = ybFirewallTags
+			}
+			useHostVpc := strconv.FormatBool(configSettings["use_host_vpc"].(bool))
+			if len(useHostVpc) > 0 {
+				config["use_host_vpc"] = useHostVpc
+			}
+			useHostCredentials := strconv.FormatBool(configSettings["use_host_credentials"].(bool))
+			if len(useHostCredentials) > 0 {
+				config["use_host_credentials"] = useHostCredentials
+			}
+			projectID := configSettings["project_id"].(string)
+			if len(projectID) > 0 {
+				config["project_id"] = projectID
+			}
+			network := configSettings["network"].(string)
+			if len(network) > 0 {
+				config["network"] = network
+			}
 		}
 	} else if cloudCode == "aws" {
 		awsCreds, err := utils.AwsCredentialsFromEnv()
@@ -196,7 +293,13 @@ func buildConfig(cloudCode string) (map[string]interface{}, error) {
 		}
 		config[utils.AWSAccessKeyEnv] = awsCreds.AccessKeyID
 		config[utils.AWSSecretAccessKeyEnv] = awsCreds.SecretAccessKey
-
+		if len(d.Get("aws_config_settings").([]interface{})) > 0 {
+			configSettings := utils.MapFromSingletonList(d.Get("aws_config_settings").([]interface{}))
+			hostedZoneID := configSettings["hosted_zone_id"].(string)
+			if len(hostedZoneID) > 0 {
+				config["HOSTED_ZONE_ID"] = hostedZoneID
+			}
+		}
 	} else if cloudCode == "azu" {
 		azureCreds, err := utils.AzureCredentialsFromEnv()
 		if err != nil {
@@ -207,6 +310,13 @@ func buildConfig(cloudCode string) (map[string]interface{}, error) {
 		config[utils.AzureSubscriptionIDEnv] = azureCreds.SubscriptionID
 		config[utils.AzureTenantIDEnv] = azureCreds.TenantID
 		config[utils.AzureRGEnv] = azureCreds.ResourceGroup
+		if len(d.Get("azure_config_settings").([]interface{})) > 0 {
+			configSettings := utils.MapFromSingletonList(d.Get("azure_config_settings").([]interface{}))
+			hostedZoneID := configSettings["hosted_zone_id"].(string)
+			if len(hostedZoneID) > 0 {
+				config["HOSTED_ZONE_ID"] = hostedZoneID
+			}
+		}
 	}
 	return config, nil
 }
@@ -216,7 +326,7 @@ func resourceCloudProviderCreate(ctx context.Context, d *schema.ResourceData, me
 	c := meta.(*api.ApiClient).YugawareClient
 	cUUID := meta.(*api.ApiClient).CustomerId
 
-	config, err := buildConfig(d.Get("code").(string))
+	config, err := buildConfig(d)
 	if err != nil {
 		return diag.FromErr(err)
 	}
