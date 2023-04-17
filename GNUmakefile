@@ -1,5 +1,9 @@
-default: testacc
+default: documents testacc
 
+# Generate documents
+.PHONY: documents
+documents:
+	go run github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs
 # Run acceptance tests
 .PHONY: testacc
 testacc:

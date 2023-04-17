@@ -61,7 +61,6 @@ func ResourceBackups() *schema.Resource {
 				Description:  "A cron expression to use",
 			},
 			"frequency": {
-				// Accepts string duration in the standard format https://pkg.go.dev/time#Duration.
 				Type:         schema.TypeString,
 				Optional:     true,
 				ExactlyOneOf: []string{"cron_expression", "frequency"},
@@ -89,7 +88,8 @@ func ResourceBackups() *schema.Resource {
 					}
 					return false
 				},
-				Description: "Frequency to run the backup",
+				Description: "Frequency to run the backup.  Accepts string duration in the" +
+					" standard format https://pkg.go.dev/time#Duration.",
 			},
 			"keyspace": {
 				Type:        schema.TypeString,
@@ -105,17 +105,17 @@ func ResourceBackups() *schema.Resource {
 					"retrieved from the storage config data source.",
 			},
 			"time_before_delete": {
-				// Accepts string duration in the standard format https://pkg.go.dev/time#Duration.
-				Type:        schema.TypeString,
-				Optional:    true, // If not provided, backups kept indefinitely
-				ForceNew:    true,
-				Description: "Time before deleting the backup from storage",
+				Type:     schema.TypeString,
+				Optional: true, // If not provided, backups kept indefinitely
+				ForceNew: true,
+				Description: "Time before deleting the backup from storage. Accepts string" +
+					" duration in the standard format https://pkg.go.dev/time#Duration.",
 			},
 			"sse": {
 				Type:        schema.TypeBool,
 				Optional:    true,
 				ForceNew:    true,
-				Description: "", // TODO: document
+				Description: "Is SSE",
 			},
 			"transactional_backup": {
 				Type:        schema.TypeBool,
