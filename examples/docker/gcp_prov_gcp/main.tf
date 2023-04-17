@@ -76,6 +76,11 @@ resource "yb_cloud_provider" "gcp" {
   code = "gcp"
   dest_vpc_id = "yugabyte-network"
   name        = "terraform-gcp-provider"
+  gcp_config_settings {
+    network = "yugabyte-network"
+    use_host_vpc = true
+    project_id = "yugabyte"
+  }
   regions {
     code = "us-west1"
     name = "us-west1"
