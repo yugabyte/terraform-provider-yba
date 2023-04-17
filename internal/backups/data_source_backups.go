@@ -16,7 +16,7 @@ import (
 // Lists fetches the backups within the given set of conditions
 func Lists() *schema.Resource {
 	return &schema.Resource{
-		Description: "Retrieve list of storage configs",
+		Description: "Retrieve list of backups",
 
 		ReadContext: dataSourceBackupsListRead,
 
@@ -51,21 +51,19 @@ func Lists() *schema.Resource {
 			},
 			"storage_location": {
 				Type:        schema.TypeString,
-				Optional:    true,
 				Computed:    true,
-				Description: "", // TODO: document
+				Description: "Storage location of the backup",
 			},
 			"backup_type": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				Computed:    true,
-				Description: "", // TODO: document
+				Type:     schema.TypeString,
+				Computed: true,
+				Description: "Type of the backup. Permitted values: YQL_TABLE_TYPE, " +
+					"REDIS_TABLE_TYPE, PGSQL_TABLE_TYPE, TRANSACTION_STATUS_TABLE_TYPE",
 			},
 			"storage_config_uuid": {
 				Type:        schema.TypeString,
-				Optional:    true,
 				Computed:    true,
-				Description: "", // TODO: document
+				Description: "UUID of the storage configuration used for backup",
 			},
 		},
 	}

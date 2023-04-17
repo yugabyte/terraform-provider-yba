@@ -18,7 +18,8 @@ import (
 // ResourceCustomer creates and maintains resource for customer
 func ResourceCustomer() *schema.Resource {
 	return &schema.Resource{
-		Description: "Customer Resource",
+		Description: "Customer Resource." +
+			"\nRequires YB_CUSTOMER_PASSWORD env variable to be set before creation",
 
 		CreateContext: resourceCustomerCreate,
 		ReadContext:   resourceCustomerRead,

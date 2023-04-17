@@ -58,7 +58,7 @@ func ResourceUniverse() *schema.Resource {
 						"force_delete": {
 							Type:        schema.TypeBool,
 							Optional:    true,
-							Description: "", // TODO: document
+							Description: "Force delete universe with errors",
 						},
 					},
 				},
@@ -77,7 +77,8 @@ func ResourceUniverse() *schema.Resource {
 					}
 					return false
 				},
-				Description: "", // TODO: document
+				Description: "The UUID of the clientRootCA to be used to generate client" +
+					" certificates and facilitate TLS communication between server and client.",
 			},
 			"clusters": {
 				Type:     schema.TypeList,
@@ -188,13 +189,13 @@ func cloudListSchema() *schema.Resource {
 				Type:        schema.TypeString,
 				Optional:    true,
 				Computed:    true,
-				Description: "", // TODO: document
+				Description: "Cloud Provider UUID",
 			},
 			"code": {
 				Type:        schema.TypeString,
 				Optional:    true,
 				Computed:    true,
-				Description: "", // TODO: document
+				Description: "Cloud provider code",
 			},
 			"region_list": {
 				Type:     schema.TypeList,
@@ -212,7 +213,7 @@ func cloudListSchema() *schema.Resource {
 							Type:        schema.TypeString,
 							Optional:    true,
 							Computed:    true,
-							Description: "", // TODO: document
+							Description: "Region Code",
 						},
 						"az_list": {
 							Type:     schema.TypeList,
@@ -229,7 +230,7 @@ func cloudListSchema() *schema.Resource {
 									"is_affinitized": {
 										Type:        schema.TypeBool,
 										Computed:    true,
-										Description: "", // TODO: document
+										Description: "Is it an affinitized zone",
 									},
 									"name": {
 										Type:        schema.TypeString,
@@ -253,13 +254,13 @@ func cloudListSchema() *schema.Resource {
 										Type:        schema.TypeString,
 										Optional:    true,
 										Computed:    true,
-										Description: "", // TODO: document
+										Description: "Secondary subnet of the zone",
 									},
 									"subnet": {
 										Type:        schema.TypeString,
 										Optional:    true,
 										Computed:    true,
-										Description: "", // TODO: document
+										Description: "Subnet ID of zone",
 									},
 								},
 							},
@@ -282,80 +283,81 @@ func userIntentSchema() *schema.Resource {
 			"aws_arn_string": {
 				Type:        schema.TypeString,
 				Optional:    true,
-				Description: "", // TODO: document
+				Description: "IP ARN String",
 			},
 			"enable_exposing_service": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				Computed:    true,
-				Description: "", // TODO: document
+				Type:     schema.TypeString,
+				Optional: true,
+				Computed: true,
+				Description: " Flag to use if we need to deploy a loadbalancer/some kind of" +
+					"exposing service for the cluster.",
 			},
 			"enable_ipv6": {
 				Type:        schema.TypeBool,
 				Optional:    true,
-				Description: "", // TODO: document
+				Description: "Enable IPv6",
 			},
 			"enable_ycql": {
 				Type:        schema.TypeBool,
 				Optional:    true,
 				Computed:    true,
-				Description: "", // TODO: document
+				Description: "Enable YCQL",
 			},
 			"enable_ycql_auth": {
 				Type:        schema.TypeBool,
 				Optional:    true,
-				Description: "", // TODO: document
+				Description: "Enable YCQL authentication",
 			},
 			"enable_ysql_auth": {
 				Type:        schema.TypeBool,
 				Optional:    true,
-				Description: "", // TODO: document
+				Description: "Enable YSQL authentication",
 			},
 			"instance_tags": {
 				Type:        schema.TypeMap,
 				Elem:        &schema.Schema{Type: schema.TypeString},
 				Optional:    true,
-				Description: "", // TODO: document
+				Description: "Instance Tags",
 			},
 			"preferred_region": {
 				Type:        schema.TypeString,
 				Optional:    true,
-				Description: "", // TODO: document
+				Description: "Preferred Region for node placement",
 			},
 			"use_host_name": {
 				Type:        schema.TypeBool,
 				Optional:    true,
-				Description: "", // TODO: document
+				Description: "Enable to use host name instead of IP addresses to communicate",
 			},
 			"use_systemd": {
 				Type:        schema.TypeBool,
 				Optional:    true,
-				Description: "", // TODO: document
+				Description: "Enable SystemD in universe nodes",
 			},
 			"ysql_password": {
 				Type:        schema.TypeString,
 				Optional:    true,
-				Description: "", // TODO: document
+				Description: "YSQL auth password",
 			},
 			"ycql_password": {
 				Type:        schema.TypeString,
 				Optional:    true,
-				Description: "", // TODO: document
+				Description: "YCQL auth password",
 			},
 			"universe_name": {
 				Type:        schema.TypeString,
 				Optional:    true,
-				Description: "", // TODO: document
+				Description: "Universe name",
 			},
 			"provider_type": {
 				Type:        schema.TypeString,
 				Optional:    true,
-				Description: "", // TODO: document
+				Description: "Cloud Provider type. Permitted values: gcp, aws, azu",
 			},
 			"provider": {
 				Type:        schema.TypeString,
 				Optional:    true,
-				Description: "", // TODO: document
+				Description: "Provider UUID",
 			},
 			"region_list": {
 				Type: schema.TypeList,
@@ -363,7 +365,7 @@ func userIntentSchema() *schema.Resource {
 					Type: schema.TypeString,
 				},
 				Optional:    true,
-				Description: "", // TODO: document
+				Description: "List of regions for node placement",
 			},
 			"num_nodes": {
 				Type:        schema.TypeInt,
@@ -378,7 +380,7 @@ func userIntentSchema() *schema.Resource {
 			"instance_type": {
 				Type:        schema.TypeString,
 				Optional:    true,
-				Description: "", // TODO: document
+				Description: "Instance type of universe nodes",
 			},
 			"device_info": {
 				Type:        schema.TypeList,
@@ -390,37 +392,37 @@ func userIntentSchema() *schema.Resource {
 						"disk_iops": {
 							Type:        schema.TypeInt,
 							Optional:    true,
-							Description: "", // TODO: document
+							Description: "Disk IOPS",
 						},
 						"mount_points": {
 							Type:        schema.TypeString,
 							Optional:    true,
-							Description: "", // TODO: document
+							Description: "Disk mount points",
 						},
 						"storage_class": {
 							Type:        schema.TypeString,
 							Optional:    true,
-							Description: "", // TODO: document
+							Description: "Storage class",
 						},
 						"throughput": {
 							Type:        schema.TypeInt,
 							Optional:    true,
-							Description: "", // TODO: document
+							Description: "Disk throughput",
 						},
 						"num_volumes": {
 							Type:        schema.TypeInt,
 							Optional:    true,
-							Description: "", // TODO: document
+							Description: "Number of volumes per node",
 						},
 						"volume_size": {
 							Type:        schema.TypeInt,
 							Optional:    true,
-							Description: "", // TODO: document
+							Description: "Volume size",
 						},
 						"storage_type": {
 							Type:        schema.TypeString,
 							Optional:    true,
-							Description: "", // TODO: document
+							Description: "Storage type of volume",
 						},
 					},
 				},
@@ -428,61 +430,61 @@ func userIntentSchema() *schema.Resource {
 			"assign_public_ip": {
 				Type:        schema.TypeBool,
 				Optional:    true,
-				Description: "", // TODO: document
+				Description: "Assign Public IP to universe nodes",
 			},
 			"use_time_sync": {
 				Type:        schema.TypeBool,
 				Optional:    true,
-				Description: "", // TODO: document
+				Description: "Enable time sync",
 			},
 			"enable_ysql": {
 				Type:        schema.TypeBool,
 				Optional:    true,
 				Computed:    true,
-				Description: "", // TODO: document
+				Description: "Enable YSQL",
 			},
 			"enable_yedis": {
 				Type:        schema.TypeBool,
 				Optional:    true,
 				Computed:    true,
-				Description: "", // TODO: document
+				Description: "Enable YEDIS",
 			},
 			"enable_node_to_node_encrypt": {
 				Type:        schema.TypeBool,
 				Optional:    true,
-				Description: "", // TODO: document
+				Description: "Enable Encryption in Transit - Node to Node encrytption",
 			},
 			"enable_client_to_node_encrypt": {
 				Type:        schema.TypeBool,
 				Optional:    true,
-				Description: "", // TODO: document
+				Description: "Enable Encryption in Transit - Client to Node encrytption",
 			},
 			"enable_volume_encryption": {
 				Type:        schema.TypeBool,
 				Optional:    true,
-				Description: "", // TODO: document
+				Description: "Enable Encryption At Rest",
 			},
 			"yb_software_version": {
 				Type:        schema.TypeString,
 				Optional:    true,
-				Description: "", // TODO: document
+				Description: "YBDB version of the universe",
 			},
 			"access_key_code": {
 				Type:        schema.TypeString,
 				Optional:    true,
-				Description: "", // TODO: document
+				Description: "Access Key code of provider",
 			},
 			"tserver_gflags": {
 				Type:        schema.TypeMap,
 				Elem:        schema.TypeString,
 				Optional:    true,
-				Description: "", // TODO: document
+				Description: "Set of TServer Gflags",
 			},
 			"master_gflags": {
 				Type:        schema.TypeMap,
 				Elem:        schema.TypeString,
 				Optional:    true,
-				Description: "", // TODO: document
+				Description: "Set of Master GFlags",
 			},
 		},
 	}
