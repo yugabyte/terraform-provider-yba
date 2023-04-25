@@ -32,7 +32,7 @@ Install the [Terraform CLI](https://www.terraform.io/downloads). Once the CLI is
 
 ## Examples
 
-There are example configurations located within the `examples` directory for using the provider and modules. 
+There are example configurations located within the `examples` directory in [yba-terraform-workflow-example](https://github.com/yugabyte/yba-terraform-workflow-example.git) for using the provider and modules. 
 These bring up actual resources in the internal Yugabyte development environment.
 More information can be found in the `README` located in the `examples` directory.
 In the directory of the example you wish to run (i.e. `examples/docker/gcp`):
