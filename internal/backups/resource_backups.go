@@ -135,10 +135,9 @@ func ResourceBackups() *schema.Resource {
 				Optional: true,
 				ForceNew: true,
 				ValidateDiagFunc: validation.ToDiagFunc(validation.StringInSlice(
-					[]string{"YQL_TABLE_TYPE", "REDIS_TABLE_TYPE", "PGSQL_TABLE_TYPE",
-						"TRANSACTION_STATUS_TABLE_TYPE"}, false)),
+					[]string{"YQL_TABLE_TYPE", "REDIS_TABLE_TYPE", "PGSQL_TABLE_TYPE"}, false)),
 				Description: "Type of the backup. Permitted values: YQL_TABLE_TYPE, " +
-					"REDIS_TABLE_TYPE, PGSQL_TABLE_TYPE, TRANSACTION_STATUS_TABLE_TYPE",
+					"REDIS_TABLE_TYPE, PGSQL_TABLE_TYPE",
 			},
 			"table_uuid_list": {
 				Type:        schema.TypeList,

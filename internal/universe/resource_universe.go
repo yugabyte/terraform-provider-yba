@@ -1165,13 +1165,15 @@ func resourceUniverseDelete(ctx context.Context, d *schema.ResourceData, meta in
 	c := meta.(*api.APIClient).YugawareClient
 	cUUID := meta.(*api.APIClient).CustomerID
 
-	r, _, err := c.UniverseManagementApi.DeleteUniverse(ctx, cUUID, d.Id()).
+	r, response, err := c.UniverseManagementApi.DeleteUniverse(ctx, cUUID, d.Id()).
 		IsForceDelete(d.Get("delete_options.0.force_delete").(bool)).
 		IsDeleteBackups(d.Get("delete_options.0.delete_backups").(bool)).
 		IsDeleteAssociatedCerts(d.Get("delete_options.0.delete_certs").(bool)).
 		Execute()
 	if err != nil {
-		return diag.FromErr(err)
+		errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
+			"Universe", "Delete")
+		return diag.FromErr(errMessage)
 	}
 
 	tflog.Debug(ctx, fmt.Sprintf("Waiting for universe %s to be deleted", d.Id()))

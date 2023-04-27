@@ -38,11 +38,11 @@ jobs:
     env:
       TF_VAR_RESOURCES_DIR: ${{ secrets.TF_VAR_RESOURCES_DIR }}
       TF_VAR_PORTAL_PASSWORD: ${{ secrets.TF_VAR_PORTAL_PASSWORD }}
-      ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
-      ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
-      ARM_RESOURCE_GROUP: ${{ secrets.ARM_RESOURCE_GROUP }}
-      ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
-      ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
+      AZURE_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
+      AZURE_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
+      AZURE_RG: ${{ secrets.ARM_RESOURCE_GROUP }}
+      AZURE_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+      AZURE_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
     timeout-minutes: 120
     strategy:
       fail-fast: false
@@ -102,8 +102,6 @@ jobs:
         timeout-minutes: 120
         env:
           TF_ACC: "1"
-          # TODO: this is hardcoded to release 790 (2.13.1.0-b69)
-          YB_SOFTWARE_VERSION: "2.13.1.0-b69"
 
         run: |
           go test -v -cover -timeout 2h ./... -run "Azure"
@@ -182,8 +180,6 @@ jobs:
         timeout-minutes: 120
         env:
           TF_ACC: "1"
-          # TODO: this is hardcoded to release 790 (2.13.1.0-b69)
-          YB_SOFTWARE_VERSION: "2.13.1.0-b69"
 
         run: |
           go test -v -cover -timeout 2h ./... -run "AWS"
@@ -201,7 +197,7 @@ jobs:
     env:
       TF_VAR_RESOURCES_DIR: ${{ secrets.TF_VAR_RESOURCES_DIR }}
       TF_VAR_PORTAL_PASSWORD: ${{ secrets.TF_VAR_PORTAL_PASSWORD }}
-      GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
+      GOOGLE_APPLICATION_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
       GOOGLE_PROJECT: ${{ secrets.GOOGLE_PROJECT }}
       GOOGLE_REGION: ${{ secrets.GOOGLE_REGION }}
       GOOGLE_ZONE: ${{ secrets.GOOGLE_ZONE }}
@@ -264,8 +260,6 @@ jobs:
         timeout-minutes: 120
         env:
           TF_ACC: "1"
-          # TODO: this is hardcoded to release 790 (2.13.1.0-b69)
-          YB_SOFTWARE_VERSION: "2.13.1.0-b69"
 
         run: |
           go test -v -cover -timeout 2h ./... -run "GCP"
