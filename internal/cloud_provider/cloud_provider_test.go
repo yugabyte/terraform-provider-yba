@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+	"time"
 
 	sdkacctest "github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
@@ -87,7 +88,9 @@ func testAccCheckDestroyCloudProvider(s *terraform.State) error {
 		if r.Type != "yb_cloud_provider" {
 			continue
 		}
-
+		// Since delete API of cloud provider does not track the task status after the API call,
+		// Function allows time to complete the operation before checking list of available providers
+		time.Sleep(60 * time.Second)
 		cUUID := acctest.APIClient.CustomerID
 		res, response, err := conn.CloudProvidersApi.GetListOfProviders(context.Background(),
 			cUUID).Execute()
@@ -97,8 +100,8 @@ func testAccCheckDestroyCloudProvider(s *terraform.State) error {
 			return errMessage
 		}
 		for _, p := range res {
-			if *p.Uuid == r.Primary.ID {
-				return errors.New("cloud provider is not destroyed")
+			if p.GetUuid() == r.Primary.ID {
+				return errors.New("Cloud provider is not destroyed")
 			}
 		}
 	}
@@ -140,64 +143,47 @@ func cloudProviderGCPConfig(name string) string {
 	return fmt.Sprintf(`
 resource "yb_cloud_provider" "gcp" {
   code = "gcp"
-  config = merge(
-    { YB_FIREWALL_TAGS = "cluster-server" },
-    jsondecode(file("%s"))
-  )
   dest_vpc_id = "default"
   name        = "%s"
   regions {
     code = "us-west1"
     name = "us-west1"
   }
-  ssh_port        = 54422
+  ssh_port        = 22
   air_gap_install = false
 }
-`, acctest.TestGCPCredentials(), name)
+`, name)
 }
 
 func cloudProviderAWSConfig(name string) string {
 	// TODO: remove the lifecycle ignore_changes block.
 	// This is needed because the current API is not returning vnet_name
 	return fmt.Sprintf(`
-resource "yb_cloud_provider" "aws" {
-  lifecycle {
-    ignore_changes = [
-      regions[0].vnet_name,
-    ]
-  }
+	resource "yb_cloud_provider" "aws" {
+		code = "aws"
+		name = "%s"
+		regions {
+		  code              = "us-west-2"
+		  name              = "us-west-2"
+		  security_group_id = "sg-139dde6c"
+		  vnet_name         = "vpc-0fe36f6b"
+		  zones {
+			code   = "us-west-2a"
+			name   = "us-west-2a"
+			subnet = "subnet-6553f513"
+		  }
+		}
 
-  code = "aws"
-  config = {
-	AWS_ACCESS_KEY_ID = "%s"
-	AWS_SECRET_ACCESS_KEY = "%s"
-  }
-  name        = "%s"
-  regions {
-	security_group_id = "sg-01f77aa024a943932"
-	vnet_name = "vpc-09eea1b4c18fb9ba0"
-    code = "us-east-1"
-    name = "us-east-1"
-	zones {
-	  name = "us-east-1a"
-	  subnet = "subnet-0cdb90ad5eaa47ed9"
-	}
-  }
-}
-`, acctest.TestAWSAccessKey(), acctest.TestAWSSecretAccessKey(), name)
+		ssh_port        = 22
+		air_gap_install = false
+	  }
+`, name)
 }
 
 func cloudProviderAzureConfig(name string) string {
 	return fmt.Sprintf(`
 resource "yb_cloud_provider" "azure" {
   code = "azu"
-  config = {
-	AZURE_SUBSCRIPTION_ID = "%s"
-	AZURE_RG = "%s"
-	AZURE_TENANT_ID = "%s"
-	AZURE_CLIENT_ID = "%s"
-	AZURE_CLIENT_SECRET = "%s"
-  }
   name        = "%s"
   regions {
     code = "westus2"
@@ -209,11 +195,5 @@ resource "yb_cloud_provider" "azure" {
 	}
   }
 }
-`,
-		acctest.TestAzureSubscriptionID(),
-		acctest.TestAzureResourceGroup(),
-		acctest.TestAzureTenantID(),
-		acctest.TestAzureClientID(),
-		acctest.TestAzureClientSecret(),
-		name)
+`, name)
 }

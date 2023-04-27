@@ -12,13 +12,12 @@ import (
 
 const (
 	// env variables/other constants for yugabyte provider
-	testHost              = "YB_HOST"
-	testAPIKey            = "YB_API_KEY"
-	testYBSoftwareVersion = "YB_SOFTWARE_VERSION"
-	ybProviderName        = "yb"
+	testHost       = "YB_HOST"
+	testAPIKey     = "YB_API_KEY"
+	ybProviderName = "yb"
 
 	// env variables for gcp provider
-	testGCPCredentials = "GOOGLE_CREDENTIALS"
+	testGCPCredentials = "GOOGLE_APPLICATION_CREDENTIALS"
 	testGCPProject     = "GOOGLE_PROJECT"
 	testGCPRegion      = "GOOGLE_REGION"
 	testGCPZone        = "GOOGLE_ZONE"
@@ -28,11 +27,11 @@ const (
 	testAWSSecretAccessKey = "AWS_SECRET_ACCESS_KEY"
 
 	// env variables for azure provider
-	testAzureSubscriptionID = "ARM_SUBSCRIPTION_ID"
-	testAzureResourceGroup  = "ARM_RESOURCE_GROUP"
-	testAzureTenantID       = "ARM_TENANT_ID"
-	testAzureClientID       = "ARM_CLIENT_ID"
-	testAzureClientSecret   = "ARM_CLIENT_SECRET"
+	testAzureSubscriptionID = "AZURE_SUBSCRIPTION_ID"
+	testAzureResourceGroup  = "AZURE_RG"
+	testAzureTenantID       = "AZURE_TENANT_ID"
+	testAzureClientID       = "AZURE_CLIENT_ID"
+	testAzureClientSecret   = "AZURE_CLIENT_SECRET"
 )
 
 var (
@@ -99,11 +98,6 @@ func TestAzureClientSecret() string {
 	return os.Getenv(testAzureClientSecret)
 }
 
-// TestYBSoftwareVersion getter
-func TestYBSoftwareVersion() string {
-	return os.Getenv(testYBSoftwareVersion)
-}
-
 // TestAccPreCheckGCP Preflight checks for acceptance tests
 func TestAccPreCheckGCP(t *testing.T) {
 	if v := os.Getenv(testGCPCredentials); v == "" {
@@ -156,9 +150,6 @@ func TestAccPreCheck(t *testing.T) {
 	}
 	if v := os.Getenv(testAPIKey); v == "" {
 		t.Fatal(testAPIKey + " must be set for acceptance tests")
-	}
-	if v := os.Getenv(testYBSoftwareVersion); v == "" {
-		t.Fatal(testYBSoftwareVersion + " must be set for acceptance tests")
 	}
 }
 

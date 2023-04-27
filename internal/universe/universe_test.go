@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+	"time"
 
 	sdkacctest "github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
@@ -113,9 +114,10 @@ func testAccCheckDestroyProviderAndUniverse(s *terraform.State) error {
 			_, _, err := conn.UniverseManagementApi.GetUniverse(context.Background(), cUUID,
 				r.Primary.ID).Execute()
 			if err == nil || acctest.IsResourceNotFoundError(err) {
-				return errors.New("universe resource is not destroyed")
+				return errors.New("Universe resource is not destroyed")
 			}
 		} else if r.Type == "yb_cloud_provider" {
+			time.Sleep(60 * time.Second)
 			cUUID := acctest.APIClient.CustomerID
 			res, response, err := conn.CloudProvidersApi.GetListOfProviders(context.Background(),
 				cUUID).Execute()
@@ -126,7 +128,7 @@ func testAccCheckDestroyProviderAndUniverse(s *terraform.State) error {
 			}
 			for _, p := range res {
 				if *p.Uuid == r.Primary.ID {
-					return errors.New("cloud provider is not destroyed")
+					return errors.New("Cloud provider is not destroyed")
 				}
 			}
 		}
@@ -190,6 +192,12 @@ data "yb_provider_key" "%s_key" {
   provider_id = yb_cloud_provider.%s.id
 }
 
+data "yb_release_version" "release_version"{
+	depends_on = [
+		data.yb_provider_key.%s_key
+  ]
+}
+
 resource "yb_universe" "%s" {
   clusters {
     cluster_type = "PRIMARY"
@@ -211,14 +219,19 @@ resource "yb_universe" "%s" {
       enable_ysql                   = true
       enable_node_to_node_encrypt   = true
       enable_client_to_node_encrypt = true
-      yb_software_version           = "%s"
+      yb_software_version           = data.yb_release_version.release_version.id
       access_key_code               = data.yb_provider_key.%s_key.id
+	  instance_tags = {
+        "yb_owner"  = "terraform_acctest"
+        "yb_task"   = "dev"
+        "yb_dept"   = "dev"
+      }
     }
   }
   communication_ports {}
 }
-`, p, p, p, name, p, p, p, nodes, getUniverseInstanceType(p),
-		getUniverseStorageType(p), acctest.TestYBSoftwareVersion(), p)
+`, p, p, p,p, name, p, p, p, nodes, getUniverseInstanceType(p),
+		getUniverseStorageType(p), p)
 }
 
 func getUniverseStorageType(p string) string {
@@ -234,7 +247,7 @@ func getUniverseInstanceType(p string) string {
 	if p == "gcp" {
 		return "n1-standard-1"
 	} else if p == "aws" {
-		return "c5.xlarge"
+		return "c5.large"
 	}
 	return "Standard_D4s_v3"
 }
@@ -243,80 +256,55 @@ func cloudProviderGCPConfig(name string) string {
 	return fmt.Sprintf(`
 resource "yb_cloud_provider" "gcp" {
   code = "gcp"
-  config = merge(
-    { YB_FIREWALL_TAGS = "cluster-server" },
-    jsondecode(file("%s"))
-  )
-  dest_vpc_id = "default"
+  dest_vpc_id = "yugabyte-network"
   name        = "%s"
   regions {
-    code = "us-west1"
-    name = "us-west1"
+    code = "us-west2"
+    name = "us-west2"
   }
-  ssh_port        = 54422
+  ssh_port        = 22
   air_gap_install = false
 }
-`, acctest.TestGCPCredentials(), name)
+`, name)
 }
 
 func cloudProviderAWSConfig(name string) string {
 	// TODO: remove the lifecycle ignore_changes block. This is needed because the current API
 	// is not returning vnet_name
 	return fmt.Sprintf(`
-resource "yb_cloud_provider" "aws" {
-  lifecycle {
-    ignore_changes = [
-      regions[0].vnet_name,
-    ]
-  }
-
-  code = "aws"
-  config = {
-	AWS_ACCESS_KEY_ID = "%s"
-	AWS_SECRET_ACCESS_KEY = "%s"
-  }
-  name        = "%s"
-  regions {
-	security_group_id = "sg-01f77aa024a943932"
-	vnet_name = "vpc-09eea1b4c18fb9ba0"
-    code = "us-east-1"
-    name = "us-east-1"
-	zones {
-	  name = "us-east-1a"
-	  subnet = "subnet-0cdb90ad5eaa47ed9"
-	}
-  }
-}
-`, acctest.TestAWSAccessKey(), acctest.TestAWSSecretAccessKey(), name)
+	resource "yb_cloud_provider" "aws" {
+		code = "aws"
+		name = "%s"
+		regions {
+		  code              = "us-west-2"
+		  name              = "us-west-2"
+		  security_group_id = "sg-139dde6c"
+		  vnet_name         = "vpc-0fe36f6b"
+		  zones {
+			code   = "us-west-2a"
+			name   = "us-west-2a"
+			subnet = "subnet-6553f513"
+		  }
+		}
+		air_gap_install = false
+	  }
+`, name)
 }
 
 func cloudProviderAzureConfig(name string) string {
 	return fmt.Sprintf(`
 resource "yb_cloud_provider" "azu" {
   code = "azu"
-  config = {
-	AZURE_SUBSCRIPTION_ID = "%s"
-	AZURE_RG = "%s"
-	AZURE_TENANT_ID = "%s"
-	AZURE_CLIENT_ID = "%s"
-	AZURE_CLIENT_SECRET = "%s"
-  }
   name        = "%s"
   regions {
     code = "westus2"
     name = "westus2"
-	vnet_name = "terraform-acctest-vnet-westus2"
+	vnet_name = "yugabyte-vnet-us-west2"
 	zones {
       name = "westus2-1"
-	  subnet = "terraform-acctest-subnet-westus2"
+	  subnet = "yugabyte-subnet-westus2"
 	}
   }
 }
-`,
-		acctest.TestAzureSubscriptionID(),
-		acctest.TestAzureResourceGroup(),
-		acctest.TestAzureTenantID(),
-		acctest.TestAzureClientID(),
-		acctest.TestAzureClientSecret(),
-		name)
+`, name)
 }
