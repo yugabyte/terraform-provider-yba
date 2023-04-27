@@ -64,7 +64,7 @@ func testAccCheckDestroyUser(s *terraform.State) error {
 		_, _, err := conn.UserManagementApi.GetUserDetails(context.Background(), cUUID,
 			r.Primary.ID).Execute()
 		if err == nil || acctest.IsResourceNotFoundError(err) {
-			return errors.New("user resource is not destroyed")
+			return errors.New("User resource is not destroyed")
 		}
 	}
 
@@ -97,14 +97,11 @@ func testAccCheckUserExists(name string, user *client.UserWithFeatures) resource
 
 func userConfigWithRole(role string, name string) string {
 	return fmt.Sprintf(`
-data "yb_customer_data" "customer" {
-  api_token = "%s"
-}
 
 resource "yb_user" "user" {
   email = "%s@yugabyte.com"
   password = "Password1@"
   role = "%s"
 }
-`, acctest.TestAPIKey(), name, role)
+`, name, role)
 }
