@@ -39,13 +39,13 @@ variable "disk_size" {
 }
 variable "network_tags" {
   description = "network tags to apply to the YugabyteDB Anywhere instance"
-  type = list(string)
+  type        = list(string)
 }
 
 variable "tags" {
   description = "Any tags that need to be added to the Virtual Machine"
   type        = map(string)
-  default     = {} 
+  default     = {}
 }
 
 // file-paths

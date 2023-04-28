@@ -1,7 +1,7 @@
 variable "cluster_name" {
   description = "name of the cluster to be created"
-  type = string
-  default = "yb-anywhere"
+  type        = string
+  default     = "yb-anywhere"
 }
 variable "region_name" {
   description = "region to use for resources"
@@ -13,5 +13,5 @@ variable "num_nodes" {
 }
 variable "docker_config_json" {
   description = ".dockerconfigjson field from provided Yugabyte kubernetes secret"
-  type = string
+  type        = string
 }

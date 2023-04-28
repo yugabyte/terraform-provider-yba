@@ -1,10 +1,10 @@
 terraform {
   required_providers {
     aws = {
-      source  = "hashicorp/aws"
+      source = "hashicorp/aws"
     }
     kubernetes = {
-      source = "hashicorp/kubernetes"
+      source  = "hashicorp/kubernetes"
       version = ">= 2.0.3"
     }
     helm = {
@@ -16,12 +16,12 @@ terraform {
 
 data "aws_eks_cluster" "yb-anywhere" {
   depends_on = [module.eks-cluster]
-  name = var.cluster_name
+  name       = var.cluster_name
 }
 
 data "aws_eks_cluster_auth" "yb-anywhere" {
   depends_on = [module.eks-cluster]
-  name = var.cluster_name
+  name       = var.cluster_name
 }
 
 provider "kubernetes" {
@@ -41,15 +41,15 @@ provider "helm" {
 module "eks-cluster" {
   source       = "./eks-cluster"
   cluster_name = var.cluster_name
-  vpc_id = var.vpc_id
-  node_count = var.node_count
-  iam_role = var.iam_role
-  subnet_ids = var.subnet_ids
+  vpc_id       = var.vpc_id
+  node_count   = var.node_count
+  iam_role     = var.iam_role
+  subnet_ids   = var.subnet_ids
 }
 
 module "kubernetes-config" {
-  depends_on       = [module.eks-cluster]
-  source           = "../kubernetes-config"
-  cluster_name     = var.cluster_name
+  depends_on         = [module.eks-cluster]
+  source             = "../kubernetes-config"
+  cluster_name       = var.cluster_name
   docker_config_json = var.docker_config_json
 }

@@ -10,12 +10,12 @@ variable "private_ip" {
 variable "ssh_host_ip" {
   description = "IP address of the VM instance to be accessed. If VM is within the same network, use private IP, else use public IP"
   type        = string
-  default     = "" 
+  default     = ""
 }
 variable "ssh_user" {
   description = "User name to ssh into YugabyteDB Anywhere node to configure cluster"
   type        = string
-  default     = "centos" 
+  default     = "centos"
 }
 variable "ssh_private_key_file" {
   description = "Private key file to ssh into YugabyteDB Anywhere node to configure cluster"
@@ -27,5 +27,5 @@ variable "replicated_directory" {
 }
 variable "replicated_license_file_path" {
   description = "Path to the replicated license file"
-  type = string
+  type        = string
 }

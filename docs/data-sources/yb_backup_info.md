@@ -8,7 +8,7 @@ description: |-
 
 # yb_backup_info (Data Source)
 
-Retrieve list of backups
+Retrieve list of backups.
 
 ## Example Usage
 
@@ -23,16 +23,14 @@ data "yb_backup_info" "backup" {
 
 ### Optional
 
-- **date_range_end** (String) End of range for create time of the backup used for filtering
-- **date_range_start** (String) Start of range for create time of the backup used for filtering
-- **id** (String) The ID of this resource.
-- **universe_name** (String) Latest backup from this universe is stored in the ID
-- **universe_uuid** (String) Latest backup from this universe is stored in the ID
+- **date_range_start** (String) Start date of range in which to fetch backups, in RFC3339 format.
+- **date_range_end** (String) End date of range in which to fetch backups, in RFC3339 format.
+- **id** (String) The ID of the latest backup in the universe.
+- **universe_name** (String) The name of the universe whose latest backup you want to fetch.
+- **universe_uuid** (String) The UUID of the universe whose latest backup you want to fetch.
 
 ### Read-Only
 
-- **backup_type** (String) Type of the backup. Permitted values: YQL_TABLE_TYPE, REDIS_TABLE_TYPE, PGSQL_TABLE_TYPE, TRANSACTION_STATUS_TABLE_TYPE
-- **storage_config_uuid** (String) UUID of the storage configuration used for backup
-- **storage_location** (String) Storage location of the backup
-
-
+- **backup_type** (String) Type of the backup fetched.
+- **storage_config_uuid** (String) UUID of the storage configuration used for backup.
+- **storage_location** (String) Storage location of the backup.

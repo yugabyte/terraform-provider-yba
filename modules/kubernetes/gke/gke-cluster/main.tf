@@ -1,14 +1,14 @@
 terraform {
   required_providers {
     google = {
-      source  = "hashicorp/google"
+      source = "hashicorp/google"
     }
   }
 }
 
 # GKE cluster
 resource "google_container_cluster" "container_cluster" {
-  name     = var.cluster_name
+  name = var.cluster_name
 
   remove_default_node_pool = true
   initial_node_count       = 1
@@ -20,14 +20,14 @@ resource "google_container_cluster" "container_cluster" {
     enabled = true
     resource_limits {
       resource_type = "cpu"
-      minimum = 4
-      maximum = var.cpu_max
+      minimum       = 4
+      maximum       = var.cpu_max
     }
 
     resource_limits {
       resource_type = "memory"
-      minimum = 15
-      maximum = var.memory_max
+      minimum       = 15
+      maximum       = var.memory_max
     }
   }
 }
