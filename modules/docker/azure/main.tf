@@ -5,7 +5,7 @@ resource "azurerm_public_ip" "yb_public_ip" {
   allocation_method   = "Static"
   sku                 = "Standard"
 
-  tags = merge(var.tags,{
+  tags = merge(var.tags, {
     environment = var.cluster_name
   })
 }
@@ -16,12 +16,12 @@ resource "azurerm_network_security_group" "yb_sg" {
   resource_group_name = var.resource_group
 
   security_rule {
-    name                    = "yb-rule"
-    priority                = 100
-    direction               = "Inbound"
-    access                  = "Allow"
-    protocol                = "Tcp"
-    source_port_range       = "*"
+    name              = "yb-rule"
+    priority          = 100
+    direction         = "Inbound"
+    access            = "Allow"
+    protocol          = "Tcp"
+    source_port_range = "*"
     destination_port_ranges = [
       "22", "8800", "80", "7000", "7100", "9000", "9100", "11000", "12000", "9300", "9042", "5433", "6379"
     ]
@@ -29,7 +29,7 @@ resource "azurerm_network_security_group" "yb_sg" {
     destination_address_prefix = "*"
   }
 
-  tags = merge(var.tags,{
+  tags = merge(var.tags, {
     environment = var.cluster_name
   })
 }
@@ -59,19 +59,19 @@ resource "azurerm_network_interface" "yb_network_interface" {
     public_ip_address_id          = azurerm_public_ip.yb_public_ip.id
   }
 
-  tags = merge(var.tags,{
+  tags = merge(var.tags, {
     environment = var.cluster_name
   })
 }
 
 resource "azurerm_virtual_machine" "yb_anywhere_node" {
-  depends_on = [azurerm_network_interface.yb_network_interface, azurerm_public_ip.yb_public_ip]
-  name                = var.cluster_name
-  resource_group_name = var.resource_group
-  location            = var.region_name
+  depends_on                    = [azurerm_network_interface.yb_network_interface, azurerm_public_ip.yb_public_ip]
+  name                          = var.cluster_name
+  resource_group_name           = var.resource_group
+  location                      = var.region_name
   delete_os_disk_on_termination = true
 
-  tags = merge(var.tags,{
+  tags = merge(var.tags, {
     environment = var.cluster_name
   })
 
