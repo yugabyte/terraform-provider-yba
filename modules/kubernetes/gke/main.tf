@@ -2,10 +2,10 @@ terraform {
   required_providers {
     // Google provider is configured using environment variables: GOOGLE_REGION, GOOGLE_PROJECT, GOOGLE_CREDENTIALS
     google = {
-      source  = "hashicorp/google"
+      source = "hashicorp/google"
     }
     kubernetes = {
-      source = "hashicorp/kubernetes"
+      source  = "hashicorp/kubernetes"
       version = ">= 2.0.3"
     }
     helm = {
@@ -22,7 +22,7 @@ data "google_client_config" "client_config" {
 
 // Defer reading the cluster data until the GKE cluster exists.
 data "google_container_cluster" "container_cluster" {
-  name = var.cluster_name
+  name       = var.cluster_name
   depends_on = [module.gke-cluster]
 }
 
@@ -47,16 +47,16 @@ provider "helm" {
 module "gke-cluster" {
   source       = "./gke-cluster"
   cluster_name = var.cluster_name
-  network = var.network
-  subnet = var.subnet
-  num_nodes = var.num_nodes
-  memory_max = var.memory_max
-  cpu_max = var.cpu_max
+  network      = var.network
+  subnet       = var.subnet
+  num_nodes    = var.num_nodes
+  memory_max   = var.memory_max
+  cpu_max      = var.cpu_max
 }
 
 module "kubernetes-config" {
-  depends_on       = [module.gke-cluster]
-  source           = "../kubernetes-config"
-  cluster_name     = var.cluster_name
+  depends_on         = [module.gke-cluster]
+  source             = "../kubernetes-config"
+  cluster_name       = var.cluster_name
   docker_config_json = var.docker_config_json
 }

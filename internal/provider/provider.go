@@ -36,13 +36,16 @@ func New() *schema.Provider {
 	return &schema.Provider{
 		Schema: map[string]*schema.Schema{
 			"host": {
-				Type:        schema.TypeString,
-				Optional:    true,
+				Type:     schema.TypeString,
+				Optional: true,
+				Description: "IP Address of the YBA Host. " +
+					"Please mention port 80 to connect to the YBA Application",
 				DefaultFunc: schema.EnvDefaultFunc("YB_HOST", "localhost:9000"),
 			},
 			"api_token": {
 				Type:        schema.TypeString,
 				Optional:    true,
+				Description: "YBA Customer API Token",
 				DefaultFunc: schema.EnvDefaultFunc("YB_API_KEY", ""),
 			},
 		},

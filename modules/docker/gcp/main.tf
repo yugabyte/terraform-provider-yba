@@ -25,12 +25,12 @@ resource "google_compute_instance" "yb_anywhere_node" {
     }
   }
 
-  tags     = var.network_tags
+  tags = var.network_tags
   metadata = {
     sshKeys = "${var.ssh_user}:${file(var.ssh_public_key)}"
   }
 
-  labels  = var.tags
+  labels = var.tags
 
   network_interface {
     network    = var.vpc_network
