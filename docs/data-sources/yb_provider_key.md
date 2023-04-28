@@ -8,7 +8,7 @@ description: |-
 
 # yb_provider_key (Data Source)
 
-Retrieve cloud provider access key
+Retrieve cloud provider access key.
 
 ## Example Usage
 
@@ -23,10 +23,8 @@ data "yb_provider_key" "cloud_key" {
 
 ### Required
 
-- **provider_id** (String) UUID of the provider
+- **provider_id** (String) UUID of the provider.
 
 ### Optional
 
 - **id** (String) The ID of this resource.
-
-

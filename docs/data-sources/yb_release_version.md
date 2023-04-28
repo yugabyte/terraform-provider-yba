@@ -8,18 +8,18 @@ description: |-
 
 # yb_release_version (Data Source)
 
-Retrieve release version
+Retrieve release version.
 
 ## Example Usage
 
 ```terraform
 data "yb_release_version" "release_version" {
-    // To fetch default YBDB version
+  // To fetch default YBDB version
 }
 
 data "yb_release_version" "release_version_x" {
-    // To fetch particular version
-    version ="<YBDB version x>"
+  // Retrieve a list of YBDB versions corresponding to the pattern string.
+  version = "<YBDB-version-string-to-be-matched>"
 }
 ```
 
@@ -29,11 +29,9 @@ data "yb_release_version" "release_version_x" {
 ### Optional
 
 - **id** (String) The ID of this resource.
-- **version** (String) Release version given by user
+- **version** (String) Release version given by user.
 
 ### Read-Only
 
-- **selected_version** (String) Selected release version. If version is empty, use lastest version available
-- **version_list** (List of String) List of releases matching the selected release. If selected_version is not provided, returns entire list
-
-
+- **selected_version** (String) Selected release version. If version is empty, use lastest version available.
+- **version_list** (List of String) List of releases matching the selected release. If selected_version is not provided, returns entire list.

@@ -37,7 +37,7 @@ variable "resource_group" {
 variable "tags" {
   description = "Any tags that need to be added to the Virtual Machine"
   type        = map(string)
-  default     = {} 
+  default     = {}
 }
 
 // files
@@ -52,5 +52,5 @@ variable "ssh_public_key" {
 
 variable "security_group" {
   description = "Security group for the VM"
-  type = string
+  type        = string
 }

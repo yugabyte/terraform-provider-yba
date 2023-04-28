@@ -1,7 +1,7 @@
 terraform {
   required_providers {
     kubernetes = {
-      source = "hashicorp/kubernetes"
+      source  = "hashicorp/kubernetes"
       version = ">= 2.0.3"
     }
     helm = {
@@ -20,7 +20,7 @@ resource "kubernetes_namespace" "yb_anywhere" {
 // load in kubernetes secret obtained from Yugabyte
 resource "kubernetes_secret" "secret" {
   metadata {
-    name = "yugabyte-k8s-pull-secret"
+    name      = "yugabyte-k8s-pull-secret"
     namespace = kubernetes_namespace.yb_anywhere.metadata[0].name
   }
   data = {
@@ -30,14 +30,14 @@ resource "kubernetes_secret" "secret" {
 }
 
 resource "helm_release" "yb-release" {
-  name = var.cluster_name
+  name       = var.cluster_name
   repository = "https://charts.yugabyte.com"
-  chart = "yugaware"
-  version = var.chart_version
-  namespace = kubernetes_namespace.yb_anywhere.metadata[0].name
-  wait = true
+  chart      = "yugaware"
+  version    = var.chart_version
+  namespace  = kubernetes_namespace.yb_anywhere.metadata[0].name
+  wait       = true
   set {
-    name = "yugaware.service.type"
+    name  = "yugaware.service.type"
     value = var.service_type
   }
 }
@@ -45,7 +45,7 @@ resource "helm_release" "yb-release" {
 data "kubernetes_service" "yb_anywhere" {
   depends_on = [helm_release.yb-release]
   metadata {
-    name = "${var.cluster_name}-yugaware-ui"
+    name      = "${var.cluster_name}-yugaware-ui"
     namespace = var.cluster_name
   }
 }

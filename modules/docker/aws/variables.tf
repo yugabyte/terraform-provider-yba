@@ -42,7 +42,7 @@ variable "subnet_id" {
 variable "tags" {
   description = "Any tags that need to be added to the Virtual Machine"
   type        = map(string)
-  default     = {}  
+  default     = {}
 }
 // file-paths
 variable "ssh_private_key" {

@@ -3,23 +3,23 @@
 page_title: "yb_storage_configs Data Source - terraform-provider-yugabytedb-anywhere"
 subcategory: ""
 description: |-
-  Retrieve list of storage configs
+  Retrieve list of storage configurations
 ---
 
 # yb_storage_configs (Data Source)
 
-Retrieve list of storage configs
+Retrieve list of storage configurations.
 
 ## Example Usage
 
 ```terraform
 data "yb_storage_configs" "configs" {
-    // To fetch any storage config
+  // To fetch any storage config
 }
 
 data "yb_storage_configs" "configs_gcs" {
-    // To fetch id of a particular stoage config
-    config_name = "<storage-config-name>"
+  // To fetch id of a particular storage config
+  config_name = "<storage-config-name>"
 }
 ```
 
@@ -28,11 +28,9 @@ data "yb_storage_configs" "configs_gcs" {
 
 ### Optional
 
-- **config_name** (String) Config name will accept the storage config to be used by the user. The selected UUID will be stored in the ID
-- **id** (String) The ID of this resource.
+- **config_name** (String) Accepts name of the storage configuration. The corresponding storage config UUID is stored in ID to be used in *yb_backups* resource.
+- **id** (String) The ID of the selected storage configuration.
 
 ### Read-Only
 
 - **uuid_list** (List of String) List of storage configuration UUIDs. These can be used in the backup resource.
-
-
