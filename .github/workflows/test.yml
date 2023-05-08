@@ -237,7 +237,14 @@ jobs:
 
       # use the modules to bring up platform instance for acceptance tests
       - name: Terraform Init
-        run: terraform init
+        run: |
+          export TF_VAR_RESOURCES_DIR=$TF_VAR_RESOURCES_DIR
+          export YB_CUSTOMER_PASSWORD=$YB_CUSTOMER_PASSWORD
+          export GOOGLE_APPLICATION_CREDENTIALS=$secrets.GOOGLE_CREDENTIALS
+          export GOOGLE_PROJECT=$GOOGLE_PROJECT
+          export GOOGLE_REGION=$GOOGLE_REGION
+          export GOOGLE_ZONE=$GOOGLE_ZONE
+          terraform init
         working-directory: ./acctest/gcp
 
       - name: Terraform Plan
