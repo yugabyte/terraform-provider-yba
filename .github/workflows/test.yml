@@ -243,7 +243,7 @@ jobs:
       - name: Terraform Plan
         run: |
           echo ${{ vars.TF_VAR_RESOURCES_DIR }} | sed 's/./& /g'
-          terraform plan -no-color
+          terraform plan -no-color -var="RESOURCES_DIR=$TF_VAR_RESOURCES_DIR"
         working-directory: ./acctest/gcp
 
       - name: Terraform Apply
