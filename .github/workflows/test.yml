@@ -37,7 +37,7 @@ jobs:
     runs-on: [ self-hosted, azure ]
     env:
       TF_VAR_RESOURCES_DIR: ${{ secrets.TF_VAR_RESOURCES_DIR }}
-      TF_VAR_PORTAL_PASSWORD: ${{ secrets.TF_VAR_PORTAL_PASSWORD }}
+      YB_CUSTOMER_PASSWORD: ${{ secrets.YB_CUSTOMER_PASSWORD }}
       AZURE_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
       AZURE_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
       AZURE_RG: ${{ secrets.ARM_RESOURCE_GROUP }}
@@ -118,7 +118,7 @@ jobs:
     runs-on: [self-hosted, aws]
     env:
       TF_VAR_RESOURCES_DIR: ${{ secrets.TF_VAR_RESOURCES_DIR }}
-      TF_VAR_PORTAL_PASSWORD: ${{ secrets.TF_VAR_PORTAL_PASSWORD }}
+      YB_CUSTOMER_PASSWORD: ${{ secrets.YB_CUSTOMER_PASSWORD }}
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
     timeout-minutes: 120
@@ -196,7 +196,7 @@ jobs:
     runs-on: [self-hosted, gcp]
     env:
       TF_VAR_RESOURCES_DIR: ${{ secrets.TF_VAR_RESOURCES_DIR }}
-      TF_VAR_PORTAL_PASSWORD: ${{ secrets.TF_VAR_PORTAL_PASSWORD }}
+      YB_CUSTOMER_PASSWORD: ${{ secrets.YB_CUSTOMER_PASSWORD }}
       GOOGLE_APPLICATION_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
       GOOGLE_PROJECT: ${{ secrets.GOOGLE_PROJECT }}
       GOOGLE_REGION: ${{ secrets.GOOGLE_REGION }}
