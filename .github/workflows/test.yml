@@ -195,7 +195,7 @@ jobs:
     needs: build
     runs-on: [self-hosted, gcp]
     env:
-      TF_VAR_RESOURCES_DIR: ${{ secrets.TF_VAR_RESOURCES_DIR }}
+      TF_VAR_RESOURCES_DIR: ${{ vars.TF_VAR_RESOURCES_DIR }}
       YB_CUSTOMER_PASSWORD: ${{ secrets.YB_CUSTOMER_PASSWORD }}
       GOOGLE_APPLICATION_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
       GOOGLE_PROJECT: ${{ secrets.GOOGLE_PROJECT }}
