@@ -14,10 +14,6 @@ variable "RESOURCES_DIR" {
   type        = string
   description = "directory on the platform runner that holds testing resources"
 }
-variable "PORTAL_PASSWORD" {
-  type        = string
-  description = "password for the management portal"
-}
 
 resource "random_uuid" "random" {
 }
@@ -64,7 +60,6 @@ resource "yb_customer_resource" "customer" {
   code       = "admin"
   email      = "tf@yugabyte.com"
   name       = "acctest"
-  password   = var.PORTAL_PASSWORD
 }
 
 output "api_key" {
