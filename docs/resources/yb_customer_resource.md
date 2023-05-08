@@ -13,7 +13,7 @@ Customer Resource.
 The following credential is required as environment variable before creation:
 
 |Requirement|Environment Variable|
-|-------|--------|-------------------------------|
+|-------|--------|
 |[Customer Password](https://docs.yugabyte.com/preview/yugabyte-platform/configure-yugabyte-platform/create-admin-user/)|`YB_CUSTOMER_PASSWORD`|
 
 ## Example Usage
