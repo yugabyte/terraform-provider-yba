@@ -29,12 +29,12 @@ provider "azurerm" {
 module "azure_yb_anywhere" {
   source = "../../modules/docker/azure"
 
-  cluster_name        = "tf-acctest-${random_uuid.random.result}"
-  ssh_user            = "tf"
-  region_name         = "westus2"
-  subnet_name         = "terraform-acctest-subnet-westus2"
-  vnet_name           = "terraform-acctest-vnet-westus2"
-  resource_group = "yugabyte-terraform-test"
+  cluster_name   = "tf-acctest-${random_uuid.random.result}"
+  ssh_user       = "tf"
+  region_name    = "westus2"
+  subnet_name    = "yugabyte-subnet-westus2"
+  vnet_name      = "yugabyte-vnet-us-west2"
+  resource_group = "yugabyte-rg"
   // files
   ssh_private_key = "${var.RESOURCES_DIR}/acctest"
   ssh_public_key  = "${var.RESOURCES_DIR}/acctest.pub"
@@ -51,6 +51,7 @@ provider "yb" {
 resource "yb_installation" "installation" {
   public_ip                 = module.azure_yb_anywhere.public_ip
   private_ip                = module.azure_yb_anywhere.private_ip
+  ssh_host_ip               = module.azure_yb_anywhere.public_ip
   ssh_user                  = "tf"
   ssh_private_key           = file("${var.RESOURCES_DIR}/acctest")
   replicated_config_file    = "${var.RESOURCES_DIR}/replicated.conf"

@@ -27,11 +27,11 @@ provider "google" {}
 module "gcp_yb_anywhere" {
   source = "../../modules/docker/gcp"
 
-  cluster_name    = "tf-acctest-${random_uuid.random.result}"
-  ssh_user        = "tf"
-  network_tags    = ["terraform-acctest-yugaware", "http-server", "https-server"]
-  vpc_network     = "default"
-  vpc_subnetwork  = "default"
+  cluster_name   = "tf-acctest-${random_uuid.random.result}"
+  ssh_user       = "tf"
+  network_tags   = ["terraform-acctest-yugaware", "http-server", "https-server"]
+  vpc_network    = "default"
+  vpc_subnetwork = "default"
   // files
   ssh_private_key = "${var.RESOURCES_DIR}/acctest"
   ssh_public_key  = "${var.RESOURCES_DIR}/acctest.pub"
@@ -48,6 +48,7 @@ provider "yb" {
 resource "yb_installation" "installation" {
   public_ip                 = module.gcp_yb_anywhere.public_ip
   private_ip                = module.gcp_yb_anywhere.private_ip
+  ssh_host_ip               = module.gcp_yb_anywhere.private_ip
   ssh_user                  = "tf"
   ssh_private_key           = file("${var.RESOURCES_DIR}/acctest")
   replicated_config_file    = "${var.RESOURCES_DIR}/replicated.conf"
