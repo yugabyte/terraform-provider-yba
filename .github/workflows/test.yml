@@ -245,7 +245,7 @@ jobs:
         working-directory: ./acctest/gcp
 
       - name: Terraform Apply
-        run: terraform apply -auto-approve
+        run: TF_LOG=INFO terraform apply -auto-approve
         working-directory: ./acctest/gcp
 
       - name: Set platform host
