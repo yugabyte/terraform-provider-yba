@@ -28,6 +28,7 @@ module "azure_yb_anywhere" {
   cluster_name   = "tf-acctest-${random_uuid.random.result}"
   ssh_user       = "tf"
   region_name    = "westus2"
+  security_group = "sg-139dde6c"
   subnet_name    = "yugabyte-subnet-westus2"
   vnet_name      = "yugabyte-vnet-us-west2"
   resource_group = "yugabyte-rg"
@@ -45,6 +46,7 @@ provider "yb" {
 }
 
 resource "yb_installation" "installation" {
+  depends_on = [ module.azure_yb_anywhere ]
   public_ip                 = module.azure_yb_anywhere.public_ip
   private_ip                = module.azure_yb_anywhere.private_ip
   ssh_host_ip               = module.azure_yb_anywhere.public_ip
