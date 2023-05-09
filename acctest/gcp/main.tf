@@ -50,6 +50,9 @@ resource "yb_installation" "installation" {
   replicated_config_file    = "${var.RESOURCES_DIR}/replicated.conf"
   replicated_license_file   = "${var.RESOURCES_DIR}/acctest.rli"
   application_settings_file = "${var.RESOURCES_DIR}/application_settings.conf"
+  timeouts {
+    create = "20m"
+  }
 }
 
 resource "yb_customer_resource" "customer" {
