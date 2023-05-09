@@ -238,7 +238,9 @@ jobs:
         working-directory: ./acctest/gcp
 
       - name: Terraform Plan
-        run: terraform plan -no-color
+        run: |
+          env | grep TF
+          terraform plan -no-color
         working-directory: ./acctest/gcp
 
       - name: Terraform Apply
