@@ -222,7 +222,7 @@ jobs:
           go mod download
 
       - name: Set environment variables
-        run: . ./env_variables.sh 
+        run: . /home/deeptikumar/env_variables.sh 
 
       - name: Make terraform provider installation directory
         run: mkdir -p ./acctest/gcp/terraform.d/plugins/terraform.yugabyte.com/platform/yugabyte-platform/0.1.0/linux_amd64
