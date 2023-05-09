@@ -240,7 +240,7 @@ jobs:
 
       - name: Terraform Plan
         run: |
-          . ./home/deeptikumar/env_variables.sh
+          . /home/deeptikumar/env_variables.sh
           terraform plan -no-color
         working-directory: ./acctest/gcp
 
