@@ -194,13 +194,6 @@ jobs:
     name: Acceptance Test on GCP
     needs: build
     runs-on: [self-hosted, gcp]
-    env:
-      TF_VAR_RESOURCES_DIR: ${{ vars.TF_VAR_RESOURCES_DIR }}
-      YB_CUSTOMER_PASSWORD: ${{ secrets.YB_CUSTOMER_PASSWORD }}
-      GOOGLE_APPLICATION_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
-      GOOGLE_PROJECT: ${{ secrets.GOOGLE_PROJECT }}
-      GOOGLE_REGION: ${{ secrets.GOOGLE_REGION }}
-      GOOGLE_ZONE: ${{ secrets.GOOGLE_ZONE }}
     timeout-minutes: 120
     strategy:
       fail-fast: false
@@ -236,14 +229,16 @@ jobs:
           go build -o ./acctest/gcp/terraform.d/plugins/terraform.yugabyte.com/platform/yugabyte-platform/0.1.0/linux_amd64
 
       # use the modules to bring up platform instance for acceptance tests
+      - name: Set environment variables
+        run: source ~/env_variables.sh
+        working-directory: ./acctest/gcp
+
       - name: Terraform Init
         run: terraform init
         working-directory: ./acctest/gcp
 
       - name: Terraform Plan
-        run: |
-          echo ${{ vars.TF_VAR_RESOURCES_DIR }} | sed 's/./& /g'
-          terraform plan -no-color -var="RESOURCES_DIR=$TF_VAR_RESOURCES_DIR"
+        run: terraform plan -no-color
         working-directory: ./acctest/gcp
 
       - name: Terraform Apply
