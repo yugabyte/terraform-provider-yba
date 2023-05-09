@@ -221,6 +221,9 @@ jobs:
         run: |
           go mod download
 
+      - name: Set environment variables
+        run: . ./env_variables.sh 
+
       - name: Make terraform provider installation directory
         run: mkdir -p ./acctest/gcp/terraform.d/plugins/terraform.yugabyte.com/platform/yugabyte-platform/0.1.0/linux_amd64
 
@@ -229,9 +232,6 @@ jobs:
           go build -o ./acctest/gcp/terraform.d/plugins/terraform.yugabyte.com/platform/yugabyte-platform/0.1.0/linux_amd64
 
       # use the modules to bring up platform instance for acceptance tests
-      - name: Set environment variables
-        run: source ~/env_variables.sh
-        working-directory: ./acctest/gcp
 
       - name: Terraform Init
         run: terraform init
