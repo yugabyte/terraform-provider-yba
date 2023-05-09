@@ -44,7 +44,7 @@ provider "yb" {
 resource "yb_installation" "installation" {
   public_ip                 = module.gcp_yb_anywhere.public_ip
   private_ip                = module.gcp_yb_anywhere.private_ip
-  ssh_host_ip               = module.gcp_yb_anywhere.private_ip
+  ssh_host_ip               = module.gcp_yb_anywhere.public_ip
   ssh_user                  = "tf"
   ssh_private_key           = file("${var.RESOURCES_DIR}/acctest")
   replicated_config_file    = "${var.RESOURCES_DIR}/replicated.conf"
