@@ -239,7 +239,7 @@ jobs:
 
       - name: Terraform Plan
         run: |
-          env | grep TF
+          env | grep YB
           terraform plan -no-color
         working-directory: ./acctest/gcp
 
