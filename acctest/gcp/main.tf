@@ -26,8 +26,8 @@ module "gcp_yb_anywhere" {
   cluster_name   = "tf-acctest-${random_uuid.random.result}"
   ssh_user       = "tf"
   network_tags   = ["terraform-acctest-yugaware", "http-server", "https-server"]
-  vpc_network    = "default"
-  vpc_subnetwork = "default"
+  vpc_network    = "***REMOVED***"
+  vpc_subnetwork = "***REMOVED***"
   // files
   ssh_private_key = "${var.RESOURCES_DIR}/acctest"
   ssh_public_key  = "${var.RESOURCES_DIR}/acctest.pub"
