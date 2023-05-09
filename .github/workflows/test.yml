@@ -237,12 +237,11 @@ jobs:
         run: terraform init
         working-directory: ./acctest/gcp
 
-      - name: Check if env variables are set
-        run: env | grep YB
-        working-directory: ./acctest/gcp
 
       - name: Terraform Plan
-        run: terraform plan -no-color
+        run: |
+          . ./home/deeptikumar/env_variables.sh
+          terraform plan -no-color
         working-directory: ./acctest/gcp
 
       - name: Terraform Apply
