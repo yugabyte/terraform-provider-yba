@@ -19,7 +19,7 @@ resource "random_uuid" "random" {
 }
 
 provider "aws" {
-  region = "us-east-1"
+  region = "us-west-2"
 }
 
 module "aws_yb_anywhere" {
@@ -32,7 +32,7 @@ module "aws_yb_anywhere" {
   vpc_id              = "vpc-0fe36f6b"
   subnet_id           = "subnet-f840ce9c"
   // files
-  ssh_private_key = "${var.RESOURCES_DIR}/acctest"
+  ssh_private_key = "${var.RESOURCES_DIR}/aws-acctest.pem"
 }
 
 output "host" {
@@ -48,7 +48,7 @@ resource "yb_installation" "installation" {
   private_ip                = module.aws_yb_anywhere.private_ip
   ssh_user                  = "ubuntu"
   ssh_host_ip               = module.aws_yb_anywhere.public_ip
-  ssh_private_key           = file("${var.RESOURCES_DIR}/acctest")
+  ssh_private_key           = file("${var.RESOURCES_DIR}/aws-acctest.pem")
   replicated_config_file    = "${var.RESOURCES_DIR}/replicated.conf"
   replicated_license_file   = "${var.RESOURCES_DIR}/acctest.rli"
   application_settings_file = "${var.RESOURCES_DIR}/application_settings.conf"
