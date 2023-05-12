@@ -7,32 +7,46 @@ assignees: ''
 
 ---
 
-**Describe the bug**
-A clear and concise description of what the bug is.
+Hi there,
 
-**To Reproduce**
-Steps to reproduce the behavior:
-1. Go to '...'
-2. Click on '....'
-3. Scroll down to '....'
-4. See error
+Thank you for opening an issue. Please note that we try to keep the Terraform issue tracker reserved for bug reports. For general usage questions, please see: https://www.terraform.io/community.html.
 
-**Expected behavior**
-A clear and concise description of what you expected to happen.
+### Terraform Version
+Run `terraform -v` to show the version. If you are not running the latest version of Terraform, please upgrade because your issue may have already been fixed.
 
-**Screenshots**
-If applicable, add screenshots to help explain your problem.
+### Affected Resource(s)
+Please list the resources as a list, for example:
+- opc_instance
+- opc_storage_volume
 
-**Desktop (please complete the following information):**
- - OS: [e.g. iOS]
- - Browser [e.g. chrome, safari]
- - Version [e.g. 22]
+If this issue appears to affect multiple resources, it may be an issue with Terraform's core, so please mention this.
 
-**Smartphone (please complete the following information):**
- - Device: [e.g. iPhone6]
- - OS: [e.g. iOS8.1]
- - Browser [e.g. stock browser, safari]
- - Version [e.g. 22]
+### Terraform Configuration Files
+```hcl
+# Copy-paste your Terraform configurations here - for large Terraform configs,
+# please use a service like Dropbox and share a link to the ZIP file. For
+# security, you can also encrypt the files using our GPG public key.
+```
 
-**Additional context**
-Add any other context about the problem here.
+### Debug Output
+Please provider a link to a GitHub Gist containing the complete debug output: https://www.terraform.io/docs/internals/debugging.html. Please do NOT paste the debug output in the issue; just paste a link to the Gist.
+
+### Panic Output
+If Terraform produced a panic, please provide a link to a GitHub Gist containing the output of the `crash.log`.
+
+### Expected Behavior
+What should have happened?
+
+### Actual Behavior
+What actually happened?
+
+### Steps to Reproduce
+Please list the steps required to reproduce the issue, for example:
+1. `terraform apply`
+
+### Important Factoids
+Are there anything atypical about your accounts that we should know? For example: Running in EC2 Classic? Custom version of OpenStack? Tight ACLs?
+
+### References
+Are there any other GitHub issues (open or closed) or Pull Requests that should be linked here? For example:
+- GH-1234
