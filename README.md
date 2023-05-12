@@ -5,7 +5,7 @@ This Terraform provider manages the following resources for YugabyteDB Anywhere:
 * Universes
 * Backup Storage Configurations
 * Backup Schedules
-* Users
+* Restores
 * Customers
 
 In addition, there are modules included for installing and managing YugabyteDB Anywhere instances/clusters in the following clouds:
@@ -15,8 +15,8 @@ In addition, there are modules included for installing and managing YugabyteDB A
 
 ## Prerequisites
 
-This provider required some API changes that are only available in YugabyteDB versions `>=2.13.1`, `>=2.12.4`, or `>=2.8.5`. 
-The automated tests in this repository are hardcoded to use `2.13.1.0-b69` (replicated release sequence `790`).
+This provider required some API changes that are only available in YugabyteDB versions `>=2.17.3`. 
+The automated tests in this repository are based on the Alpha channel of yugaware application in Replicated.
 
 ## Installation
 
