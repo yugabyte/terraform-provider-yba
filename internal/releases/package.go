@@ -1,4 +1,4 @@
-// Licensed to Yugabyte, Inc. under one or more contributor license
+// Licensed to YugabyteDB, Inc. under one or more contributor license
 // agreements. See the NOTICE file distributed with this work for
 // additional information regarding copyright ownership. Yugabyte
 // licenses this file to you under the Mozilla License, Version 2.0

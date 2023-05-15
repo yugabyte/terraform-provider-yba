@@ -9,7 +9,7 @@ go install github.com/google/go-licenses@latest
 
 cat > NOTICE <<EOF
 YugabyteDB Anywhere Terraform Provider 
-Copyright © 2023-present Yugabyte, Inc. All Rights Reserved.
+Copyright © 2023-present YugabyteDB, Inc. All Rights Reserved.
 
 This product is licensed to you under the Mozilla Public License, Version
 2.0 (the "License"). You may not use this file except in compliance
