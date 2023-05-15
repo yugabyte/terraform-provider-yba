@@ -367,25 +367,27 @@ func resourceBackupsUpdate(ctx context.Context, d *schema.ResourceData, meta int
 
 	tflog.Info(ctx, fmt.Sprintf("Current version %s, using V2 Edit Schedule Backup API", version))
 
-	frequency, frequencyUnit, _, err := utils.GetMsFromDurationString(d.Get("frequency").(string))
-	if err != nil {
-		return diag.FromErr(err)
-	}
-	if frequency < utils.ConvertUnitToMs(1, "HOURS") {
-		return diag.Errorf("Frequency of backups cannot be less than 1 hour")
-	}
+	if d.HasChange("frequency") {
+		frequency, frequencyUnit, _, err := utils.GetMsFromDurationString(d.Get("frequency").(string))
+		if err != nil {
+			return diag.FromErr(err)
+		}
+		if frequency < utils.ConvertUnitToMs(1, "HOURS") {
+			return diag.Errorf("Frequency of backups cannot be less than 1 hour")
+		}
 
-	req := client.EditBackupScheduleParams{
-		CronExpression:    utils.GetStringPointer(d.Get("cron_expression").(string)),
-		Frequency:         utils.GetInt64Pointer(frequency),
-		FrequencyTimeUnit: utils.GetStringPointer(frequencyUnit),
-	}
-	_, response, err := c.ScheduleManagementApi.EditBackupScheduleV2(ctx,
-		cUUID, d.Id()).Body(req).Execute()
-	if err != nil {
-		errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
-			"Backups", "Update")
-		return diag.FromErr(errMessage)
+		req := client.EditBackupScheduleParams{
+			CronExpression:    utils.GetStringPointer(d.Get("cron_expression").(string)),
+			Frequency:         utils.GetInt64Pointer(frequency),
+			FrequencyTimeUnit: utils.GetStringPointer(frequencyUnit),
+		}
+		_, response, err := c.ScheduleManagementApi.EditBackupScheduleV2(ctx,
+			cUUID, d.Id()).Body(req).Execute()
+		if err != nil {
+			errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
+				"Backups", "Update")
+			return diag.FromErr(errMessage)
+		}
 	}
 	return resourceBackupsRead(ctx, d, meta)
 }
