@@ -9,7 +9,7 @@ require (
 	github.com/hashicorp/terraform-plugin-docs v0.5.1
 	github.com/hashicorp/terraform-plugin-log v0.7.0
 	github.com/hashicorp/terraform-plugin-sdk/v2 v2.10.1
-	github.com/yugabyte/platform-go-client v0.0.0-20230313052704-190d665e8a7c
+	github.com/yugabyte/platform-go-client v0.0.0-20230513175746-dd238f2a46e8
 	golang.org/x/crypto v0.0.0-20220315160706-3147a52a75dd
 )
 
