@@ -307,8 +307,8 @@ The following subcomponents are used:
 ## github.com/yugabyte/platform-go-client
 
 * Name: github.com/yugabyte/platform-go-client
-* Version: v0.0.0-20230313052704-190d665e8a7c
-* License: [Unknown](Unknown)
+* Version: v0.0.0-20230513175746-dd238f2a46e8
+* License: [Apache-2.0](https://github.com/yugabyte/platform-go-client/blob/dd238f2a46e8/LICENSE)
 
 
 ## github.com/yugabyte/terraform-provider-yugabyte-platform
@@ -379,4 +379,5 @@ The following subcomponents are used:
 * Name: google.golang.org/protobuf
 * Version: v1.28.1
 * License: [BSD-3-Clause](https://github.com/protocolbuffers/protobuf-go/blob/v1.28.1/LICENSE)
+
 
