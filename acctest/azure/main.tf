@@ -46,7 +46,7 @@ provider "yb" {
 }
 
 resource "yb_installation" "installation" {
-  depends_on = [ module.azure_yb_anywhere ]
+  depends_on                = [module.azure_yb_anywhere]
   public_ip                 = module.azure_yb_anywhere.public_ip
   private_ip                = module.azure_yb_anywhere.private_ip
   ssh_host_ip               = module.azure_yb_anywhere.public_ip

@@ -57,10 +57,10 @@ const (
 const (
 
 	// YBAAllowUniverseMinVersion specifies minimum version
-	// required to use Scheduled Backup resource via YBA Terraform
+	// required to use Universe resource via YBA Terraform
 	YBAAllowUniverseMinVersion = "2.17.1.0-b371"
 
 	// YBAAllowBackupMinVersion specifies minimum version
-	// required to use Universe resource via YBA Terraform
+	// required to use Scheduled Backup resource via YBA Terraform
 	YBAAllowBackupMinVersion = "2.17.3.0-b43"
 )
