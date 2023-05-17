@@ -10,6 +10,8 @@ description: |-
 
 Scheduled Backups for universe.
 
+~> **Note:** The YugabyteDB Anywhere Terraform provider supports scheduling backups in YugabyteDB Anywhere version 2.18.1 and later.
+
 ## Example Usage
 
 ```terraform

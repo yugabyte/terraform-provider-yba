@@ -9,6 +9,8 @@ description: |-
 
 You can schedule backups using the following definition after configuring a storage configuration resource (refer to *yb_storage_config_resource*).
 
+~> **Note:** The YugabyteDB Anywhere Terraform provider supports backup schedules in YugabyteDB Anywhere version 2.18.1 and later.
+
 ```terraform
 resource "yb_storage_config_resource" "storage" {
   name = "S3"

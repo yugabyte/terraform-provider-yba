@@ -10,6 +10,8 @@ description: |-
 
 Retrieve list of backups.
 
+~> **Note:** The YugabyteDB Anywhere Terraform provider supports fetching backups in YugabyteDB Anywhere version 2.18.1 and later.
+
 ## Example Usage
 
 ```terraform
