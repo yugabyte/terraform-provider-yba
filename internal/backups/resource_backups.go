@@ -223,8 +223,8 @@ func resourceBackupsCreate(ctx context.Context, d *schema.ResourceData, meta int
 	var r client.Schedule
 	if !allowed {
 
-		return diag.FromErr(fmt.Errorf("Scheduling backups below version 2.17.3.0-b43 is not"+
-			" supported, currently on %s", version))
+		return diag.FromErr(fmt.Errorf("Scheduling backups below version %s is not"+
+			" supported, currently on %s", utils.YBAAllowBackupMinVersion, version))
 
 	}
 	if d.Get("schedule_name").(string) == "" {
@@ -296,8 +296,8 @@ func resourceBackupsRead(ctx context.Context, d *schema.ResourceData, meta inter
 	}
 
 	if !allowed {
-		return diag.FromErr(fmt.Errorf("Reading backups below version 2.17.3.0-b43 is not"+
-			" supported, currently on %s", version))
+		return diag.FromErr(fmt.Errorf("Reading backups below version %s is not"+
+			" supported, currently on %s", utils.YBAAllowBackupMinVersion, version))
 	}
 	// V2 schedule list
 	req := client.SchedulePagedApiQuery{
@@ -403,7 +403,7 @@ func resourceBackupsDelete(ctx context.Context, d *schema.ResourceData, meta int
 
 	if !allowed && d.Get("delete_backup").(bool) {
 		return diag.FromErr(fmt.Errorf("Deleting backups along with schedules "+
-			"below version 2.17.3.0-b43 is not supported, currently on %s", version))
+			"below version %s is not supported, currently on %s", utils.YBAAllowBackupMinVersion, version))
 	}
 	if d.Get("delete_backup").(bool) {
 
@@ -443,8 +443,8 @@ func resourceBackupsDelete(ctx context.Context, d *schema.ResourceData, meta int
 		}
 	}
 	if !allowed {
-		return diag.FromErr(fmt.Errorf("Deleting backup schedules below version 2.17.3.0-b43 "+
-			"is not supported, currently on %s", version))
+		return diag.FromErr(fmt.Errorf("Deleting backup schedules below version %s "+
+			"is not supported, currently on %s", utils.YBAAllowBackupMinVersion, version))
 	}
 	// V2 schedule delete
 	tflog.Info(ctx, fmt.Sprintf("Current version %s, using V2 Delete Schedule Backup API",

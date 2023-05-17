@@ -124,8 +124,8 @@ func resourceRestoreCreate(ctx context.Context, d *schema.ResourceData, meta int
 	}
 
 	if !allowed {
-		return diag.FromErr(fmt.Errorf("Restoring backups below version 2.17.3.0-b43 is not"+
-			" supported, currently on %s", version))
+		return diag.FromErr(fmt.Errorf("Restoring backups below version %s is not"+
+			" supported, currently on %s", utils.YBAAllowBackupMinVersion, version))
 	}
 	backupStorage := client.BackupStorageInfo{
 		StorageLocation: utils.GetStringPointer(d.Get("storage_location").(string)),
@@ -175,8 +175,8 @@ func resourceRestoreRead(ctx context.Context, d *schema.ResourceData, meta inter
 	}
 
 	if !allowed {
-		return diag.FromErr(fmt.Errorf("Reading backup restores below version 2.17.3.0-b43 is not"+
-			" supported, currently on %s", version))
+		return diag.FromErr(fmt.Errorf("Reading backup restores below version %s is not"+
+			" supported, currently on %s", utils.YBAAllowBackupMinVersion, version))
 	}
 
 	req := client.RestorePagedApiQuery{
