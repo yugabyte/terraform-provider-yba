@@ -9,6 +9,8 @@ description: |-
 
 Data backed up by the scheduled backups (*yb_backups*) can be restored to universes using the defined resource for restores - *yb_restore*. This operation only triggers the Restore operation and does not track the remote state once the operation is complete.
 
+~> **Note:** The YugabyteDB Anywhere Terraform provider supports restores in YugabyteDB Anywhere version 2.18.1 and later.
+
 ~> **Note:** You should remove the *yb_restore* resource after the operation is complete.
 
 You can fetch the list of backups for a universe using the *yb_backup_info* data source, which can be used in restore operations, as shown in the following example.

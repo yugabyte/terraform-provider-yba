@@ -10,6 +10,8 @@ description: |-
 
 Restoring backups for universe. This resource does not track the remote state and is only provided as a convenience tool. It is recommended to remove this resource after running terraform apply.
 
+~> **Note:** The YugabyteDB Anywhere Terraform provider supports restores in YugabyteDB Anywhere version 2.18.1 and later.
+
 ## Example Usage
 
 ```terraform

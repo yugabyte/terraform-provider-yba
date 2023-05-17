@@ -97,8 +97,8 @@ func dataSourceBackupsListRead(ctx context.Context, d *schema.ResourceData, meta
 	}
 
 	if !allowed {
-		return diag.FromErr(fmt.Errorf("Listing backups below version 2.17.3.0-b43 is not"+
-			" supported, currently on %s", version))
+		return diag.FromErr(fmt.Errorf("Listing backups below version %s is not"+
+			" supported, currently on %s", utils.YBAAllowBackupMinVersion, version))
 	}
 	req := client.BackupPagedApiQuery{
 		Filter: client.BackupApiFilter{
