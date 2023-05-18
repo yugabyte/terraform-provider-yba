@@ -335,8 +335,8 @@ The following subcomponents are used:
 ## golang.org/x/net
 
 * Name: golang.org/x/net
-* Version: v0.0.0-20220722155237-a158d28d115b
-* License: [BSD-3-Clause](https://cs.opensource.google/go/x/net/+/a158d28d:LICENSE)
+* Version: v0.0.0-20220906165146-f3363e06e74c
+* License: [BSD-3-Clause](https://cs.opensource.google/go/x/net/+/f3363e06:LICENSE)
 
 
 ## golang.org/x/oauth2
@@ -349,8 +349,8 @@ The following subcomponents are used:
 ## golang.org/x/sys
 
 * Name: golang.org/x/sys
-* Version: v0.0.0-20220722155257-8c9f86f7a55f
-* License: [BSD-3-Clause](https://cs.opensource.google/go/x/sys/+/8c9f86f7:LICENSE)
+* Version: v0.0.0-20220728004956-3c1f35247d10
+* License: [BSD-3-Clause](https://cs.opensource.google/go/x/sys/+/3c1f3524:LICENSE)
 
 
 ## golang.org/x/text
