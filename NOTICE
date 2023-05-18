@@ -335,8 +335,8 @@ The following subcomponents are used:
 ## golang.org/x/net
 
 * Name: golang.org/x/net
-* Version: v0.0.0-20220906165146-f3363e06e74c
-* License: [BSD-3-Clause](https://cs.opensource.google/go/x/net/+/f3363e06:LICENSE)
+* Version: v0.7.0
+* License: [BSD-3-Clause](https://cs.opensource.google/go/x/net/+/v0.7.0:LICENSE)
 
 
 ## golang.org/x/oauth2
@@ -346,18 +346,18 @@ The following subcomponents are used:
 * License: [BSD-3-Clause](https://cs.opensource.google/go/x/oauth2/+/d3ed0bb2:LICENSE)
 
 
-## golang.org/x/sys
+## golang.org/x/sys/unix
 
-* Name: golang.org/x/sys
-* Version: v0.0.0-20220728004956-3c1f35247d10
-* License: [BSD-3-Clause](https://cs.opensource.google/go/x/sys/+/3c1f3524:LICENSE)
+* Name: golang.org/x/sys/unix
+* Version: v0.5.0
+* License: [BSD-3-Clause](https://cs.opensource.google/go/x/sys/+/v0.5.0:LICENSE)
 
 
 ## golang.org/x/text
 
 * Name: golang.org/x/text
-* Version: v0.4.0
-* License: [BSD-3-Clause](https://cs.opensource.google/go/x/text/+/v0.4.0:LICENSE)
+* Version: v0.7.0
+* License: [BSD-3-Clause](https://cs.opensource.google/go/x/text/+/v0.7.0:LICENSE)
 
 
 ## google.golang.org/genproto/googleapis/rpc/status
