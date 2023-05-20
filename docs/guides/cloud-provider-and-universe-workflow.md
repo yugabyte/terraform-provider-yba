@@ -12,12 +12,12 @@ Using the YugabyteDB Anywhere Terraform provider, you can can configure [cloud p
 The following example workflow configures an AWS cloud provider and a RF-3 universe with TLS enabled using default certificates.
 
 ```terraform
-provider "yb" {
+provider "yba" {
   host  = "<host ip address>:80"
   api_token = "<customer-api-token>"
 }
 
-resource "yb_cloud_provider" "aws" {
+resource "yba_cloud_provider" "aws" {
   code = "aws"
   name = "<aws-cloud-provider-name>"
   regions {
@@ -46,24 +46,24 @@ resource "yb_cloud_provider" "aws" {
   air_gap_install = false
 }
 
-data "yb_provider_key" "aws-key" {
-  provider_id = yb_cloud_provider.aws.id
+data "yba_provider_key" "aws-key" {
+  provider_id = yba_cloud_provider.aws.id
 }
 
-data "yb_release_version" "release_version" {
+data "yba_release_version" "release_version" {
   depends_on = [
-    yb_cloud_provider.aws
+    yba_cloud_provider.aws
   ]
 }
 
-resource "yb_universe" "aws_universe" {
+resource "yba_universe" "aws_universe" {
   clusters {
     cluster_type = "PRIMARY"
     user_intent {
       universe_name      = "<aws-universe-name>"
       provider_type      = "aws"
-      provider           = yb_cloud_provider.aws.id
-      region_list        = yb_cloud_provider.aws.regions[*].uuid
+      provider           = yba_cloud_provider.aws.id
+      region_list        = yba_cloud_provider.aws.regions[*].uuid
       num_nodes          = 3
       replication_factor = 3
       instance_type      = "c5.large"
@@ -80,8 +80,8 @@ resource "yb_universe" "aws_universe" {
       enable_ysql                   = true
       enable_node_to_node_encrypt   = true
       enable_client_to_node_encrypt = true
-      yb_software_version           = data.yb_release_version.release_version.id
-      access_key_code               = data.yb_provider_key.aws-key.id
+      yb_software_version           = data.yba_release_version.release_version.id
+      access_key_code               = data.yba_provider_key.aws-key.id
       instance_tags = {
         <labels-for-universe-nodes>
       }
@@ -100,7 +100,7 @@ resource "yb_universe" "aws_universe" {
 ## Configuring Azure and GCP Cloud Providers
 
 ```terraform
-resource "yb_cloud_provider" "gcp" {
+resource "yba_cloud_provider" "gcp" {
   code = "gcp"
   dest_vpc_id = "<gcp-vpc-id>"
   name        = "<gcp-cloud-provider-name>"
@@ -120,7 +120,7 @@ resource "yb_cloud_provider" "gcp" {
   air_gap_install = false
 }
 
-resource "yb_cloud_provider" "azure" {
+resource "yba_cloud_provider" "azure" {
   code = "azu"
   
   name        = "<azu-cloud-provider-name>"
@@ -152,14 +152,14 @@ resource "yb_cloud_provider" "azure" {
 The following universe definition can be used to create universes with read replicas.
 
 ```terraform
-resource "yb_universe" "aws_universe" {
+resource "yba_universe" "aws_universe" {
   clusters {
     cluster_type = "PRIMARY"
     user_intent {
       universe_name      = "<universe-name>"
       provider_type      = "aws"
-      provider           = yb_cloud_provider.aws.id
-      region_list        = yb_cloud_provider.aws.regions[*].uuid
+      provider           = yba_cloud_provider.aws.id
+      region_list        = yba_cloud_provider.aws.regions[*].uuid
       num_nodes          = 1
       replication_factor = 1
       instance_type      = "c5.large"
@@ -176,8 +176,8 @@ resource "yb_universe" "aws_universe" {
       enable_ysql                   = true
       enable_node_to_node_encrypt   = true
       enable_client_to_node_encrypt = true
-      yb_software_version           = data.yb_release_version.release_version.id
-      access_key_code               = data.yb_provider_key.aws-key.id
+      yb_software_version           = data.yba_release_version.release_version.id
+      access_key_code               = data.yba_provider_key.aws-key.id
       instance_tags = {
         <labels-for-universe-nodes>
       }
@@ -188,8 +188,8 @@ resource "yb_universe" "aws_universe" {
     user_intent {
       universe_name      = "<universe-name-as-in-primary-cluster-definition>"
       provider_type      = "aws"
-      provider           = yb_cloud_provider.aws.id
-      region_list        = yb_cloud_provider.aws.regions[*].uuid
+      provider           = yba_cloud_provider.aws.id
+      region_list        = yba_cloud_provider.aws.regions[*].uuid
       num_nodes          = 3
       replication_factor = 3
       instance_type      = "c5.xlarge"
@@ -206,8 +206,8 @@ resource "yb_universe" "aws_universe" {
       enable_ysql                   = true
       enable_node_to_node_encrypt   = true
       enable_client_to_node_encrypt = true
-      yb_software_version           = data.yb_release_version.release_version.id
-      access_key_code               = data.yb_provider_key.aws-key.id
+      yb_software_version           = data.yba_release_version.release_version.id
+      access_key_code               = data.yba_provider_key.aws-key.id
       instance_tags = {
         <labels-for-universe-nodes>
       }

@@ -3,7 +3,7 @@ terraform {
     azurerm = {
       source = "hashicorp/azurerm"
     }
-    yb = {
+    yba = {
       version = "~> 0.1.0"
       source  = "terraform.yugabyte.com/platform/yugabyte-platform"
     }
@@ -28,9 +28,9 @@ module "azure_yb_anywhere" {
   cluster_name   = "tf-acctest-${random_uuid.random.result}"
   ssh_user       = "tf"
   region_name    = "westus2"
-  security_group = "***REMOVED***"
-  subnet_name    = "***REMOVED***"
-  vnet_name      = "***REMOVED***"
+  security_group = "sg-139dde6c"
+  subnet_name    = "yugabyte-subnet-westus2"
+  vnet_name      = "yugabyte-vnet-us-west2"
   resource_group = "yugabyte-rg"
   // files
   ssh_private_key = "${var.RESOURCES_DIR}/acctest"
@@ -41,11 +41,11 @@ output "host" {
   value = module.azure_yb_anywhere.public_ip
 }
 
-provider "yb" {
+provider "yba" {
   host = "${module.azure_yb_anywhere.public_ip}:80"
 }
 
-resource "yb_installation" "installation" {
+resource "yba_installation" "installation" {
   depends_on                = [module.azure_yb_anywhere]
   public_ip                 = module.azure_yb_anywhere.public_ip
   private_ip                = module.azure_yb_anywhere.private_ip
@@ -57,13 +57,13 @@ resource "yb_installation" "installation" {
   application_settings_file = "${var.RESOURCES_DIR}/application_settings.conf"
 }
 
-resource "yb_customer_resource" "customer" {
-  depends_on = [yb_installation.installation]
+resource "yba_customer_resource" "customer" {
+  depends_on = [yba_installation.installation]
   code       = "admin"
   email      = "tf@yugabyte.com"
   name       = "acctest"
 }
 
 output "api_key" {
-  value = yb_customer_resource.customer.api_token
+  value = yba_customer_resource.customer.api_token
 }

@@ -31,32 +31,32 @@ YugabyteDB Anywhere Terraform Provider uses [GitHub](https://github.com) for its
 
 ### Fork the YugabyteDB Anywhere Terraform Provider repository
 
-Go to the [YugabyteDB Anywhere Terraform Provider repository](https://github.com/yugabyte/terraform-provider-yugabytedb-anywhere) and press the "Fork" button near the upper right corner of the page. When finished, you will have your own "fork" at `https://github.com/<your-username>/terraform-provider-yugabytedb-anywhere`, and this is the repository to which you will upload your proposed changes and create pull requests. For details, see the [GitHub documentation](https://help.github.com/articles/fork-a-repo/).
+Go to the [YugabyteDB Anywhere Terraform Provider repository](https://github.com/yugabyte/terraform-provider-yugabytedb-anywhere) and press the "Fork" button near the upper right corner of the page. When finished, you will have your own "fork" at `https://github.com/<your-username>/terraform-provider-yba`, and this is the repository to which you will upload your proposed changes and create pull requests. For details, see the [GitHub documentation](https://help.github.com/articles/fork-a-repo/).
 
 ### Clone your fork
 
 At a terminal, go to the directory in which you want to place a local clone of the YugabyteDB Anywhere Terraform Provider repository, and run the following commands to use HTTPS authentication:
 
 ```sh
-    git clone https://github.com/<your-username>/terraform-provider-yugabytedb-anywhere.git
+    git clone https://github.com/<your-username>/terraform-provider-yba.git
 ```
 
 If you prefer to use SSH and have [uploaded your public key to your GitHub account](https://help.github.com/articles/adding-a-new-ssh-key-to-your-github-account/), you can instead use SSH:
 
 ```sh
-    git clone git@github.com:<your-username>/terraform-provider-yugabytedb-anywhere.git
+    git clone git@github.com:<your-username>/terraform-provider-yba.git
 ```
 
-This will create a `terraform-provider-yugabytedb-anywhere` directory, so change into that directory:
+This will create a `terraform-provider-yba` directory, so change into that directory:
 
 ```sh
-    cd terraform-provider-yugabytedb-anywhere
+    cd terraform-provider-yba
 ```
 
 This repository knows about your fork, but it doesn't yet know about the official or ["upstream" YugabyteDB Anywhere Terraform Provider repository](https://github.com/yugabyte/terraform-provider-yugabytedb-anywhere). Run the following commands:
 
 ```sh
-    git remote add upstream https://github.com/yugabyte/terraform-provider-yugabytedb-anywhere.git
+    git remote add upstream https://github.com/yugabyte/terraform-provider-yba.git
     git fetch upstream
     git branch --set-upstream-to=upstream/main main
 ```
@@ -89,7 +89,7 @@ Create folder in [implied directory](https://developer.hashicorp.com/terraform/c
     mkdir -p <implied_mirror_directory>/terraform.yugabyte.com/platform/yugabyte-platform/<provider_version>/<system_architecture>
 ```
 
-Switch to the root directory (`terraform-provider-yugabytedb-anywhere`) of the terraform repo and build the binary with the command:
+Switch to the root directory (`terraform-provider-yba`) of the terraform repo and build the binary with the command:
 
 ```sh
     go build -o <implied_mirror_directory>/terraform.yugabyte.com/platform/yugabyte-platform/<provider_version>/<system_architecture>/
@@ -120,7 +120,7 @@ Before you make any changes, be sure to switch to the `main` branch and pull the
 Once everything builds, create a *topic branch* named appropriately:
 
 ```sh
-    git checkout -b fix_metadata_yb_cloud_provider
+    git checkout -b fix_metadata_yba_cloud_provider
 ```
 
 This branch exists locally and it is there you should make all of your proposed changes for the issue. As you'll soon see, it will ultimately correspond to a single pull request that the YugabyteDB Anywhere Terraform Provider committers will review and merge (or reject) as a whole. (Some issues are big enough that you may want to make several separate but incremental sets of changes. In that case, you can create subsequent topic branches for the same issue by appending a short suffix to the branch name.)
@@ -138,7 +138,7 @@ Committing is as simple as:
 which should then pop up an editor of your choice in which you should place a good commit message. **We do expect that all commit messages begin with a line starting with the GitHub Issue and ending with a short phrase that summarizes what changed in the commit.** For example:
 
 ```md
-    Fixing metadata structuring in yb_cloud_provider
+    Fixing metadata structuring in yba_cloud_provider
 ```
 
 If that phrase is not sufficient to explain your changes, then the first line should be followed by a blank line and one or more paragraphs with additional details.
@@ -146,7 +146,7 @@ If that phrase is not sufficient to explain your changes, then the first line sh
 As an exception, commits for trivial documentation changes which don't warrant the creation of an issue can be prefixed with `[docs]`, for example:
 
 ```md
-    [docs] Typo fix in yb_installation documentation
+    [docs] Typo fix in yba_installation documentation
 ```
 
 ### Code Formatting
@@ -166,7 +166,7 @@ If its been more than a day or so since you created your topic branch, we recomm
 ```sh
     git checkout main
     git pull upstream main
-    git checkout fix_metadata_yb_cloud_provider
+    git checkout fix_metadata_yba_cloud_provider
     git rebase main
 ```
 
@@ -192,7 +192,7 @@ Any documentation update should be part of the pull request you submit for the c
 Once you're finished making your changes, your topic branch should have your commit(s) and you should have verified that your branch builds successfully. At this point, you can shared your proposed changes and create a pull request. To do this, first push your topic branch (and its commits) to your fork repository (called `origin`) on GitHub:
 
 ```sh
-    git push origin fix_metadata_yb_cloud_provider
+    git push origin fix_metadata_yba_cloud_provider
 ```
 
 Then, in a browser go to your forked repository, and you should see a small section near the top of the page with a button labeled "Contribute". GitHub recognized that you pushed a new topic branch to your fork of the upstream repository, and it knows you probably want to create a pull request with those changes. Click on the button, and a button "Open pull request" will apper. Click it and GitHub will present you the "Comparing changes" page, where you can view all changes that you are about to submit. With all revised, click in "Create pull request" and a short form will be given, that you should fill out with information about your pull request. The title should start with the GitHub issue and end with a short phrase that summarizes the changes included in the pull request. (If the pull request contains a single commit, GitHub will automatically prepopulate the title and description fields from the commit message.)
@@ -204,13 +204,13 @@ At this point, you can switch to another issue and another topic branch. The Yug
 If the reviewers ask you to make additional changes, simply switch to your topic branch for that pull request:
 
 ```sh
-    git checkout fix_metadata_yb_cloud_provider
+    git checkout fix_metadata_yba_cloud_provider
 ```
 
 and then make the changes on that branch and either add a new commit or ammend your previous commits. When you've addressed the reviewers' concerns, push your changes to your `origin` repository:
 
 ```sh
-    git push origin fix_metadata_yb_cloud_provider
+    git push origin fix_metadata_yba_cloud_provider
 ```
 
 GitHub will automatically update the pull request with your latest changes, but we ask that you go to the pull request and add a comment summarizing what you did. This process may continue until the reviewers are satisfied.
@@ -220,13 +220,13 @@ By the way, please don't take offense if the reviewers ask you to make additiona
 Once your pull request has been merged, feel free to delete your topic branch both in your local repository:
 
 ```sh
-    git branch -d fix_metadata_yb_cloud_provider
+    git branch -d fix_metadata_yba_cloud_provider
 ```
 
 and in your fork:
 
 ```sh
-    git push origin :fix_metadata_yb_cloud_provider
+    git push origin :fix_metadata_yba_cloud_provider
 ```
 
 (This last command is a bit strange, but it basically is pushing an empty branch (the space before the `:` character) to the named branch. Pushing an empty branch is the same thing as removing it.)

@@ -3,7 +3,7 @@ terraform {
     google = {
       source = "hashicorp/google"
     }
-    yb = {
+    yba = {
       version = "~> 0.1.0"
       source  = "terraform.yugabyte.com/platform/yugabyte-platform"
     }
@@ -26,8 +26,8 @@ module "gcp_yb_anywhere" {
   cluster_name   = "tf-acctest-${random_uuid.random.result}"
   ssh_user       = "tf"
   network_tags   = ["terraform-acctest-yugaware", "http-server", "https-server"]
-  vpc_network    = "***REMOVED***"
-  vpc_subnetwork = "***REMOVED***"
+  vpc_network    = "yugabyte-network"
+  vpc_subnetwork = "subnet-us-west1"
   // files
   ssh_private_key = "${var.RESOURCES_DIR}/acctest"
   ssh_public_key  = "${var.RESOURCES_DIR}/acctest.pub"
@@ -37,11 +37,11 @@ output "host" {
   value = module.gcp_yb_anywhere.public_ip
 }
 
-provider "yb" {
+provider "yba" {
   host = "${module.gcp_yb_anywhere.public_ip}:80"
 }
 
-resource "yb_installation" "installation" {
+resource "yba_installation" "installation" {
   public_ip                 = module.gcp_yb_anywhere.public_ip
   private_ip                = module.gcp_yb_anywhere.private_ip
   ssh_host_ip               = module.gcp_yb_anywhere.private_ip
@@ -52,13 +52,13 @@ resource "yb_installation" "installation" {
   application_settings_file = "${var.RESOURCES_DIR}/application_settings.conf"
 }
 
-resource "yb_customer_resource" "customer" {
-  depends_on = [yb_installation.installation]
+resource "yba_customer_resource" "customer" {
+  depends_on = [yba_installation.installation]
   code       = "admin"
   email      = "tf@yugabyte.com"
   name       = "acctest"
 }
 
 output "api_key" {
-  value = yb_customer_resource.customer.api_token
+  value = yba_customer_resource.customer.api_token
 }
