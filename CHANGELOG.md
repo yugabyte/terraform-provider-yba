@@ -2,7 +2,7 @@
 
 BACKWARDS INCOMPATIBILITIES / NOTES:
 
-The following version of YugabyteDB Anywhere Terraform Provider supports the following:
+The following version of YugabyteDB Anywhere Terraform Provider supports:
 
 ### Resources
 
