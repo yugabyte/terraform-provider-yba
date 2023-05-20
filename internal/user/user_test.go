@@ -41,7 +41,7 @@ func TestAccUser_Admin(t *testing.T) {
 			{
 				Config: userConfigWithRole("Admin", rName),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckUserExists("yb_user.user", &user),
+					testAccCheckUserExists("yba_user.user", &user),
 				),
 			},
 		},
@@ -60,7 +60,7 @@ func TestAccUser_ReadOnly(t *testing.T) {
 			{
 				Config: userConfigWithRole("ReadOnly", rName),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckUserExists("yb_user.user", &user),
+					testAccCheckUserExists("yba_user.user", &user),
 				),
 			},
 		},
@@ -71,7 +71,7 @@ func testAccCheckDestroyUser(s *terraform.State) error {
 	conn := acctest.APIClient.YugawareClient
 
 	for _, r := range s.RootModule().Resources {
-		if r.Type != "yb_user" {
+		if r.Type != "yba_user" {
 			continue
 		}
 
@@ -113,7 +113,7 @@ func testAccCheckUserExists(name string, user *client.UserWithFeatures) resource
 func userConfigWithRole(role string, name string) string {
 	return fmt.Sprintf(`
 
-resource "yb_user" "user" {
+resource "yba_user" "user" {
   email = "%s@yugabyte.com"
   password = "Password1@"
   role = "%s"

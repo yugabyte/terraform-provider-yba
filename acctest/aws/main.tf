@@ -3,7 +3,7 @@ terraform {
     aws = {
       source = "hashicorp/aws"
     }
-    yb = {
+    yba = {
       version = "~> 0.1.0"
       source  = "terraform.yugabyte.com/platform/yugabyte-platform"
     }
@@ -39,11 +39,11 @@ output "host" {
   value = module.aws_yb_anywhere.public_ip
 }
 
-provider "yb" {
+provider "yba" {
   host = "${module.aws_yb_anywhere.public_ip}:80"
 }
 
-resource "yb_installation" "installation" {
+resource "yba_installation" "installation" {
   public_ip                 = module.aws_yb_anywhere.public_ip
   private_ip                = module.aws_yb_anywhere.private_ip
   ssh_user                  = "ubuntu"
@@ -54,13 +54,13 @@ resource "yb_installation" "installation" {
   application_settings_file = "${var.RESOURCES_DIR}/application_settings.conf"
 }
 
-resource "yb_customer_resource" "customer" {
-  depends_on = [yb_installation.installation]
+resource "yba_customer_resource" "customer" {
+  depends_on = [yba_installation.installation]
   code       = "admin"
   email      = "tf@yugabyte.com"
   name       = "acctest"
 }
 
 output "api_key" {
-  value = yb_customer_resource.customer.api_token
+  value = yba_customer_resource.customer.api_token
 }

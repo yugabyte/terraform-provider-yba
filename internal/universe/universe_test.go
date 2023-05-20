@@ -30,6 +30,7 @@ import (
 	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/utils"
 )
 
+
 func TestAccUniverse_GCP_UpdatePrimaryNodes(t *testing.T) {
 	var universe client.UniverseResp
 
@@ -45,14 +46,14 @@ func TestAccUniverse_GCP_UpdatePrimaryNodes(t *testing.T) {
 			{
 				Config: universeGcpConfigWithNodes(rName, 3),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckUniverseExists("yb_universe.gcp", &universe),
+					testAccCheckUniverseExists("yba_universe.gcp", &universe),
 					testAccCheckNumNodes(&universe, 3),
 				),
 			},
 			{
 				Config: universeGcpConfigWithNodes(rName, 4),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckUniverseExists("yb_universe.gcp", &universe),
+					testAccCheckUniverseExists("yba_universe.gcp", &universe),
 					testAccCheckNumNodes(&universe, 4),
 				),
 			},
@@ -75,14 +76,14 @@ func TestAccUniverse_AWS_UpdatePrimaryNodes(t *testing.T) {
 			{
 				Config: universeAwsConfigWithNodes(rName, 3),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckUniverseExists("yb_universe.aws", &universe),
+					testAccCheckUniverseExists("yba_universe.aws", &universe),
 					testAccCheckNumNodes(&universe, 3),
 				),
 			},
 			{
 				Config: universeAwsConfigWithNodes(rName, 4),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckUniverseExists("yb_universe.aws", &universe),
+					testAccCheckUniverseExists("yba_universe.aws", &universe),
 					testAccCheckNumNodes(&universe, 4),
 				),
 			},
@@ -105,14 +106,14 @@ func TestAccUniverse_Azure_UpdatePrimaryNodes(t *testing.T) {
 			{
 				Config: universeAzureConfigWithNodes(rName, 3),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckUniverseExists("yb_universe.azu", &universe),
+					testAccCheckUniverseExists("yba_universe.azu", &universe),
 					testAccCheckNumNodes(&universe, 3),
 				),
 			},
 			{
 				Config: universeAzureConfigWithNodes(rName, 4),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckUniverseExists("yb_universe.azu", &universe),
+					testAccCheckUniverseExists("yba_universe.azu", &universe),
 					testAccCheckNumNodes(&universe, 4),
 				),
 			},
@@ -124,14 +125,14 @@ func testAccCheckDestroyProviderAndUniverse(s *terraform.State) error {
 	conn := acctest.APIClient.YugawareClient
 
 	for _, r := range s.RootModule().Resources {
-		if r.Type == "yb_universe" {
+		if r.Type == "yba_universe" {
 			cUUID := acctest.APIClient.CustomerID
 			_, _, err := conn.UniverseManagementApi.GetUniverse(context.Background(), cUUID,
 				r.Primary.ID).Execute()
 			if err == nil || acctest.IsResourceNotFoundError(err) {
 				return errors.New("Universe resource is not destroyed")
 			}
-		} else if r.Type == "yb_cloud_provider" {
+		} else if r.Type == "yba_cloud_provider" {
 			time.Sleep(60 * time.Second)
 			cUUID := acctest.APIClient.CustomerID
 			res, response, err := conn.CloudProvidersApi.GetListOfProviders(context.Background(),
@@ -203,24 +204,24 @@ func universeAzureConfigWithNodes(name string, nodes int) string {
 
 func universeConfigWithProviderWithNodes(p string, name string, nodes int) string {
 	return fmt.Sprintf(`
-data "yb_provider_key" "%s_key" {
-  provider_id = yb_cloud_provider.%s.id
+data "yba_provider_key" "%s_key" {
+  provider_id = yba_cloud_provider.%s.id
 }
 
-data "yb_release_version" "release_version"{
+data "yba_release_version" "release_version"{
 	depends_on = [
-		data.yb_provider_key.%s_key
+		data.yba_provider_key.%s_key
   ]
 }
 
-resource "yb_universe" "%s" {
+resource "yba_universe" "%s" {
   clusters {
     cluster_type = "PRIMARY"
     user_intent {
       universe_name      = "%s"
       provider_type      = "%s"
-      provider           = yb_cloud_provider.%s.id
-      region_list        = yb_cloud_provider.%s.regions[*].uuid
+      provider           = yba_cloud_provider.%s.id
+      region_list        = yba_cloud_provider.%s.regions[*].uuid
       num_nodes          = %d
       replication_factor = 3
       instance_type      = "%s"
@@ -234,8 +235,8 @@ resource "yb_universe" "%s" {
       enable_ysql                   = true
       enable_node_to_node_encrypt   = true
       enable_client_to_node_encrypt = true
-      yb_software_version           = data.yb_release_version.release_version.id
-      access_key_code               = data.yb_provider_key.%s_key.id
+      yb_software_version           = data.yba_release_version.release_version.id
+      access_key_code               = data.yba_provider_key.%s_key.id
 	  instance_tags = {
         "yb_owner"  = "terraform_acctest"
         "yb_task"   = "dev"
@@ -269,7 +270,7 @@ func getUniverseInstanceType(p string) string {
 
 func cloudProviderGCPConfig(name string) string {
 	return fmt.Sprintf(`
-resource "yb_cloud_provider" "gcp" {
+resource "yba_cloud_provider" "gcp" {
   code = "gcp"
   dest_vpc_id = "yugabyte-network"
   name        = "%s"
@@ -287,7 +288,7 @@ func cloudProviderAWSConfig(name string) string {
 	// TODO: remove the lifecycle ignore_changes block. This is needed because the current API
 	// is not returning vnet_name
 	return fmt.Sprintf(`
-	resource "yb_cloud_provider" "aws" {
+	resource "yba_cloud_provider" "aws" {
 		code = "aws"
 		name = "%s"
 		regions {
@@ -308,7 +309,7 @@ func cloudProviderAWSConfig(name string) string {
 
 func cloudProviderAzureConfig(name string) string {
 	return fmt.Sprintf(`
-resource "yb_cloud_provider" "azu" {
+resource "yba_cloud_provider" "azu" {
   code = "azu"
   name        = "%s"
   regions {
