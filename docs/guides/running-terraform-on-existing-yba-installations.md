@@ -10,7 +10,7 @@ description: |-
 You can configure the Terraform provider to run on an existing YugabyteDB Anywhere installation. To do so, the provider needs to be defined with the YugabyteDB Anywhere host IP address and your [API token](https://api-docs.yugabyte.com/docs/yugabyte-platform/f10502c9c9623-yugabyte-db-anywhere-api-overview#api-tokens-and-uuids).
 
 ```terraform
-provider "yb" {
+provider "yba" {
   host      = "<yba-host-ip-address>:80"
   api_token = "<customer-api-token>"
 }
@@ -22,21 +22,21 @@ Once the preceding block is defined, resources can be created via the Terraform 
 In the event that a customer has not been created in the installation, an unauthenticated provider can be used to create a customer, and a fresh provider with authentication can then be used to create and maintain the resources.
 
 ```terraform
-provider "yb" {
+provider "yba" {
   alias = "unauthenticated"
   host = "<yba-host-ip-address>:80"
 }
 
-resource "yb_customer_resource" "customer" {
-  provider   = yb.unauthenticated
+resource "yba_customer_resource" "customer" {
+  provider   = yba.unauthenticated
   code       = "admin"
   email      = "<email>"
   name       = "<customer-name>"
 }
 
-provider "yb" {
+provider "yba" {
   host      = "<yba-host-ip-address>:80"
-  api_token = yb_customer_resource.customer.api_token
+  api_token = yba_customer_resource.customer.api_token
 }
 
 ```
@@ -46,18 +46,18 @@ Other YugabyteDB Anywhere entities that are supported by the Terraform provider 
 1. Define an empty resource block in the configuration file of the resource to be imported. The following example shows the cloud provider resource.
 
     ```terraform
-    resource "yb_cloud_provider" "cloud_provider" {}
+    resource "yba_cloud_provider" "cloud_provider" {}
 
     ```
 
 1. Import the resource using the *terraform import* command.
 
     ```sh
-    $ terraform import yb_cloud_provider.cloud_provider <cloud-provider-uuid>
-    yb_cloud_provider.cloud_provider: Importing from ID "7fc1c313-5590-4599-88f4-109a15fe7db9"...
-    yb_cloud_provider.cloud_provider: Import prepared!
-      Prepared yb_cloud_provider for import
-    yb_cloud_provider.cloud_provider: Refreshing state... [id=7fc1c313-5590-4599-88f4-109a15fe7db9]
+    $ terraform import yba_cloud_provider.cloud_provider <cloud-provider-uuid>
+    yba_cloud_provider.cloud_provider: Importing from ID "7fc1c313-5590-4599-88f4-109a15fe7db9"...
+    yba_cloud_provider.cloud_provider: Import prepared!
+      Prepared yba_cloud_provider for import
+    yba_cloud_provider.cloud_provider: Refreshing state... [id=7fc1c313-5590-4599-88f4-109a15fe7db9]
 
     Import successful!
 

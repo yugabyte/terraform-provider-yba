@@ -1,19 +1,19 @@
 terraform {
   required_providers {
-    yb = {
+    yba = {
       version = "~> 0.1.0"
       source  = "terraform.yugabyte.com/platform/yugabyte-platform"
     }
   }
 }
 
-provider "yb" {
+provider "yba" {
   alias = "unauthenticated"
   host  = "${var.public_ip}:80"
 }
 
-resource "yb_installation" "installation" {
-  provider                  = yb.unauthenticated
+resource "yba_installation" "installation" {
+  provider                  = yba.unauthenticated
   public_ip                 = var.public_ip
   private_ip                = var.private_ip
   ssh_host_ip               = var.ssh_host_ip != "" ? var.ssh_host_ip : var.public_ip

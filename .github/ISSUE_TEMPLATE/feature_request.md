@@ -15,7 +15,7 @@ Thank you for opening an issue. Please note that we try to keep the Terraform is
 A clear and concise description of what the problem is. Ex. I'm always frustrated when [...]
 
 ### Requested Resource or Data Sources
-Please list any new resource(s) and/or data source(s). The naming format is `yb_<resource_name>`, e.g., yb_universe.
+Please list any new resource(s) and/or data source(s). The naming format is `yba_<resource_name>`, e.g., yba_universe.
 
 ### Additional context and references
 Add any other context or screenshots about the feature request here.

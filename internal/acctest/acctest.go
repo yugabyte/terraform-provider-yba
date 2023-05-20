@@ -29,7 +29,7 @@ const (
 	// env variables/other constants for yugabyte provider
 	testHost       = "YB_HOST"
 	testAPIKey     = "YB_API_KEY"
-	ybProviderName = "yb"
+	ybProviderName = "yba"
 
 	// env variables for gcp provider
 	testGCPCredentials = "GOOGLE_APPLICATION_CREDENTIALS"

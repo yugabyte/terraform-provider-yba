@@ -14,23 +14,23 @@ description: |-
 The YugabyteDB Anywhere Provider currently supports the following YugabyteDB Anywhere entities::
 
 - Data Sources:
-  - Backup Information (yb_backup_info)
-  - Cloud Provider Access Key Information (yb_provider_key)
-  - Available YBDB Release Versions (yb_release_version)
-  - Storage Configuration Information (yb_storage_configs)
+  - Backup Information (yba_backup_info)
+  - Cloud Provider Access Key Information (yba_provider_key)
+  - Available YBDB Release Versions (yba_release_version)
+  - Storage Configuration Information (yba_storage_configs)
 
 - Resources:
-  - Backup Schedules (yb_backups)
-  - Cloud Providers (yb_cloud_provider), with support for
+  - Backup Schedules (yba_backups)
+  - Cloud Providers (yba_cloud_provider), with support for
     - GCP
     - AWS
     - Azure
-  - Customer (yb_customer_resource)
-  - YugabyteDB Anywhere Installation via Replicated (yb_installation)
-  - YBDB Release Import (yb_releases)
-  - Restores (yb_restore)
-  - Storage Configuration (yb_storage_config_resource) referring to Backup Target Storage Configuration
-  - Universe (yb_universe)
+  - Customer (yba_customer_resource)
+  - YugabyteDB Anywhere Installation via Replicated (yba_installation)
+  - YBDB Release Import (yba_releases)
+  - Restores (yba_restore)
+  - Storage Configuration (yba_storage_config_resource) referring to Backup Target Storage Configuration
+  - Universe (yba_universe)
 
 The provider needs to be configured with appropriate credentials before it can be used.
 
@@ -43,13 +43,13 @@ The provider needs to be configured with appropriate credentials before it can b
 ## Example Usage
 
 ```terraform
-provider "yb" {
+provider "yba" {
   // unauthenticated - to use provider for installation of YugabyteDB Anywhere and customer creation  
   alias = "unauthenticated"
   host  = "<host-ip-address>:80"
 }
 
-provider "yb" {
+provider "yba" {
   // after customer creation, use authenticated provider
   host      = "<host-ip-address>:80"
   api_token = "<customer-api-token>"
@@ -76,7 +76,7 @@ Configuration can be provided by adding a `host` and optionally `api_token`, to 
 Usage:
 
 ```terraform
-provider "yb" {
+provider "yba" {
   host      = "<host-ip-address>:80"
   api_token = "<customer-api-token>"
 }
@@ -89,7 +89,7 @@ Configuration can also be provided by using the `YB_HOST` and `YB_API_KEY` envir
 For example:
 
 ```terraform
-provider "yb" {}
+provider "yba" {}
 ```
 
 ```sh

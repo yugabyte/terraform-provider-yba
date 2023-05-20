@@ -45,7 +45,7 @@ func TestAccCloudProvider_GCP(t *testing.T) {
 			{
 				Config: cloudProviderGCPConfig(rName),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckCloudProviderExists("yb_cloud_provider.gcp", &provider),
+					testAccCheckCloudProviderExists("yba_cloud_provider.gcp", &provider),
 				),
 			},
 		},
@@ -67,7 +67,7 @@ func TestAccCloudProvider_AWS(t *testing.T) {
 			{
 				Config: cloudProviderAWSConfig(rName),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckCloudProviderExists("yb_cloud_provider.aws", &provider),
+					testAccCheckCloudProviderExists("yba_cloud_provider.aws", &provider),
 				),
 			},
 		},
@@ -89,7 +89,7 @@ func TestAccCloudProvider_Azure(t *testing.T) {
 			{
 				Config: cloudProviderAzureConfig(rName),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckCloudProviderExists("yb_cloud_provider.azure", &provider),
+					testAccCheckCloudProviderExists("yba_cloud_provider.azure", &provider),
 				),
 			},
 		},
@@ -100,7 +100,7 @@ func testAccCheckDestroyCloudProvider(s *terraform.State) error {
 	conn := acctest.APIClient.YugawareClient
 
 	for _, r := range s.RootModule().Resources {
-		if r.Type != "yb_cloud_provider" {
+		if r.Type != "yba_cloud_provider" {
 			continue
 		}
 		// Since delete API of cloud provider does not track the task status after the API call,
@@ -156,7 +156,7 @@ func testAccCheckCloudProviderExists(name string, provider *client.Provider) (
 
 func cloudProviderGCPConfig(name string) string {
 	return fmt.Sprintf(`
-resource "yb_cloud_provider" "gcp" {
+resource "yba_cloud_provider" "gcp" {
   code = "gcp"
   dest_vpc_id = "default"
   name        = "%s"
@@ -174,7 +174,7 @@ func cloudProviderAWSConfig(name string) string {
 	// TODO: remove the lifecycle ignore_changes block.
 	// This is needed because the current API is not returning vnet_name
 	return fmt.Sprintf(`
-	resource "yb_cloud_provider" "aws" {
+	resource "yba_cloud_provider" "aws" {
 		code = "aws"
 		name = "%s"
 		regions {
@@ -197,7 +197,7 @@ func cloudProviderAWSConfig(name string) string {
 
 func cloudProviderAzureConfig(name string) string {
 	return fmt.Sprintf(`
-resource "yb_cloud_provider" "azure" {
+resource "yba_cloud_provider" "azure" {
   code = "azu"
   name        = "%s"
   regions {

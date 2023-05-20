@@ -23,7 +23,7 @@ import (
 	"net/http"
 )
 
-//LoginRequest to handle request body of REST API
+// LoginRequest to handle request body of REST API
 type LoginRequest struct {
 	Email    string `json:"email"`
 	Password string `json:"password"`
