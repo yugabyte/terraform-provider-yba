@@ -29,8 +29,8 @@ module "aws_yb_anywhere" {
   ssh_user            = "ubuntu"
   ssh_keypair         = "aws-acctest"
   security_group_name = "tf-acctest-sg-${random_uuid.random.result}"
-  vpc_id              = "vpc-0fe36f6b"
-  subnet_id           = "subnet-f840ce9c"
+  vpc_id              = "***REMOVED***"
+  subnet_id           = "***REMOVED***"
   // files
   ssh_private_key = "${var.RESOURCES_DIR}/aws-acctest.pem"
 }

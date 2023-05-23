@@ -272,7 +272,7 @@ func cloudProviderGCPConfig(name string) string {
 	return fmt.Sprintf(`
 resource "yba_cloud_provider" "gcp" {
   code = "gcp"
-  dest_vpc_id = "yugabyte-network"
+  dest_vpc_id = "***REMOVED***"
   name        = "%s"
   regions {
     code = "us-west2"
@@ -294,12 +294,12 @@ func cloudProviderAWSConfig(name string) string {
 		regions {
 		  code              = "us-west-2"
 		  name              = "us-west-2"
-		  security_group_id = "sg-139dde6c"
-		  vnet_name         = "vpc-0fe36f6b"
+		  security_group_id = "***REMOVED***"
+		  vnet_name         = "***REMOVED***"
 		  zones {
 			code   = "us-west-2a"
 			name   = "us-west-2a"
-			subnet = "subnet-6553f513"
+			subnet = "***REMOVED***"
 		  }
 		}
 		air_gap_install = false
@@ -315,10 +315,10 @@ resource "yba_cloud_provider" "azu" {
   regions {
     code = "westus2"
     name = "westus2"
-	vnet_name = "yugabyte-vnet-us-west2"
+	vnet_name = "***REMOVED***"
 	zones {
       name = "westus2-1"
-	  subnet = "yugabyte-subnet-westus2"
+	  subnet = "***REMOVED***"
 	}
   }
 }

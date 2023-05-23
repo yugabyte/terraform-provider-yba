@@ -180,12 +180,12 @@ func cloudProviderAWSConfig(name string) string {
 		regions {
 		  code              = "us-west-2"
 		  name              = "us-west-2"
-		  security_group_id = "sg-139dde6c"
-		  vnet_name         = "vpc-0fe36f6b"
+		  security_group_id = "***REMOVED***"
+		  vnet_name         = "***REMOVED***"
 		  zones {
 			code   = "us-west-2a"
 			name   = "us-west-2a"
-			subnet = "subnet-6553f513"
+			subnet = "***REMOVED***"
 		  }
 		}
 
@@ -203,10 +203,10 @@ resource "yba_cloud_provider" "azure" {
   regions {
     code = "westus2"
     name = "westus2"
-	vnet_name = "terraform-acctest-vnet-westus2"
+	vnet_name = "***REMOVED***"
 	zones {
       name = "westus2-1"
-	  subnet = "terraform-acctest-subnet-westus2"
+	  subnet = "***REMOVED***"
 	}
   }
 }

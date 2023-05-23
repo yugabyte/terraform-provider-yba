@@ -28,9 +28,9 @@ module "azure_yb_anywhere" {
   cluster_name   = "tf-acctest-${random_uuid.random.result}"
   ssh_user       = "tf"
   region_name    = "westus2"
-  security_group = "sg-139dde6c"
-  subnet_name    = "yugabyte-subnet-westus2"
-  vnet_name      = "yugabyte-vnet-us-west2"
+  security_group = "***REMOVED***"
+  subnet_name    = "***REMOVED***"
+  vnet_name      = "***REMOVED***"
   resource_group = "yugabyte-rg"
   // files
   ssh_private_key = "${var.RESOURCES_DIR}/acctest"
