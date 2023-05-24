@@ -34,15 +34,15 @@ The following subcomponents are used:
 ## github.com/aws/aws-sdk-go
 
 * Name: github.com/aws/aws-sdk-go
-* Version: v1.36.30
-* License: [Apache-2.0](https://github.com/aws/aws-sdk-go/blob/v1.36.30/LICENSE.txt)
+* Version: v1.44.122
+* License: [Apache-2.0](https://github.com/aws/aws-sdk-go/blob/v1.44.122/LICENSE.txt)
 
 
 ## github.com/aws/aws-sdk-go/internal/sync/singleflight
 
 * Name: github.com/aws/aws-sdk-go/internal/sync/singleflight
-* Version: v1.36.30
-* License: [BSD-3-Clause](https://github.com/aws/aws-sdk-go/blob/v1.36.30/internal/sync/singleflight/LICENSE)
+* Version: v1.44.122
+* License: [BSD-3-Clause](https://github.com/aws/aws-sdk-go/blob/v1.44.122/internal/sync/singleflight/LICENSE)
 
 
 ## github.com/bramvdbogaerde/go-scp
@@ -146,8 +146,8 @@ The following subcomponents are used:
 ## github.com/hashicorp/go-version
 
 * Name: github.com/hashicorp/go-version
-* Version: v1.3.0
-* License: [MPL-2.0](https://github.com/hashicorp/go-version/blob/v1.3.0/LICENSE)
+* Version: v1.6.0
+* License: [MPL-2.0](https://github.com/hashicorp/go-version/blob/v1.6.0/LICENSE)
 
 
 ## github.com/hashicorp/hc-install
@@ -311,11 +311,11 @@ The following subcomponents are used:
 * License: [Apache-2.0](https://github.com/yugabyte/platform-go-client/blob/dd238f2a46e8/LICENSE)
 
 
-## github.com/yugabyte/terraform-provider-yugabyte-platform
+## github.com/yugabyte/terraform-provider-yba
 
-* Name: github.com/yugabyte/terraform-provider-yugabyte-platform
+* Name: github.com/yugabyte/terraform-provider-yba
 * Version: Unknown
-* License: [MPL-2.0](https://github.com/yugabyte/terraform-provider-yugabyte-platform/blob/HEAD/LICENSE)
+* License: [MPL-2.0](https://github.com/yugabyte/terraform-provider-yba/blob/HEAD/LICENSE)
 
 
 ## github.com/zclconf/go-cty/cty
@@ -342,8 +342,8 @@ The following subcomponents are used:
 ## golang.org/x/oauth2
 
 * Name: golang.org/x/oauth2
-* Version: v0.0.0-20211104180415-d3ed0bb246c8
-* License: [BSD-3-Clause](https://cs.opensource.google/go/x/oauth2/+/d3ed0bb2:LICENSE)
+* Version: v0.1.0
+* License: [BSD-3-Clause](https://cs.opensource.google/go/x/oauth2/+/v0.1.0:LICENSE)
 
 
 ## golang.org/x/sys/unix
@@ -363,8 +363,8 @@ The following subcomponents are used:
 ## google.golang.org/genproto/googleapis/rpc/status
 
 * Name: google.golang.org/genproto/googleapis/rpc/status
-* Version: v0.0.0-20211208223120-3a66f561d7aa
-* License: [Apache-2.0](https://github.com/googleapis/go-genproto/blob/3a66f561d7aa/LICENSE)
+* Version: v0.0.0-20221025140454-527a21cfbd71
+* License: [Apache-2.0](https://github.com/googleapis/go-genproto/blob/527a21cfbd71/LICENSE)
 
 
 ## google.golang.org/grpc

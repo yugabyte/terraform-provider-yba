@@ -27,8 +27,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 	client "github.com/yugabyte/platform-go-client"
-	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/api"
-	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/utils"
+	"github.com/yugabyte/terraform-provider-yba/internal/api"
+	"github.com/yugabyte/terraform-provider-yba/internal/utils"
 )
 
 // ResourceStorageConfig defines the schema to maintain the storage config resources

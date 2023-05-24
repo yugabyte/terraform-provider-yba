@@ -1,5 +1,13 @@
-default: documents testacc
+default: fmtTf documents testacc arclint
 
+# Lint test
+.PHONY: arclint
+arclint:
+	arc lint --lintall
+# Format terraform files
+.PHONY: fmtTf
+fmtTf:
+	terraform fmt -recursive
 # Generate documents
 .PHONY: documents
 documents:

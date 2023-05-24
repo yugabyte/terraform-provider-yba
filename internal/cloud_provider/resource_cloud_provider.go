@@ -28,8 +28,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 	client "github.com/yugabyte/platform-go-client"
-	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/api"
-	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/utils"
+	"github.com/yugabyte/terraform-provider-yba/internal/api"
+	"github.com/yugabyte/terraform-provider-yba/internal/utils"
 )
 
 // ResourceCloudProvider creates and maintains resource for cloud providers
@@ -216,6 +216,7 @@ func ResourceCloudProvider() *schema.Resource {
 		},
 	}
 }
+
 func resourceCloudProviderDiff() schema.CustomizeDiffFunc {
 	return customdiff.All(
 		customdiff.ValidateValue("code", func(ctx context.Context, value,

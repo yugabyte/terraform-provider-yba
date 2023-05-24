@@ -22,8 +22,8 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/api"
-	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/utils"
+	"github.com/yugabyte/terraform-provider-yba/internal/api"
+	"github.com/yugabyte/terraform-provider-yba/internal/utils"
 )
 
 // ReleaseVersion data spurce keeps track of the imported releases on current YBA

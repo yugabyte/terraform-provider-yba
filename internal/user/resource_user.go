@@ -22,8 +22,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	client "github.com/yugabyte/platform-go-client"
-	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/api"
-	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/utils"
+	"github.com/yugabyte/terraform-provider-yba/internal/api"
+	"github.com/yugabyte/terraform-provider-yba/internal/utils"
 )
 
 // ResourceUser TODO: none of these functions will work until the date issue is resolved

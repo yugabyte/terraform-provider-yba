@@ -26,8 +26,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
 	client "github.com/yugabyte/platform-go-client"
-	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/acctest"
-	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/utils"
+	"github.com/yugabyte/terraform-provider-yba/internal/acctest"
+	"github.com/yugabyte/terraform-provider-yba/internal/utils"
 )
 
 

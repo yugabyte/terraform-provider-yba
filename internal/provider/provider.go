@@ -20,14 +20,14 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/api"
-	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/backups"
-	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/cloud_provider"
-	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/customer"
-	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/installation"
-	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/releases"
-	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/universe"
-	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/user"
+	"github.com/yugabyte/terraform-provider-yba/internal/api"
+	"github.com/yugabyte/terraform-provider-yba/internal/backups"
+	"github.com/yugabyte/terraform-provider-yba/internal/cloud_provider"
+	"github.com/yugabyte/terraform-provider-yba/internal/customer"
+	"github.com/yugabyte/terraform-provider-yba/internal/installation"
+	"github.com/yugabyte/terraform-provider-yba/internal/releases"
+	"github.com/yugabyte/terraform-provider-yba/internal/universe"
+	"github.com/yugabyte/terraform-provider-yba/internal/user"
 )
 
 func init() {

@@ -24,7 +24,7 @@ import (
 	"time"
 
 	client "github.com/yugabyte/platform-go-client"
-	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/utils"
+	"github.com/yugabyte/terraform-provider-yba/internal/utils"
 )
 
 // APIClient struct to handle API calls

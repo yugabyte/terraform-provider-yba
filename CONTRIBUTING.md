@@ -7,7 +7,7 @@ This document outlines the basic steps required to work with and contribute to t
 Before doing any code changes,
 it's a good idea to reach out to us,
 so as to make sure there's a general consencus on the proposed change and the implementation strategy.
-You can reach us by creating a GitHub Issue [here](https://github.com/yugabyte/terraform-provider-yugabytedb-anywhere/issues)
+You can reach us by creating a GitHub Issue [here](https://github.com/yugabyte/terraform-provider-yba/issues)
 
 ## Install the tools
 
@@ -31,7 +31,7 @@ YugabyteDB Anywhere Terraform Provider uses [GitHub](https://github.com) for its
 
 ### Fork the YugabyteDB Anywhere Terraform Provider repository
 
-Go to the [YugabyteDB Anywhere Terraform Provider repository](https://github.com/yugabyte/terraform-provider-yugabytedb-anywhere) and press the "Fork" button near the upper right corner of the page. When finished, you will have your own "fork" at `https://github.com/<your-username>/terraform-provider-yba`, and this is the repository to which you will upload your proposed changes and create pull requests. For details, see the [GitHub documentation](https://help.github.com/articles/fork-a-repo/).
+Go to the [YugabyteDB Anywhere Terraform Provider repository](https://github.com/yugabyte/terraform-provider-yba) and press the "Fork" button near the upper right corner of the page. When finished, you will have your own "fork" at `https://github.com/<your-username>/terraform-provider-yba`, and this is the repository to which you will upload your proposed changes and create pull requests. For details, see the [GitHub documentation](https://help.github.com/articles/fork-a-repo/).
 
 ### Clone your fork
 
@@ -53,7 +53,7 @@ This will create a `terraform-provider-yba` directory, so change into that direc
     cd terraform-provider-yba
 ```
 
-This repository knows about your fork, but it doesn't yet know about the official or ["upstream" YugabyteDB Anywhere Terraform Provider repository](https://github.com/yugabyte/terraform-provider-yugabytedb-anywhere). Run the following commands:
+This repository knows about your fork, but it doesn't yet know about the official or ["upstream" YugabyteDB Anywhere Terraform Provider repository](https://github.com/yugabyte/terraform-provider-yba). Run the following commands:
 
 ```sh
     git remote add upstream https://github.com/yugabyte/terraform-provider-yba.git
@@ -105,7 +105,7 @@ Acceptance tests defined in the source code can be used to debug the newly added
 
 ## Making changes
 
-Everything the community does with the codebase -- fixing bugs, adding features, making improvements, adding tests, etc. -- should be described by an issue in the [GitHub issues](https://github.com/yugabyte/terraform-provider-yugabytedb-anywhere/issues) page. If no such issue exists for what you want to do, please create an issue with a meaningful and easy-to-understand description.
+Everything the community does with the codebase -- fixing bugs, adding features, making improvements, adding tests, etc. -- should be described by an issue in the [GitHub issues](https://github.com/yugabyte/terraform-provider-yba/issues) page. If no such issue exists for what you want to do, please create an issue with a meaningful and easy-to-understand description.
 If you are going to work on a specific issue and it's your first contribution,
 please add a short comment to the issue, so other people know you're working on it.
 
@@ -235,7 +235,7 @@ and in your fork:
 
 The project currently builds its jobs in one environment:
 
-* [GitHub Actions](https://github.com/yugabyte/terraform-provider-yugabytedb-anywhere/actions) for pull requests:
+* [GitHub Actions](https://github.com/yugabyte/terraform-provider-yba/actions) for pull requests:
   * Tests run only against the current version of provider on latest stable release
 
 ### Summary

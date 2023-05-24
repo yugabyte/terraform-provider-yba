@@ -19,9 +19,10 @@ import (
 	"context"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/utils"
+	"github.com/yugabyte/terraform-provider-yba/internal/utils"
 )
 
+// S3Schema is used to describe path and credentials of YBDB releases imported from S3 buckets
 func S3Schema() *schema.Resource {
 	return &schema.Resource{
 		Schema: map[string]*schema.Schema{

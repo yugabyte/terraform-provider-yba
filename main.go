@@ -22,7 +22,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/plugin"
-	"github.com/yugabyte/terraform-provider-yugabyte-platform/internal/provider"
+	"github.com/yugabyte/terraform-provider-yba/internal/provider"
 )
 
 //go:generate terraform fmt -recursive ./examples/

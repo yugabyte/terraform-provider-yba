@@ -1,4 +1,4 @@
-## v0.1.0 (May 2023)
+## v0.1.4 (May 2023)
 
 BACKWARDS INCOMPATIBILITIES / NOTES:
 
