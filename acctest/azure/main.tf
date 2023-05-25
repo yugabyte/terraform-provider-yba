@@ -15,6 +15,26 @@ variable "RESOURCES_DIR" {
   description = "directory on the platform runner that holds testing resources"
 }
 
+variable "AZURE_SG_ID" {
+  type        = string
+  description = "Azure security ID to run acceptance testing"
+}
+
+variable "AZURE_SUBNET_ID" {
+  type        = string
+  description = "Azure subnet ID to run acceptance testing"
+}
+
+variable "AZURE_VNET_ID" {
+  type        = string
+  description = "Azure vnet ID to run acceptance testing"
+}
+
+variable "AZURE_RG" {
+  type        = string
+  description = "Azure resource group to run acceptance testing"
+}
+
 resource "random_uuid" "random" {
 }
 
@@ -28,10 +48,10 @@ module "azure_yb_anywhere" {
   cluster_name   = "tf-acctest-${random_uuid.random.result}"
   ssh_user       = "tf"
   region_name    = "westus2"
-  security_group = "***REMOVED***"
-  subnet_name    = "***REMOVED***"
-  vnet_name      = "***REMOVED***"
-  resource_group = "yugabyte-rg"
+  security_group = var.AZURE_SG_ID
+  subnet_name    = var.AZURE_SUBNET_ID
+  vnet_name      = var.AZURE_VNET_ID
+  resource_group = var.AZURE_RG
   // files
   ssh_private_key = "${var.RESOURCES_DIR}/acctest"
   ssh_public_key  = "${var.RESOURCES_DIR}/acctest.pub"

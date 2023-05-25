@@ -204,48 +204,48 @@ func universeAzureConfigWithNodes(name string, nodes int) string {
 
 func universeConfigWithProviderWithNodes(p string, name string, nodes int) string {
 	return fmt.Sprintf(`
-data "yba_provider_key" "%s_key" {
-  provider_id = yba_cloud_provider.%s.id
-}
+	data "yba_provider_key" "%s_key" {
+  		provider_id = yba_cloud_provider.%s.id
+	}
 
-data "yba_release_version" "release_version"{
-	depends_on = [
-		data.yba_provider_key.%s_key
-  ]
-}
+	data "yba_release_version" "release_version"{
+		depends_on = [
+			data.yba_provider_key.%s_key
+  		]
+	}
 
-resource "yba_universe" "%s" {
-  clusters {
-    cluster_type = "PRIMARY"
-    user_intent {
-      universe_name      = "%s"
-      provider_type      = "%s"
-      provider           = yba_cloud_provider.%s.id
-      region_list        = yba_cloud_provider.%s.regions[*].uuid
-      num_nodes          = %d
-      replication_factor = 3
-      instance_type      = "%s"
-      device_info {
-        num_volumes  = 1
-        volume_size  = 375
-        storage_type = "%s"
-      }
-      assign_public_ip              = true
-      use_time_sync                 = true
-      enable_ysql                   = true
-      enable_node_to_node_encrypt   = true
-      enable_client_to_node_encrypt = true
-      yb_software_version           = data.yba_release_version.release_version.id
-      access_key_code               = data.yba_provider_key.%s_key.id
-	  instance_tags = {
-        "yb_owner"  = "terraform_acctest"
-        "yb_task"   = "dev"
-        "yb_dept"   = "dev"
-      }
-    }
-  }
-  communication_ports {}
-}
+	resource "yba_universe" "%s" {
+  		clusters {
+    		cluster_type = "PRIMARY"
+    		user_intent {
+      			universe_name      = "%s"
+      			provider_type      = "%s"
+      			provider           = yba_cloud_provider.%s.id
+      			region_list        = yba_cloud_provider.%s.regions[*].uuid
+      			num_nodes          = %d
+      			replication_factor = 3
+      			instance_type      = "%s"
+      			device_info {
+        			num_volumes  = 1
+        			volume_size  = 375
+        			storage_type = "%s"
+      			}
+				assign_public_ip              = true
+				use_time_sync                 = true
+				enable_ysql                   = true
+				enable_node_to_node_encrypt   = true
+				enable_client_to_node_encrypt = true
+				yb_software_version           = data.yba_release_version.release_version.id
+				access_key_code               = data.yba_provider_key.%s_key.id
+				instance_tags = {
+					"yb_owner"  = "terraform_acctest"
+					"yb_task"   = "dev"
+					"yb_dept"   = "dev"
+				}
+    		}
+  		}
+  		communication_ports {}
+	}
 `, p, p, p, p, name, p, p, p, nodes, getUniverseInstanceType(p),
 		getUniverseStorageType(p), p)
 }
@@ -270,57 +270,85 @@ func getUniverseInstanceType(p string) string {
 
 func cloudProviderGCPConfig(name string) string {
 	return fmt.Sprintf(`
-resource "yba_cloud_provider" "gcp" {
-  code = "gcp"
-  dest_vpc_id = "***REMOVED***"
-  name        = "%s"
-  regions {
-    code = "us-west2"
-    name = "us-west2"
-  }
-  ssh_port        = 22
-  air_gap_install = false
-}
+	variable "GCP_VPC_NETWORK" {
+		type        = string
+		description = "GCP VPC network to run acceptance testing"
+	}
+
+	resource "yba_cloud_provider" "gcp" {
+  		code = "gcp"
+  		dest_vpc_id = var.GCP_VPC_NETWORK
+  		name        = "%s"
+  		regions {
+    		code = "us-west2"
+    		name = "us-west2"
+  		}
+  		ssh_port        = 22
+  		air_gap_install = false
+	}
 `, name)
 }
 
 func cloudProviderAWSConfig(name string) string {
-	// TODO: remove the lifecycle ignore_changes block. This is needed because the current API
-	// is not returning vnet_name
 	return fmt.Sprintf(`
+	variable "AWS_SG_ID" {
+		type        = string
+		description = "AWS sg-id to run acceptance testing"
+	}
+
+	variable "AWS_VPC_ID" {
+		type        = string
+		description = "AWS VPC ID to run acceptance testing"
+	}
+
+	variable "AWS_ZONE_SUBNET_ID" {
+		type        = string
+		description = "AWS zonal subnet ID to run acceptance testing"
+	}
+
 	resource "yba_cloud_provider" "aws" {
 		code = "aws"
 		name = "%s"
 		regions {
-		  code              = "us-west-2"
-		  name              = "us-west-2"
-		  security_group_id = "***REMOVED***"
-		  vnet_name         = "***REMOVED***"
-		  zones {
-			code   = "us-west-2a"
-			name   = "us-west-2a"
-			subnet = "***REMOVED***"
-		  }
+			code              = "us-west-2"
+			name              = "us-west-2"
+		  	security_group_id = var.AWS_SG_ID
+		  	vnet_name         = var.AWS_VPC_ID
+		  	zones {
+				code   = "us-west-2a"
+				name   = "us-west-2a"
+				subnet = var.AWS_ZONE_SUBNET_ID
+		  	}
 		}
 		air_gap_install = false
-	  }
+	}
 `, name)
 }
 
 func cloudProviderAzureConfig(name string) string {
 	return fmt.Sprintf(`
-resource "yba_cloud_provider" "azu" {
-  code = "azu"
-  name        = "%s"
-  regions {
-    code = "westus2"
-    name = "westus2"
-	vnet_name = "***REMOVED***"
-	zones {
-      name = "westus2-1"
-	  subnet = "***REMOVED***"
+	variable "AZURE_SUBNET_ID" {
+		type        = string
+		description = "Azure subnet ID to run acceptance testing"
 	}
-  }
-}
+
+	variable "AZURE_VNET_ID" {
+		type        = string
+		description = "Azure vnet ID to run acceptance testing"
+	}
+
+	resource "yba_cloud_provider" "azu" {
+  		code = "azu"
+  		name        = "%s"
+  		regions {
+    		code = "westus2"
+    		name = "westus2"
+			vnet_name = var.AZURE_VNET_ID
+			zones {
+      			name = "westus2-1"
+	  			subnet = var.AZURE_SUBNET_ID
+			}
+  		}
+	}
 `, name)
 }

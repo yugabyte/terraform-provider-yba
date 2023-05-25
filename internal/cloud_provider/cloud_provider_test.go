@@ -156,17 +156,17 @@ func testAccCheckCloudProviderExists(name string, provider *client.Provider) (
 
 func cloudProviderGCPConfig(name string) string {
 	return fmt.Sprintf(`
-resource "yba_cloud_provider" "gcp" {
-  code = "gcp"
-  dest_vpc_id = "default"
-  name        = "%s"
-  regions {
-    code = "us-west1"
-    name = "us-west1"
-  }
-  ssh_port        = 22
-  air_gap_install = false
-}
+	resource "yba_cloud_provider" "gcp" {
+ 		code = "gcp"
+  		dest_vpc_id = "default"
+  		name        = "%s"
+  		regions {
+    		code = "us-west1"
+    		name = "us-west1"
+  		}
+  		ssh_port        = 22
+  		air_gap_install = false
+	}
 `, name)
 }
 
@@ -174,41 +174,65 @@ func cloudProviderAWSConfig(name string) string {
 	// TODO: remove the lifecycle ignore_changes block.
 	// This is needed because the current API is not returning vnet_name
 	return fmt.Sprintf(`
+	variable "AWS_SG_ID" {
+		type        = string
+		description = "AWS sg-id to run acceptance testing"
+	}
+
+	variable "AWS_VPC_ID" {
+		type        = string
+		description = "AWS VPC ID to run acceptance testing"
+	}
+
+	variable "AWS_ZONE_SUBNET_ID" {
+		type        = string
+		description = "AWS zonal subnet ID to run acceptance testing"
+	}
+
 	resource "yba_cloud_provider" "aws" {
 		code = "aws"
 		name = "%s"
 		regions {
-		  code              = "us-west-2"
-		  name              = "us-west-2"
-		  security_group_id = "***REMOVED***"
-		  vnet_name         = "***REMOVED***"
-		  zones {
-			code   = "us-west-2a"
-			name   = "us-west-2a"
-			subnet = "***REMOVED***"
-		  }
+		  	code              = "us-west-2"
+		 	name              = "us-west-2"
+		  	security_group_id = var.AWS_SG_ID
+		  	vnet_name         = var.AWS_VPC_ID
+		  	zones {
+				code   = "us-west-2a"
+				name   = "us-west-2a"
+				subnet = var.AWS_ZONE_SUBNET_ID
+		  	}
 		}
-
 		ssh_port        = 22
 		air_gap_install = false
-	  }
+	}
 `, name)
 }
 
 func cloudProviderAzureConfig(name string) string {
 	return fmt.Sprintf(`
-resource "yba_cloud_provider" "azure" {
-  code = "azu"
-  name        = "%s"
-  regions {
-    code = "westus2"
-    name = "westus2"
-	vnet_name = "***REMOVED***"
-	zones {
-      name = "westus2-1"
-	  subnet = "***REMOVED***"
+	variable "AZURE_SUBNET_ID" {
+		type        = string
+		description = "Azure subnet ID to run acceptance testing"
 	}
-  }
-}
+
+	variable "AZURE_VNET_ID" {
+		type        = string
+		description = "Azure vnet ID to run acceptance testing"
+	}
+
+	resource "yba_cloud_provider" "azure" {
+  		code = "azu"
+  		name        = "%s"
+  		regions {
+    		code = "westus2"
+    		name = "westus2"
+			vnet_name = var.AZURE_VNET_ID
+			zones {
+      			name = "westus2-1"
+	  			subnet = var.AZURE_SUBNET_ID
+			}
+  		}
+	}
 `, name)
 }

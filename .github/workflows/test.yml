@@ -15,13 +15,14 @@ jobs:
     steps:
 
     - name: Set up Go
-      uses: actions/setup-go@v2.1.3
+      uses: actions/setup-go@v4.0.1
       with:
-        go-version: '1.18'
+        go-version-file: 'go.mod'
+        cache: true
       id: go
 
     - name: Check out code into the Go module directory
-      uses: actions/checkout@v2.4.0
+      uses: actions/checkout@v3.5.2
 
     - name: Get dependencies
       run: |
@@ -43,6 +44,10 @@ jobs:
       AZURE_RG: ${{ secrets.ARM_RESOURCE_GROUP }}
       AZURE_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
       AZURE_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
+      TF_VAR_AZURE_RG: ${{ vars.TF_VAR_AZURE_RG }}
+      TF_VAR_AZURE_SUBNET_ID: ${{ vars.TF_VAR_AZURE_SUBNET_ID }}
+      TF_VAR_AZURE_VNET_ID: ${{ vars.TF_VAR_AZURE_VNET_ID }}
+      TF_VAR_AZURE_SG_ID: ${{ vars.TF_VAR_AZURE_SG_ID }}
     timeout-minutes: 120
     strategy:
       fail-fast: false
@@ -50,12 +55,16 @@ jobs:
         terraform:
           # add other versions to support
           - '1.1.*'
+          - '1.2.*'
+          - '1.3.*'
+          - '1.4.*'
 
     steps:
       - name: Set up Go
-        uses: actions/setup-go@v2.1.3
+        uses: actions/setup-go@v4.0.1
         with:
-          go-version: '1.18'
+          go-version-file: 'go.mod'
+          cache: true
         id: go
 
       - uses: hashicorp/setup-terraform@v1
@@ -64,13 +73,13 @@ jobs:
           terraform_wrapper: false
 
       - name: Check out code into the Go module directory
-        uses: actions/checkout@v3
+        uses: actions/checkout@v3.5.2
 
       - name: Get dependencies
         run: |
           go mod download
 
-      - name: Make terraform provider installation directory
+      - name: Make YBA Terraform provider installation Directory
         run: mkdir -p ./acctest/azure/terraform.d/plugins/terraform.yugabyte.com/platform/yugabyte-platform/0.1.0/linux_amd64
 
       - name: Install
@@ -90,15 +99,15 @@ jobs:
         run: terraform apply -auto-approve
         working-directory: ./acctest/azure
 
-      - name: Set platform host
+      - name: Set Platform Host
         run: echo "YB_HOST=$(terraform output --raw host)" >> $GITHUB_ENV
         working-directory: ./acctest/azure
 
-      - name: Set platform api key
+      - name: Set Platform API Key
         run: echo "YB_API_KEY=$(terraform output --raw api_key)" >> $GITHUB_ENV
         working-directory: ./acctest/azure
       # run acceptance tests
-      - name: TF acceptance tests
+      - name: TF Acceptance Tests
         timeout-minutes: 120
         env:
           TF_ACC: "1"
@@ -121,6 +130,10 @@ jobs:
       YB_CUSTOMER_PASSWORD: ${{ secrets.YB_CUSTOMER_PASSWORD }}
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      TF_VAR_AWS_VPC_ID: ${{ vars.TF_VAR_AWS_VPC_ID }}
+      TF_VAR_AWS_SUBNET_ID: ${{ vars.TF_VAR_AWS_SUBNET_ID }}
+      TF_VAR_AWS_SG_ID: ${{ vars.TF_VAR_AWS_SG_ID }}
+      TF_VAR_AWS_ZONE_SUBNET_ID: ${{ vars.TF_VAR_AWS_ZONE_SUBNET_ID }}
     timeout-minutes: 120
     strategy:
       fail-fast: false
@@ -128,12 +141,16 @@ jobs:
         terraform:
           # add other versions to support
           - '1.1.*'
+          - '1.2.*'
+          - '1.3.*'
+          - '1.4.*'
 
     steps:
       - name: Set up Go
-        uses: actions/setup-go@v2.1.3
+        uses: actions/setup-go@v4.0.1
         with:
-          go-version: '1.18'
+          go-version-file: 'go.mod'
+          cache: true
         id: go
 
       - uses: hashicorp/setup-terraform@v1
@@ -142,13 +159,13 @@ jobs:
           terraform_wrapper: false
 
       - name: Check out code into the Go module directory
-        uses: actions/checkout@v3
+        uses: actions/checkout@v3.5.2
 
       - name: Get dependencies
         run: |
           go mod download
 
-      - name: Make terraform provider installation directory
+      - name: Make YBA Terraform provider installation Directory
         run: mkdir -p ./acctest/aws/terraform.d/plugins/terraform.yugabyte.com/platform/yugabyte-platform/0.1.0/linux_amd64
 
       - name: Install
@@ -168,15 +185,15 @@ jobs:
         run: terraform apply -auto-approve
         working-directory: ./acctest/aws
 
-      - name: Set platform host
+      - name: Set Platform Host
         run: echo "YB_HOST=$(terraform output --raw host)" >> $GITHUB_ENV
         working-directory: ./acctest/aws
 
-      - name: Set platform api key
+      - name: Set Platform API Key
         run: echo "YB_API_KEY=$(terraform output --raw api_key)" >> $GITHUB_ENV
         working-directory: ./acctest/aws
       # run acceptance tests
-      - name: TF acceptance tests
+      - name: TF Acceptance Tests
         timeout-minutes: 120
         env:
           TF_ACC: "1"
@@ -201,6 +218,8 @@ jobs:
       GOOGLE_PROJECT: ${{ secrets.GOOGLE_PROJECT }}
       GOOGLE_REGION: ${{ secrets.GOOGLE_REGION }}
       GOOGLE_ZONE: ${{ secrets.GOOGLE_ZONE }}
+      TF_VAR_GCP_VPC_NETWORK: ${{ vars.TF_VAR_GCP_VPC_NETWORK }}
+      TF_VAR_GCP_VPC_SUBNETWORK: ${{ vars.TF_VAR_GCP_VPC_SUBNETWORK }}
     timeout-minutes: 120
     strategy:
       fail-fast: false
@@ -208,12 +227,16 @@ jobs:
         terraform:
           # add other versions to support
           - '1.1.*'
+          - '1.2.*'
+          - '1.3.*'
+          - '1.4.*'
 
     steps:
       - name: Set up Go
-        uses: actions/setup-go@v2.1.3
+        uses: actions/setup-go@v4.0.1
         with:
-          go-version: '1.18'
+          go-version-file: 'go.mod'
+          cache: true
         id: go
 
       - uses: hashicorp/setup-terraform@v1
@@ -222,13 +245,13 @@ jobs:
           terraform_wrapper: false
 
       - name: Check out code into the Go module directory
-        uses: actions/checkout@v3
+        uses: actions/checkout@v3.5.2
 
       - name: Get dependencies
         run: |
           go mod download
 
-      - name: Make terraform provider installation directory
+      - name: Make YBA Terraform provider installation Directory
         run: mkdir -p ./acctest/gcp/terraform.d/plugins/terraform.yugabyte.com/platform/yugabyte-platform/0.1.0/linux_amd64
 
       - name: Install
@@ -248,15 +271,15 @@ jobs:
         run: terraform apply -auto-approve
         working-directory: ./acctest/gcp
 
-      - name: Set platform host
+      - name: Set Platform Host
         run: echo "YB_HOST=$(terraform output --raw host)" >> $GITHUB_ENV
         working-directory: ./acctest/gcp
 
-      - name: Set platform api key
+      - name: Set Platform API Key
         run: echo "YB_API_KEY=$(terraform output --raw api_key)" >> $GITHUB_ENV
         working-directory: ./acctest/gcp
       # run acceptance tests
-      - name: TF acceptance tests
+      - name: TF Acceptance Tests
         timeout-minutes: 120
         env:
           TF_ACC: "1"

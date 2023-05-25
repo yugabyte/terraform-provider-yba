@@ -15,6 +15,16 @@ variable "RESOURCES_DIR" {
   description = "directory on the platform runner that holds testing resources"
 }
 
+variable "GCP_VPC_SUBNETWORK" {
+  type        = string
+  description = "GCP VPC subnet to run acceptance testing"
+}
+
+variable "GCP_VPC_NETWORK" {
+  type        = string
+  description = "GCP VPC network to run acceptance testing"
+}
+
 resource "random_uuid" "random" {
 }
 
@@ -26,8 +36,8 @@ module "gcp_yb_anywhere" {
   cluster_name   = "tf-acctest-${random_uuid.random.result}"
   ssh_user       = "tf"
   network_tags   = ["terraform-acctest-yugaware", "http-server", "https-server"]
-  vpc_network    = "***REMOVED***"
-  vpc_subnetwork = "***REMOVED***"
+  vpc_network    = var.GCP_VPC_NETWORK
+  vpc_subnetwork = var.GCP_VPC_SUBNETWORK
   // files
   ssh_private_key = "${var.RESOURCES_DIR}/acctest"
   ssh_public_key  = "${var.RESOURCES_DIR}/acctest.pub"
