@@ -21,7 +21,6 @@ jobs:
       uses: actions/setup-go@v4.0.1
       with:
         go-version-file: 'go.mod'
-        cache: true
       id: go
 
     - name: Get dependencies
@@ -54,9 +53,6 @@ jobs:
       matrix:
         terraform:
           # add other versions to support
-          - '1.1.*'
-          - '1.2.*'
-          - '1.3.*'
           - '1.4.*'
 
     steps:
@@ -67,7 +63,6 @@ jobs:
         uses: actions/setup-go@v4.0.1
         with:
           go-version-file: 'go.mod'
-          cache: true
         id: go
       
       - name: Get dependencies
@@ -80,11 +75,11 @@ jobs:
           terraform_wrapper: false
 
       - name: Make YBA Terraform provider installation Directory
-        run: mkdir -p ./acctest/azure/terraform.d/plugins/terraform.yugabyte.com/platform/yugabyte-platform/0.1.0/linux_amd64
+        run: mkdir -p ./acctest/azure/terraform.d/plugins/terraform.yugabyte.com/platform/yba/0.1.0/linux_amd64
 
       - name: Install
         run: |
-          go build -o ./acctest/azure/terraform.d/plugins/terraform.yugabyte.com/platform/yugabyte-platform/0.1.0/linux_amd64
+          go build -o ./acctest/azure/terraform.d/plugins/terraform.yugabyte.com/platform/yba/0.1.0/linux_amd64
 
       # use the modules to bring up platform instance for acceptance tests
       - name: Terraform Init
@@ -140,9 +135,6 @@ jobs:
       matrix:
         terraform:
           # add other versions to support
-          - '1.1.*'
-          - '1.2.*'
-          - '1.3.*'
           - '1.4.*'
 
     steps:
@@ -153,7 +145,6 @@ jobs:
         uses: actions/setup-go@v4.0.1
         with:
           go-version-file: 'go.mod'
-          cache: true
         id: go
       
       - name: Get dependencies
@@ -166,11 +157,11 @@ jobs:
           terraform_wrapper: false
 
       - name: Make YBA Terraform provider installation Directory
-        run: mkdir -p ./acctest/aws/terraform.d/plugins/terraform.yugabyte.com/platform/yugabyte-platform/0.1.0/linux_amd64
+        run: mkdir -p ./acctest/aws/terraform.d/plugins/terraform.yugabyte.com/platform/yba/0.1.0/linux_amd64
 
       - name: Install
         run: |
-          go build -o ./acctest/aws/terraform.d/plugins/terraform.yugabyte.com/platform/yugabyte-platform/0.1.0/linux_amd64
+          go build -o ./acctest/aws/terraform.d/plugins/terraform.yugabyte.com/platform/yba/0.1.0/linux_amd64
 
       # use the modules to bring up platform instance for acceptance tests
       - name: Terraform Init
@@ -226,9 +217,6 @@ jobs:
       matrix:
         terraform:
           # add other versions to support
-          - '1.1.*'
-          - '1.2.*'
-          - '1.3.*'
           - '1.4.*'
 
     steps:
@@ -239,7 +227,6 @@ jobs:
         uses: actions/setup-go@v4.0.1
         with:
           go-version-file: 'go.mod'
-          cache: true
         id: go
 
       - name: Get dependencies
@@ -252,11 +239,11 @@ jobs:
           terraform_wrapper: false
 
       - name: Make YBA Terraform provider installation Directory
-        run: mkdir -p ./acctest/gcp/terraform.d/plugins/terraform.yugabyte.com/platform/yugabyte-platform/0.1.0/linux_amd64
+        run: mkdir -p ./acctest/gcp/terraform.d/plugins/terraform.yugabyte.com/platform/yba/0.1.0/linux_amd64
 
       - name: Install
         run: |
-          go build -o ./acctest/gcp/terraform.d/plugins/terraform.yugabyte.com/platform/yugabyte-platform/0.1.0/linux_amd64
+          go build -o ./acctest/gcp/terraform.d/plugins/terraform.yugabyte.com/platform/yba/0.1.0/linux_amd64
 
       # use the modules to bring up platform instance for acceptance tests
       - name: Terraform Init

@@ -46,7 +46,7 @@ func main() {
 	opts := &plugin.ServeOpts{ProviderFunc: func() *schema.Provider { return provider.New() }}
 
 	if debugMode {
-		err := plugin.Debug(context.Background(), "terraform.yugabyte.com/platform/yugabyte-platform", opts)
+		err := plugin.Debug(context.Background(), "terraform.yugabyte.com/platform/yba", opts)
 		if err != nil {
 			log.Fatal(err.Error())
 		}

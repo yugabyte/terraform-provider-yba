@@ -86,13 +86,13 @@ To build the source code locally, checkout and update the `main` branch:
 Create folder in [implied directory](https://developer.hashicorp.com/terraform/cli/config/config-file#implied-local-mirror-directories) to hold the binary. Directory format:
 
 ```sh
-    mkdir -p <implied_mirror_directory>/terraform.yugabyte.com/platform/yugabyte-platform/<provider_version>/<system_architecture>
+    mkdir -p <implied_mirror_directory>/terraform.yugabyte.com/platform/yba/<provider_version>/<system_architecture>
 ```
 
 Switch to the root directory (`terraform-provider-yba`) of the terraform repo and build the binary with the command:
 
 ```sh
-    go build -o <implied_mirror_directory>/terraform.yugabyte.com/platform/yugabyte-platform/<provider_version>/<system_architecture>/
+    go build -o <implied_mirror_directory>/terraform.yugabyte.com/platform/yba/<provider_version>/<system_architecture>/
 ```
 
 ### Running and debugging tests
