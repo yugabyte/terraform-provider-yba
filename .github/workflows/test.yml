@@ -14,15 +14,15 @@ jobs:
     timeout-minutes: 5
     steps:
 
+    - name: Check out code into the Go module directory
+      uses: actions/checkout@v3.5.2
+
     - name: Set up Go
       uses: actions/setup-go@v4.0.1
       with:
         go-version-file: 'go.mod'
         cache: true
       id: go
-
-    - name: Check out code into the Go module directory
-      uses: actions/checkout@v3.5.2
 
     - name: Get dependencies
       run: |
@@ -60,24 +60,24 @@ jobs:
           - '1.4.*'
 
     steps:
+      - name: Check out code into the Go module directory
+        uses: actions/checkout@v3.5.2
+
       - name: Set up Go
         uses: actions/setup-go@v4.0.1
         with:
           go-version-file: 'go.mod'
           cache: true
         id: go
+      
+      - name: Get dependencies
+        run: |
+          go mod download
 
       - uses: hashicorp/setup-terraform@v1
         with:
           terraform_version: ${{ matrix.terraform }}
           terraform_wrapper: false
-
-      - name: Check out code into the Go module directory
-        uses: actions/checkout@v3.5.2
-
-      - name: Get dependencies
-        run: |
-          go mod download
 
       - name: Make YBA Terraform provider installation Directory
         run: mkdir -p ./acctest/azure/terraform.d/plugins/terraform.yugabyte.com/platform/yugabyte-platform/0.1.0/linux_amd64
@@ -146,24 +146,24 @@ jobs:
           - '1.4.*'
 
     steps:
+      - name: Check out code into the Go module directory
+        uses: actions/checkout@v3.5.2
+      
       - name: Set up Go
         uses: actions/setup-go@v4.0.1
         with:
           go-version-file: 'go.mod'
           cache: true
         id: go
+      
+      - name: Get dependencies
+        run: |
+          go mod download
 
       - uses: hashicorp/setup-terraform@v1
         with:
           terraform_version: ${{ matrix.terraform }}
           terraform_wrapper: false
-
-      - name: Check out code into the Go module directory
-        uses: actions/checkout@v3.5.2
-
-      - name: Get dependencies
-        run: |
-          go mod download
 
       - name: Make YBA Terraform provider installation Directory
         run: mkdir -p ./acctest/aws/terraform.d/plugins/terraform.yugabyte.com/platform/yugabyte-platform/0.1.0/linux_amd64
@@ -232,6 +232,9 @@ jobs:
           - '1.4.*'
 
     steps:
+      - name: Check out code into the Go module directory
+        uses: actions/checkout@v3.5.2
+
       - name: Set up Go
         uses: actions/setup-go@v4.0.1
         with:
@@ -239,17 +242,14 @@ jobs:
           cache: true
         id: go
 
+      - name: Get dependencies
+        run: |
+          go mod download
+
       - uses: hashicorp/setup-terraform@v1
         with:
           terraform_version: ${{ matrix.terraform }}
           terraform_wrapper: false
-
-      - name: Check out code into the Go module directory
-        uses: actions/checkout@v3.5.2
-
-      - name: Get dependencies
-        run: |
-          go mod download
 
       - name: Make YBA Terraform provider installation Directory
         run: mkdir -p ./acctest/gcp/terraform.d/plugins/terraform.yugabyte.com/platform/yugabyte-platform/0.1.0/linux_amd64
