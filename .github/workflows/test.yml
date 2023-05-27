@@ -43,6 +43,11 @@ jobs:
       AZURE_RG: ${{ secrets.ARM_RESOURCE_GROUP }}
       AZURE_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
       AZURE_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
+      ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
+      ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
+      ARM_RG: ${{ secrets.ARM_RESOURCE_GROUP }}
+      ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+      ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
       TF_VAR_AZURE_RG: ${{ vars.TF_VAR_AZURE_RG }}
       TF_VAR_AZURE_SUBNET_ID: ${{ vars.TF_VAR_AZURE_SUBNET_ID }}
       TF_VAR_AZURE_VNET_ID: ${{ vars.TF_VAR_AZURE_VNET_ID }}
