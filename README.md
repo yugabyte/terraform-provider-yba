@@ -22,13 +22,13 @@ The automated tests in this repository are based on the Alpha channel of yugawar
 
 Install the [Terraform CLI](https://www.terraform.io/downloads). Once the CLI is installed, there are a few steps for [manually installing](https://www.terraform.io/cli/config/config-file#explicit-installation-method-configuration) this provider since it is not in the Terraform registry:
 * Create the required folders in the [implied local mirror directories](https://www.terraform.io/cli/config/config-file#implied-local-mirror-directories)
-  * `mkdir -p <implied_mirror_directory>/terraform.yugabyte.com/platform/yugabyte-platform/<provider_version>/<system_architecture>` 
+  * `mkdir -p <implied_mirror_directory>/terraform.yugabyte.com/platform/yba/<provider_version>/<system_architecture>` 
   * `implied_mirror_directory` can be found from the link above
   * `provider_version` is the version of the provider you wish to use (only `0.1.0` for now)
   * `system_architecture` can be found by running `terraform -version`
-  * An example for `x64 Linux` is `mkdir -p /usr/local/share/terraform/plugins/terraform.yugabyte.com/platform/yugabyte-platform/0.1.0/linux_amd64`
+  * An example for `x64 Linux` is `mkdir -p /usr/local/share/terraform/plugins/terraform.yugabyte.com/platform/yba/0.1.0/linux_amd64`
 * Build the binary into the previously created folder
-  * In the root directory, `go build -o <implied_mirror_directory>/terraform.yugabyte.com/platform/yugabyte-platform/<provider_version>/<system_architecture>`
+  * In the root directory, `go build -o <implied_mirror_directory>/terraform.yugabyte.com/platform/yba/<provider_version>/<system_architecture>`
 
 ## Examples
 

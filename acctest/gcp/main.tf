@@ -5,7 +5,7 @@ terraform {
     }
     yba = {
       version = "~> 0.1.0"
-      source  = "terraform.yugabyte.com/platform/yugabyte-platform"
+      source  = "terraform.yugabyte.com/platform/yba"
     }
   }
 }
