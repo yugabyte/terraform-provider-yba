@@ -15,7 +15,7 @@ Manages the installation of YugabyteDB Anywhere on an existing virtual machine. 
 ```terraform
 provider "yba" {
   alias = "unauthenticated"
-  host  = "<host ip address>:80"
+  host  = "<host ip address>"
 }
 
 resource "yba_installation" "installation" {

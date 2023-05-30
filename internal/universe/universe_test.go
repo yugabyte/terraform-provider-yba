@@ -30,7 +30,6 @@ import (
 	"github.com/yugabyte/terraform-provider-yba/internal/utils"
 )
 
-
 func TestAccUniverse_GCP_UpdatePrimaryNodes(t *testing.T) {
 	var universe client.UniverseResp
 

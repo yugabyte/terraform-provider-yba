@@ -11,7 +11,7 @@ You can configure the Terraform provider to run on an existing YugabyteDB Anywhe
 
 ```terraform
 provider "yba" {
-  host      = "<yba-host-ip-address>:80"
+  host      = "<yba-host-ip-address>"
   api_token = "<customer-api-token>"
 }
 
@@ -24,7 +24,7 @@ In the event that a customer has not been created in the installation, an unauth
 ```terraform
 provider "yba" {
   alias = "unauthenticated"
-  host = "<yba-host-ip-address>:80"
+  host = "<yba-host-ip-address>"
 }
 
 resource "yba_customer_resource" "customer" {
@@ -35,7 +35,7 @@ resource "yba_customer_resource" "customer" {
 }
 
 provider "yba" {
-  host      = "<yba-host-ip-address>:80"
+  host      = "<yba-host-ip-address>"
   api_token = yba_customer_resource.customer.api_token
 }
 

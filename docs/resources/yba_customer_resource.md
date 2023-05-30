@@ -21,7 +21,7 @@ The following credential is required as environment variable before creation:
 ```terraform
 provider "yba" {
   alias = "unauthenticated"
-  host  = "<host-ip-address>:80"
+  host  = "<host-ip-address>"
 }
 
 resource "yba_customer_resource" "customer" {

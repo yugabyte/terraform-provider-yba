@@ -1,6 +1,6 @@
 provider "yba" {
   alias = "unauthenticated"
-  host  = "<host ip address>:80"
+  host  = "<host ip address>"
 }
 
 resource "yba_installation" "installation" {

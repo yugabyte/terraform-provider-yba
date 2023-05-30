@@ -9,7 +9,7 @@ terraform {
 
 provider "yba" {
   alias = "unauthenticated"
-  host  = "${var.public_ip}:80"
+  host  = var.public_ip
 }
 
 resource "yba_installation" "installation" {

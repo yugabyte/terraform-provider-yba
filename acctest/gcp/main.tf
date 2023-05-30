@@ -48,7 +48,7 @@ output "host" {
 }
 
 provider "yba" {
-  host = "${module.gcp_yb_anywhere.public_ip}:80"
+  host = module.gcp_yb_anywhere.public_ip
 }
 
 resource "yba_installation" "installation" {

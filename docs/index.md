@@ -46,13 +46,20 @@ The provider needs to be configured with appropriate credentials before it can b
 provider "yba" {
   // unauthenticated - to use provider for installation of YugabyteDB Anywhere and customer creation  
   alias = "unauthenticated"
-  host  = "<host-ip-address>:80"
+  host  = "<host-ip-address>"
 }
 
 provider "yba" {
   // after customer creation, use authenticated provider
-  host      = "<host-ip-address>:80"
+  host      = "<host-ip-address>"
   api_token = "<customer-api-token>"
+}
+
+provider "yba" {
+  // For HTTP based YugabyteDB Anywhere applications
+  enable_https = false
+  host         = "<host-ip-address>"
+  api_token    = "<customer-api-token>"
 }
 ```
 
@@ -62,7 +69,8 @@ provider "yba" {
 ### Optional
 
 - **api_token** (String) YugabyteDB Anywhere Customer API Token.
-- **host** (String) IP address and port for the YugabyteDB Anywhere host. Use port 80 to connect to the YugabyteDB Anywhere application.
+- **enable_https** (Boolean) Connection to YugabyteDB Anywhere application via HTTPS. True by default.
+- **host** (String) IP address or Domain Name for the YugabyteDB Anywhere application.
 
 ## Configuration
 
@@ -71,14 +79,15 @@ Configuration for the YugabyteDB Anywhere provider is derived from the following
 1. Parameters in the provider configuration
 1. Environment variables
 
-Configuration can be provided by adding a `host` and optionally `api_token`, to the `yb` provider block.
+Configuration can be provided by adding a `host` and optionally `api_token` and `enable_https`, to the `yb` provider block.
 
 Usage:
 
 ```terraform
 provider "yba" {
-  host      = "<host-ip-address>:80"
-  api_token = "<customer-api-token>"
+  enable_https = true
+  host         = "<host-ip-address>"
+  api_token    = "<customer-api-token>"
 }
 ```
 
@@ -93,8 +102,9 @@ provider "yba" {}
 ```
 
 ```sh
-export YB_HOST="<host-ip-address>:80"
+export YB_HOST="<host-ip-address>"
 export YB_API_KEY="<customer-api-token>"
+export YB_ENABLE_HTTPS=true
 terraform plan
 ```
 

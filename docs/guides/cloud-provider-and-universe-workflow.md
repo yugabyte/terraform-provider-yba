@@ -13,7 +13,7 @@ The following example workflow configures an AWS cloud provider and a RF-3 unive
 
 ```terraform
 provider "yba" {
-  host  = "<host ip address>:80"
+  host  = "<host ip address>"
   api_token = "<customer-api-token>"
 }
 

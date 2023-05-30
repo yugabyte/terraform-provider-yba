@@ -58,7 +58,7 @@ var (
 )
 
 func init() {
-	c, err := api.NewAPIClient(os.Getenv(testHost), os.Getenv(testAPIKey))
+	c, err := api.NewAPIClient(true, os.Getenv(testHost), os.Getenv(testAPIKey))
 	if err != nil {
 		panic(err)
 	}

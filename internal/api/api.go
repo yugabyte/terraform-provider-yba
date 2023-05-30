@@ -17,10 +17,12 @@ package api
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	client "github.com/yugabyte/platform-go-client"
@@ -36,11 +38,19 @@ type APIClient struct {
 }
 
 // NewAPIClient creates a wrapper for public and non-public APIs
-func NewAPIClient(host string, apiKey string) (*APIClient, error) {
+func NewAPIClient(enableHTTPS bool, host string, apiKey string) (*APIClient, error) {
 	// create swagger go client
 	cfg := client.NewConfiguration()
-	cfg.Host = host
-	cfg.Scheme = "http"
+	host = strings.Split(host, ":")[0]
+	if enableHTTPS {
+		cfg.Scheme = "https"
+		tr := &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
+		cfg.HTTPClient = &http.Client{Transport: tr}
+		cfg.Host = fmt.Sprintf("%s:443", host)
+	} else {
+		cfg.Scheme = "http"
+		cfg.Host = fmt.Sprintf("%s:80", host)
+	}
 	if apiKey != "" {
 		cfg.DefaultHeader = map[string]string{"X-AUTH-YW-API-TOKEN": apiKey}
 	}
@@ -48,8 +58,9 @@ func NewAPIClient(host string, apiKey string) (*APIClient, error) {
 
 	// create vanilla client for non-public APIs
 	vc := &VanillaClient{
-		Client: &http.Client{Timeout: 10 * time.Second},
-		Host:   host,
+		Client:      &http.Client{Timeout: 10 * time.Second},
+		Host:        host,
+		EnableHTTPS: enableHTTPS,
 	}
 
 	// create wrapper client
@@ -78,17 +89,26 @@ func NewAPIClient(host string, apiKey string) (*APIClient, error) {
 
 // VanillaClient struct used for accessing non-public APIs
 type VanillaClient struct {
-	Client *http.Client
-	Host   string
+	Client      *http.Client
+	Host        string
+	EnableHTTPS bool
 }
 
 func (c VanillaClient) makeRequest(method string, url string, body io.Reader, apiKey string) (
 	*http.Response, error) {
-	req, err := http.NewRequest(method, fmt.Sprintf("http://%s/%s", c.Host, url), body)
-	if err != nil {
-		return nil, err
+	var req *http.Request
+	var err error
+	if c.EnableHTTPS {
+		req, err = http.NewRequest(method, fmt.Sprintf("https://%s/%s", c.Host, url), body)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		req, err = http.NewRequest(method, fmt.Sprintf("http://%s/%s", c.Host, url), body)
+		if err != nil {
+			return nil, err
+		}
 	}
-
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-AUTH-YW-API-TOKEN", apiKey)
 

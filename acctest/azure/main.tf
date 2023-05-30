@@ -62,7 +62,7 @@ output "host" {
 }
 
 provider "yba" {
-  host = "${module.azure_yb_anywhere.public_ip}:80"
+  host = module.azure_yb_anywhere.public_ip
 }
 
 resource "yba_installation" "installation" {

@@ -50,17 +50,23 @@ func init() {
 func New() *schema.Provider {
 	return &schema.Provider{
 		Schema: map[string]*schema.Schema{
+			"enable_https": {
+				Type:        schema.TypeBool,
+				Optional:    true,
+				DefaultFunc: schema.EnvDefaultFunc("YB_ENABLE_HTTPS", true),
+				Description: "Connection to YBA Host via HTTPS. " +
+					"True by default.",
+			},
 			"host": {
-				Type:     schema.TypeString,
-				Optional: true,
-				Description: "IP Address of the YBA Host. " +
-					"Please mention port 80 to connect to the YBA Application",
+				Type:        schema.TypeString,
+				Optional:    true,
+				Description: "IP address or Domain Name for the YugabyteDB Anywhere host.",
 				DefaultFunc: schema.EnvDefaultFunc("YB_HOST", "localhost:9000"),
 			},
 			"api_token": {
 				Type:        schema.TypeString,
 				Optional:    true,
-				Description: "YBA Customer API Token",
+				Description: "YugabyteDB Anywhere Customer API Token.",
 				DefaultFunc: schema.EnvDefaultFunc("YB_API_KEY", ""),
 			},
 		},
@@ -91,8 +97,9 @@ func providerConfigure(ctx context.Context, d *schema.ResourceData) (interface{}
 
 	host := d.Get("host").(string)
 	apiKey := d.Get("api_token").(string)
+	enableHTTPS := d.Get("enable_https").(bool)
 
-	c, err := api.NewAPIClient(host, apiKey)
+	c, err := api.NewAPIClient(enableHTTPS, host, apiKey)
 	if err != nil {
 		return nil, diag.FromErr(err)
 	}

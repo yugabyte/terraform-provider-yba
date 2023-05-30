@@ -162,7 +162,7 @@ func resourceCustomerRead(ctx context.Context, d *schema.ResourceData, meta inte
 	if d.Get("api_token").(string) != "" {
 		apiKey = d.Get("api_token").(string)
 	}
-	newAPI, err := api.NewAPIClient(vc.Host, apiKey)
+	newAPI, err := api.NewAPIClient(vc.EnableHTTPS, vc.Host, apiKey)
 	if err != nil {
 		return diag.FromErr(err)
 	}
