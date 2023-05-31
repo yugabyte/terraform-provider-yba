@@ -54,13 +54,14 @@ func New() *schema.Provider {
 				Type:        schema.TypeBool,
 				Optional:    true,
 				DefaultFunc: schema.EnvDefaultFunc("YB_ENABLE_HTTPS", true),
-				Description: "Connection to YBA Host via HTTPS. " +
+				Description: "Connection to YugabyteDB Anywhere application via HTTPS. " +
 					"True by default.",
 			},
 			"host": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				Description: "IP address or Domain Name for the YugabyteDB Anywhere host.",
+				Type:     schema.TypeString,
+				Optional: true,
+				Description: "IP address or Domain Name with port " +
+					"for the YugabyteDB Anywhere application.",
 				DefaultFunc: schema.EnvDefaultFunc("YB_HOST", "localhost:9000"),
 			},
 			"api_token": {

@@ -58,7 +58,7 @@ provider "yba" {
 provider "yba" {
   // For HTTP based YugabyteDB Anywhere applications
   enable_https = false
-  host         = "<host-ip-address>"
+  host         = "<host-ip-address>:80"
   api_token    = "<customer-api-token>"
 }
 ```
@@ -70,7 +70,7 @@ provider "yba" {
 
 - **api_token** (String) YugabyteDB Anywhere Customer API Token.
 - **enable_https** (Boolean) Connection to YugabyteDB Anywhere application via HTTPS. True by default.
-- **host** (String) IP address or Domain Name for the YugabyteDB Anywhere application.
+- **host** (String) IP address or Domain Name with port for the YugabyteDB Anywhere application.
 
 ## Configuration
 

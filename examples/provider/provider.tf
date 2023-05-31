@@ -13,6 +13,6 @@ provider "yba" {
 provider "yba" {
   // For HTTP based YugabyteDB Anywhere applications
   enable_https = false
-  host         = "<host-ip-address>"
+  host         = "<host-ip-address>:80"
   api_token    = "<customer-api-token>"
 }

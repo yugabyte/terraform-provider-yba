@@ -22,7 +22,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strings"
 	"time"
 
 	client "github.com/yugabyte/platform-go-client"
@@ -41,15 +40,13 @@ type APIClient struct {
 func NewAPIClient(enableHTTPS bool, host string, apiKey string) (*APIClient, error) {
 	// create swagger go client
 	cfg := client.NewConfiguration()
-	host = strings.Split(host, ":")[0]
+	cfg.Host = host
 	if enableHTTPS {
 		cfg.Scheme = "https"
 		tr := &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
 		cfg.HTTPClient = &http.Client{Transport: tr}
-		cfg.Host = fmt.Sprintf("%s:443", host)
 	} else {
 		cfg.Scheme = "http"
-		cfg.Host = fmt.Sprintf("%s:80", host)
 	}
 	if apiKey != "" {
 		cfg.DefaultHeader = map[string]string{"X-AUTH-YW-API-TOKEN": apiKey}
