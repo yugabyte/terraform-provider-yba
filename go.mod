@@ -7,7 +7,7 @@ require (
 	github.com/bramvdbogaerde/go-scp v1.2.0
 	github.com/google/uuid v1.3.0
 	github.com/hashicorp/terraform-plugin-docs v0.5.1
-	github.com/hashicorp/terraform-plugin-log v0.7.0
+	github.com/hashicorp/terraform-plugin-log v0.9.0
 	github.com/hashicorp/terraform-plugin-sdk/v2 v2.10.1
 	github.com/yugabyte/platform-go-client v0.0.0-20230513175746-dd238f2a46e8
 	golang.org/x/crypto v0.0.0-20220315160706-3147a52a75dd
@@ -40,7 +40,7 @@ require (
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
 	github.com/hashicorp/go-cty v1.4.1-0.20200414143053-d3edf31b6320 // indirect
 	github.com/hashicorp/go-getter v1.7.0 // indirect
-	github.com/hashicorp/go-hclog v1.2.1 // indirect
+	github.com/hashicorp/go-hclog v1.5.0 // indirect
 	github.com/hashicorp/go-multierror v1.1.1 // indirect
 	github.com/hashicorp/go-plugin v1.4.8 // indirect
 	github.com/hashicorp/go-safetemp v1.0.0 // indirect
