@@ -68,6 +68,10 @@ const (
 	// required to Edit a Provider (onprem or cloud) resource
 	// via YBA Terraform
 	YBAAllowEditProviderMinVersion = "2.18.0.0-b65"
+
+	// YBAAllowFailureSubTaskListMinVersion specifies minimum version
+	// required to fetch failed subtask message from YugabyteDB Anywhere
+	YBAAllowFailureSubTaskListMinVersion = "2.18.1.0-b68"
 )
 
 // YugabyteDB Anywhere versions >= the minimum listed versions for operations
@@ -76,5 +80,11 @@ const (
 // YBARestrictBackupVersions are certain YugabyteDB Anywhere versions >= min
 // version for backups that would not support the operation
 func YBARestrictBackupVersions() []string {
+	return []string{"2.19.0.0"}
+}
+
+// YBARestrictFailedSubtasksVersions are certain YugabyteDB Anywhere versions >= min
+// version for of fetching failed subtask lists that would not support the operation
+func YBARestrictFailedSubtasksVersions() []string {
 	return []string{"2.19.0.0"}
 }

@@ -164,8 +164,29 @@ func WaitForTask(ctx context.Context, tUUID string, cUUID string, c *client.APIC
 		},
 	}
 
-	if _, err := wait.WaitForStateContext(ctx); err != nil {
-		return err
+	if funcResponse, err := wait.WaitForStateContext(ctx); err != nil {
+		allowed, _, errV := failureSubTaskListYBAVersionCheck(ctx, c)
+		if errV != nil {
+			return errV
+		}
+		var subtasksFailure string
+		if allowed {
+			r, response, errR := c.CustomerTasksApi.ListFailedSubtasks(ctx, cUUID, tUUID).Execute()
+			if errR != nil {
+				errMessage := ErrorFromHTTPResponse(response, errR, "Task", "ListFailedSubtasks",
+					"Get Failed Tasks")
+				return errMessage
+			}
+
+			for _, f := range r.GetFailedSubTasks() {
+				subtasksFailure = fmt.Sprintf("%sSubTaskType: \"%s\", Error: \"%s\"; ",
+					subtasksFailure, f.GetSubTaskType(), f.GetErrorString())
+			}
+		} else {
+			subtasksFailure = fmt.Sprintln("Please refer to the YugabyteDB Anywhere Tasks",
+				"for description")
+		}
+		return fmt.Errorf("State: %s, %s", funcResponse.(string), subtasksFailure)
 	}
 
 	return nil
@@ -442,4 +463,24 @@ func GetUniversesForProvider(ctx context.Context, c *client.APIClient, cUUID, pU
 		return universeList, true, err
 	}
 	return universeList, false, err
+}
+
+func failureSubTaskListYBAVersionCheck(ctx context.Context, c *client.APIClient) (
+	bool, string, error) {
+	allowedVersions := []string{YBAAllowFailureSubTaskListMinVersion}
+	allowed, version, err := CheckValidYBAVersion(ctx, c, allowedVersions)
+	if err != nil {
+		return false, "", err
+	}
+	if allowed {
+		// if the release is 2.19.0.0, block it like YBA < 2.18.1.0 and send generic message
+		restrictedVersions := YBARestrictFailedSubtasksVersions()
+		for _, i := range restrictedVersions {
+			allowed, err = IsVersionAllowed(version, i)
+			if err != nil {
+				return false, version, err
+			}
+		}
+	}
+	return allowed, version, err
 }
