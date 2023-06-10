@@ -33,6 +33,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	client "github.com/yugabyte/platform-go-client"
 	"github.com/yugabyte/terraform-provider-yba/internal/api"
+	"github.com/yugabyte/terraform-provider-yba/internal/utils"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -171,22 +172,12 @@ func ResourceInstallation() *schema.Resource {
 	}
 }
 
-func fileExist(filePath string) error {
-	_, error := os.Stat(filePath)
-
-	// check if error is "file not exists"
-	if os.IsNotExist(error) {
-		return fmt.Errorf("%s file does not exist", filePath)
-	}
-	return nil
-}
-
 func resourceInstallationDiff() schema.CustomizeDiffFunc {
 	return customdiff.All(
 		customdiff.ValidateValue("replicated_config_file", func(ctx context.Context, value,
 			meta interface{}) error {
 			name := value.(string)
-			if err := fileExist(name); err != nil {
+			if err := utils.FileExist(name); err != nil {
 				return err
 			}
 			return nil
@@ -195,7 +186,7 @@ func resourceInstallationDiff() schema.CustomizeDiffFunc {
 			meta interface{}) error {
 			if value.(string) != "" {
 				name := value.(string)
-				if err := fileExist(name); err != nil {
+				if err := utils.FileExist(name); err != nil {
 					return err
 				}
 			}
@@ -205,7 +196,7 @@ func resourceInstallationDiff() schema.CustomizeDiffFunc {
 			meta interface{}) error {
 			if value.(string) != "" {
 				name := value.(string)
-				if err := fileExist(name); err != nil {
+				if err := utils.FileExist(name); err != nil {
 					return err
 				}
 			}
@@ -214,7 +205,7 @@ func resourceInstallationDiff() schema.CustomizeDiffFunc {
 		customdiff.ValidateValue("replicated_license_file", func(ctx context.Context, value,
 			meta interface{}) error {
 			name := value.(string)
-			if err := fileExist(name); err != nil {
+			if err := utils.FileExist(name); err != nil {
 				return err
 			}
 			return nil
@@ -222,7 +213,7 @@ func resourceInstallationDiff() schema.CustomizeDiffFunc {
 		customdiff.ValidateValue("application_settings_file", func(ctx context.Context, value,
 			meta interface{}) error {
 			name := value.(string)
-			if err := fileExist(name); err != nil {
+			if err := utils.FileExist(name); err != nil {
 				return err
 			}
 			return nil

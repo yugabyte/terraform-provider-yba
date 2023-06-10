@@ -145,7 +145,7 @@ Required:
 Optional:
 
 - **disk_iops** (Number) Disk IOPS.
-- **mount_points** (String) Disk mount points.
+- **mount_points** (String) Disk mount points. Required for onprem cluster nodes.
 - **storage_class** (String) Storage class.
 - **storage_type** (String) Storage type of volume.
 - **throughput** (Number) Disk throughput.

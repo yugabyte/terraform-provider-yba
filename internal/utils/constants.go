@@ -63,4 +63,9 @@ const (
 	// YBAAllowBackupMinVersion specifies minimum version
 	// required to use Scheduled Backup resource via YBA Terraform
 	YBAAllowBackupMinVersion = "2.18.1.0-b20"
+
+	// YBAAllowEditProviderMinVersion specifies minimum version
+	// required to Edit a Provider (onprem or cloud) resource
+	// via YBA Terraform
+	YBAAllowEditProviderMinVersion = "2.18.0.0-b65"
 )

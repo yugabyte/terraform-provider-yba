@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"reflect"
 	"regexp"
 	"strconv"
@@ -68,6 +69,18 @@ func MapFromSingletonList(in []interface{}) map[string]interface{} {
 		return make(map[string]interface{})
 	}
 	return in[0].(map[string]interface{})
+}
+
+// MapListFromInterfaceList returns a map of string -> interface from a slice of interface
+func MapListFromInterfaceList(in []interface{}) []map[string]interface{} {
+	res := make([]map[string]interface{}, 0)
+	if len(in) == 0 {
+		return res
+	}
+	for _, i := range in {
+		res = append(res, i.(map[string]interface{}))
+	}
+	return res
 }
 
 // GetBoolPointer returns a pointer to bool value
@@ -364,4 +377,53 @@ func ErrorFromHTTPResponse(resp *http.Response, apiError error, entity, entityNa
 
 	}
 	return fmt.Errorf("%w: %s", errorTag, errorString)
+}
+
+// FileExist checks if file in the given path exists
+func FileExist(filePath string) error {
+	_, error := os.Stat(filePath)
+
+	// check if error is "file not exists"
+	if os.IsNotExist(error) {
+		return fmt.Errorf("%s file does not exist", filePath)
+	}
+	return nil
+}
+
+// GetUniversesForProvider fetches the list of universes corresponding to a particular
+// provider. Currently edit operations are blocked if universes exists. For the current
+// scenario, only on prem providers are editable, but to accomodate future changes to
+// cloud provider resource, defining in the utils class
+func GetUniversesForProvider(ctx context.Context, c *client.APIClient, cUUID, pUUID,
+	universeName string) ([]client.UniverseResp, bool, error) {
+	var r []client.UniverseResp
+	var response *http.Response
+	universeList := make([]client.UniverseResp, 0)
+	var err error
+	if universeName != "" {
+		r, response, err = c.UniverseManagementApi.ListUniverses(ctx, cUUID).Name(universeName).Execute()
+		if err != nil {
+			errMessage := ErrorFromHTTPResponse(response, err, ResourceEntity,
+				"Universe", "Get List of Universes")
+			return nil, false, errMessage
+		}
+	} else {
+		r, response, err = c.UniverseManagementApi.ListUniverses(ctx, cUUID).Execute()
+		if err != nil {
+			errMessage := ErrorFromHTTPResponse(response, err, ResourceEntity,
+				"Universe", "Get List of Universes")
+			return nil, false, errMessage
+		}
+	}
+	for _, u := range r {
+		primary := u.GetUniverseDetails().Clusters[0]
+		userIntent := primary.GetUserIntent()
+		if pUUID == userIntent.GetProvider() {
+			universeList = append(universeList, u)
+		}
+	}
+	if len(universeList) > 0 {
+		return universeList, true, err
+	}
+	return universeList, false, err
 }

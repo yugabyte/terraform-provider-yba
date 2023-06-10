@@ -426,7 +426,7 @@ func userIntentSchema() *schema.Resource {
 						"mount_points": {
 							Type:        schema.TypeString,
 							Optional:    true,
-							Description: "Disk mount points.",
+							Description: "Disk mount points. Required for onprem cluster nodes.",
 						},
 						"storage_class": {
 							Type:        schema.TypeString,
@@ -661,8 +661,7 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 			}
 			return nil
 		}),
-		customdiff.ValidateChange("clusters", func(ctx context.Context, old, new, m interface{}) (
-			error) {
+		customdiff.ValidateChange("clusters", func(ctx context.Context, old, new, m interface{}) error {
 			// check if universe name of the clusters are the same
 			newClusterSet := buildClusters(new.([]interface{}))
 			newPrimary, isPresent := getClusterByType(newClusterSet, "PRIMARY")
@@ -682,8 +681,7 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 			}
 			return nil
 		}),
-		customdiff.ValidateChange("clusters", func(ctx context.Context, old, new, m interface{}) (
-			error) {
+		customdiff.ValidateChange("clusters", func(ctx context.Context, old, new, m interface{}) error {
 			// check if software version of the clusters are the same
 			newClusterSet := buildClusters(new.([]interface{}))
 			newPrimary, isPresent := getClusterByType(newClusterSet, "PRIMARY")
@@ -699,8 +697,7 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 			}
 			return nil
 		}),
-		customdiff.ValidateChange("clusters", func(ctx context.Context, old, new, m interface{}) (
-			error) {
+		customdiff.ValidateChange("clusters", func(ctx context.Context, old, new, m interface{}) error {
 			// check if systemD setting of the clusters are the same
 			newClusterSet := buildClusters(new.([]interface{}))
 			newPrimary, isPresent := getClusterByType(newClusterSet, "PRIMARY")
@@ -714,8 +711,7 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 			}
 			return nil
 		}),
-		customdiff.ValidateChange("clusters", func(ctx context.Context, old, new, m interface{}) (
-			error) {
+		customdiff.ValidateChange("clusters", func(ctx context.Context, old, new, m interface{}) error {
 			// check if Gflags setting of the clusters are the same
 			newClusterSet := buildClusters(new.([]interface{}))
 			newPrimary, isPresent := getClusterByType(newClusterSet, "PRIMARY")
@@ -747,6 +743,59 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 			}
 			return nil
 		}),
+		customdiff.ValidateValue("clusters", func(ctx context.Context, value,
+			meta interface{}) error {
+			// block adding instance tags to on prem nodes
+			// mount path is required for on prem
+			// storage type should not be given
+			clusterSet := buildClusters(value.([]interface{}))
+			primary, isPresent := getClusterByType(clusterSet, "PRIMARY")
+			readOnly, isRRPresnt := getClusterByType(clusterSet, "ASYNC")
+			if isPresent {
+				primaryUI := primary.GetUserIntent()
+				if primaryUI.GetProviderType() == "onprem" {
+					err := errors.New("Error in onprem primary cluster definition: ")
+					if len(primaryUI.GetInstanceTags()) > 0 {
+						errMessage := "Cannot add instance tags to onprem primary cluster."
+						err = fmt.Errorf("%w %s", err, errMessage)
+					}
+					if len(primaryUI.DeviceInfo.GetMountPoints()) == 0 {
+						fmt.Println(primaryUI.DeviceInfo.GetMountPoints())
+						errMessage := "Mount points are compulsory for onprem clusters."
+						err = fmt.Errorf("%w %s", err, errMessage)
+					}
+					if len(primaryUI.DeviceInfo.GetStorageType()) > 0 {
+						errMessage := "Cannot specify storage type for onprem clusters."
+						err = fmt.Errorf("%w %s", err, errMessage)
+					}
+					if err.Error() != "Error in onprem primary cluster definition: " {
+						return err
+					}
+				}
+			}
+			if isRRPresnt {
+				readUI := readOnly.GetUserIntent()
+				if readUI.GetProviderType() == "onprem" {
+					err := errors.New("Error in onprem read replica cluster definition: ")
+					if len(readUI.GetInstanceTags()) > 0 {
+						errMessage := "Cannot add instance tags to onprem read replica clusters."
+						err = fmt.Errorf("%w %s", err, errMessage)
+					}
+					if len(readUI.DeviceInfo.GetMountPoints()) == 0 {
+						errMessage := "Mount points are compulsory for onprem clusters."
+						err = fmt.Errorf("%w %s", err, errMessage)
+					}
+					if len(readUI.DeviceInfo.GetStorageType()) > 0 {
+						errMessage := "Cannot specify storage type for onprem clusters."
+						err = fmt.Errorf("%w %s", err, errMessage)
+					}
+					if err.Error() != "Error in onprem read replica cluster definition: " {
+						return err
+					}
+				}
+			}
+			return nil
+		}),
 	)
 }
 func resourceUniverseCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) (
@@ -761,8 +810,8 @@ func resourceUniverseCreate(ctx context.Context, d *schema.ResourceData, meta in
 
 	if !allowed {
 
-		return diag.FromErr(fmt.Errorf("Creating universes below version 2.17.1.0-b371 is not"+
-			" supported, currently on %s", version))
+		return diag.FromErr(fmt.Errorf("Creating universes below version %s is not"+
+			" supported, currently on %s", utils.YBAAllowUniverseMinVersion, version))
 
 	}
 
@@ -871,8 +920,8 @@ func resourceUniverseUpdate(ctx context.Context, d *schema.ResourceData, meta in
 
 	if !allowed {
 
-		return diag.FromErr(fmt.Errorf("Editing universes below version 2.17.1.0-b371 is not"+
-			" supported, currently on %s", version))
+		return diag.FromErr(fmt.Errorf("Editing universes below version %s is not"+
+			" supported, currently on %s", utils.YBAAllowUniverseMinVersion, version))
 
 	}
 

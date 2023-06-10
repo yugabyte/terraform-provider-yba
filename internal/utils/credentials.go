@@ -18,7 +18,6 @@ package utils
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"reflect"
 	"strings"
@@ -76,9 +75,9 @@ func gcpCredentialsFromFilePath(filePath string) ([]byte, error) {
 	if filePath == "" {
 		return nil, fmt.Errorf("%s env variable is empty", GCPCredentialsEnv)
 	}
-	gcsCredsByteArray, err := ioutil.ReadFile(filePath)
+	gcsCredsByteArray, err := os.ReadFile(filePath)
 	if err != nil {
-		return nil, fmt.Errorf("Failed reading data from %s: %s", GCPCredentialsEnv, err)
+		return nil, fmt.Errorf("Failed reading data from %s: %s", filePath, err)
 	}
 	return gcsCredsByteArray, nil
 }
@@ -198,4 +197,14 @@ func AzureCredentialsFromEnv() (AzureCredentials, error) {
 		return AzureCredentials{}, fmt.Errorf(errorString)
 	}
 	return azureCreds, nil
+}
+
+// ReadSSHPrivateKey retrives private key file contents from env variable
+func ReadSSHPrivateKey(filePath string) (*string, error) {
+	fileContentByte, err := os.ReadFile(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("Failed reading data from %s: %s", filePath, err)
+	}
+	fileContent := string(fileContentByte)
+	return &fileContent, nil
 }

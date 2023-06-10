@@ -15,6 +15,7 @@ The YugabyteDB Anywhere Provider currently supports the following YugabyteDB Any
 
 - Data Sources:
   - Backup Information (yba_backup_info)
+  - Preflight checks for Nodes used in On Premises Providers (yba_onprem_preflight)
   - Cloud Provider Access Key Information (yba_provider_key)
   - Available YBDB Release Versions (yba_release_version)
   - Storage Configuration Information (yba_storage_configs)
@@ -27,6 +28,7 @@ The YugabyteDB Anywhere Provider currently supports the following YugabyteDB Any
     - Azure
   - Customer (yba_customer_resource)
   - YugabyteDB Anywhere Installation via Replicated (yba_installation)
+  - On Premises Provider (yba_onprem_provider)
   - YBDB Release Import (yba_releases)
   - Restores (yba_restore)
   - Storage Configuration (yba_storage_config_resource) referring to Backup Target Storage Configuration

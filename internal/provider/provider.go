@@ -25,6 +25,7 @@ import (
 	"github.com/yugabyte/terraform-provider-yba/internal/cloud_provider"
 	"github.com/yugabyte/terraform-provider-yba/internal/customer"
 	"github.com/yugabyte/terraform-provider-yba/internal/installation"
+	"github.com/yugabyte/terraform-provider-yba/internal/onprem"
 	"github.com/yugabyte/terraform-provider-yba/internal/releases"
 	"github.com/yugabyte/terraform-provider-yba/internal/universe"
 	"github.com/yugabyte/terraform-provider-yba/internal/user"
@@ -72,10 +73,11 @@ func New() *schema.Provider {
 			},
 		},
 		DataSourcesMap: map[string]*schema.Resource{
-			"yba_provider_key":    cloud_provider.ProviderKey(),
-			"yba_storage_configs": backups.StorageConfigs(),
-			"yba_release_version": releases.ReleaseVersion(),
-			"yba_backup_info":     backups.Lists(),
+			"yba_provider_key":     cloud_provider.ProviderKey(),
+			"yba_storage_configs":  backups.StorageConfigs(),
+			"yba_release_version":  releases.ReleaseVersion(),
+			"yba_backup_info":      backups.Lists(),
+			"yba_onprem_preflight": onprem.PreflifghtCheck(),
 		},
 		ResourcesMap: map[string]*schema.Resource{
 			"yba_installation":            installation.ResourceInstallation(),
@@ -87,6 +89,7 @@ func New() *schema.Provider {
 			"yba_storage_config_resource": backups.ResourceStorageConfig(),
 			"yba_releases":                releases.ResourceReleases(),
 			"yba_restore":                 backups.ResourceRestore(),
+			"yba_onprem_provider":         onprem.ResourceOnPremProvider(),
 		},
 		ConfigureContextFunc: providerConfigure,
 	}

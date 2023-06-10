@@ -3,12 +3,12 @@
 page_title: "yba_provider_key Data Source - terraform-provider-yba"
 subcategory: ""
 description: |-
-  Retrieve cloud provider access key
+  Retrieve provider access key
 ---
 
 # yba_provider_key (Data Source)
 
-Retrieve cloud provider access key.
+Retrieve provider (cloud and onprem) access key.
 
 ## Example Usage
 

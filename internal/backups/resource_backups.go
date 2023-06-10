@@ -346,7 +346,7 @@ func resourceBackupsCreate(ctx context.Context, d *schema.ResourceData, meta int
 		version))
 
 	var response *http.Response
-	r, response, err = c.BackupsApi.CreatebackupSchedule(ctx, cUUID).Backup(req).Execute()
+	r, response, err = c.BackupsApi.CreateBackupSchedule(ctx, cUUID).Backup(req).Execute()
 	if err != nil {
 		errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
 			"Backups", "Create")
