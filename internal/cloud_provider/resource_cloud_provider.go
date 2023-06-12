@@ -38,9 +38,9 @@ func ResourceCloudProvider() *schema.Resource {
 		Description: "Cloud Provider Resource." +
 			"\nRequires AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY env variables to be set for" +
 			" AWS Cloud Provider." +
-			"\nRequires GOOGLE_APPLICATION_CREDENTIALS env variable for GCP Cloud Provider" +
+			"\nRequires GOOGLE_APPLICATION_CREDENTIALS env variable for GCP Cloud Provider." +
 			"\nRequires AZURE_SUBSCRIPTION_ID, AZURE_RG, AZURE_TENANT_ID, AZURE_CLIENT_ID," +
-			" AZURE_CLIENT_SECRET env variables for Azure Cloud Provider",
+			" AZURE_CLIENT_SECRET env variables for Azure Cloud Provider.",
 
 		CreateContext: resourceCloudProviderCreate,
 		ReadContext:   resourceCloudProviderRead,
@@ -59,18 +59,19 @@ func ResourceCloudProvider() *schema.Resource {
 
 		Schema: map[string]*schema.Schema{
 			"air_gap_install": {
-				Type:        schema.TypeBool,
-				Optional:    true,
-				ForceNew:    true,
-				Description: "Flag indicating if the universe should use an air-gapped installation",
+				Type:     schema.TypeBool,
+				Optional: true,
+				ForceNew: true,
+				Description: "Flag indicating if the universe should use an air-gapped " +
+					"installation.",
 			},
 			"code": {
 				Type:     schema.TypeString,
-				Optional: true,
+				Required: true,
 				ForceNew: true,
 				ValidateDiagFunc: validation.ToDiagFunc(validation.StringInSlice(
 					[]string{"gcp", "aws", "azu"}, false)),
-				Description: "Code of the cloud provider. Permitted values: gcp, aws, azu",
+				Description: "Code of the cloud provider. Permitted values: gcp, aws, azu.",
 			},
 			"config": {
 				Type:     schema.TypeMap,
@@ -87,31 +88,31 @@ func ResourceCloudProvider() *schema.Resource {
 				Type:        schema.TypeString,
 				Optional:    true,
 				ForceNew:    true,
-				Description: "Destination VPC network",
+				Description: "Destination VPC network.",
 			},
 			"host_vpc_id": {
 				Type:        schema.TypeString,
 				Optional:    true,
 				ForceNew:    true,
-				Description: "Host VPC Network",
+				Description: "Host VPC Network.",
 			},
 			"host_vpc_region": {
 				Type:        schema.TypeString,
 				Optional:    true,
 				ForceNew:    true,
-				Description: "Host VPC Region",
+				Description: "Host VPC Region.",
 			},
 			"key_pair_name": {
 				Type:        schema.TypeString,
 				Optional:    true,
 				ForceNew:    true,
-				Description: "Access Key Pair name",
+				Description: "Access Key Pair name.",
 			},
 			"name": {
 				Type:        schema.TypeString,
-				Optional:    true,
+				Required:    true,
 				ForceNew:    true,
-				Description: "Name of the provider",
+				Description: "Name of the provider.",
 			},
 			"regions": RegionsSchema(),
 			"ssh_port": {
@@ -119,13 +120,13 @@ func ResourceCloudProvider() *schema.Resource {
 				Optional:    true,
 				Computed:    true,
 				ForceNew:    true,
-				Description: "Port to use for ssh commands",
+				Description: "Port to use for ssh commands.",
 			},
 			"ssh_private_key_content": {
 				Type:        schema.TypeString,
 				Optional:    true,
 				ForceNew:    true,
-				Description: "Private key to use for ssh commands",
+				Description: "Private key to use for ssh commands.",
 			},
 			"ssh_user": {
 				Type:     schema.TypeString,
@@ -139,7 +140,7 @@ func ResourceCloudProvider() *schema.Resource {
 
 					return len(old) > 0 && len(new) == 0
 				},
-				Description: "User to use for ssh commands",
+				Description: "User to use for ssh commands.",
 			},
 			"aws_config_settings": {
 				Type:     schema.TypeList,
@@ -148,14 +149,15 @@ func ResourceCloudProvider() *schema.Resource {
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
 						"hosted_zone_id": {
-							Type:        schema.TypeString,
-							Optional:    true,
-							ForceNew:    true,
-							Description: "Hosted Zone ID for AWS corresponsding to Amazon Route53",
+							Type:     schema.TypeString,
+							Optional: true,
+							ForceNew: true,
+							Description: "Hosted Zone ID for AWS corresponsding to Amazon " +
+								"Route53.",
 						},
 					}},
 				ForceNew:    true,
-				Description: "Settings that can be configured for AWS",
+				Description: "Settings that can be configured for AWS.",
 			},
 			"azure_config_settings": {
 				Type:     schema.TypeList,
@@ -167,11 +169,11 @@ func ResourceCloudProvider() *schema.Resource {
 							Type:        schema.TypeString,
 							Optional:    true,
 							ForceNew:    true,
-							Description: "Private DNS Zone for Azure",
+							Description: "Private DNS Zone for Azure.",
 						},
 					}},
 				ForceNew:    true,
-				Description: "Settings that can be configured for Azure",
+				Description: "Settings that can be configured for Azure.",
 			},
 			"gcp_config_settings": {
 				Type:     schema.TypeList,
@@ -183,35 +185,35 @@ func ResourceCloudProvider() *schema.Resource {
 							Type:        schema.TypeString,
 							Optional:    true,
 							ForceNew:    true,
-							Description: "Tags for firewall rules in GCP",
+							Description: "Tags for firewall rules in GCP.",
 						},
 						"use_host_vpc": {
 							Type:        schema.TypeBool,
 							Optional:    true,
 							ForceNew:    true,
-							Description: "Enabling Host VPC in GCP",
+							Description: "Enabling Host VPC in GCP.",
 						},
 						"use_host_credentials": {
 							Type:        schema.TypeBool,
 							Optional:    true,
 							ForceNew:    true,
-							Description: "Enabling Host Credentials in GCP",
+							Description: "Enabling Host Credentials in GCP.",
 						},
 						"project_id": {
 							Type:        schema.TypeString,
 							Optional:    true,
 							ForceNew:    true,
-							Description: "Project ID that hosts universe nodes in GCP",
+							Description: "Project ID that hosts universe nodes in GCP.",
 						},
 						"network": {
 							Type:        schema.TypeString,
 							Optional:    true,
 							ForceNew:    true,
-							Description: "VPC network name in GCP",
+							Description: "VPC network name in GCP.",
 						},
 					}},
 				ForceNew:    true,
-				Description: "Settings that can be configured for GCP",
+				Description: "Settings that can be configured for GCP.",
 			},
 		},
 	}

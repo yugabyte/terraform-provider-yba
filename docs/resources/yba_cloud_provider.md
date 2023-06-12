@@ -40,7 +40,6 @@ resource "yba_cloud_provider" "cloud_provider" {
   ssh_port        = 22
   air_gap_install = false
 }
-
 ```
 
 The details for configuration are available in the [YugabyteDB Anywhere Configure Cloud Provider Documentation](https://docs.yugabyte.com/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/aws/).
@@ -50,25 +49,25 @@ The details for configuration are available in the [YugabyteDB Anywhere Configur
 
 ### Required
 
-- **regions** (Block List, Min: 1) (see [below for nested schema](#nestedblock--regions))
+- **code** (String) Code of the cloud provider. Permitted values: gcp, aws, azu.
+- **name** (String) Name of the provider.
+- **regions** (Block List, Min: 1) Regions associated with cloud providers. (see [below for nested schema](#nestedblock--regions))
 
 ### Optional
 
 - **air_gap_install** (Boolean) Flag indicating if the universe should use an air-gapped installation.
-- **aws_config_settings** (Block List, Max: 1) Settings that can be configured for AWS (see [below for nested schema](#nestedblock--aws_config_settings)).
-- **azure_config_settings** (Block List, Max: 1) Settings that can be configured for Azure (see [below for nested schema](#nestedblock--azure_config_settings)).
-- **code** (String) Code of the cloud provider. Permitted values: gcp, aws, azu.
+- **aws_config_settings** (Block List, Max: 1) Settings that can be configured for AWS. (see [below for nested schema](#nestedblock--aws_config_settings))
+- **azure_config_settings** (Block List, Max: 1) Settings that can be configured for Azure. (see [below for nested schema](#nestedblock--azure_config_settings))
 - **dest_vpc_id** (String) Destination VPC network.
-- **gcp_config_settings** (Block List, Max: 1) Settings that can be configured for GCP (see [below for nested schema](#nestedblock--gcp_config_settings)).
+- **gcp_config_settings** (Block List, Max: 1) Settings that can be configured for GCP. (see [below for nested schema](#nestedblock--gcp_config_settings))
 - **host_vpc_id** (String) Host VPC Network.
 - **host_vpc_region** (String) Host VPC Region.
 - **id** (String) The ID of this resource.
 - **key_pair_name** (String) Access Key Pair name.
-- **name** (String) Name of the provider.
 - **ssh_port** (Number) Port to use for ssh commands.
 - **ssh_private_key_content** (String) Private key to use for ssh commands.
 - **ssh_user** (String) User to use for ssh commands.
-- **timeouts** (Block, Optional) (see [below for nested schema](#nestedblock--timeouts)).
+- **timeouts** (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))
 
 ### Read-Only
 
@@ -88,11 +87,11 @@ Optional:
 - **security_group_id** (String) Security group ID to use for this region. Only set for AWS/Azure providers.
 - **vnet_name** (String) Name of the virtual network/VPC ID to use for this region. Only set for AWS/Azure providers.
 - **yb_image** (String) AMI to be used in this region.
-- **zones** (Block List) (see [below for nested schema](#nestedblock--regions--zones))
+- **zones** (Block List) Zones associated with the region. (see [below for nested schema](#nestedblock--regions--zones))
 
 Read-Only:
 
-- **uuid** (String) Region UUID
+- **uuid** (String) Region UUID.
 
 <a id="nestedblock--regions--zones"></a>
 

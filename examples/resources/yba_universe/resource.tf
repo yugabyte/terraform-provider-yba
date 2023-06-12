@@ -2,11 +2,11 @@ resource "yba_universe" "universe_name" {
   clusters {
     cluster_type = "<cluster-type>"
     user_intent {
-      universe_name      = "%s"
+      universe_name      = "<universe-name>"
       provider_type      = "<yb_cloud_proivder.cloud_provider.code>"
       provider           = "<yba_cloud_provider.cloud_provider.id>"
       region_list        = "<yba_cloud_provider.cloud_provider.regions[*].uuid>"
-      num_nodes          = 1
+      num_nodes          = 3
       replication_factor = 3
       instance_type      = "<instance-type>"
       device_info {

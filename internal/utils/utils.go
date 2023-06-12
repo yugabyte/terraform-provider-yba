@@ -72,9 +72,6 @@ func MapFromSingletonList(in []interface{}) map[string]interface{} {
 
 // GetBoolPointer returns a pointer to bool value
 func GetBoolPointer(in bool) *bool {
-	if !in {
-		return nil
-	}
 	return &in
 }
 

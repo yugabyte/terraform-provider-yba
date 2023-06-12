@@ -24,9 +24,10 @@ import (
 // RegionsSchema manages Region level information of cloud providers
 func RegionsSchema() *schema.Schema {
 	return &schema.Schema{
-		Type:     schema.TypeList,
-		Required: true,
-		ForceNew: true,
+		Description: "Regions associated with cloud providers.",
+		Type:        schema.TypeList,
+		Required:    true,
+		ForceNew:    true,
 
 		DiffSuppressFunc: func(k, old, new string, d *schema.ResourceData) bool {
 			// Regions cannot be altered in the present cloud provider config
@@ -39,14 +40,14 @@ func RegionsSchema() *schema.Schema {
 					Type:        schema.TypeString,
 					Computed:    true,
 					ForceNew:    true,
-					Description: "Region UUID",
+					Description: "Region UUID.",
 				},
 				"code": {
 					Type:        schema.TypeString,
 					Computed:    true,
 					Optional:    true,
 					ForceNew:    true,
-					Description: "Region code. Varies by cloud provider",
+					Description: "Region code. Varies by cloud provider.",
 				},
 				"config": {
 					Type:        schema.TypeMap,
@@ -54,35 +55,36 @@ func RegionsSchema() *schema.Schema {
 					Optional:    true,
 					Computed:    true,
 					ForceNew:    true,
-					Description: "Config details corresponding to region",
+					Description: "Config details corresponding to region.",
 				},
 				"latitude": {
 					Type:        schema.TypeFloat,
 					ForceNew:    true,
 					Computed:    true,
 					Optional:    true,
-					Description: "Latitude of the region",
+					Description: "Latitude of the region.",
 				},
 				"longitude": {
 					Type:        schema.TypeFloat,
 					ForceNew:    true,
 					Optional:    true,
 					Computed:    true,
-					Description: "Longitude of the region",
+					Description: "Longitude of the region.",
 				},
 				"name": {
 					Type:        schema.TypeString,
 					Optional:    true,
 					Computed:    true,
 					ForceNew:    true,
-					Description: "Name of the region. Varies by cloud provider",
+					Description: "Name of the region. Varies by cloud provider.",
 				},
 				"security_group_id": {
-					Type:        schema.TypeString,
-					Optional:    true,
-					Computed:    true,
-					ForceNew:    true,
-					Description: "Security group ID to use for this region. Only set for AWS/Azure providers",
+					Type:     schema.TypeString,
+					Optional: true,
+					Computed: true,
+					ForceNew: true,
+					Description: "Security group ID to use for this region. " +
+						"Only set for AWS/Azure providers.",
 				},
 				"vnet_name": {
 					Type:     schema.TypeString,
@@ -90,7 +92,7 @@ func RegionsSchema() *schema.Schema {
 					Computed: true,
 					ForceNew: true,
 					Description: "Name of the virtual network/VPC ID to use for this region." +
-						" Only set for AWS/Azure providers",
+						" Only set for AWS/Azure providers.",
 				},
 				"yb_image": {
 					Type:        schema.TypeString,
@@ -100,23 +102,24 @@ func RegionsSchema() *schema.Schema {
 					Description: "AMI to be used in this region.",
 				},
 				"zones": {
-					Type:     schema.TypeList,
-					Optional: true,
-					Computed: true,
-					ForceNew: true,
+					Type:        schema.TypeList,
+					Optional:    true,
+					Computed:    true,
+					ForceNew:    true,
+					Description: "Zones associated with the region.",
 					Elem: &schema.Resource{
 						Schema: map[string]*schema.Schema{
 							"uuid": {
 								Type:        schema.TypeString,
 								Computed:    true,
 								ForceNew:    true,
-								Description: "Zone UUID",
+								Description: "Zone UUID.",
 							},
 							"active": {
 								Type:        schema.TypeBool,
 								Computed:    true,
 								ForceNew:    true,
-								Description: "Flag indicating if the zone is active",
+								Description: "Flag indicating if the zone is active.",
 							},
 							"code": {
 								Type:        schema.TypeString,
@@ -131,13 +134,13 @@ func RegionsSchema() *schema.Schema {
 								Optional:    true,
 								Computed:    true,
 								ForceNew:    true,
-								Description: "Configuration details corresponding to zone",
+								Description: "Configuration details corresponding to zone.",
 							},
 							"kube_config_path": {
 								Type:        schema.TypeString,
 								Computed:    true,
 								ForceNew:    true,
-								Description: "Path to Kubernetes configuration file",
+								Description: "Path to Kubernetes configuration file.",
 							},
 							"name": {
 								Type:        schema.TypeString,
@@ -158,7 +161,7 @@ func RegionsSchema() *schema.Schema {
 								Optional:    true,
 								Computed:    true,
 								ForceNew:    true,
-								Description: "Subnet to use for this zone",
+								Description: "Subnet to use for this zone.",
 							},
 						},
 					},

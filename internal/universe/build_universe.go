@@ -70,7 +70,7 @@ func buildClusters(clusters []interface{}) (res []client.Cluster) {
 		}
 		if len(cluster["cloud_list"].([]interface{})) > 0 {
 			c.PlacementInfo = &client.PlacementInfo{
-				CloudList: buildCloudList(cluster["cloud_list"].([]interface{})),
+				CloudList: buildCloudList(cluster["cloud_list"].(interface{})),
 			}
 		}
 
@@ -79,7 +79,11 @@ func buildClusters(clusters []interface{}) (res []client.Cluster) {
 	return res
 }
 
-func buildCloudList(cl []interface{}) (res []client.PlacementCloud) {
+func buildCloudList(clI interface{}) (res []client.PlacementCloud) {
+	if clI == nil {
+		return nil
+	}
+	cl := clI.([]interface{})
 	for _, v := range cl {
 		c := v.(map[string]interface{})
 		pc := client.PlacementCloud{
@@ -97,15 +101,19 @@ func buildRegionList(cl []interface{}) *[]client.PlacementRegion {
 		r := v.(map[string]interface{})
 		pr := client.PlacementRegion{
 			Code:   utils.GetStringPointer(r["code"].(string)),
-			AzList: buildAzList(r["az_list"].([]interface{})),
+			AzList: buildAzList(r["az_list"].(interface{})),
 		}
 		res = append(res, pr)
 	}
 	return &res
 }
 
-func buildAzList(cl []interface{}) *[]client.PlacementAZ {
+func buildAzList(clI interface{}) *[]client.PlacementAZ {
 	var res []client.PlacementAZ
+	if clI == nil {
+		return &res
+	}
+	cl := clI.([]interface{})
 	for _, v := range cl {
 		az := v.(map[string]interface{})
 		paz := client.PlacementAZ{

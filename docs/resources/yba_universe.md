@@ -3,7 +3,7 @@
 page_title: "yba_universe Resource - terraform-provider-yba"
 subcategory: ""
 description: |-
-  Universe Resource
+  Universe Resource.
 ---
 
 # yba_universe (Resource)
@@ -17,11 +17,11 @@ resource "yba_universe" "universe_name" {
   clusters {
     cluster_type = "<cluster-type>"
     user_intent {
-      universe_name      = "%s"
+      universe_name      = "<universe-name>"
       provider_type      = "<yb_cloud_proivder.cloud_provider.code>"
       provider           = "<yba_cloud_provider.cloud_provider.id>"
       region_list        = "<yba_cloud_provider.cloud_provider.regions[*].uuid>"
-      num_nodes          = 1
+      num_nodes          = 3
       replication_factor = 3
       instance_type      = "<instance-type>"
       device_info {
@@ -69,7 +69,7 @@ The following operations are supported in the Edit universe workflow:
 ### Optional
 
 - **client_root_ca** (String) The UUID of the clientRootCA to be used to generate client certificates and facilitate TLS communication between server and client.
-- **communication_ports** (Block List, Max: 1) (see [below for nested schema](#nestedblock--communication_ports))
+- **communication_ports** (Block List, Max: 1) Communication ports. (see [below for nested schema](#nestedblock--communication_ports))
 - **delete_options** (Block List, Max: 1) (see [below for nested schema](#nestedblock--delete_options))
 - **id** (String) The ID of this resource.
 - **timeouts** (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))
@@ -89,7 +89,7 @@ Optional:
 
 Read-Only:
 
-- **uuid** (String) Cluster UUID
+- **uuid** (String) Cluster UUID.
 
 <a id="nestedblock--clusters--user_intent"></a>
 
@@ -97,39 +97,39 @@ Read-Only:
 
 Required:
 
-- **device_info** (Block List, Min: 1, Max: 1) Configuration values associated with the machines used for this universe.(see [below for nested schema](#nestedblock--clusters--user_intent--device_info))
+- **access_key_code** (String) Access Key code of provider.
+- **device_info** (Block List, Min: 1, Max: 1) Configuration values associated with the machines used for this universe. (see [below for nested schema](#nestedblock--clusters--user_intent--device_info))
+- **instance_type** (String) Instance type of universe nodes.
+- **num_nodes** (Number) Number of nodes for this universe.
+- **provider** (String) Provider UUID.
+- **provider_type** (String) Cloud Provider type. Permitted values: gcp, aws, azu, onprem.
+- **region_list** (List of String) List of regions for node placement.
+- **replication_factor** (Number) Replicated factor for this universe.
+- **universe_name** (String) Universe name.
+- **yb_software_version** (String) YBDB version of the universe.
 
 Optional:
 
-- **access_key_code** (String) Access Key code of provider.
-- **assign_public_ip** (Boolean) Assign Public IP to universe nodes.
+- **assign_public_ip** (Boolean) Assign Public IP to universe nodes. True by default.
 - **assign_static_ip** (Boolean) Flag indicating whether a static IP should be assigned.
 - **aws_arn_string** (String) IP ARN String.
-- **enable_client_to_node_encrypt** (Boolean) Enable Encryption in Transit - Client to Node encrytption.
+- **enable_client_to_node_encrypt** (Boolean) Enable Encryption in Transit - Client to Node encrytption. True by default.
 - **enable_exposing_service** (String) Flag to use if we need to deploy a loadbalancer/some kind ofexposing service for the cluster.
 - **enable_ipv6** (Boolean) Enable IPv6.
-- **enable_node_to_node_encrypt** (Boolean) Enable Encryption in Transit - Node to Node encrytption.
-- **enable_volume_encryption** (Boolean) Enable Encryption At Rest.
-- **enable_ycql** (Boolean) Enable YCQL.
+- **enable_node_to_node_encrypt** (Boolean) Enable Encryption in Transit - Node to Node encrytption. True by default.
+- **enable_volume_encryption** (Boolean) Enable Encryption At Rest. False by default.
+- **enable_ycql** (Boolean) Enable YCQL. False by default.
 - **enable_ycql_auth** (Boolean) Enable YCQL authentication.
-- **enable_yedis** (Boolean) Enable YEDIS.
-- **enable_ysql** (Boolean) Enable YSQL.
+- **enable_yedis** (Boolean) Enable YEDIS. False by default.
+- **enable_ysql** (Boolean) Enable YSQL. True by default.
 - **enable_ysql_auth** (Boolean) Enable YSQL authentication.
 - **instance_tags** (Map of String) Instance Tags.
-- **instance_type** (String) Instance type of universe nodes.
 - **master_gflags** (Map of String) Set of Master GFlags.
-- **num_nodes** (Number) Number of nodes for this universe.
 - **preferred_region** (String) Preferred Region for node placement.
-- **provider** (String) Provider UUID.
-- **provider_type** (String) Cloud Provider type. Permitted values: gcp, aws, azu.
-- **region_list** (List of String) List of regions for node placement.
-- **replication_factor** (Number) Replicated factor for this universe.
 - **tserver_gflags** (Map of String) Set of TServer Gflags.
-- **universe_name** (String) Universe name.
 - **use_host_name** (Boolean) Enable to use host name instead of IP addresses to communicate.
-- **use_systemd** (Boolean) Enable SystemD in universe nodes.
-- **use_time_sync** (Boolean) Enable time sync.
-- **yb_software_version** (String) YBDB version of the universe.
+- **use_systemd** (Boolean) Enable SystemD in universe nodes. True by default.
+- **use_time_sync** (Boolean) Enable time sync. True by default.
 - **ycql_password** (String) YCQL auth password.
 - **ysql_password** (String) YSQL auth password.
 
@@ -137,15 +137,18 @@ Optional:
 
 ### Nested Schema for `clusters.user_intent.device_info`
 
+Required:
+
+- **num_volumes** (Number) Number of volumes per node.
+- **volume_size** (Number) Volume size.
+
 Optional:
 
 - **disk_iops** (Number) Disk IOPS.
 - **mount_points** (String) Disk mount points.
-- **num_volumes** (Number) Number of volumes per node.
 - **storage_class** (String) Storage class.
 - **storage_type** (String) Storage type of volume.
 - **throughput** (Number) Disk throughput.
-- **volume_size** (Number) Volume size.
 
 <a id="nestedblock--clusters--cloud_list"></a>
 
@@ -208,9 +211,9 @@ Optional:
 
 Optional:
 
-- **delete_backups** (Boolean) Flag indicating whether the backups should be deleted with the universe.
-- **delete_certs** (Boolean) Flag indicating whether the certificates should be deleted with the universe.
-- **force_delete** (Boolean) Force delete universe with errors.
+- **delete_backups** (Boolean) Flag indicating whether the backups should be deleted with the universe. False by default.
+- **delete_certs** (Boolean) Flag indicating whether the certificates should be deleted with the universe. False by default.
+- **force_delete** (Boolean) Force delete universe with errors. False by default.
 
 <a id="nestedblock--timeouts"></a>
 
@@ -224,7 +227,7 @@ Optional:
 
 ## Import
 
-Universess can be imported using `universe uuid`:
+Universes can be imported using `universe uuid`:
 
 ```sh
 terraform import yba_universe.universe_name <universe-uuid>
