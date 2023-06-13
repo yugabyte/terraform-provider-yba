@@ -96,6 +96,7 @@ func (c VanillaClient) makeRequest(method string, url string, body io.Reader, ap
 	var req *http.Request
 	var err error
 	if c.EnableHTTPS {
+		http.DefaultTransport.(*http.Transport).TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
 		req, err = http.NewRequest(method, fmt.Sprintf("https://%s/%s", c.Host, url), body)
 		if err != nil {
 			return nil, err

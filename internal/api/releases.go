@@ -18,6 +18,7 @@ package api
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -66,9 +67,15 @@ func (vc *VanillaClient) ReleaseImport(ctx context.Context, cUUID string, versio
 
 	reqBuf := bytes.NewBuffer(reqBytes)
 
-	req, err := http.NewRequest("POST", fmt.Sprintf("http://%s/api/v1/customers/%s/releases",
-		vc.Host, cUUID), reqBuf)
-
+	var req *http.Request
+	if vc.EnableHTTPS {
+		http.DefaultTransport.(*http.Transport).TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+		req, err = http.NewRequest("POST", fmt.Sprintf("https://%s/api/v1/customers/%s/releases",
+			vc.Host, cUUID), reqBuf)
+	} else {
+		req, err = http.NewRequest("POST", fmt.Sprintf("http://%s/api/v1/customers/%s/releases",
+			vc.Host, cUUID), reqBuf)
+	}
 	if err != nil {
 		return false, err
 	}
