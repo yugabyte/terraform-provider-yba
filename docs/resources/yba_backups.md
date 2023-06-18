@@ -57,11 +57,12 @@ The details for configuration are available in the [YugabyteDB Anywhere Schedule
 - **delete_backup** (Boolean) Delete backup while deleting schedule.
 - **frequency** (String) Frequency to run the backup.  Accepts string duration in the standard format <https://pkg.go.dev/time#Duration>.
 - **id** (String) The ID of this resource.
+- **incremental_backup_frequency** (String) Frequency to take incremental backups.  Accepts string duration in the standard format <https://pkg.go.dev/time#Duration>.
 - **keyspace** (String) Keyspace to backup.
 - **parallelism** (Number) Number of concurrent commands to run on nodes over SSH.
 - **sse** (Boolean) Is SSE.
-- **table_uuid_list** (List of String) List of Table UUIDs, required if backup_type = REDIS_TABLE_TYPE.
-- **time_before_delete** (String) Time before deleting the backup from storage. Accepts string duration in the standard format <https://pkg.go.dev/time#Duration>.
+- **table_uuid_list** (List of String) List of Table UUIDs.
+- **time_before_delete** (String) Time before deleting the backup from storage. Accepts string duration in the standard format <https://pkg.go.dev/time#Duration>. Backups are kept indefinitely if not set.
 - **timeouts** (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))
 - **transactional_backup** (Boolean) Flag for indicating if backup is transactional across tables.
 

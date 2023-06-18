@@ -61,20 +61,20 @@ func ResourceBackups() *schema.Resource {
 				Type:        schema.TypeString,
 				Required:    true,
 				ForceNew:    true,
-				Description: "The UUID of the universe that this backup schedule targets",
+				Description: "The UUID of the universe that this backup schedule targets.",
 			},
 			"schedule_name": {
 				Type:        schema.TypeString,
 				ForceNew:    true,
 				Required:    true, //compulsory for V2 schedules
-				Description: "Backup schedule name",
+				Description: "Backup schedule name.",
 			},
 			"cron_expression": {
 				Type:         schema.TypeString,
 				Optional:     true,
 				Computed:     true,
 				ExactlyOneOf: []string{"cron_expression", "frequency"},
-				Description:  "A cron expression to use",
+				Description:  "A cron expression to use.",
 			},
 			"frequency": {
 				Type:         schema.TypeString,
@@ -83,6 +83,10 @@ func ResourceBackups() *schema.Resource {
 				DiffSuppressFunc: func(k, old, new string, d *schema.ResourceData) bool {
 					// verify if the duration string for frequency represent the
 					// same value, if so, ignore diff, else, show difference in plan
+					if old == "0" && new == "" {
+						// cron expression is being used
+						return true
+					}
 					oldFrequency, _, _, err := utils.GetMsFromDurationString(old)
 					if err != nil {
 						if strings.Contains(err.Error(), "missing unit in duration") {
@@ -111,7 +115,7 @@ func ResourceBackups() *schema.Resource {
 				Type:        schema.TypeString,
 				Optional:    true,
 				ForceNew:    true,
-				Description: "Keyspace to backup",
+				Description: "Keyspace to backup.",
 			},
 			"storage_config_uuid": {
 				Type:     schema.TypeString,
@@ -125,25 +129,26 @@ func ResourceBackups() *schema.Resource {
 				Optional: true, // If not provided, backups kept indefinitely
 				ForceNew: true,
 				Description: "Time before deleting the backup from storage. Accepts string" +
-					" duration in the standard format https://pkg.go.dev/time#Duration.",
+					" duration in the standard format https://pkg.go.dev/time#Duration. " +
+					"Backups are kept indefinitely if not set.",
 			},
 			"sse": {
 				Type:        schema.TypeBool,
 				Optional:    true,
 				ForceNew:    true,
-				Description: "Is SSE",
+				Description: "Is SSE.",
 			},
 			"transactional_backup": {
 				Type:        schema.TypeBool,
 				Optional:    true,
 				ForceNew:    true,
-				Description: "Flag for indicating if backup is transactional across tables",
+				Description: "Flag for indicating if backup is transactional across tables.",
 			},
 			"parallelism": {
 				Type:        schema.TypeInt,
 				Optional:    true,
 				ForceNew:    true,
-				Description: "Number of concurrent commands to run on nodes over SSH",
+				Description: "Number of concurrent commands to run on nodes over SSH.",
 			},
 			"backup_type": {
 				Type:     schema.TypeString,
@@ -152,20 +157,26 @@ func ResourceBackups() *schema.Resource {
 				ValidateDiagFunc: validation.ToDiagFunc(validation.StringInSlice(
 					[]string{"YQL_TABLE_TYPE", "REDIS_TABLE_TYPE", "PGSQL_TABLE_TYPE"}, false)),
 				Description: "Type of the backup. Permitted values: YQL_TABLE_TYPE, " +
-					"REDIS_TABLE_TYPE, PGSQL_TABLE_TYPE",
+					"REDIS_TABLE_TYPE, PGSQL_TABLE_TYPE.",
 			},
 			"table_uuid_list": {
 				Type:        schema.TypeList,
 				Optional:    true,
 				Elem:        &schema.Schema{Type: schema.TypeString},
 				ForceNew:    true,
-				Description: "List of Table UUIDs, required if backup_type = REDIS_TABLE_TYPE",
+				Description: "List of Table UUIDs.",
 			},
 			"delete_backup": {
 				Type:        schema.TypeBool,
 				Optional:    true,
 				Default:     false,
-				Description: "Delete backup while deleting schedule",
+				Description: "Delete backup while deleting schedule.",
+			},
+			"incremental_backup_frequency": {
+				Type:     schema.TypeString,
+				Optional: true,
+				Description: "Frequency to take incremental backups.  " +
+					"Accepts string duration in the standard format https://pkg.go.dev/time#Duration.",
 			},
 		},
 	}
@@ -181,8 +192,8 @@ func resourceBackupDiff() schema.CustomizeDiffFunc {
 				if err != nil {
 					return err
 				}
-
-				if frequency < utils.ConvertUnitToMs(1, "HOURS") {
+				// frequency is 0 when cron expression is set
+				if frequency < utils.ConvertUnitToMs(1, "HOURS") && frequency != 0 {
 					return errors.New("Frequency of backups cannot be less than 1 hour")
 				}
 			}
@@ -198,6 +209,40 @@ func resourceBackupDiff() schema.CustomizeDiffFunc {
 			}
 			return nil
 		}),
+		customdiff.ValidateValue("incremental_backup_frequency", func(ctx context.Context, value,
+			meta interface{}) error {
+			if value.(string) != "" {
+				duration := value.(string)
+				iFrequency, _, _, err := utils.GetMsFromDurationString(duration)
+				if err != nil {
+					return err
+				}
+
+				if iFrequency > utils.ConvertUnitToMs(1, "DAYS") {
+					return errors.New("Frequency of incremental backups cannot be more than 1 day")
+				}
+			}
+			return nil
+		}),
+		customdiff.IfValue("schedule_name",
+			func(ctx context.Context, value, meta interface{}) bool {
+				// If schedule exists, do not add incremental backup if not enabled
+				// do not disable incremental backup if enabled
+				return value.(string) != ""
+			},
+			func(ctx context.Context, d *schema.ResourceDiff, meta interface{}) error {
+				oldIncrFreqInterface, newIncrFreqInterface := d.
+					GetChange("incremental_backup_frequency")
+				if !d.HasChange("schedule_name") {
+					if oldIncrFreqInterface.(string) == "" && newIncrFreqInterface.(string) != "" {
+						return errors.New("Cannot take incremental backups on existing schedules")
+					}
+					if oldIncrFreqInterface.(string) != "" && newIncrFreqInterface.(string) == "" {
+						return errors.New("Cannot disable incremental backups on existing schedules")
+					}
+				}
+				return nil
+			}),
 	)
 }
 
@@ -237,33 +282,64 @@ func resourceBackupsCreate(ctx context.Context, d *schema.ResourceData, meta int
 	}
 	keyspaceTableList = append(keyspaceTableList, keyspaceTable)
 
-	timeBeforeDelete, timeBeforeDeleteUnit, _, err := utils.GetMsFromDurationString(
-		d.Get("time_before_delete").(string))
-	if err != nil {
-		return diag.FromErr(err)
-	}
-	frequency, frequencyUnit, _, err := utils.GetMsFromDurationString(d.Get("frequency").(string))
-	if err != nil {
-		return diag.FromErr(err)
+	var timeBeforeDelete, frequency, incrementalFrequency int64
+	var timeBeforeDeleteUnit, frequencyUnit, incrementalFrequencyUnit string
+	var frequencyGiven, incrementalFrequencyGiven bool
+
+	if d.Get("time_before_delete").(string) != "" {
+		timeBeforeDelete, timeBeforeDeleteUnit, _, err = utils.GetMsFromDurationString(
+			d.Get("time_before_delete").(string))
+		if err != nil {
+			return diag.FromErr(err)
+		}
 	}
 
-	if frequency < utils.ConvertUnitToMs(1, "HOURS") {
-		return diag.Errorf("Frequency of backups cannot be less than 1 hour")
+	if d.Get("frequency").(string) != "" {
+		frequency, frequencyUnit, frequencyGiven, err = utils.GetMsFromDurationString(d.
+			Get("frequency").(string))
+		if err != nil {
+			return diag.FromErr(err)
+		}
+
+		if frequency < utils.ConvertUnitToMs(1, "HOURS") {
+			return diag.Errorf("Frequency of backups cannot be less than 1 hour")
+		}
+	}
+
+	if d.Get("incremental_backup_frequency").(string) != "" {
+		incrementalFrequency, incrementalFrequencyUnit, incrementalFrequencyGiven, err = utils.
+			GetMsFromDurationString(d.Get("incremental_backup_frequency").(string))
+		if err != nil {
+			return diag.FromErr(err)
+		}
+	}
+
+	if frequencyGiven && incrementalFrequencyGiven {
+		if incrementalFrequency < frequency {
+			return diag.Errorf("Frequency of incremental " +
+				"backups cannot be less than frequency of full backups")
+		}
+	} else if incrementalFrequencyGiven {
+		if incrementalFrequency > utils.ConvertUnitToMs(1, "DAYS") {
+			return diag.Errorf("Frequency of incremental backups cannot be more than 1 day")
+		}
 	}
 
 	req := client.BackupRequestParams{
-		StorageConfigUUID:   d.Get("storage_config_uuid").(string),
-		TimeBeforeDelete:    utils.GetInt64Pointer(timeBeforeDelete),
-		ExpiryTimeUnit:      utils.GetStringPointer(timeBeforeDeleteUnit),
-		Sse:                 utils.GetBoolPointer(d.Get("sse").(bool)),
-		Parallelism:         utils.GetInt32Pointer(int32(d.Get("parallelism").(int))),
-		BackupType:          utils.GetStringPointer(d.Get("backup_type").(string)),
-		CronExpression:      utils.GetStringPointer(d.Get("cron_expression").(string)),
-		SchedulingFrequency: utils.GetInt64Pointer(frequency),
-		FrequencyTimeUnit:   utils.GetStringPointer(frequencyUnit),
-		KeyspaceTableList:   &keyspaceTableList,
-		ScheduleName:        utils.GetStringPointer(d.Get("schedule_name").(string)),
-		UniverseUUID:        d.Get("universe_uuid").(string),
+		StorageConfigUUID:                  d.Get("storage_config_uuid").(string),
+		TimeBeforeDelete:                   utils.GetInt64Pointer(timeBeforeDelete),
+		ExpiryTimeUnit:                     utils.GetStringPointer(timeBeforeDeleteUnit),
+		Sse:                                utils.GetBoolPointer(d.Get("sse").(bool)),
+		Parallelism:                        utils.GetInt32Pointer(int32(d.Get("parallelism").(int))),
+		BackupType:                         utils.GetStringPointer(d.Get("backup_type").(string)),
+		CronExpression:                     utils.GetStringPointer(d.Get("cron_expression").(string)),
+		SchedulingFrequency:                utils.GetInt64Pointer(frequency),
+		FrequencyTimeUnit:                  utils.GetStringPointer(frequencyUnit),
+		KeyspaceTableList:                  &keyspaceTableList,
+		ScheduleName:                       utils.GetStringPointer(d.Get("schedule_name").(string)),
+		UniverseUUID:                       d.Get("universe_uuid").(string),
+		IncrementalBackupFrequency:         utils.GetInt64Pointer(incrementalFrequency),
+		IncrementalBackupFrequencyTimeUnit: utils.GetStringPointer(incrementalFrequencyUnit),
 	}
 
 	// V2 Schedule Backup
@@ -326,6 +402,7 @@ func resourceBackupsRead(ctx context.Context, d *schema.ResourceData, meta inter
 	if err = d.Set("cron_expression", b.CronExpression); err != nil {
 		return diag.FromErr(err)
 	}
+
 	frequencyString := fmt.Sprintf("%v", b.GetFrequency())
 	if err = d.Set("frequency", frequencyString); err != nil {
 		return diag.FromErr(err)
@@ -367,19 +444,50 @@ func resourceBackupsUpdate(ctx context.Context, d *schema.ResourceData, meta int
 
 	tflog.Info(ctx, fmt.Sprintf("Current version %s, using V2 Edit Schedule Backup API", version))
 
-	if d.HasChange("frequency") {
-		frequency, frequencyUnit, _, err := utils.GetMsFromDurationString(d.Get("frequency").(string))
-		if err != nil {
-			return diag.FromErr(err)
+	if d.HasChange("frequency") || d.HasChange("cron_expression") ||
+		d.HasChange("incremental_backup_frequency") {
+
+		var frequency, incrementalFrequency int64
+		var frequencyUnit, incrementalFrequencyUnit string
+		var frequencyGiven, incrementalFrequencyGiven bool
+
+		if d.Get("frequency") != "" && d.Get("frequency") != "0" {
+			frequency, frequencyUnit, frequencyGiven, err = utils.
+				GetMsFromDurationString(d.Get("frequency").(string))
+			if err != nil {
+				return diag.FromErr(err)
+			}
+			if frequency < utils.ConvertUnitToMs(1, "HOURS") {
+				return diag.Errorf("Frequency of backups cannot be less than 1 hour")
+			}
 		}
-		if frequency < utils.ConvertUnitToMs(1, "HOURS") {
-			return diag.Errorf("Frequency of backups cannot be less than 1 hour")
+
+		if d.Get("incremental_backup_frequency") != "" {
+			incrementalFrequency, incrementalFrequencyUnit, incrementalFrequencyGiven, err = utils.
+				GetMsFromDurationString(d.Get("incremental_backup_frequency").(string))
+			if err != nil {
+				return diag.FromErr(err)
+			}
+		}
+
+		if frequencyGiven && incrementalFrequencyGiven {
+			if incrementalFrequency < frequency {
+				return diag.Errorf(
+					"Frequency of incremental backups cannot be less than frequency of full backups")
+			}
+		} else if incrementalFrequencyGiven {
+			if incrementalFrequency > utils.ConvertUnitToMs(1, "DAYS") {
+				return diag.Errorf("Frequency of incremental backups cannot be more than 1 day")
+			}
 		}
 
 		req := client.EditBackupScheduleParams{
-			CronExpression:    utils.GetStringPointer(d.Get("cron_expression").(string)),
-			Frequency:         utils.GetInt64Pointer(frequency),
-			FrequencyTimeUnit: utils.GetStringPointer(frequencyUnit),
+			CronExpression: utils.GetStringPointer(
+				d.Get("cron_expression").(string)),
+			Frequency:                          utils.GetInt64Pointer(frequency),
+			FrequencyTimeUnit:                  utils.GetStringPointer(frequencyUnit),
+			IncrementalBackupFrequency:         utils.GetInt64Pointer(incrementalFrequency),
+			IncrementalBackupFrequencyTimeUnit: utils.GetStringPointer(incrementalFrequencyUnit),
 		}
 		_, response, err := c.ScheduleManagementApi.EditBackupScheduleV2(ctx,
 			cUUID, d.Id()).Body(req).Execute()

@@ -6,7 +6,7 @@ variable "cluster_name" {
 variable "image_family" {
   description = "family for gcp compute image"
   type        = string
-  default     = "ubuntu-1804-lts"
+  default     = "ubuntu-2204-lts"
 }
 variable "image_project" {
   description = "project for gcp compute image"
