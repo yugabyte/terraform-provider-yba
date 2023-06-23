@@ -1,3 +1,24 @@
+## v0.1.5 (July 2023)
+
+The following version of YugabyteDB Anywhere Terraform Provider includes support for the following:
+
+### Resources
+
+- On Premises Provider (yba_onprem_provider)
+
+### Data Sources
+
+- Preflight checks for Nodes used in On Premises Providers (yba_onprem_preflight)
+
+### Workflows
+
+- Create and Edit Incremental Backup Schedules
+
+### Enhancements
+
+- Insecure HTTPS connection to YugabyteDB Anywhere
+- Detailed requirements for yba_universe resource fields
+
 ## v0.1.4 (May 2023)
 
 BACKWARDS INCOMPATIBILITIES / NOTES:
