@@ -72,7 +72,6 @@ func ResourceBackups() *schema.Resource {
 			"cron_expression": {
 				Type:         schema.TypeString,
 				Optional:     true,
-				Computed:     true,
 				ExactlyOneOf: []string{"cron_expression", "frequency"},
 				Description:  "A cron expression to use.",
 			},
@@ -315,9 +314,9 @@ func resourceBackupsCreate(ctx context.Context, d *schema.ResourceData, meta int
 	}
 
 	if frequencyGiven && incrementalFrequencyGiven {
-		if incrementalFrequency < frequency {
+		if incrementalFrequency > frequency {
 			return diag.Errorf("Frequency of incremental " +
-				"backups cannot be less than frequency of full backups")
+				"backups cannot be more than frequency of full backups")
 		}
 	} else if incrementalFrequencyGiven {
 		if incrementalFrequency > utils.ConvertUnitToMs(1, "DAYS") {
@@ -452,13 +451,25 @@ func resourceBackupsUpdate(ctx context.Context, d *schema.ResourceData, meta int
 		var frequencyGiven, incrementalFrequencyGiven bool
 
 		if d.Get("frequency") != "" && d.Get("frequency") != "0" {
-			frequency, frequencyUnit, frequencyGiven, err = utils.
-				GetMsFromDurationString(d.Get("frequency").(string))
-			if err != nil {
-				return diag.FromErr(err)
-			}
-			if frequency < utils.ConvertUnitToMs(1, "HOURS") {
-				return diag.Errorf("Frequency of backups cannot be less than 1 hour")
+			if d.HasChange("frequency") {
+				frequency, frequencyUnit, frequencyGiven, err = utils.
+					GetMsFromDurationString(d.Get("frequency").(string))
+				if err != nil {
+					return diag.FromErr(err)
+				}
+				if frequency < utils.ConvertUnitToMs(1, "HOURS") {
+					return diag.Errorf("Frequency of backups cannot be less than 1 hour")
+				}
+			} else {
+				r, response, err := c.ScheduleManagementApi.GetSchedule(ctx, cUUID, d.Id()).Execute()
+				if err != nil {
+					errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
+						"Backups", "Update - Fetch Backup Schedule")
+					return diag.FromErr(errMessage)
+				}
+				frequency = r.GetFrequency()
+				frequencyGiven = true
+				frequencyUnit = r.GetFrequencyTimeUnit()
 			}
 		}
 
@@ -471,9 +482,9 @@ func resourceBackupsUpdate(ctx context.Context, d *schema.ResourceData, meta int
 		}
 
 		if frequencyGiven && incrementalFrequencyGiven {
-			if incrementalFrequency < frequency {
+			if incrementalFrequency > frequency {
 				return diag.Errorf(
-					"Frequency of incremental backups cannot be less than frequency of full backups")
+					"Frequency of incremental backups cannot be more than frequency of full backups")
 			}
 		} else if incrementalFrequencyGiven {
 			if incrementalFrequency > utils.ConvertUnitToMs(1, "DAYS") {
