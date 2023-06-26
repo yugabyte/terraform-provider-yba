@@ -42,7 +42,7 @@ resource "yba_customer_resource" "customer" {
 
 ### Optional
 
-- `api_token` (String) API token for the customer.
+- `api_token` (String, Sensitive) API token for the customer.
 - `timeouts` (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))
 
 ### Read-Only

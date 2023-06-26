@@ -1,0 +1,31 @@
+---
+page_title: "{{.Name}} {{.Type}} - {{.RenderedProviderName}}"
+description: |-
+{{ .Description | plainmarkdown | trimspace | prefixlines "  " }}
+---
+
+# {{.Name}} ({{.Type}})
+
+{{ .Description | trimspace }}
+
+## Example Usage
+
+{{ tffile "examples/resources/yba_installer/resource.tf" }}
+
+To upgrade YugabyteDB Anywhere version, change *yba_version* to the desired version and run *terraform apply*. In case the upgarde fails mid-way, taint the resource in the *terraform.tfstate* file and rerun the *apply* command.
+
+-> **Note:** If modifications are made in the configuration file contents, set *reconfigure* to *true* for the changes to be acknowledged.
+
+-> **Note:** The paths for server certs and keys on the YugabyteDB Anywhere host are **/tmp/server.crt** and **/tmp/server.key** respectively, which need to be set in the configuration file before installation for proper usage.
+
+To change any of the following file contents -
+
+1. License File (yba_license_file)
+2. TLS Certificate File (tls_certificate_file)
+3. TLS Key File (tls_key_file)
+
+Change the path on the corresponding resource field and run *terraform apply* for the new files to be uploaded.
+
+For further details on configuration and host requirements, refer to [Install YBA software using YBA Installer](https://docs.yugabyte.com/preview/yugabyte-platform/install-yugabyte-platform/install-software/installer/).
+
+{{ .SchemaMarkdown | trimspace }}

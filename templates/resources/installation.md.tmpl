@@ -6,7 +6,11 @@ description: |-
 
 # {{.Name}} ({{.Type}})
 
+~> **Warning:** *yba_installation* resource is deprecated. Please refer to *yba_installer* resource for YugabyteDB Anywhere installations.
+
 {{ .Description | trimspace }}
+
+~> **Note:** *yba_installation* resource cannot be used to upgrade YugabyteDB Anywhere versions. Please log into the Replicated Console to access upgrade operations.
 
 ## Example Usage
 

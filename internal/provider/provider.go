@@ -82,6 +82,7 @@ func New() *schema.Provider {
 		},
 		ResourcesMap: map[string]*schema.Resource{
 			"yba_installation":            installation.ResourceInstallation(),
+			"yba_installer":               installation.ResourceYBAInstaller(),
 			"yba_cloud_provider":          cloud_provider.ResourceCloudProvider(),
 			"yba_universe":                universe.ResourceUniverse(),
 			"yba_backups":                 backups.ResourceBackups(),

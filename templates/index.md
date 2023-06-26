@@ -28,7 +28,8 @@ The YugabyteDB Anywhere Provider currently supports the following YugabyteDB Any
     - AWS
     - Azure
   - Customer (yba_customer_resource)
-  - YugabyteDB Anywhere Installation via Replicated (yba_installation)
+  - YugabyteDB Anywhere Installation via Replicated (yba_installation - Deprecated)
+  - YugabyteDB Anywhere Installation via YBA Installer (yba_installer)
   - On-Premises Provider (yba_onprem_provider)
   - YBDB Release Import (yba_releases)
   - Restores (yba_restore)

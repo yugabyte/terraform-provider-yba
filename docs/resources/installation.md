@@ -6,7 +6,11 @@ description: |-
 
 # yba_installation (Resource)
 
+~> **Warning:** *yba_installation* resource is deprecated. Please refer to *yba_installer* resource for YugabyteDB Anywhere installations.
+
 Manages the installation of YugabyteDB Anywhere on an existing virtual machine. This resource does not track the remote state and is only provided as a convenience tool. To reinstall, taint this resource and re-apply. To see remote output, run with TF_LOG=INFO.
+
+~> **Note:** *yba_installation* resource cannot be used to upgrade YugabyteDB Anywhere versions. Please log into the Replicated Console to access upgrade operations.
 
 ## Example Usage
 
@@ -46,8 +50,8 @@ On the machine running terraform, ensure the following files are available:
 - `public_ip` (String) Public ip of the existing virtual machine.
 - `replicated_config_file` (String) Configuration file to use for automated installation using Replicated.
 - `replicated_license_file` (String) YugabyteDB Anywhere license file used for installation using Replicated.
-- `ssh_host_ip` (String) IP address of VM for SSH. Typically same as public_ip or private_ip.
-- `ssh_private_key` (String) Contents of file containing the private key to use for ssh commands.
+- `ssh_host_ip` (String, Sensitive) IP address of VM for SSH. Typically same as public_ip or private_ip.
+- `ssh_private_key` (String, Sensitive) Contents of file containing the private key to use for ssh commands.
 - `ssh_user` (String) User to use for ssh commands.
 
 ### Optional

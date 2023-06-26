@@ -1,7 +1,9 @@
 # Terraform Provider YugabyteDB Anywhere
 
 This Terraform provider manages the following resources for YugabyteDB Anywhere:
-* Cloud Providers
+
+* Cloud Providers - AWS, GCP, Azure
+* On Prem Provider
 * Universes
 * Backup Storage Configurations
 * Backup Schedules
@@ -9,20 +11,22 @@ This Terraform provider manages the following resources for YugabyteDB Anywhere:
 * Customers
 
 In addition, there are modules included for installing and managing YugabyteDB Anywhere instances/clusters in the following clouds:
+
 * AWS
 * GCP
 * Azure
 
 ## Prerequisites
 
-This provider required some API changes that are only available in YugabyteDB versions `>=2.17.3`. 
+This provider required some API changes that are only available in YugabyteDB versions `>=2.17.3`.
 The automated tests in this repository are based on the Alpha channel of yugaware application in Replicated.
 
 ## Installation
 
 Install the [Terraform CLI](https://www.terraform.io/downloads). Once the CLI is installed, there are a few steps for [manually installing](https://www.terraform.io/cli/config/config-file#explicit-installation-method-configuration) this provider since it is not in the Terraform registry:
+
 * Create the required folders in the [implied local mirror directories](https://www.terraform.io/cli/config/config-file#implied-local-mirror-directories)
-  * `mkdir -p <implied_mirror_directory>/terraform.yugabyte.com/platform/yba/<provider_version>/<system_architecture>` 
+  * `mkdir -p <implied_mirror_directory>/terraform.yugabyte.com/platform/yba/<provider_version>/<system_architecture>`
   * `implied_mirror_directory` can be found from the link above
   * `provider_version` is the version of the provider you wish to use (only `0.1.0` for now)
   * `system_architecture` can be found by running `terraform -version`
@@ -30,12 +34,23 @@ Install the [Terraform CLI](https://www.terraform.io/downloads). Once the CLI is
 * Build the binary into the previously created folder
   * In the root directory, `go build -o <implied_mirror_directory>/terraform.yugabyte.com/platform/yba/<provider_version>/<system_architecture>`
 
+## Resource files
+
+Examples of configuration setting files can be found in the directory [resources](https://github.com/yugabyte/terraform-provider-yba/tree/main/modules/resources)
+
+* [YBA installer configuration file](https://github.com/yugabyte/terraform-provider-yba/tree/main/modules/resources/yba-ctl.yml)
+* Replicated based installation:
+
+  1. [replicated.conf](https://github.com/yugabyte/terraform-provider-yba/blob/main/modules/resources/replicated.conf): For configuration of replicated settings.
+  2. [application_settings.conf](https://github.com/yugabyte/terraform-provider-yba/blob/main/modules/resources/application_settings.conf): YugabyteDB Anywhere application settings in Replicated console.
+
 ## Examples
 
-There are example configurations located within the `examples` directory in [yba-terraform-workflow-example](https://github.com/yugabyte/yba-terraform-workflow-example.git) for using the provider and modules. 
+There are example configurations located within the `examples` directory in [yba-terraform-workflow-example](https://github.com/yugabyte/yba-terraform-workflow-example.git) for using the provider and modules.
 These bring up actual resources in the internal Yugabyte development environment.
 More information can be found in the `README` located in the `examples` directory.
 In the directory of the example you wish to run (i.e. `examples/docker/gcp`):
+
 * `terraform init` installs the required providers
 * `terraform apply` generates a plan, which, when approved, will create the desired resources
 
