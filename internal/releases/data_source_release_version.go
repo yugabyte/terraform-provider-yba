@@ -17,13 +17,13 @@ package releases
 
 import (
 	"context"
-	"sort"
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/yugabyte/terraform-provider-yba/internal/api"
 	"github.com/yugabyte/terraform-provider-yba/internal/utils"
+	"golang.org/x/exp/slices"
 )
 
 // ReleaseVersion data spurce keeps track of the imported releases on current YBA
@@ -81,7 +81,20 @@ func dataSourceReleaseVersionRead(ctx context.Context, d *schema.ResourceData, m
 	for v := range r {
 		versions = append(versions, v)
 	}
-	sort.Sort(sort.Reverse(sort.StringSlice(versions)))
+
+	// the function as described in the documentation is the less function,
+	// but for the purpose of getting the latest release, it's described as
+	// a function returning the greater of the 2 versions
+	slices.SortStableFunc(versions, func(x, y string) bool {
+		compare, err := utils.CompareYbVersions(x, y)
+		if err != nil {
+			return false
+		}
+		if compare == 0 || compare == -1 {
+			return false
+		}
+		return true
+	})
 
 	if d.Get("version").(string) == "" {
 		d.Set("version_list", versions)

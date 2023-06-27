@@ -11,7 +11,7 @@ require (
 	github.com/hashicorp/terraform-plugin-sdk/v2 v2.10.1
 	github.com/yugabyte/platform-go-client v0.0.0-20230706081300-bf8a2b87a50e
 	golang.org/x/crypto v0.0.0-20220315160706-3147a52a75dd
-	golang.org/x/exp v0.0.0-20230522175609-2e198f4a06a1
+	golang.org/x/exp v0.0.0-20230626212559-97b1e661b5df
 )
 
 require (
