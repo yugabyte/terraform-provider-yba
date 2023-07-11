@@ -251,6 +251,17 @@ func backupYBAVersionCheck(ctx context.Context, c *client.APIClient) (bool, stri
 	if err != nil {
 		return false, "", err
 	}
+	if allowed {
+		// need to block for restricted versions (versions without build number)
+		// Usually preview builds.
+		restrictedVersions := utils.YBARestrictBackupVersions()
+		for _, i := range restrictedVersions {
+			allowed, err = utils.IsVersionAllowed(version, i)
+			if err != nil {
+				return false, version, err
+			}
+		}
+	}
 	return allowed, version, err
 }
 
@@ -267,8 +278,9 @@ func resourceBackupsCreate(ctx context.Context, d *schema.ResourceData, meta int
 	var r client.Schedule
 	if !allowed {
 
-		return diag.FromErr(fmt.Errorf("Scheduling backups below version %s is not"+
-			" supported, currently on %s", utils.YBAAllowBackupMinVersion, version))
+		return diag.FromErr(fmt.Errorf("Scheduling backups below version %s (or on restricted"+
+			" versions) is not supported, currently on %s", utils.YBAAllowBackupMinVersion,
+			version))
 
 	}
 	if d.Get("schedule_name").(string) == "" {
@@ -371,8 +383,9 @@ func resourceBackupsRead(ctx context.Context, d *schema.ResourceData, meta inter
 	}
 
 	if !allowed {
-		return diag.FromErr(fmt.Errorf("Reading backups below version %s is not"+
-			" supported, currently on %s", utils.YBAAllowBackupMinVersion, version))
+		return diag.FromErr(fmt.Errorf("Reading backups below version %s (or on restricted "+
+			"versions) is not supported, currently on %s", utils.YBAAllowBackupMinVersion,
+			version))
 	}
 	// V2 schedule list
 	req := client.SchedulePagedApiQuery{
@@ -522,7 +535,8 @@ func resourceBackupsDelete(ctx context.Context, d *schema.ResourceData, meta int
 
 	if !allowed && d.Get("delete_backup").(bool) {
 		return diag.FromErr(fmt.Errorf("Deleting backups along with schedules "+
-			"below version %s is not supported, currently on %s", utils.YBAAllowBackupMinVersion, version))
+			"below version %s (or on restricted versions) is not supported, "+
+			"currently on %s", utils.YBAAllowBackupMinVersion, version))
 	}
 	if d.Get("delete_backup").(bool) {
 
@@ -563,7 +577,8 @@ func resourceBackupsDelete(ctx context.Context, d *schema.ResourceData, meta int
 	}
 	if !allowed {
 		return diag.FromErr(fmt.Errorf("Deleting backup schedules below version %s "+
-			"is not supported, currently on %s", utils.YBAAllowBackupMinVersion, version))
+			"(or on restricted versions) is not supported, currently on %s",
+			utils.YBAAllowBackupMinVersion, version))
 	}
 	// V2 schedule delete
 	tflog.Info(ctx, fmt.Sprintf("Current version %s, using V2 Delete Schedule Backup API",

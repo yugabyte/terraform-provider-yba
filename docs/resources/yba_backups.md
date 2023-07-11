@@ -76,6 +76,10 @@ Optional:
 - **delete** (String)
 - **update** (String)
 
+## Restricted YugabyteDB Anywhere Versions
+
+- 2.19.0.0
+
 ## Import
 
 Backup schedules can be imported using `backup schedule uuid`:

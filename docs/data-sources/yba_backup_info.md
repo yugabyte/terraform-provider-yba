@@ -36,3 +36,7 @@ data "yba_backup_info" "backup" {
 - **backup_type** (String) Type of the backup fetched.
 - **storage_config_uuid** (String) UUID of the storage configuration used for backup.
 - **storage_location** (String) Storage location of the backup.
+
+## Restricted YugabyteDB Anywhere Versions
+
+- 2.19.0.0

@@ -194,6 +194,22 @@ func CheckValidYBAVersion(ctx context.Context, c *client.APIClient, versions []s
 	return false, currentVersion, err
 }
 
+// IsVersionAllowed checks if a current version (>= Min version)
+// is equal to the restricted version for the operation.
+// Used in cases where certain preview build errors are not
+// resolved and need to be blocked on YugabyteDB Anywhere Terraform
+// provider
+func IsVersionAllowed(currentVersion, restrictedVersion string) (bool, error) {
+	compare, errCompare := CompareYbVersions(restrictedVersion, currentVersion)
+	if errCompare != nil {
+		return false, errCompare
+	}
+	if compare == 0 {
+		return false, nil
+	}
+	return true, nil
+}
+
 // CompareYbVersions returns -1 if version1 < version2, 0 if version1 = version2,
 // 1 if version1 > version2
 func CompareYbVersions(v1 string, v2 string) (int, error) {

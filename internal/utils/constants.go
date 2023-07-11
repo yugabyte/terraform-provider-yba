@@ -53,7 +53,7 @@ const (
 	AzureStorageSasTokenEnv = "AZURE_STORAGE_SAS_TOKEN"
 )
 
-// Minimum YBA versions to support operation
+// Minimum YugabyteDB Anywhere versions to support operation
 const (
 
 	// YBAAllowUniverseMinVersion specifies minimum version
@@ -69,3 +69,12 @@ const (
 	// via YBA Terraform
 	YBAAllowEditProviderMinVersion = "2.18.0.0-b65"
 )
+
+// YugabyteDB Anywhere versions >= the minimum listed versions for operations
+// that need to be restricted
+
+// YBARestrictBackupVersions are certain YugabyteDB Anywhere versions >= min
+// version for backups that would not support the operation
+func YBARestrictBackupVersions() []string {
+	return []string{"2.19.0.0"}
+}

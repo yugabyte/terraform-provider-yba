@@ -391,8 +391,9 @@ func resourceOnPremProviderUpdate(ctx context.Context, d *schema.ResourceData, m
 	}
 
 	if !allowed && (nameChange || regionsChange || accessKeysChange || detailsChange) {
-		return diag.FromErr(fmt.Errorf("Editing provider below version %s is not"+
-			" supported, currently on %s", utils.YBAAllowEditProviderMinVersion, version))
+		return diag.FromErr(fmt.Errorf("Editing provider below version %s (or on restricted "+
+			"versions) is not supported, currently on %s", utils.YBAAllowEditProviderMinVersion,
+			version))
 	}
 
 	if nameChange {

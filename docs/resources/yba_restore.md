@@ -53,3 +53,7 @@ Optional:
 
 - **create** (String)
 - **delete** (String)
+
+## Restricted YugabyteDB Anywhere Versions
+
+- 2.19.0.0

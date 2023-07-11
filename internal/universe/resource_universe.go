@@ -810,8 +810,9 @@ func resourceUniverseCreate(ctx context.Context, d *schema.ResourceData, meta in
 
 	if !allowed {
 
-		return diag.FromErr(fmt.Errorf("Creating universes below version %s is not"+
-			" supported, currently on %s", utils.YBAAllowUniverseMinVersion, version))
+		return diag.FromErr(fmt.Errorf("Creating universes below version %s (or on restricted"+
+			" versions) is not supported, currently on %s", utils.YBAAllowUniverseMinVersion,
+			version))
 
 	}
 
@@ -920,8 +921,9 @@ func resourceUniverseUpdate(ctx context.Context, d *schema.ResourceData, meta in
 
 	if !allowed {
 
-		return diag.FromErr(fmt.Errorf("Editing universes below version %s is not"+
-			" supported, currently on %s", utils.YBAAllowUniverseMinVersion, version))
+		return diag.FromErr(fmt.Errorf("Editing universes below version %s (or on restricted"+
+			" versions) is not supported, currently on %s", utils.YBAAllowUniverseMinVersion,
+			version))
 
 	}
 

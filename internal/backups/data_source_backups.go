@@ -73,7 +73,7 @@ func Lists() *schema.Resource {
 				Type:     schema.TypeString,
 				Computed: true,
 				Description: "Type of the backup. Permitted values: YQL_TABLE_TYPE, " +
-					"REDIS_TABLE_TYPE, PGSQL_TABLE_TYPE, TRANSACTION_STATUS_TABLE_TYPE",
+					"REDIS_TABLE_TYPE, PGSQL_TABLE_TYPE",
 			},
 			"storage_config_uuid": {
 				Type:        schema.TypeString,
@@ -97,8 +97,9 @@ func dataSourceBackupsListRead(ctx context.Context, d *schema.ResourceData, meta
 	}
 
 	if !allowed {
-		return diag.FromErr(fmt.Errorf("Listing backups below version %s is not"+
-			" supported, currently on %s", utils.YBAAllowBackupMinVersion, version))
+		return diag.FromErr(fmt.Errorf("Listing backups below version %s (or on restricted "+
+			"versions) is not supported, currently on %s", utils.YBAAllowBackupMinVersion,
+			version))
 	}
 	req := client.BackupPagedApiQuery{
 		Filter: client.BackupApiFilter{
