@@ -103,6 +103,7 @@ func NodeInstanceSchema() *schema.Schema {
 				"ssh_user": {
 					Type:        schema.TypeString,
 					Optional:    true,
+					Computed:    true,
 					Description: "SSH user.",
 				},
 				"details_json": {
@@ -248,7 +249,8 @@ func buildNodeConfig(nList interface{}) *[]client.NodeConfig {
 
 func flattenNodeInstances(nodeInstanceList []client.NodeInstance, order []string) (
 	res []map[string]interface{}) {
-	res = make([]map[string]interface{}, len(order))
+	orderLength := len(order)
+	res = make([]map[string]interface{}, orderLength)
 	for _, n := range nodeInstanceList {
 		details := n.GetDetails()
 		i := map[string]interface{}{
@@ -267,7 +269,11 @@ func flattenNodeInstances(nodeInstanceList []client.NodeInstance, order []string
 			"in_use":             n.GetInUse(),
 		}
 		index := slices.Index(order, details.GetIp())
-		res[index] = i
+		if index != -1 {
+			res[index] = i
+		} else {
+			res = append(res, i)
+		}
 	}
 	return res
 }

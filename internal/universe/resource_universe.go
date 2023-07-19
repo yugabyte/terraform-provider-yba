@@ -508,7 +508,6 @@ func userIntentSchema() *schema.Resource {
 			"access_key_code": {
 				Type:        schema.TypeString,
 				Required:    true,
-				ForceNew:    true,
 				Description: "Access Key code of provider.",
 			},
 			"tserver_gflags": {
@@ -760,7 +759,6 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 						err = fmt.Errorf("%w %s", err, errMessage)
 					}
 					if len(primaryUI.DeviceInfo.GetMountPoints()) == 0 {
-						fmt.Println(primaryUI.DeviceInfo.GetMountPoints())
 						errMessage := "Mount points are compulsory for onprem clusters."
 						err = fmt.Errorf("%w %s", err, errMessage)
 					}

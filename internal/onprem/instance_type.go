@@ -107,7 +107,7 @@ func InstanceTypesSchema() *schema.Schema {
 											Type:        schema.TypeString,
 											Optional:    true,
 											Default:     "SSD",
-											Description: "Volume Type attached to instance.",
+											Description: "Volume Type attached to instance. SSD by default.",
 										},
 									},
 								},
@@ -243,7 +243,8 @@ func buildInstanceTypeFromInstanceTypeResp(instanceTypeList []client.InstanceTyp
 
 func flattenInstanceTypes(instanceTypeList []client.InstanceTypeResp, order []string) (
 	res []map[string]interface{}) {
-	res = make([]map[string]interface{}, len(order))
+	orderLength := len(order)
+	res = make([]map[string]interface{}, orderLength)
 	for _, v := range instanceTypeList {
 		instanceTypeKey := make([](map[string]interface{}), 0)
 		iT := map[string]interface{}{
@@ -262,7 +263,11 @@ func flattenInstanceTypes(instanceTypeList []client.InstanceTypeResp, order []st
 			"provider_uuid":         v.GetProviderUuid(),
 		}
 		index := slices.Index(order, v.GetInstanceTypeCode())
-		res[index] = i
+		if index != -1 {
+			res[index] = i
+		} else {
+			res = append(res, i)
+		}
 	}
 	return res
 }

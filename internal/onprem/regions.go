@@ -18,6 +18,7 @@ package onprem
 import (
 	"context"
 	"fmt"
+	"strconv"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	client "github.com/yugabyte/platform-go-client"
@@ -45,16 +46,18 @@ func RegionsSchema() *schema.Schema {
 					Description: "Region code.",
 				},
 				"latitude": {
-					Type:        schema.TypeFloat,
-					Optional:    true,
-					Default:     -90,
-					Description: "Latitude of the region.",
+					Type:     schema.TypeFloat,
+					Optional: true,
+					Default:  0.0,
+					DiffSuppressFunc: suppressRegionLocationDiff,
+					Description: "Latitude of the region. 0 by default.",
 				},
 				"longitude": {
-					Type:        schema.TypeFloat,
-					Optional:    true,
-					Default:     -90,
-					Description: "Longitude of the region.",
+					Type:     schema.TypeFloat,
+					Optional: true,
+					Default:  0.0,
+					DiffSuppressFunc: suppressRegionLocationDiff,
+					Description: "Longitude of the region. 0 by default.",
 				},
 				"name": {
 					Type:        schema.TypeString,
@@ -70,9 +73,8 @@ func RegionsSchema() *schema.Schema {
 				"zones": {
 					Type:        schema.TypeList,
 					Description: "Description of zones associated with the region.",
+					Required:    true,
 					MinItems:    1,
-					Optional:    true,
-					Computed:    true,
 					Elem: &schema.Resource{
 						Schema: map[string]*schema.Schema{
 							"uuid": {
@@ -101,6 +103,23 @@ func RegionsSchema() *schema.Schema {
 			},
 		},
 	}
+}
+
+func suppressRegionLocationDiff(k, old, new string, d *schema.ResourceData) bool {
+	// API returns -90 for default, but default is set to 0
+	// If old is -90 or 0, ignore difference
+	oldFloat, err := strconv.ParseFloat(old, 64)
+	if err != nil {
+		return false
+	}
+	newFloat, err := strconv.ParseFloat(new, 64)
+	if err != nil {
+		return false
+	}
+	if (oldFloat == 0 || oldFloat == -90) && (newFloat == 0 || newFloat == -90) {
+		return true
+	}
+	return false
 }
 
 func buildRegions(regions []interface{}) (res []client.Region) {

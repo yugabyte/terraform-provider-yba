@@ -80,8 +80,8 @@ func KeyInfoSchema() *schema.Schema {
 				"air_gap_install": {
 					Type:        schema.TypeBool,
 					Optional:    true,
-					Default:     true,
-					Description: "Air Gap Installation required.",
+					Default:     false,
+					Description: "Air Gap Installation required. False by default.",
 				},
 				"delete_remote": {
 					Type:        schema.TypeBool,
@@ -198,10 +198,17 @@ func buildKeyInfo(keyInfo interface{}) (client.KeyInfo, error) {
 	keyPairName := key["key_pair_name"].(string)
 	var sshPrivateKeyContent *string
 	var err error
-	if keyPairName != "" {
-		if key["ssh_private_key_file_path"].(string) == "" {
-			return client.KeyInfo{}, fmt.Errorf("ssh_private_key_file_path is empty")
-		}
+	if keyPairName == "" {
+		return client.KeyInfo{}, fmt.Errorf("key_pair_name is empty")
+	}
+	// Since Key Pair name has been provided, the user has provided
+	// an access key to be used by YBA to connect to the YBDB nodes.
+	// When the provider is imported, the path for the ssh_private_key_file
+	// can be left empty, since the private key infomation is stored in YBA.
+
+	// If both ssh_private_key_file_path and private_key are empty, there is
+	// no access key provided to connect to the nodes, and will throw an error
+	if key["ssh_private_key_file_path"].(string) != "" {
 		sshFilePath := key["ssh_private_key_file_path"].(string)
 		if err := utils.FileExist(sshFilePath); err != nil {
 			return client.KeyInfo{}, err
@@ -210,7 +217,12 @@ func buildKeyInfo(keyInfo interface{}) (client.KeyInfo, error) {
 		if err != nil {
 			return client.KeyInfo{}, err
 		}
+	} else {
+		if ybaPrivateKey, exists := key["private_key"]; !exists || ybaPrivateKey == "" {
+			return client.KeyInfo{}, fmt.Errorf("ssh_private_key_file_path is empty")
+		}
 	}
+
 	return client.KeyInfo{
 		KeyPairName:          utils.GetStringPointer(keyPairName),
 		SshPrivateKeyContent: sshPrivateKeyContent,

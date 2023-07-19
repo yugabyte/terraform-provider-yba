@@ -169,7 +169,7 @@ func ResourceBackups() *schema.Resource {
 				Type:        schema.TypeBool,
 				Optional:    true,
 				Default:     false,
-				Description: "Delete backup while deleting schedule.",
+				Description: "Delete backup while deleting schedule. False by default.",
 			},
 			"incremental_backup_frequency": {
 				Type:     schema.TypeString,

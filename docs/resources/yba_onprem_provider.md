@@ -118,7 +118,7 @@ Required:
 
 Optional:
 
-- **air_gap_install** (Boolean) Air Gap Installation required.
+- **air_gap_install** (Boolean) Air Gap Installation required. False by default.
 - **delete_remote** (Boolean) Delete Remote.
 - **public_key** (String) Public Key to access YBDB nodes.
 - **vault_file** (String) Vault file.
@@ -158,7 +158,7 @@ Required:
 
 Optional:
 
-- **air_gap_install** (Boolean) Air Gap Installation required.
+- **air_gap_install** (Boolean) Air Gap Installation required. False by default.
 - **install_node_exporter** (Boolean) Install Node Exporter.
 - **node_exporter_port** (Number) Node Exporter Port.
 - **node_exporter_user** (String) Node Exporter User.
@@ -177,12 +177,12 @@ Read-Only:
 Required:
 
 - **name** (String) Name of the region. Same as the code.
+- **zones** (Block List, Min: 1) Description of zones associated with the region. (see [below for nested schema](#nestedblock--regions--zones))
 
 Optional:
 
-- **latitude** (Number) Latitude of the region.
-- **longitude** (Number) Longitude of the region.
-- **zones** (Block List) Description of zones associated with the region. (see [below for nested schema](#nestedblock--regions--zones))
+- **latitude** (Number) Latitude of the region. 0 by default.
+- **longitude** (Number) Longitude of the region. 0 by default.
 
 Read-Only:
 
@@ -245,7 +245,7 @@ Required:
 
 Optional:
 
-- **volume_type** (String) Volume Type attached to instance.
+- **volume_type** (String) Volume Type attached to instance. SSD by default.
 
 <a id="nestedblock--instance_types--instance_type_key"></a>
 

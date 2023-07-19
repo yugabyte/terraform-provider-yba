@@ -54,7 +54,7 @@ The details for configuration are available in the [YugabyteDB Anywhere Schedule
 
 - **backup_type** (String) Type of the backup. Permitted values: YQL_TABLE_TYPE, REDIS_TABLE_TYPE, PGSQL_TABLE_TYPE.
 - **cron_expression** (String) A cron expression to use.
-- **delete_backup** (Boolean) Delete backup while deleting schedule.
+- **delete_backup** (Boolean) Delete backup while deleting schedule. False by default.
 - **frequency** (String) Frequency to run the backup.  Accepts string duration in the standard format <https://pkg.go.dev/time#Duration>.
 - **id** (String) The ID of this resource.
 - **incremental_backup_frequency** (String) Frequency to take incremental backups.  Accepts string duration in the standard format <https://pkg.go.dev/time#Duration>.

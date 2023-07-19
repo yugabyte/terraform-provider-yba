@@ -112,7 +112,35 @@ func resourceOnPremDiff() schema.CustomizeDiffFunc {
 		),
 		customdiff.IfValueChange("regions",
 			func(ctx context.Context, old, new, meta interface{}) bool {
-				return !reflect.DeepEqual(old, new) && len(old.([]interface{})) != 0
+
+				oldRegions := buildRegions(old.([]interface{}))
+				newRegions := buildRegions(new.([]interface{}))
+
+				if len(oldRegions) == len(newRegions) {
+					var oldRegionsName []string
+					for _, r := range oldRegions {
+						oldRegionsName = append(oldRegionsName, r.GetName())
+					}
+					for i, n := range newRegions {
+						index := slices.Index(oldRegionsName, n.GetName())
+						o := oldRegions[index]
+						if (o.GetLatitude() == 0 || o.GetLatitude() == -90) &&
+							(n.GetLatitude() == 0 || n.GetLatitude() == -90) {
+							n.SetLatitude(0)
+							newRegions[i] = n
+							o.SetLatitude(0)
+							oldRegions[index] = o
+						}
+						if (o.GetLongitude() == 0 || o.GetLongitude() == -90) &&
+							(n.GetLongitude() == 0 || n.GetLongitude() == -90) {
+							n.SetLongitude(0)
+							newRegions[i] = n
+							o.SetLongitude(0)
+							oldRegions[index] = o
+						}
+					}
+				}
+				return !reflect.DeepEqual(oldRegions, newRegions) && len(old.([]interface{})) != 0
 			},
 			func(ctx context.Context, d *schema.ResourceDiff, meta interface{}) error {
 				// if universes exist for this provider, block edit
@@ -143,7 +171,7 @@ func resourceOnPremDiff() schema.CustomizeDiffFunc {
 				if exists {
 					return fmt.Errorf("Universe exists for this provider, editing access_keys is blocked")
 				}*/
-				return fmt.Errorf("access keys cannot be edited")
+				return fmt.Errorf("Access keys cannot be edited")
 				//return nil
 			},
 		),

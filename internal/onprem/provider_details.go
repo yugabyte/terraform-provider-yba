@@ -33,8 +33,8 @@ func ProviderDetailsSchema() *schema.Schema {
 				"air_gap_install": {
 					Type:        schema.TypeBool,
 					Optional:    true,
-					Default:     true,
-					Description: "Air Gap Installation required.",
+					Default:     false,
+					Description: "Air Gap Installation required. False by default.",
 				},
 				"install_node_exporter": {
 					Type:        schema.TypeBool,

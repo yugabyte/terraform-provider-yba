@@ -389,7 +389,6 @@ func ErrorFromHTTPResponse(resp *http.Response, apiError error, entity, entityNa
 		return fmt.Errorf("%w: %s", errorTag, "Error reading HTTP Response body")
 	}
 	if err = json.Unmarshal(body, &errorBlock); err != nil {
-		fmt.Println("Response body: ", response)
 		return fmt.Errorf("%w: %s %s", errorTag,
 			"Failed unmarshalling HTTP Response body", err.Error())
 	}
