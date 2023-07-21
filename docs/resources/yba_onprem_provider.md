@@ -10,7 +10,7 @@ description: |-
 
 OnPrem Provider Resource.
 
-The details on how to configure an on premises provider is available in [YugabyteDB Anywhere Configure Cloud Provider Documentation](https://docs.yugabyte.com/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises/).
+For information on configuring on-premises providers, refer to [Create provider configuration](https://docs.yugabyte.com/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises/).
 
 ## Example Usage
 
@@ -306,7 +306,7 @@ Optional:
 
 ## Import
 
-On premises providers can be imported using `provider uuid`:
+On-premises providers can be imported using `provider uuid`:
 
 ```sh
 terraform import yba_onprem_provider.onprem <provider-uuid>

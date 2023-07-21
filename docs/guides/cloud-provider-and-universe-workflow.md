@@ -9,11 +9,11 @@ description: |-
 
 Using the YugabyteDB Anywhere Terraform provider, you can can configure [cloud providers](https://docs.yugabyte.com/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/aws/) and [universes](https://docs.yugabyte.com/preview/yugabyte-platform/create-deployments/) using a combination of resources and data sources.
 
-The following example workflow configures an AWS cloud provider and a RF-3 universe with TLS enabled using default certificates.
+The following example workflow configures an AWS cloud provider and creates a universe with a replication factor of 3, the YSQL API enabled, and TLS enabled using default certificates.
 
 ```terraform
 provider "yba" {
-  host  = "<host ip address>"
+  host      = "<host ip address>"
   api_token = "<customer-api-token>"
 }
 

@@ -11,11 +11,11 @@ description: |-
 [YugabyteDB](https://github.com/yugabyte/yugabyte-db) is a high-performance, cloud-native distributed SQL database that aims to support all PostgreSQL features. It is a best fit for cloud-native OLTP (i.e. real-time, business-critical) applications that need absolute data correctness and require at least one of the following: scalability, high tolerance to failures, or globally-distributed deployments.
 [YugabyteDB Anywhere](https://www.yugabyte.com/anywhere/) is a control plane for managing YugabyteDB universes across hybrid and multi-cloud environments, and provides automation and orchestration capabilities.
 
-The YugabyteDB Anywhere Provider currently supports the following YugabyteDB Anywhere entities::
+The YugabyteDB Anywhere Provider currently supports the following YugabyteDB Anywhere entities:
 
 - Data Sources:
   - Backup Information (yba_backup_info)
-  - Preflight checks for Nodes used in On Premises Providers (yba_onprem_preflight)
+  - Preflight checks for Nodes used in on-premises Providers (yba_onprem_preflight)
   - Cloud Provider Access Key Information (yba_provider_key)
   - Available YBDB Release Versions (yba_release_version)
   - Storage Configuration Information (yba_storage_configs)
@@ -28,7 +28,7 @@ The YugabyteDB Anywhere Provider currently supports the following YugabyteDB Any
     - Azure
   - Customer (yba_customer_resource)
   - YugabyteDB Anywhere Installation via Replicated (yba_installation)
-  - On Premises Provider (yba_onprem_provider)
+  - On-Premises Provider (yba_onprem_provider)
   - YBDB Release Import (yba_releases)
   - Restores (yba_restore)
   - Storage Configuration (yba_storage_config_resource) referring to Backup Target Storage Configuration
@@ -36,11 +36,11 @@ The YugabyteDB Anywhere Provider currently supports the following YugabyteDB Any
 
 The provider needs to be configured with appropriate credentials before it can be used.
 
--> **Note:** The YugabyteDB Anywhere Terraform Provider is currently in Early Access and testing is currently in progress.
+-> **Note:** The YugabyteDB Anywhere Terraform Provider is currently in Early Access and testing is in progress.
 
 ~> **Note:** The YugabyteDB Anywhere Terraform provider supports YugabyteDB Anywhere version 2.17.3 and later.
 
-~> **Note:** Kubernetes and On-Prem universes are currently not supported.
+~> **Note:** Kubernetes universes are currently not supported.
 
 ## Example Usage
 
