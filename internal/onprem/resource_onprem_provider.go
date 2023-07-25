@@ -123,20 +123,22 @@ func resourceOnPremDiff() schema.CustomizeDiffFunc {
 					}
 					for i, n := range newRegions {
 						index := slices.Index(oldRegionsName, n.GetName())
-						o := oldRegions[index]
-						if (o.GetLatitude() == 0 || o.GetLatitude() == -90) &&
-							(n.GetLatitude() == 0 || n.GetLatitude() == -90) {
-							n.SetLatitude(0)
-							newRegions[i] = n
-							o.SetLatitude(0)
-							oldRegions[index] = o
-						}
-						if (o.GetLongitude() == 0 || o.GetLongitude() == -90) &&
-							(n.GetLongitude() == 0 || n.GetLongitude() == -90) {
-							n.SetLongitude(0)
-							newRegions[i] = n
-							o.SetLongitude(0)
-							oldRegions[index] = o
+						if index != -1 {
+							o := oldRegions[index]
+							if (o.GetLatitude() == 0 || o.GetLatitude() == -90) &&
+								(n.GetLatitude() == 0 || n.GetLatitude() == -90) {
+								n.SetLatitude(0)
+								newRegions[i] = n
+								o.SetLatitude(0)
+								oldRegions[index] = o
+							}
+							if (o.GetLongitude() == 0 || o.GetLongitude() == -90) &&
+								(n.GetLongitude() == 0 || n.GetLongitude() == -90) {
+								n.SetLongitude(0)
+								newRegions[i] = n
+								o.SetLongitude(0)
+								oldRegions[index] = o
+							}
 						}
 					}
 				}
