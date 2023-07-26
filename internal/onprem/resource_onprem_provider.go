@@ -264,6 +264,7 @@ func resourceOnPremProviderCreate(ctx context.Context, d *schema.ResourceData, m
 		return diag.FromErr(errMessage)
 	}
 	pUUID := *r.ResourceUUID
+	d.SetId(pUUID)
 
 	if r.TaskUUID != nil {
 		tflog.Debug(ctx, fmt.Sprintf("Waiting for on prem provider %s to be active", pUUID))
@@ -296,7 +297,6 @@ func resourceOnPremProviderCreate(ctx context.Context, d *schema.ResourceData, m
 		d.Set("node_instances", nodeInstancesList)
 	}
 
-	d.SetId(pUUID)
 	return resourceOnPremProviderRead(ctx, d, meta)
 }
 
