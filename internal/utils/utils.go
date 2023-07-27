@@ -34,14 +34,16 @@ import (
 	client "github.com/yugabyte/platform-go-client"
 )
 
-type ybaStructuredError struct {
+// YbaStructuredError is a structure mimicking YBPError, with error being an interface{}
+// to accomodate errors thrown as YBPStructuredError
+type YbaStructuredError struct {
 	// User-visible unstructured error message
 	Error *interface{} `json:"error,omitempty"`
 	// Method for HTTP call that resulted in this error
 	HTTPMethod *string `json:"httpMethod,omitempty"`
 	// URI for HTTP request that resulted in this error
 	RequestURI *string `json:"requestUri,omitempty"`
-	// Always set to false to indicate failure
+	// Mostly set to false to indicate failure
 	Success *bool `json:"success,omitempty"`
 }
 
@@ -186,7 +188,10 @@ func WaitForTask(ctx context.Context, tUUID string, cUUID string, c *client.APIC
 			subtasksFailure = fmt.Sprintln("Please refer to the YugabyteDB Anywhere Tasks",
 				"for description")
 		}
-		return fmt.Errorf("State: %s, %s", funcResponse.(string), subtasksFailure)
+		if subtasksFailure != "" {
+			return fmt.Errorf("State: %s, %s", funcResponse.(string), subtasksFailure)
+		}
+		return fmt.Errorf("State: %s", funcResponse.(string))
 	}
 
 	return nil
@@ -383,7 +388,7 @@ func ErrorFromHTTPResponse(resp *http.Response, apiError error, entity, entityNa
 		return errorTag
 	}
 	response := *resp
-	errorBlock := ybaStructuredError{}
+	errorBlock := YbaStructuredError{}
 	body, err := io.ReadAll(response.Body)
 	if err != nil {
 		return fmt.Errorf("%w: %s", errorTag, "Error reading HTTP Response body")
@@ -392,9 +397,15 @@ func ErrorFromHTTPResponse(resp *http.Response, apiError error, entity, entityNa
 		return fmt.Errorf("%w: %s %s", errorTag,
 			"Failed unmarshalling HTTP Response body", err.Error())
 	}
+	errorString := ErrorFromResponseBody(errorBlock)
+	return fmt.Errorf("%w: %s", errorTag, errorString)
+}
+
+// ErrorFromResponseBody is a function to extract error interfaces into string
+func ErrorFromResponseBody(errorBlock YbaStructuredError) string {
 	var errorString string
 	if reflect.TypeOf(*errorBlock.Error) == reflect.TypeOf(errorString) {
-		return fmt.Errorf("%w: %s", errorTag, (*errorBlock.Error).(string))
+		return (*errorBlock.Error).(string)
 	}
 
 	errorMap := (*errorBlock.Error).(map[string]interface{})
@@ -412,7 +423,7 @@ func ErrorFromHTTPResponse(resp *http.Response, apiError error, entity, entityNa
 		}
 
 	}
-	return fmt.Errorf("%w: %s", errorTag, errorString)
+	return errorString
 }
 
 // FileExist checks if file in the given path exists

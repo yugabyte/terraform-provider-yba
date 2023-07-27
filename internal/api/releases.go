@@ -24,7 +24,7 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/hashicorp/terraform-plugin-log/tflog"
+	"github.com/yugabyte/terraform-provider-yba/internal/utils"
 )
 
 // ReleaseResponse handles the resturn value of the releases endpoint
@@ -85,14 +85,28 @@ func (vc *VanillaClient) ReleaseImport(ctx context.Context, cUUID string, versio
 
 	r, err := vc.Client.Do(req)
 	if err != nil {
+		err = fmt.Errorf("Error occured during Post call for Import Release %s", err.Error())
 		return false, err
 	}
 
-	_, err = io.ReadAll(r.Body)
-
+	var body []byte
+	body, err = io.ReadAll(r.Body)
 	if err != nil {
-		tflog.Info(ctx, fmt.Sprint("ERROR: "+err.Error()))
+		err = fmt.Errorf("Error reading Import Release response body %s", err.Error())
 		return false, err
 	}
-	return true, nil
+
+	responseBody := utils.YbaStructuredError{}
+	if err = json.Unmarshal(body, &responseBody); err != nil {
+		return false, fmt.Errorf("%s %s",
+			"Failed unmarshalling Import Release Response body", err.Error())
+	}
+
+	if *responseBody.Success {
+		return true, nil
+	}
+
+	errorMessage := utils.ErrorFromResponseBody(responseBody)
+	return false, fmt.Errorf("Error importing release: %s", errorMessage)
+
 }
