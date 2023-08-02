@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
@@ -66,6 +67,13 @@ func ResourceStorageConfig() *schema.Resource {
 					[]string{"S3", "GCS", "AZ", "NFS"}, false)),
 				Description: "Name of config provider. Allowed values: S3, GCS, NFS, AZ",
 			},
+			"use_iam_instance_profile": {
+				Type:     schema.TypeBool,
+				Optional: true,
+				Default:  false,
+				Description: "Use IAM Role from the YugabyteDB Anywhere Host for S3. Storage configuration " +
+					"creation will fail on insufficient permissions on the host. Fasle by default.",
+			},
 			"data": {
 				Type:        schema.TypeMap,
 				Computed:    true,
@@ -97,20 +105,6 @@ func resourceStorageConfigDiff() schema.CustomizeDiffFunc {
 				if !isPresent {
 					return fmt.Errorf("%s%s", errorMessage, utils.GCPCredentialsEnv)
 				}
-			case "S3":
-				var errorString string
-				_, isPresentAccessKeyID := os.LookupEnv(utils.AWSAccessKeyEnv)
-				if !isPresentAccessKeyID {
-					errorString = fmt.Sprintf("%s%s ", errorString, utils.AWSAccessKeyEnv)
-				}
-				_, isPresentSecretAccessKey := os.LookupEnv(utils.AWSSecretAccessKeyEnv)
-				if !isPresentSecretAccessKey {
-					errorString = fmt.Sprintf("%s%s ", errorString, utils.AWSSecretAccessKeyEnv)
-				}
-				if !(isPresentAccessKeyID && isPresentSecretAccessKey) {
-					errorString = fmt.Sprintf("%s%s", errorMessage, errorString)
-					return fmt.Errorf(errorString)
-				}
 			case "AZ":
 				if _, isPresent := os.LookupEnv(utils.AzureStorageSasTokenEnv); !isPresent {
 					return fmt.Errorf("%s%s", errorMessage, utils.AzureStorageSasTokenEnv)
@@ -118,6 +112,60 @@ func resourceStorageConfigDiff() schema.CustomizeDiffFunc {
 			}
 			return nil
 		}),
+		customdiff.IfValue("use_iam_instance_profile",
+			func(ctx context.Context, value, meta interface{}) bool {
+				// check if use_iam_credentials is set for configs other than S3
+				return value.(bool)
+			},
+			func(ctx context.Context, d *schema.ResourceDiff, meta interface{}) error {
+
+				name := d.Get("name").(string)
+
+				// if not IAM AWS storage configuration, check for AWS credentials in env
+				// throw error for other storage config options
+				switch name {
+				case "GCS":
+					return fmt.Errorf("Cannot set use_iam_instance_profile " +
+						"for GCS storage configuration")
+				case "AZ":
+					return fmt.Errorf("Cannot set use_iam_instance_profile " +
+						"for AZ storage configuration")
+				case "NFS":
+					return fmt.Errorf("Cannot set use_iam_instance_profile " +
+						"for NFS storage configuration")
+				}
+
+				return nil
+			}),
+		customdiff.IfValue("use_iam_instance_profile",
+			func(ctx context.Context, value, meta interface{}) bool {
+				// check if S3 storage configuration creation requires access keys
+				return !value.(bool)
+			},
+			func(ctx context.Context, d *schema.ResourceDiff, meta interface{}) error {
+				var errorString string
+				errorMessage := "Empty env variable: "
+
+				name := d.Get("name").(string)
+
+				if name == "S3" {
+					_, isPresentAccessKeyID := os.LookupEnv(utils.AWSAccessKeyEnv)
+					if !isPresentAccessKeyID {
+						errorString = fmt.Sprintf("%s%s ", errorString, utils.AWSAccessKeyEnv)
+					}
+					_, isPresentSecretAccessKey := os.LookupEnv(utils.AWSSecretAccessKeyEnv)
+					if !isPresentSecretAccessKey {
+						errorString = fmt.Sprintf("%s%s ", errorString,
+							utils.AWSSecretAccessKeyEnv)
+					}
+					if !(isPresentAccessKeyID && isPresentSecretAccessKey) {
+						errorString = fmt.Sprintf("%s%s", errorMessage, errorString)
+						return fmt.Errorf(errorString)
+					}
+				}
+
+				return nil
+			}),
 	)
 }
 
@@ -131,16 +179,22 @@ func buildData(ctx context.Context, d *schema.ResourceData) (map[string]interfac
 		if err != nil {
 			return nil, err
 		}
-		data["GCS_CREDENTIALS_JSON"] = gcsCredString
+		data[utils.GCSCredentialsJSON] = gcsCredString
 	}
 
 	if d.Get("name").(string) == "S3" {
-		awsCreds, err := utils.AwsCredentialsFromEnv()
-		if err != nil {
-			return nil, err
+
+		isIAM := d.Get("use_iam_instance_profile").(bool)
+		if isIAM {
+			data["IAM_INSTANCE_PROFILE"] = strconv.FormatBool(isIAM)
+		} else {
+			awsCreds, err := utils.AwsCredentialsFromEnv()
+			if err != nil {
+				return nil, err
+			}
+			data[utils.AWSAccessKeyEnv] = awsCreds.AccessKeyID
+			data[utils.AWSSecretAccessKeyEnv] = awsCreds.SecretAccessKey
 		}
-		data[utils.AWSAccessKeyEnv] = awsCreds.AccessKeyID
-		data[utils.AWSSecretAccessKeyEnv] = awsCreds.SecretAccessKey
 	}
 	if d.Get("name").(string) == "AZ" {
 		azureCreds, err := utils.AzureStorageCredentialsFromEnv()

@@ -155,6 +155,13 @@ func ResourceCloudProvider() *schema.Resource {
 							Description: "Hosted Zone ID for AWS corresponsding to Amazon " +
 								"Route53.",
 						},
+						"use_iam_instance_profile": {
+							Type:     schema.TypeBool,
+							Optional: true,
+							Default:  false,
+							Description: "Use IAM Role from the YugabyteDB Anywhere Host. Provider " +
+								"creation will fail on insufficient permissions on the host. False by default.",
+						},
 					}},
 				ForceNew:    true,
 				Description: "Settings that can be configured for AWS.",
@@ -230,20 +237,6 @@ func resourceCloudProviderDiff() schema.CustomizeDiffFunc {
 				if !isPresent {
 					return fmt.Errorf("%s%s", errorMessage, utils.GCPCredentialsEnv)
 				}
-			case "aws":
-				var errorString string
-				_, isPresentAccessKeyID := os.LookupEnv(utils.AWSAccessKeyEnv)
-				if !isPresentAccessKeyID {
-					errorString = fmt.Sprintf("%s%s ", errorString, utils.AWSAccessKeyEnv)
-				}
-				_, isPresentSecretAccessKey := os.LookupEnv(utils.AWSSecretAccessKeyEnv)
-				if !isPresentSecretAccessKey {
-					errorString = fmt.Sprintf("%s%s ", errorString, utils.AWSSecretAccessKeyEnv)
-				}
-				if !(isPresentAccessKeyID && isPresentSecretAccessKey) {
-					errorString = fmt.Sprintf("%s%s", errorMessage, errorString)
-					return fmt.Errorf(errorString)
-				}
 			case "azu":
 				var errorString string
 				_, isPresentClientID := os.LookupEnv(utils.AzureClientIDEnv)
@@ -274,6 +267,38 @@ func resourceCloudProviderDiff() schema.CustomizeDiffFunc {
 			}
 			return nil
 		}),
+		customdiff.IfValue("code",
+			func(ctx context.Context, value, meta interface{}) bool {
+				// check if AWS cloud provider creation requires access keys
+				return value.(string) == "aws"
+			},
+			func(ctx context.Context, d *schema.ResourceDiff, meta interface{}) error {
+				var errorString string
+				errorMessage := "Empty env variable: "
+
+				var isIAM bool
+				if len(d.Get("aws_config_settings").([]interface{})) > 0 {
+					configSettings := utils.MapFromSingletonList(d.Get("aws_config_settings").([]interface{}))
+					isIAM = configSettings["use_iam_instance_profile"].(bool)
+				}
+
+				// if not IAM AWS cloud provider, check for credentials in env
+				if !isIAM {
+					_, isPresentAccessKeyID := os.LookupEnv(utils.AWSAccessKeyEnv)
+					if !isPresentAccessKeyID {
+						errorString = fmt.Sprintf("%s%s ", errorString, utils.AWSAccessKeyEnv)
+					}
+					_, isPresentSecretAccessKey := os.LookupEnv(utils.AWSSecretAccessKeyEnv)
+					if !isPresentSecretAccessKey {
+						errorString = fmt.Sprintf("%s%s ", errorString, utils.AWSSecretAccessKeyEnv)
+					}
+					if !(isPresentAccessKeyID && isPresentSecretAccessKey) {
+						errorString = fmt.Sprintf("%s%s", errorMessage, errorString)
+						return fmt.Errorf(errorString)
+					}
+				}
+				return nil
+			}),
 	)
 }
 
@@ -310,18 +335,23 @@ func buildConfig(d *schema.ResourceData) (map[string]interface{}, error) {
 			}
 		}
 	} else if cloudCode == "aws" {
-		awsCreds, err := utils.AwsCredentialsFromEnv()
-		if err != nil {
-			return nil, err
-		}
-		config[utils.AWSAccessKeyEnv] = awsCreds.AccessKeyID
-		config[utils.AWSSecretAccessKeyEnv] = awsCreds.SecretAccessKey
+		var isIAM bool
 		if len(d.Get("aws_config_settings").([]interface{})) > 0 {
 			configSettings := utils.MapFromSingletonList(d.Get("aws_config_settings").([]interface{}))
 			hostedZoneID := configSettings["hosted_zone_id"].(string)
 			if len(hostedZoneID) > 0 {
 				config["HOSTED_ZONE_ID"] = hostedZoneID
 			}
+			isIAM = configSettings["use_iam_instance_profile"].(bool)
+
+		}
+		if !isIAM {
+			awsCreds, err := utils.AwsCredentialsFromEnv()
+			if err != nil {
+				return nil, err
+			}
+			config[utils.AWSAccessKeyEnv] = awsCreds.AccessKeyID
+			config[utils.AWSSecretAccessKeyEnv] = awsCreds.SecretAccessKey
 		}
 	} else if cloudCode == "azu" {
 		azureCreds, err := utils.AzureCredentialsFromEnv()

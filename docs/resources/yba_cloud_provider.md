@@ -26,6 +26,8 @@ The following credentials are required as environment variables to configure the
 ||Client ID|`AZURE_CLIENT_ID`|
 ||Client Secret|`AZURE_CLIENT_SECRET`|
 
+-> **Note:** AWS Environment variables are not required for IAM based AWS cloud providers. Please set *aws_config_settings.use_iam_instance_profile* to use host IAM configuration for AWS cloud providers.
+
 ## Example Usage
 
 ```terraform
@@ -118,6 +120,8 @@ Read-Only:
 Optional:
 
 - **hosted_zone_id** (String) Hosted Zone ID for AWS corresponsding to Amazon Route53.
+- **use_iam_instance_profile** (Boolean) Use IAM Role from the YugabyteDB Anywhere Host. Provider creation will fail on insufficient permissions on the host. False by default.
+
 
 <a id="nestedblock--azure_config_settings"></a>
 

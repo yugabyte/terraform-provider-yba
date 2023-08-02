@@ -32,6 +32,8 @@ const (
 const (
 	// GCPCredentialsEnv env variable name for gcp provider/storage config/releases
 	GCPCredentialsEnv = "GOOGLE_APPLICATION_CREDENTIALS"
+	// GCSCredentialsJSON field name to denote in Json request
+	GCSCredentialsJSON = "GCS_CREDENTIALS_JSON"
 
 	// AWSAccessKeyEnv env variable name for aws provider/storage config/releases
 	AWSAccessKeyEnv = "AWS_ACCESS_KEY_ID"

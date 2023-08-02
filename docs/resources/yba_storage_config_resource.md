@@ -22,6 +22,8 @@ The following credentials are required as environment variables to configure the
 |[Azure](https://learn.microsoft.com/en-us/azure/developer/go/azure-sdk-authentication?tabs=bash)|||
 ||Azure Storage SAS Token|`AZURE_STORAGE_SAS_TOKEN`|
 
+-> **Note:** S3 Environment variables are not required for IAM based S3 storage configurations. Please set *use_iam_instance_profile* to use host IAM configuration for S3 storage configurations.
+
 ## Example Usage
 
 ```terraform
@@ -47,6 +49,7 @@ The details for configuration are available in the [YugabyteDB Anywhere Configur
 
 - **id** (String) The ID of this resource.
 - **timeouts** (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))
+- **use_iam_instance_profile** (Boolean) Use IAM Role from the YugabyteDB Anywhere Host for S3. Storage configuration creation will fail on insufficient permissions on the host. False by default.
 
 ### Read-Only
 
