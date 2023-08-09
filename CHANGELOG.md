@@ -1,3 +1,18 @@
+## v0.1.6 (August 2023)
+
+The following version of YugabyteDB Anywhere Terraform Provider includes support for the following:
+
+### Workflows
+
+- Import On premises provider into terraform configuration
+
+### Enhancements
+
+- Use YugabyteDB Anywhere host IAM credentials to create AWS cloud providers and S3 storage configurations
+- Restrict Schdeuled backups for YugabyteDB Anywhere versions == 2.19.0
+- Guide for onprem provider and universes
+- Provide error messages on task failures on the command line
+
 ## v0.1.5 (July 2023)
 
 The following version of YugabyteDB Anywhere Terraform Provider includes support for the following:
