@@ -27,8 +27,8 @@ import (
 	"github.com/yugabyte/terraform-provider-yba/internal/utils"
 )
 
-// PreflifghtCheck triggers preflight check for all nodes in an onprem provider
-func PreflifghtCheck() *schema.Resource {
+// PreflightCheck triggers preflight check for all nodes in an onprem provider
+func PreflightCheck() *schema.Resource {
 	return &schema.Resource{
 		Description: "Trigger pre-flight check for list of nodes of the onprem provider.",
 

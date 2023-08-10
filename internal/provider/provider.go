@@ -77,7 +77,8 @@ func New() *schema.Provider {
 			"yba_storage_configs":  backups.StorageConfigs(),
 			"yba_release_version":  releases.ReleaseVersion(),
 			"yba_backup_info":      backups.Lists(),
-			"yba_onprem_preflight": onprem.PreflifghtCheck(),
+			"yba_onprem_preflight": onprem.PreflightCheck(),
+			"yba_onprem_nodes":     onprem.NodeInstanceFilter(),
 		},
 		ResourcesMap: map[string]*schema.Resource{
 			"yba_installation":            installation.ResourceInstallation(),
