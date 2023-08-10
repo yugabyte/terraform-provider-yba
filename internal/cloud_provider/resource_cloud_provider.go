@@ -480,12 +480,20 @@ func resourceCloudProviderDelete(ctx context.Context, d *schema.ResourceData, me
 	cUUID := meta.(*api.APIClient).CustomerID
 
 	pUUID := d.Id()
-	_, response, err := c.CloudProvidersApi.Delete(ctx, cUUID, pUUID).Execute()
+	r, response, err := c.CloudProvidersApi.Delete(ctx, cUUID, pUUID).Execute()
 
 	if err != nil {
 		errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
 			"Cloud Provider", "Delete")
 		return diag.FromErr(errMessage)
+	}
+
+	if r.TaskUUID != nil {
+		tflog.Info(ctx, fmt.Sprintf("Waiting for provider %s to be deleted", d.Id()))
+		err = utils.WaitForTask(ctx, *r.TaskUUID, cUUID, c, d.Timeout(schema.TimeoutDelete))
+		if err != nil {
+			return diag.FromErr(err)
+		}
 	}
 
 	d.SetId("")

@@ -307,8 +307,8 @@ The following subcomponents are used:
 ## github.com/yugabyte/platform-go-client
 
 * Name: github.com/yugabyte/platform-go-client
-* Version: v0.0.0-20230513175746-dd238f2a46e8
-* License: [Apache-2.0](https://github.com/yugabyte/platform-go-client/blob/dd238f2a46e8/LICENSE)
+* Version: v0.0.0-20230810122221-e283fa78cb44
+* License: [Apache-2.0](https://github.com/yugabyte/platform-go-client/blob/e283fa78cb44/LICENSE)
 
 
 ## github.com/yugabyte/terraform-provider-yba
@@ -330,6 +330,13 @@ The following subcomponents are used:
 * Name: golang.org/x/crypto
 * Version: v0.0.0-20220315160706-3147a52a75dd
 * License: [BSD-3-Clause](https://cs.opensource.google/go/x/crypto/+/3147a52a:LICENSE)
+
+
+## golang.org/x/exp
+
+* Name: golang.org/x/exp
+* Version: v0.0.0-20230626212559-97b1e661b5df
+* License: [BSD-3-Clause](https://cs.opensource.google/go/x/exp/+/97b1e661:LICENSE)
 
 
 ## golang.org/x/net
