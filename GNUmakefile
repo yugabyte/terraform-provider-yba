@@ -11,7 +11,7 @@ fmtTf:
 # Generate documents
 .PHONY: documents
 documents:
-	go run github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs
+	go run github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs generate --rendered-provider-name 'YugabyteDB Anywhere' --provider-name yba
 # Run acceptance tests
 .PHONY: testacc
 testacc:

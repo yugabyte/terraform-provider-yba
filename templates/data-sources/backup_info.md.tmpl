@@ -1,0 +1,21 @@
+---
+page_title: "{{.Name}} {{.Type}} - {{.RenderedProviderName}}"
+description: |-
+{{ .Description | plainmarkdown | trimspace | prefixlines "  " }}
+---
+
+# {{.Name}} ({{.Type}})
+
+{{ .Description | trimspace }}
+
+~> **Note:** The YugabyteDB Anywhere Terraform provider supports fetching backups in YugabyteDB Anywhere version 2.18.1 and later.
+
+## Example Usage
+
+{{ tffile "examples/data-sources/yba_backup_info/data-source.tf" }}
+
+{{ .SchemaMarkdown | trimspace }}
+
+## Restricted YugabyteDB Anywhere Versions
+
+- 2.19.0.0

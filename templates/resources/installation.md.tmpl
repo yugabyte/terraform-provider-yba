@@ -1,0 +1,22 @@
+---
+page_title: "{{.Name}} {{.Type}} - {{.RenderedProviderName}}"
+description: |-
+{{ .Description | plainmarkdown | trimspace | prefixlines "  " }}
+---
+
+# {{.Name}} ({{.Type}})
+
+{{ .Description | trimspace }}
+
+## Example Usage
+
+{{ tffile "examples/resources/yba_installation/resource.tf" }}
+
+
+On the machine running terraform, ensure the following files are available:
+
+1. [replicated.conf](https://github.com/yugabyte/terraform-provider-yba/blob/main/modules/resources/replicated.conf): For configuration of replicated settings.
+1. [application_settings.conf](https://github.com/yugabyte/terraform-provider-yba/blob/main/modules/resources/application_settings.conf): YugabyteDB Anywhere application settings in Replicated console (it is recommended to have http enabled and https disabled for terraform workflow).
+1. A [Replicated license file for YugabyteDB Anywhere](https://docs.yugabyte.com/preview/yugabyte-platform/install-yugabyte-platform/install-software/default/#upload-the-license-file).
+
+{{ .SchemaMarkdown | trimspace }}

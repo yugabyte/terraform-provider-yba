@@ -1,0 +1,35 @@
+---
+page_title: "{{.Name}} {{.Type}} - {{.RenderedProviderName}}"
+description: |-
+{{ .Description | plainmarkdown | trimspace | prefixlines "  " }}
+---
+
+# {{.Name}} ({{.Type}})
+
+{{ .Description | trimspace }}
+
+## Example Usage
+
+{{ tffile "examples/resources/yba_universe/resource.tf" }}
+
+The details for configuration are available in the [YugabyteDB Anywhere Create YugabyteDB universe deployments](https://docs.yugabyte.com/preview/yugabyte-platform/create-deployments/) and [YugabyteDB Anywhere Manage YugabyteDB universe deployments](https://docs.yugabyte.com/preview/yugabyte-platform/manage-deployments/).
+
+~> **Disclaimer:** Please note that adding read replica clusters after universe creation currently not supported.
+
+~> **Disclaimer:** Please note that data move to a different *zone* is currently not supported.
+
+The following operations are supported in the Edit universe workflow:
+
+1. Software upgrades
+1. GFlags upgrades
+1. Upgrade to systemD
+1. Toggle TLS settings
+1. Editing cluster parameters
+    1. Instance type
+    1. Number of Nodes
+    1. Number of Volumes per instance
+    1. Volume Size
+    1. User Tags
+1. Delete read replicas (Adding read replica after universe creation currently not supported)
+
+{{ .SchemaMarkdown | trimspace }}
