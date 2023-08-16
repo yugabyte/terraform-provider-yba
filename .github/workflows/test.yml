@@ -14,7 +14,7 @@ jobs:
     timeout-minutes: 10
     steps:
     - name: Install zstd 
-      run : yum install -q -y zstd
+      run : sudo dnf install zstd
 
     - name: Check out code into the Go module directory
       uses: actions/checkout@v3.5.2
