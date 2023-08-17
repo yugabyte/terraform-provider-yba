@@ -44,7 +44,8 @@ module "gcp_yb_anywhere" {
 }
 
 output "host" {
-  value = module.gcp_yb_anywhere.public_ip
+  value     = module.gcp_yb_anywhere.public_ip
+  sensitive = true
 }
 
 provider "yba" {
@@ -70,5 +71,6 @@ resource "yba_customer_resource" "customer" {
 }
 
 output "api_key" {
-  value = yba_customer_resource.customer.api_token
+  value     = yba_customer_resource.customer.api_token
+  sensitive = true
 }

@@ -75,6 +75,7 @@ func ResourceCustomer() *schema.Resource {
 				Computed:    true,
 				Optional:    true,
 				ForceNew:    true,
+				Sensitive: 	 true,
 				Description: "API token for the customer.",
 			},
 			"cuuid": {

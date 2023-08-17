@@ -117,14 +117,16 @@ func ResourceInstallation() *schema.Resource {
 				Description: "Private ip of the existing virtual machine.",
 			},
 			"ssh_host_ip": {
-				Type:     schema.TypeString,
-				Required: true,
+				Type:      schema.TypeString,
+				Required:  true,
+				Sensitive: true,
 				Description: "IP address of VM for SSH. Typically same as public_ip or " +
 					"private_ip.",
 			},
 			"ssh_private_key": {
-				Type:     schema.TypeString,
-				Required: true,
+				Type:      schema.TypeString,
+				Required:  true,
+				Sensitive: true,
 				Description: "Contents of file containing the private key to use for ssh " +
 					"commands.",
 			},
@@ -256,8 +258,8 @@ func runCommand(ctx context.Context, client *ssh.Client, cmd string) (string, er
 	return c.String(), err
 }
 
-func scpFile(ctx context.Context, sshClient *ssh.Client, localFile string, remoteFile string) (
-	error) {
+func scpFile(ctx context.Context, sshClient *ssh.Client, localFile string,
+	remoteFile string) error {
 	tflog.Info(ctx, fmt.Sprintf("Copying local file %s to remote host under filename %s", localFile,
 		remoteFile))
 
