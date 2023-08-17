@@ -21,6 +21,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 )
 
+// PackagePathsSchema is used to hold the path and checksum to the YBDB x86_64 package path
 func PackagePathsSchema() *schema.Resource {
 	return &schema.Resource{
 		Schema: map[string]*schema.Schema{
@@ -28,12 +29,12 @@ func PackagePathsSchema() *schema.Resource {
 				Type:        schema.TypeString,
 				Required:    true,
 				ForceNew:    true,
-				Description: "Path to x86_64 package",
+				Description: "Path to x86_64 package.",
 			},
 			"x86_64_checksum": {
 				Type:        schema.TypeString,
 				Optional:    true,
-				Description: "Checksum for x86_64 package",
+				Description: "Checksum for x86_64 package.",
 			},
 		},
 	}

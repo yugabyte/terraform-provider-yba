@@ -27,5 +27,5 @@ data "yba_onprem_preflight" "preflight_check" {
 
 ### Optional
 
-- **id** (String) The ID of this resource.
+- **id** (String) Marked with "Success" if all pre-flight checks pass.
 - **nodes** (List of String) Preflight checks will be triggered for nodes listed. If empty, check is triggered for all nodes not in use in a universe.

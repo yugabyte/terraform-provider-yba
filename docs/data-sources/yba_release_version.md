@@ -3,7 +3,7 @@
 page_title: "yba_release_version Data Source - terraform-provider-yba"
 subcategory: ""
 description: |-
-  Retrieve release version
+  Retrieve release version.
 ---
 
 # yba_release_version (Data Source)
@@ -28,7 +28,7 @@ data "yba_release_version" "release_version_x" {
 
 ### Optional
 
-- **id** (String) The ID of this resource.
+- **id** (String) Same as selected_version.
 - **version** (String) Release version given by user.
 
 ### Read-Only

@@ -3,7 +3,7 @@
 page_title: "yba_restore Resource - terraform-provider-yba"
 subcategory: ""
 description: |-
-  Restoring backups for universe
+  Restoring backups for universe. This resource does not track the remote state and is only provided as a convenience tool. It is recommended to remove this resource after running terraform apply.
 ---
 
 # yba_restore (Resource)
@@ -39,7 +39,7 @@ The details for configuration are available in the [YugabyteDB Anywhere Restore 
 
 ### Optional
 
-- **id** (String) The ID of this resource.
+- **id** (String) Target keyspace name.
 - **keyspace** (String) Target keyspace name.
 - **parallelism** (Number) Number of concurrent commands to run on nodes over SSH.
 - **sse** (Boolean) Is SSE.

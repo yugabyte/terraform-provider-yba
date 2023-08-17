@@ -27,7 +27,7 @@ import (
 // StorageConfigs lists the customer configured Storage configs used in Backups
 func StorageConfigs() *schema.Resource {
 	return &schema.Resource{
-		Description: "Retrieve list of storage configs",
+		Description: "Retrieve list of storage configurations.",
 
 		ReadContext: dataSourceStorageConfigsRead,
 
@@ -41,8 +41,8 @@ func StorageConfigs() *schema.Resource {
 			"config_name": {
 				Type:     schema.TypeString,
 				Optional: true,
-				Description: "Config name will accept the storage config to be used by the user. The " +
-					"selected UUID will be stored in the ID",
+				Description: "Accepts name of the storage configuration. The corresponding " +
+					"storage config UUID is stored in ID to be used in *yba_backups* resource.",
 			},
 		},
 	}

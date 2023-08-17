@@ -3,7 +3,7 @@
 page_title: "yba_provider_key Data Source - terraform-provider-yba"
 subcategory: ""
 description: |-
-  Retrieve provider access key
+  Retrieve provider (cloud and onprem) access key.
 ---
 
 # yba_provider_key (Data Source)
@@ -27,4 +27,4 @@ data "yba_provider_key" "cloud_key" {
 
 ### Optional
 
-- **id** (String) The ID of this resource.
+- **id** (String) Access key UUID.

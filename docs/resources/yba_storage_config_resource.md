@@ -3,13 +3,12 @@
 page_title: "yba_storage_config_resource Resource - terraform-provider-yba"
 subcategory: ""
 description: |-
-  Create Storage Configurations
+  Create Storage configurations.
 ---
 
 # yba_storage_config_resource (Resource)
 
-Create Storage Configurations.
-
+Create Storage configurations.
 The following credentials are required as environment variables to configure the corresponding Backup storage configurations:
 
 |Cloud Provider|Setting|Environment Variable|
@@ -47,7 +46,7 @@ The details for configuration are available in the [YugabyteDB Anywhere Configur
 
 ### Optional
 
-- **id** (String) The ID of this resource.
+- **id** (String) Storage configuration UUID.
 - **timeouts** (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))
 - **use_iam_instance_profile** (Boolean) Use IAM Role from the YugabyteDB Anywhere Host for S3. Storage configuration creation will fail on insufficient permissions on the host. False by default.
 

@@ -3,7 +3,7 @@
 page_title: "yba_customer_resource Resource - terraform-provider-yba"
 subcategory: ""
 description: |-
-  Customer Resource
+  Customer Resource.
 ---
 
 # yba_customer_resource (Resource)
@@ -45,7 +45,7 @@ resource "yba_customer_resource" "customer" {
 ### Optional
 
 - **api_token** (String) API token for the customer.
-- **id** (String) The ID of this resource.
+- **id** (String) Customer UUID.
 - **timeouts** (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))
 
 ### Read-Only

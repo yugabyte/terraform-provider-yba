@@ -3,7 +3,7 @@
 page_title: "yba_storage_configs Data Source - terraform-provider-yba"
 subcategory: ""
 description: |-
-  Retrieve list of storage configurations
+  Retrieve list of storage configurations.
 ---
 
 # yba_storage_configs (Data Source)

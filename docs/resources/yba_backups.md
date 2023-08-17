@@ -3,7 +3,7 @@
 page_title: "yba_backups Resource - terraform-provider-yba"
 subcategory: ""
 description: |-
-  Scheduled Backups for universe
+  Scheduled Backups for universe.
 ---
 
 # yba_backups (Resource)
@@ -56,8 +56,8 @@ The details for configuration are available in the [YugabyteDB Anywhere Schedule
 - **cron_expression** (String) A cron expression to use.
 - **delete_backup** (Boolean) Delete backup while deleting schedule. False by default.
 - **frequency** (String) Frequency to run the backup.  Accepts string duration in the standard format <https://pkg.go.dev/time#Duration>.
-- **id** (String) The ID of this resource.
-- **incremental_backup_frequency** (String) Frequency to take incremental backups.  Accepts string duration in the standard format <https://pkg.go.dev/time#Duration>.
+- **id** (String) Backup Schedule UUID.
+- **incremental_backup_frequency** (String) Frequency to take incremental backups. Accepts string duration in the standard format <https://pkg.go.dev/time#Duration>.
 - **keyspace** (String) Keyspace to backup.
 - **parallelism** (Number) Number of concurrent commands to run on nodes over SSH.
 - **sse** (Boolean) Is SSE.

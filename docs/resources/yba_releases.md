@@ -3,7 +3,7 @@
 page_title: "yba_releases Resource - terraform-provider-yba"
 subcategory: ""
 description: |-
-  YBDB Release Version Import Resource
+  YBDB Release Version Import Resource.
 ---
 
 # yba_releases (Resource)
@@ -59,21 +59,21 @@ The details for configuration are available in the [YugabyteDB Anywhere Upgrade 
 
 ### Required
 
-- **version** (String) Version name of the Package
+- **version** (String) Version name of the Package.
 
 ### Optional
 
 - **chart_path** (String) File path where the release helm chart is stored.
 - **file_path** (String) File path where the release binary is stored.
-- **gcs** (Block List, Max: 1) Location of release binary in GCS (see [below for nested schema](#nestedblock--gcs)).
-- **http** (Block List, Max: 1) Location of release binary in HTTP (see [below for nested schema](#nestedblock--http)).
-- **id** (String) The ID of this resource.
+- **gcs** (Block List, Max: 1) Location of release binary in GCS. (see [below for nested schema](#nestedblock--gcs))
+- **http** (Block List, Max: 1) Location of release binary in HTTP. (see [below for nested schema](#nestedblock--http))
+- **id** (String) Imprted release version.
 - **image_tag** (String) Docker Image Tag for the release.
 - **notes** (List of String) Release Notes.
-- **packages** (Block List) (see [below for nested schema](#nestedblock--packages)).
-- **s3** (Block List, Max: 1) Location of release binary in S3 (see [below for nested schema](#nestedblock--s3)).
+- **packages** (Block List) Package path and architecture. (see [below for nested schema](#nestedblock--packages))
+- **s3** (Block List, Max: 1) Location of release binary in S3. (see [below for nested schema](#nestedblock--s3))
 - **state** (String) State of Release.
-- **timeouts** (Block, Optional) (see [below for nested schema](#nestedblock--timeouts)).
+- **timeouts** (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))
 
 <a id="nestedblock--gcs"></a>
 
@@ -81,7 +81,7 @@ The details for configuration are available in the [YugabyteDB Anywhere Upgrade 
 
 Required:
 
-- **paths** (Block List, Min: 1, Max: 1) Package path and checksum (see [below for nested schema](#nestedblock--gcs--paths)).
+- **paths** (Block List, Min: 1, Max: 1) Package path and checksum. (see [below for nested schema](#nestedblock--gcs--paths))
 
 Read-Only:
 
@@ -105,7 +105,7 @@ Optional:
 
 Required:
 
-- **paths** (Block List, Min: 1, Max: 1) Package path and checksum (see [below for nested schema](#nestedblock--http--paths)).
+- **paths** (Block List, Min: 1, Max: 1) Package path and checksum. (see [below for nested schema](#nestedblock--http--paths))
 
 <a id="nestedblock--http--paths"></a>
 
@@ -134,7 +134,7 @@ Optional:
 
 Required:
 
-- **paths** (Block List, Min: 1, Max: 1) Package path and checksum (see [below for nested schema](#nestedblock--s3--paths)).
+- **paths** (Block List, Min: 1, Max: 1) Package path and checksum. (see [below for nested schema](#nestedblock--s3--paths))
 
 Read-Only:
 

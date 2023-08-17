@@ -29,14 +29,14 @@ func GcsSchema() *schema.Resource {
 			"credentials_json": {
 				Type:        schema.TypeString,
 				Computed:    true,
-				Description: "GCS Credentials in from json file",
+				Description: "GCS Credentials in from json file.",
 			},
 			"paths": {
 				Type:        schema.TypeList,
 				MaxItems:    1,
 				Required:    true,
 				Elem:        PackagePathsSchema(),
-				Description: "Package path and checksum",
+				Description: "Package path and checksum.",
 			},
 		},
 	}
@@ -64,10 +64,10 @@ func formatOutputGcs(ctx context.Context, gcs map[string]interface{}) []map[stri
 	gcs["credentials_json"] = gcs["credentialsJson"]
 	delete(gcs, "credentialsJson")
 	mapSlice := []map[string]interface{}{}
-	paths_formatted := formatOutputPaths(ctx, gcs["paths"].(map[string]interface{}))
-	gcs["paths"] = append(mapSlice, paths_formatted)
+	pathsFormatted := formatOutputPaths(ctx, gcs["paths"].(map[string]interface{}))
+	gcs["paths"] = append(mapSlice, pathsFormatted)
 
-	gcs_formatted := []map[string]interface{}{}
-	gcs_formatted = append(gcs_formatted, gcs)
-	return gcs_formatted
+	gcsFormatted := []map[string]interface{}{}
+	gcsFormatted = append(gcsFormatted, gcs)
+	return gcsFormatted
 }

@@ -87,7 +87,7 @@ func ResourceInstallation() *schema.Resource {
 		Description: "Manages the installation of YugabyteDB Anywhere on an existing virtual" +
 			" machine. This resource does not track the remote state and is only provided as a " +
 			"convenience tool. To reinstall, taint this resource and re-apply. To see remote output," +
-			" run with TF_LOG=INFO",
+			" run with TF_LOG=INFO.",
 
 		CreateContext: resourceInstallationCreate,
 		ReadContext:   resourceInstallationRead,
@@ -109,12 +109,12 @@ func ResourceInstallation() *schema.Resource {
 			"public_ip": {
 				Type:        schema.TypeString,
 				Required:    true,
-				Description: "Public ip of the existing virtual machine",
+				Description: "Public ip of the existing virtual machine.",
 			},
 			"private_ip": {
 				Type:        schema.TypeString,
 				Required:    true,
-				Description: "Private ip of the existing virtual machine",
+				Description: "Private ip of the existing virtual machine.",
 			},
 			"ssh_host_ip": {
 				Type:     schema.TypeString,
@@ -126,41 +126,41 @@ func ResourceInstallation() *schema.Resource {
 				Type:     schema.TypeString,
 				Required: true,
 				Description: "Contents of file containing the private key to use for ssh " +
-					"commands",
+					"commands.",
 			},
 			"ssh_user": {
 				Type:        schema.TypeString,
 				Required:    true,
-				Description: "User to use for ssh commands",
+				Description: "User to use for ssh commands.",
 			},
 			"replicated_config_file": {
 				Type:     schema.TypeString,
 				Required: true,
 				Description: "Configuration file to use for automated installation using " +
-					"Replicated",
+					"Replicated.",
 			},
 			"tls_certificate_file": {
 				Type:         schema.TypeString,
 				Optional:     true,
 				RequiredWith: []string{"tls_key_file"},
-				Description:  "TLS certificate used to configure HTTPS",
+				Description:  "TLS certificate used to configure HTTPS.",
 			},
 			"tls_key_file": {
 				Type:         schema.TypeString,
 				Optional:     true,
 				RequiredWith: []string{"tls_certificate_file"},
-				Description:  "TLS key used to configure HTTPS",
+				Description:  "TLS key used to configure HTTPS.",
 			},
 			"replicated_license_file": {
 				Type:     schema.TypeString,
 				Required: true,
 				Description: "YugabyteDB Anywhere license file used for installation using " +
-					"Replicated",
+					"Replicated.",
 			},
 			"application_settings_file": {
 				Type:        schema.TypeString,
 				Required:    true,
-				Description: "Application settings file to configure YugabyteDB Anywhere",
+				Description: "Application settings file to configure YugabyteDB Anywhere.",
 			},
 			"cleanup": {
 				Type:     schema.TypeBool,

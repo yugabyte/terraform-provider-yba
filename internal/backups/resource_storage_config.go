@@ -35,11 +35,7 @@ import (
 // ResourceStorageConfig defines the schema to maintain the storage config resources
 func ResourceStorageConfig() *schema.Resource {
 	return &schema.Resource{
-		Description: "Create Storage Configurations" +
-			"\nRequires AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY env variables to be set for" +
-			" S3 storage config." +
-			"\nRequires GOOGLE_APPLICATION_CREDENTIALS env variable for GCS storage config" +
-			"\nRequires AZURE_STORAGE_SAS_TOKEN env variable for Azure storage config",
+		Description: "Create Storage configurations.",
 
 		CreateContext: resourceStorageConfigCreate,
 		ReadContext:   resourceStorageConfigRead,
@@ -65,30 +61,31 @@ func ResourceStorageConfig() *schema.Resource {
 				ForceNew: true,
 				ValidateDiagFunc: validation.ToDiagFunc(validation.StringInSlice(
 					[]string{"S3", "GCS", "AZ", "NFS"}, false)),
-				Description: "Name of config provider. Allowed values: S3, GCS, NFS, AZ",
+				Description: "Name of config provider. Allowed values: S3, GCS, NFS, AZ.",
 			},
 			"use_iam_instance_profile": {
 				Type:     schema.TypeBool,
 				Optional: true,
 				Default:  false,
-				Description: "Use IAM Role from the YugabyteDB Anywhere Host for S3. Storage configuration " +
-					"creation will fail on insufficient permissions on the host. Fasle by default.",
+				Description: "Use IAM Role from the YugabyteDB Anywhere Host for S3. " +
+					"Storage configuration creation will fail on insufficient permissions on " +
+					"the host. False by default.",
 			},
 			"data": {
 				Type:        schema.TypeMap,
 				Computed:    true,
-				Description: "Location and Credentials",
+				Description: "Location and Credentials.",
 			},
 			"backup_location": {
 				Type:        schema.TypeString,
 				Required:    true,
 				ForceNew:    true,
-				Description: "Backup Location",
+				Description: "Backup Location.",
 			},
 			"config_name": {
 				Type:        schema.TypeString,
 				Required:    true,
-				Description: "Name of the Storage Configuration",
+				Description: "Name of the Storage Configuration.",
 			},
 		},
 	}

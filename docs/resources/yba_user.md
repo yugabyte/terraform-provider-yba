@@ -3,7 +3,7 @@
 page_title: "yba_user Resource - terraform-provider-yba"
 subcategory: ""
 description: |-
-  User Resource
+  User Resource.
 ---
 
 # yba_user (Resource)
@@ -22,12 +22,12 @@ User Resource.
 ### Optional
 
 - **features** (Map of String) Features of a user, json format.
-- **id** (String) The ID of this resource.
+- **id** (String) User UUID.
 - **timeouts** (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))
 
 ### Read-Only
 
-- **is_primary** (Boolean) Flag indicating if this is the primary user for the customer
+- **is_primary** (Boolean) Flag indicating if this is the primary user for the customer.
 
 <a id="nestedblock--timeouts"></a>
 

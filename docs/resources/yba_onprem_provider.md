@@ -83,7 +83,7 @@ If the user wishes to manually provision the nodes to be used in universe creati
 
 ### Optional
 
-- **id** (String) The ID of this resource.
+- **id** (String) On premises provider UUID.
 - **instance_types** (Block List) Describe the instance types for the provider. (see [below for nested schema](#nestedblock--instance_types))
 - **node_instances** (Block List) Node instances associated with the provider. (see [below for nested schema](#nestedblock--node_instances))
 - **timeouts** (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))

@@ -19,25 +19,27 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 )
 
+// PackageSchema is used to hold the package path and corresponding architecture
 func PackageSchema() *schema.Schema {
 	return &schema.Schema{
 		Type:     schema.TypeList,
 		ForceNew: true,
 		Optional: true,
 		Computed: true,
+		Description: "Package path and architecture.",
 		Elem: &schema.Resource{
 			Schema: map[string]*schema.Schema{
 				"path": {
 					Type:        schema.TypeString,
 					Computed:    true,
 					Optional:    true,
-					Description: "Path",
+					Description: "Path.",
 				},
 				"arch": {
 					Type:        schema.TypeString,
 					Computed:    true,
 					Optional:    true,
-					Description: "Architecture",
+					Description: "Architecture.",
 				},
 			},
 		},

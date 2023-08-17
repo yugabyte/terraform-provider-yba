@@ -34,8 +34,7 @@ import (
 // ResourceCustomer creates and maintains resource for customer
 func ResourceCustomer() *schema.Resource {
 	return &schema.Resource{
-		Description: "Customer Resource." +
-			"\nRequires YB_CUSTOMER_PASSWORD env variable to be set before creation",
+		Description: "Customer Resource.",
 
 		CreateContext: resourceCustomerCreate,
 		ReadContext:   resourceCustomerRead,
@@ -57,7 +56,7 @@ func ResourceCustomer() *schema.Resource {
 				Type:        schema.TypeString,
 				Required:    true,
 				ForceNew:    true,
-				Description: "Label for the user (i.e. admin)",
+				Description: "Label for the user (i.e. admin).",
 			},
 			"email": {
 				Type:        schema.TypeString,
@@ -82,7 +81,7 @@ func ResourceCustomer() *schema.Resource {
 				Type:        schema.TypeString,
 				Computed:    true,
 				ForceNew:    true,
-				Description: "Customer UUID",
+				Description: "Customer UUID.",
 			},
 		},
 	}

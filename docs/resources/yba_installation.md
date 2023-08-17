@@ -3,7 +3,7 @@
 page_title: "yba_installation Resource - terraform-provider-yba"
 subcategory: ""
 description: |-
-  Manages the installation of YugabyteDB Anywhere on an existing virtual machine.
+  Manages the installation of YugabyteDB Anywhere on an existing virtual machine. This resource does not track the remote state and is only provided as a convenience tool. To reinstall, taint this resource and re-apply. To see remote output, run with TF_LOG=INFO.
 ---
 
 # yba_installation (Resource)
@@ -54,8 +54,8 @@ On the machine running terraform, ensure the following files are available:
 ### Optional
 
 - **cleanup** (Boolean) Flag for indicating if resources should be cleaned up during the uninstall. Set this to true if you plan to reuse the virtual machine.
-- **id** (String) The ID of this resource.
-- **timeouts** (Block, Optional) (see [below for nested schema](#nestedblock--timeouts)).
+- **id** (String) The ID to track installation resource.
+- **timeouts** (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))
 - **tls_certificate_file** (String) TLS certificate used to configure HTTPS.
 - **tls_key_file** (String) TLS key used to configure HTTPS.
 

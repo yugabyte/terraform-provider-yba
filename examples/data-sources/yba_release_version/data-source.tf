@@ -3,6 +3,6 @@ data "yba_release_version" "release_version" {
 }
 
 data "yba_release_version" "release_version_x" {
-  // To fetch particular version
-  version = "<YBDB-version-x>"
+  // Retrieve a list of YBDB versions corresponding to the pattern string.
+  version = "<YBDB-version-string-to-be-matched>"
 }

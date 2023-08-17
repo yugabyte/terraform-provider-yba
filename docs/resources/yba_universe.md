@@ -71,7 +71,7 @@ The following operations are supported in the Edit universe workflow:
 - **client_root_ca** (String) The UUID of the clientRootCA to be used to generate client certificates and facilitate TLS communication between server and client.
 - **communication_ports** (Block List, Max: 1) Communication ports. (see [below for nested schema](#nestedblock--communication_ports))
 - **delete_options** (Block List, Max: 1) (see [below for nested schema](#nestedblock--delete_options))
-- **id** (String) The ID of this resource.
+- **id** (String) Universe UUID.
 - **timeouts** (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))
 
 <a id="nestedblock--clusters"></a>

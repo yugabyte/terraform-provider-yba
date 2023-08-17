@@ -30,7 +30,7 @@ import (
 // https://yugabyte.atlassian.net/browse/PLAT-3305
 func ResourceUser() *schema.Resource {
 	return &schema.Resource{
-		Description: "User Resource",
+		Description: "User Resource.",
 
 		CreateContext: resourceUserCreate,
 		ReadContext:   resourceUserRead,
@@ -65,19 +65,19 @@ func ResourceUser() *schema.Resource {
 				Type:     schema.TypeString,
 				Required: true,
 				Description: "User role. Permitted values: Admin, ReadOnly, SuperAdmin, " +
-					"BackupAdmin",
+					"BackupAdmin.",
 			},
 			"features": {
 				Type:        schema.TypeMap,
 				Elem:        &schema.Schema{Type: schema.TypeString},
 				Optional:    true,
 				ForceNew:    true,
-				Description: "Features of a user, json format",
+				Description: "Features of a user, json format.",
 			},
 			"is_primary": {
 				Type:        schema.TypeBool,
 				Computed:    true,
-				Description: "Flag indicating if this is the primary user for the customer",
+				Description: "Flag indicating if this is the primary user for the customer.",
 			},
 		},
 	}

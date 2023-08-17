@@ -3,7 +3,7 @@
 page_title: "yba_backup_info Data Source - terraform-provider-yba"
 subcategory: ""
 description: |-
-  Retrieve list of backups
+  Retrieve list of backups.
 ---
 
 # yba_backup_info (Data Source)
@@ -25,8 +25,8 @@ data "yba_backup_info" "backup" {
 
 ### Optional
 
-- **date_range_start** (String) Start date of range in which to fetch backups, in RFC3339 format.
 - **date_range_end** (String) End date of range in which to fetch backups, in RFC3339 format.
+- **date_range_start** (String) Start date of range in which to fetch backups, in RFC3339 format.
 - **id** (String) The ID of the latest backup in the universe.
 - **universe_name** (String) The name of the universe whose latest backup you want to fetch.
 - **universe_uuid** (String) The UUID of the universe whose latest backup you want to fetch.

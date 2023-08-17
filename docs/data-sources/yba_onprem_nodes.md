@@ -19,7 +19,7 @@ Filter list of nodes handled in the onprem provider.
 
 ### Optional
 
-- **id** (String) The ID of this resource.
+- **id** (String) On premises provider UUID.
 - **in_use** (Boolean) Nodes of the on premises provider used in a universe.
 - **instance_name** (String) Nodes with instance names containing given filter string.
 - **instance_type** (String) Nodes with instance types containing given filter string.

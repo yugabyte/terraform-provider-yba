@@ -3,7 +3,7 @@
 page_title: "yba_cloud_provider Resource - terraform-provider-yba"
 subcategory: ""
 description: |-
-  Cloud Provider Resource
+  Cloud Provider Resource.
 ---
 
 # yba_cloud_provider (Resource)
@@ -64,7 +64,7 @@ The details for configuration are available in the [YugabyteDB Anywhere Configur
 - **gcp_config_settings** (Block List, Max: 1) Settings that can be configured for GCP. (see [below for nested schema](#nestedblock--gcp_config_settings))
 - **host_vpc_id** (String) Host VPC Network.
 - **host_vpc_region** (String) Host VPC Region.
-- **id** (String) The ID of this resource.
+- **id** (String) Cloud provider UUID.
 - **key_pair_name** (String) Access Key Pair name.
 - **ssh_port** (Number) Port to use for ssh commands.
 - **ssh_private_key_content** (String) Private key to use for ssh commands.
@@ -121,7 +121,6 @@ Optional:
 
 - **hosted_zone_id** (String) Hosted Zone ID for AWS corresponsding to Amazon Route53.
 - **use_iam_instance_profile** (Boolean) Use IAM Role from the YugabyteDB Anywhere Host. Provider creation will fail on insufficient permissions on the host. False by default.
-
 
 <a id="nestedblock--azure_config_settings"></a>
 

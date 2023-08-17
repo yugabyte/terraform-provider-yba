@@ -27,7 +27,7 @@ import (
 // ProviderKey keeps track of the access key of the provider
 func ProviderKey() *schema.Resource {
 	return &schema.Resource{
-		Description: "Retrieve cloud provider access key",
+		Description: "Retrieve provider (cloud and onprem) access key.",
 
 		ReadContext: dataSourceProviderKeyRead,
 
@@ -35,7 +35,7 @@ func ProviderKey() *schema.Resource {
 			"provider_id": {
 				Type:        schema.TypeString,
 				Required:    true,
-				Description: "UUID of the provider",
+				Description: "UUID of the provider.",
 			},
 		},
 	}
