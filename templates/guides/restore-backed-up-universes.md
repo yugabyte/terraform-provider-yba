@@ -31,4 +31,3 @@ resource "yba_restore" "restore_ysql" {
 ```
 
 To fetch backups for a specific date range, specify the *date_range_start* and *date_range_end* in RFC3339 format. The most recent backup in the range is selected and stored in the ID of the data source.
-

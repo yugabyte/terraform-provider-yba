@@ -38,4 +38,3 @@ data "yba_backup_info" "backup" {
 ## Restricted YugabyteDB Anywhere Versions
 
 - 2.19.0.0
-

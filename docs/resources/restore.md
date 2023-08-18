@@ -57,4 +57,3 @@ Optional:
 ## Restricted YugabyteDB Anywhere Versions
 
 - 2.19.0.0
-

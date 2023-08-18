@@ -55,4 +55,3 @@ Read-Only:
 
 - `type` (String)
 - `value` (String)
-

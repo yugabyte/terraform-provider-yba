@@ -65,5 +65,3 @@ Customer can be imported using `customer uuid`:
 ```sh
 terraform import yba_customer_resource.customer <customer-uuid>
 ```
-
-

@@ -30,4 +30,3 @@ data "yba_onprem_preflight" "preflight_check" {
 ### Read-Only
 
 - `id` (String) The ID of this resource.
-

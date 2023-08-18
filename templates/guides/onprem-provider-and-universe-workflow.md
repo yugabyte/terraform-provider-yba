@@ -133,4 +133,3 @@ resource "yba_universe" "onprem_universe" {
 
 - 400 Bad Request: Couldn't find *number* nodes of type *instance_type*: Number of nodes of specified instance type is not available via the defined onprem provider.
 - 500 Internal Server Error: No AZ found across regions: [*region uuid*]: Instance type may be unavailable for defined region and availability zones for the provider.
-

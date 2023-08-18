@@ -87,4 +87,3 @@ Backup schedules can be imported using `backup schedule uuid`:
 ```sh
 terraform import yba_backups.universe_backup_schedule <backup-schedule-uuid>
 ```
-
