@@ -1,18 +1,12 @@
 ---
 page_title: "yba_storage_config_resource Resource - YugabyteDB Anywhere"
 description: |-
-  Create Storage Configurations
-  Requires AWSACCESSKEYID, AWSSECRETACCESSKEY env variables to be set for S3 storage config.
-  Requires GOOGLEAPPLICATIONCREDENTIALS env variable for GCS storage config
-  Requires AZURESTORAGESAS_TOKEN env variable for Azure storage config
+  Create Storage configurations.
 ---
 
 # yba_storage_config_resource (Resource)
 
-Create Storage Configurations
-Requires AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY env variables to be set for S3 storage config.
-Requires GOOGLE_APPLICATION_CREDENTIALS env variable for GCS storage config
-Requires AZURE_STORAGE_SAS_TOKEN env variable for Azure storage config
+Create Storage configurations.
 
 The following credentials are required as environment variables to configure the corresponding Backup storage configurations:
 
@@ -45,18 +39,18 @@ The details for configuration are available in the [YugabyteDB Anywhere Configur
 
 ### Required
 
-- `backup_location` (String) Backup Location
-- `config_name` (String) Name of the Storage Configuration
-- `name` (String) Name of config provider. Allowed values: S3, GCS, NFS, AZ
+- `backup_location` (String) Backup Location.
+- `config_name` (String) Name of the Storage Configuration.
+- `name` (String) Name of config provider. Allowed values: S3, GCS, NFS, AZ.
 
 ### Optional
 
 - `timeouts` (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))
-- `use_iam_instance_profile` (Boolean) Use IAM Role from the YugabyteDB Anywhere Host for S3. Storage configuration creation will fail on insufficient permissions on the host. Fasle by default.
+- `use_iam_instance_profile` (Boolean) Use IAM Role from the YugabyteDB Anywhere Host for S3. Storage configuration creation will fail on insufficient permissions on the host. False by default.
 
 ### Read-Only
 
-- `data` (Map of String) Location and Credentials
+- `data` (Map of String) Location and Credentials.
 - `id` (String) The ID of this resource.
 
 <a id="nestedblock--timeouts"></a>

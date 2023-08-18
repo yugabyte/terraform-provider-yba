@@ -1,12 +1,12 @@
 ---
 page_title: "yba_release_version Data Source - YugabyteDB Anywhere"
 description: |-
-  Retrieve release version
+  Retrieve release version.
 ---
 
 # yba_release_version (Data Source)
 
-Retrieve release version
+Retrieve release version.
 
 ## Example Usage
 
@@ -16,8 +16,8 @@ data "yba_release_version" "release_version" {
 }
 
 data "yba_release_version" "release_version_x" {
-  // To fetch particular version
-  version = "<YBDB-version-x>"
+  // Retrieve a list of YBDB versions corresponding to the pattern string.
+  version = "<YBDB-version-string-to-be-matched>"
 }
 ```
 
@@ -26,10 +26,10 @@ data "yba_release_version" "release_version_x" {
 
 ### Optional
 
-- `version` (String) Release version given by user
+- `version` (String) Release version given by user.
 
 ### Read-Only
 
 - `id` (String) The ID of this resource.
-- `selected_version` (String) Selected release version. If version is empty, use lastest version available
-- `version_list` (List of String) List of releases matching the selected release. If selected_version is not provided, returns entire list
+- `selected_version` (String) Selected release version. If version is empty, use lastest version available.
+- `version_list` (List of String) List of releases matching the selected release. If selected_version is not provided, returns entire list.

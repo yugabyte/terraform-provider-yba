@@ -1,12 +1,12 @@
 ---
 page_title: "yba_backup_info Data Source - YugabyteDB Anywhere"
 description: |-
-  Retrieve list of backups
+  Retrieve list of backups.
 ---
 
 # yba_backup_info (Data Source)
 
-Retrieve list of backups
+Retrieve list of backups.
 
 ~> **Note:** The YugabyteDB Anywhere Terraform provider supports fetching backups in YugabyteDB Anywhere version 2.18.1 and later.
 
@@ -23,17 +23,17 @@ data "yba_backup_info" "backup" {
 
 ### Optional
 
-- `date_range_end` (String) End of range for create time of the backup used for filtering
-- `date_range_start` (String) Start of range for create time of the backup used for filtering
-- `universe_name` (String) Latest backup from this universe is stored in the ID
-- `universe_uuid` (String) Latest backup from this universe is stored in the ID
+- `date_range_end` (String) End date of range in which to fetch backups, in RFC3339 format.
+- `date_range_start` (String) Start date of range in which to fetch backups, in RFC3339 format.
+- `universe_name` (String) The name of the universe whose latest backup you want to fetch.
+- `universe_uuid` (String) The UUID of the universe whose latest backup you want to fetch.
 
 ### Read-Only
 
-- `backup_type` (String) Type of the backup. Permitted values: YQL_TABLE_TYPE, REDIS_TABLE_TYPE, PGSQL_TABLE_TYPE
+- `backup_type` (String) Type of the backup fetched.
 - `id` (String) The ID of this resource.
-- `storage_config_uuid` (String) UUID of the storage configuration used for backup
-- `storage_location` (String) Storage location of the backup
+- `storage_config_uuid` (String) UUID of the storage configuration used for backup.
+- `storage_location` (String) Storage location of the backup.
 
 ## Restricted YugabyteDB Anywhere Versions
 

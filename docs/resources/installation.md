@@ -1,12 +1,12 @@
 ---
 page_title: "yba_installation Resource - YugabyteDB Anywhere"
 description: |-
-  Manages the installation of YugabyteDB Anywhere on an existing virtual machine. This resource does not track the remote state and is only provided as a convenience tool. To reinstall, taint this resource and re-apply. To see remote output, run with TF_LOG=INFO
+  Manages the installation of YugabyteDB Anywhere on an existing virtual machine. This resource does not track the remote state and is only provided as a convenience tool. To reinstall, taint this resource and re-apply. To see remote output, run with TF_LOG=INFO.
 ---
 
 # yba_installation (Resource)
 
-Manages the installation of YugabyteDB Anywhere on an existing virtual machine. This resource does not track the remote state and is only provided as a convenience tool. To reinstall, taint this resource and re-apply. To see remote output, run with TF_LOG=INFO
+Manages the installation of YugabyteDB Anywhere on an existing virtual machine. This resource does not track the remote state and is only provided as a convenience tool. To reinstall, taint this resource and re-apply. To see remote output, run with TF_LOG=INFO.
 
 ## Example Usage
 
@@ -41,21 +41,21 @@ On the machine running terraform, ensure the following files are available:
 
 ### Required
 
-- `application_settings_file` (String) Application settings file to configure YugabyteDB Anywhere
-- `private_ip` (String) Private ip of the existing virtual machine
-- `public_ip` (String) Public ip of the existing virtual machine
-- `replicated_config_file` (String) Configuration file to use for automated installation using Replicated
-- `replicated_license_file` (String) YugabyteDB Anywhere license file used for installation using Replicated
+- `application_settings_file` (String) Application settings file to configure YugabyteDB Anywhere.
+- `private_ip` (String) Private ip of the existing virtual machine.
+- `public_ip` (String) Public ip of the existing virtual machine.
+- `replicated_config_file` (String) Configuration file to use for automated installation using Replicated.
+- `replicated_license_file` (String) YugabyteDB Anywhere license file used for installation using Replicated.
 - `ssh_host_ip` (String) IP address of VM for SSH. Typically same as public_ip or private_ip.
-- `ssh_private_key` (String) Contents of file containing the private key to use for ssh commands
-- `ssh_user` (String) User to use for ssh commands
+- `ssh_private_key` (String) Contents of file containing the private key to use for ssh commands.
+- `ssh_user` (String) User to use for ssh commands.
 
 ### Optional
 
 - `cleanup` (Boolean) Flag for indicating if resources should be cleaned up during the uninstall. Set this to true if you plan to reuse the virtual machine.
 - `timeouts` (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))
-- `tls_certificate_file` (String) TLS certificate used to configure HTTPS
-- `tls_key_file` (String) TLS key used to configure HTTPS
+- `tls_certificate_file` (String) TLS certificate used to configure HTTPS.
+- `tls_key_file` (String) TLS key used to configure HTTPS.
 
 ### Read-Only
 

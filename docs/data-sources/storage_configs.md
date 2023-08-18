@@ -1,12 +1,12 @@
 ---
 page_title: "yba_storage_configs Data Source - YugabyteDB Anywhere"
 description: |-
-  Retrieve list of storage configs
+  Retrieve list of storage configurations.
 ---
 
 # yba_storage_configs (Data Source)
 
-Retrieve list of storage configs
+Retrieve list of storage configurations.
 
 ## Example Usage
 
@@ -26,7 +26,7 @@ data "yba_storage_configs" "configs_gcs" {
 
 ### Optional
 
-- `config_name` (String) Config name will accept the storage config to be used by the user. The selected UUID will be stored in the ID
+- `config_name` (String) Accepts name of the storage configuration. The corresponding storage config UUID is stored in ID to be used in *yba_backups* resource.
 
 ### Read-Only
 

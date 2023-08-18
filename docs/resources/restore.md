@@ -1,12 +1,12 @@
 ---
 page_title: "yba_restore Resource - YugabyteDB Anywhere"
 description: |-
-  Restoring backups for Universe. This resource does not track the remote state and is only provided as a convenience tool. It is recommended to remove this resource after running terraform apply.
+  Restoring backups for universe. This resource does not track the remote state and is only provided as a convenience tool. It is recommended to remove this resource after running terraform apply.
 ---
 
 # yba_restore (Resource)
 
-Restoring backups for Universe. This resource does not track the remote state and is only provided as a convenience tool. It is recommended to remove this resource after running terraform apply.
+Restoring backups for universe. This resource does not track the remote state and is only provided as a convenience tool. It is recommended to remove this resource after running terraform apply.
 
 ~> **Note:** The YugabyteDB Anywhere Terraform provider supports restores in YugabyteDB Anywhere version 2.18.1 and later.
 
@@ -30,16 +30,16 @@ The details for configuration are available in the [YugabyteDB Anywhere Restore 
 
 ### Required
 
-- `restore_type` (String) Type of the restore. Permitted values: YQL_TABLE_TYPE, REDIS_TABLE_TYPE, PGSQL_TABLE_TYPE, TRANSACTION_STATUS_TABLE_TYPE
+- `restore_type` (String) Type of the restore. Permitted values: YQL_TABLE_TYPE, REDIS_TABLE_TYPE, PGSQL_TABLE_TYPE.
 - `storage_config_uuid` (String) UUID of the storage configuration to use. Can be retrieved from the storage config data source.
 - `storage_location` (String) Storage Location of the backup to be restored.
-- `universe_uuid` (String) The UUID of the target universe of restore
+- `universe_uuid` (String) The UUID of the target universe of restore.
 
 ### Optional
 
-- `keyspace` (String) Target keyspace name
-- `parallelism` (Number) Number of concurrent commands to run on nodes over SSH
-- `sse` (Boolean) Is SSE
+- `keyspace` (String) Target keyspace name.
+- `parallelism` (Number) Number of concurrent commands to run on nodes over SSH.
+- `sse` (Boolean) Is SSE.
 - `timeouts` (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))
 
 ### Read-Only

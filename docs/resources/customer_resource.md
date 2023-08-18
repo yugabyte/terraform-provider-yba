@@ -2,13 +2,11 @@
 page_title: "yba_customer_resource Resource - YugabyteDB Anywhere"
 description: |-
   Customer Resource.
-  Requires YBCUSTOMERPASSWORD env variable to be set before creation
 ---
 
 # yba_customer_resource (Resource)
 
 Customer Resource.
-Requires YB_CUSTOMER_PASSWORD env variable to be set before creation
 
 The following credential is required as environment variable before creation:
 
@@ -38,7 +36,7 @@ resource "yba_customer_resource" "customer" {
 
 ### Required
 
-- `code` (String) Label for the user (i.e. admin)
+- `code` (String) Label for the user (i.e. admin).
 - `email` (String) Email for the user, which is used for login on the YugabyteDB Anywhere portal.
 - `name` (String) Name of the user.
 
@@ -49,7 +47,7 @@ resource "yba_customer_resource" "customer" {
 
 ### Read-Only
 
-- `cuuid` (String) Customer UUID
+- `cuuid` (String) Customer UUID.
 - `id` (String) The ID of this resource.
 
 <a id="nestedblock--timeouts"></a>

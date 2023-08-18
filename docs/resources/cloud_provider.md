@@ -2,17 +2,11 @@
 page_title: "yba_cloud_provider Resource - YugabyteDB Anywhere"
 description: |-
   Cloud Provider Resource.
-  Requires AWSACCESSKEYID, AWSSECRETACCESSKEY env variables to be set for AWS Cloud Provider.
-  Requires GOOGLEAPPLICATIONCREDENTIALS env variable for GCP Cloud Provider.
-  Requires AZURESUBSCRIPTIONID, AZURERG, AZURETENANTID, AZURECLIENTID, AZURECLIENT_SECRET env variables for Azure Cloud Provider.
 ---
 
 # yba_cloud_provider (Resource)
 
 Cloud Provider Resource.
-Requires AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY env variables to be set for AWS Cloud Provider.
-Requires GOOGLE_APPLICATION_CREDENTIALS env variable for GCP Cloud Provider.
-Requires AZURE_SUBSCRIPTION_ID, AZURE_RG, AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_CLIENT_SECRET env variables for Azure Cloud Provider.
 
 The following credentials are required as environment variables to configure the corresponding Cloud Providers:
 

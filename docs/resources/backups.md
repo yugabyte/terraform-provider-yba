@@ -1,12 +1,12 @@
 ---
 page_title: "yba_backups Resource - YugabyteDB Anywhere"
 description: |-
-  Scheduled Backups for Universe
+  Scheduled Backups for universe.
 ---
 
 # yba_backups (Resource)
 
-Scheduled Backups for Universe
+Scheduled Backups for universe.
 
 ~> **Note:** The YugabyteDB Anywhere Terraform provider supports scheduling backups in YugabyteDB Anywhere version 2.18.1 and later.
 
@@ -53,13 +53,13 @@ The details for configuration are available in the [YugabyteDB Anywhere Schedule
 - `backup_type` (String) Type of the backup. Permitted values: YQL_TABLE_TYPE, REDIS_TABLE_TYPE, PGSQL_TABLE_TYPE.
 - `cron_expression` (String) A cron expression to use.
 - `delete_backup` (Boolean) Delete backup while deleting schedule. False by default.
-- `frequency` (String) Frequency to run the backup.  Accepts string duration in the standard format https://pkg.go.dev/time#Duration.
-- `incremental_backup_frequency` (String) Frequency to take incremental backups.  Accepts string duration in the standard format https://pkg.go.dev/time#Duration.
+- `frequency` (String) Frequency to run the backup.  Accepts string duration in the standard format <https://pkg.go.dev/time#Duration>.
+- `incremental_backup_frequency` (String) Frequency to take incremental backups. Accepts string duration in the standard format <https://pkg.go.dev/time#Duration>.
 - `keyspace` (String) Keyspace to backup.
 - `parallelism` (Number) Number of concurrent commands to run on nodes over SSH.
 - `sse` (Boolean) Is SSE.
 - `table_uuid_list` (List of String) List of Table UUIDs.
-- `time_before_delete` (String) Time before deleting the backup from storage. Accepts string duration in the standard format https://pkg.go.dev/time#Duration. Backups are kept indefinitely if not set.
+- `time_before_delete` (String) Time before deleting the backup from storage. Accepts string duration in the standard format <https://pkg.go.dev/time#Duration>. Backups are kept indefinitely if not set.
 - `timeouts` (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))
 - `transactional_backup` (Boolean) Flag for indicating if backup is transactional across tables.
 

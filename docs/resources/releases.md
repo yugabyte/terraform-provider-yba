@@ -1,16 +1,12 @@
 ---
 page_title: "yba_releases Resource - YugabyteDB Anywhere"
 description: |-
-  YBDB Release Version Import Resource
-  Requires AWSACCESSKEYID, AWSSECRETACCESSKEY env variables to be set to retrieve release from S3 bucket.
-  Requires GOOGLEAPPLICATIONCREDENTIALS env variable to be set to retrieve release from GCS bucket.
+  YBDB Release Version Import Resource.
 ---
 
 # yba_releases (Resource)
 
-YBDB Release Version Import Resource
-Requires AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY env variables to be set to retrieve release from S3 bucket.
-Requires GOOGLE_APPLICATION_CREDENTIALS env variable to be set to retrieve release from GCS bucket.
+YBDB Release Version Import Resource.
 
 The following credentials are required as environment variables to import YBDB versions:
 
@@ -62,19 +58,19 @@ The details for configuration are available in the [YugabyteDB Anywhere Upgrade 
 
 ### Required
 
-- `version` (String) Version name of the Package
+- `version` (String) Version name of the Package.
 
 ### Optional
 
-- `chart_path` (String) File path where the release helm chart is stored
-- `file_path` (String) File path where the release binary is stored
-- `gcs` (Block List, Max: 1) Location of release binary in GCS (see [below for nested schema](#nestedblock--gcs))
-- `http` (Block List, Max: 1) Location of release binary in HTTP (see [below for nested schema](#nestedblock--http))
-- `image_tag` (String) Docker Image Tag for the release
-- `notes` (List of String) Release Notes
-- `packages` (Block List) (see [below for nested schema](#nestedblock--packages))
-- `s3` (Block List, Max: 1) Location of release binary in S3 (see [below for nested schema](#nestedblock--s3))
-- `state` (String) State of Release
+- `chart_path` (String) File path where the release helm chart is stored.
+- `file_path` (String) File path where the release binary is stored.
+- `gcs` (Block List, Max: 1) Location of release binary in GCS. (see [below for nested schema](#nestedblock--gcs))
+- `http` (Block List, Max: 1) Location of release binary in HTTP. (see [below for nested schema](#nestedblock--http))
+- `image_tag` (String) Docker Image Tag for the release.
+- `notes` (List of String) Release Notes.
+- `packages` (Block List) Package path and architecture. (see [below for nested schema](#nestedblock--packages))
+- `s3` (Block List, Max: 1) Location of release binary in S3. (see [below for nested schema](#nestedblock--s3))
+- `state` (String) State of Release.
 - `timeouts` (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))
 
 ### Read-Only
@@ -86,22 +82,22 @@ The details for configuration are available in the [YugabyteDB Anywhere Upgrade 
 
 Required:
 
-- `paths` (Block List, Min: 1, Max: 1) Package path and checksum (see [below for nested schema](#nestedblock--gcs--paths))
+- `paths` (Block List, Min: 1, Max: 1) Package path and checksum. (see [below for nested schema](#nestedblock--gcs--paths))
 
 Read-Only:
 
-- `credentials_json` (String) GCS Credentials in from json file
+- `credentials_json` (String) GCS Credentials in from json file.
 
 <a id="nestedblock--gcs--paths"></a>
 ### Nested Schema for `gcs.paths`
 
 Required:
 
-- `x86_64` (String) Path to x86_64 package
+- `x86_64` (String) Path to x86_64 package.
 
 Optional:
 
-- `x86_64_checksum` (String) Checksum for x86_64 package
+- `x86_64_checksum` (String) Checksum for x86_64 package.
 
 
 
@@ -110,18 +106,18 @@ Optional:
 
 Required:
 
-- `paths` (Block List, Min: 1, Max: 1) Package path and checksum (see [below for nested schema](#nestedblock--http--paths))
+- `paths` (Block List, Min: 1, Max: 1) Package path and checksum. (see [below for nested schema](#nestedblock--http--paths))
 
 <a id="nestedblock--http--paths"></a>
 ### Nested Schema for `http.paths`
 
 Required:
 
-- `x86_64` (String) Path to x86_64 package
+- `x86_64` (String) Path to x86_64 package.
 
 Optional:
 
-- `x86_64_checksum` (String) Checksum for x86_64 package
+- `x86_64_checksum` (String) Checksum for x86_64 package.
 
 
 
@@ -130,8 +126,8 @@ Optional:
 
 Optional:
 
-- `arch` (String) Architecture
-- `path` (String) Path
+- `arch` (String) Architecture.
+- `path` (String) Path.
 
 
 <a id="nestedblock--s3"></a>
@@ -139,23 +135,23 @@ Optional:
 
 Required:
 
-- `paths` (Block List, Min: 1, Max: 1) Package path and checksum (see [below for nested schema](#nestedblock--s3--paths))
+- `paths` (Block List, Min: 1, Max: 1) Package path and checksum. (see [below for nested schema](#nestedblock--s3--paths))
 
 Read-Only:
 
-- `access_key_id` (String, Sensitive) S3 Access Key ID
-- `secret_access_key` (String, Sensitive) S3 Secret Access Key
+- `access_key_id` (String, Sensitive) S3 Access Key ID.
+- `secret_access_key` (String, Sensitive) S3 Secret Access Key.
 
 <a id="nestedblock--s3--paths"></a>
 ### Nested Schema for `s3.paths`
 
 Required:
 
-- `x86_64` (String) Path to x86_64 package
+- `x86_64` (String) Path to x86_64 package.
 
 Optional:
 
-- `x86_64_checksum` (String) Checksum for x86_64 package
+- `x86_64_checksum` (String) Checksum for x86_64 package.
 
 
 

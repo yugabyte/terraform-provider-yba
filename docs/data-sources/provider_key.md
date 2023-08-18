@@ -1,12 +1,12 @@
 ---
 page_title: "yba_provider_key Data Source - YugabyteDB Anywhere"
 description: |-
-  Retrieve cloud provider access key
+  Retrieve provider (cloud and onprem) access key.
 ---
 
 # yba_provider_key (Data Source)
 
-Retrieve cloud provider access key
+Retrieve provider (cloud and onprem) access key.
 
 ## Example Usage
 
@@ -21,7 +21,7 @@ data "yba_provider_key" "cloud_key" {
 
 ### Required
 
-- `provider_id` (String) UUID of the provider
+- `provider_id` (String) UUID of the provider.
 
 ### Read-Only
 
