@@ -224,3 +224,12 @@ Optional:
 - `create` (String)
 - `delete` (String)
 - `update` (String)
+
+## Import
+
+Universes can be imported using `universe uuid`:
+
+```sh
+terraform import yba_universe.universe_name <universe-uuid>
+```
+

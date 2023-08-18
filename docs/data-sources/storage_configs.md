@@ -32,3 +32,4 @@ data "yba_storage_configs" "configs_gcs" {
 
 - `id` (String) The ID of this resource.
 - `uuid_list` (List of String) List of storage configuration UUIDs. These can be used in the backup resource.
+

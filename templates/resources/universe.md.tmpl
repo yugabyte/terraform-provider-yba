@@ -33,3 +33,12 @@ The following operations are supported in the Edit universe workflow:
 1. Delete read replicas (Adding read replica after universe creation currently not supported)
 
 {{ .SchemaMarkdown | trimspace }}
+
+## Import
+
+Universes can be imported using `universe uuid`:
+
+```sh
+terraform import yba_universe.universe_name <universe-uuid>
+```
+

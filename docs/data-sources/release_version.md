@@ -33,3 +33,4 @@ data "yba_release_version" "release_version_x" {
 - `id` (String) The ID of this resource.
 - `selected_version` (String) Selected release version. If version is empty, use lastest version available.
 - `version_list` (List of String) List of releases matching the selected release. If selected_version is not provided, returns entire list.
+

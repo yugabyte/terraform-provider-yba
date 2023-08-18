@@ -37,3 +37,4 @@ resource "yba_backups" "universe_backup_schedule" {
   backup_type ="<backup-table-type>"
 }
 ```
+

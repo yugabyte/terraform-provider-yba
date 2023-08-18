@@ -220,3 +220,4 @@ resource "yba_universe" "aws_universe" {
 To delete read replicas, remove the read Replica cluster definition and run *terraform apply* to trigger the update universe workflow and remove the cluster.
 
 ~> **Note:** Adding read replicas after universe creation is not currently supported.
+
