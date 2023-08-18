@@ -30,20 +30,20 @@ func S3Schema() *schema.Resource {
 				Type:        schema.TypeString,
 				Computed:    true,
 				Sensitive:   true,
-				Description: "S3 Access Key ID",
+				Description: "S3 Access Key ID.",
 			},
 			"secret_access_key": {
 				Type:        schema.TypeString,
 				Computed:    true,
 				Sensitive:   true,
-				Description: "S3 Secret Access Key",
+				Description: "S3 Secret Access Key.",
 			},
 			"paths": {
 				Type:        schema.TypeList,
 				MaxItems:    1,
 				Required:    true,
 				Elem:        PackagePathsSchema(),
-				Description: "Package path and checksum",
+				Description: "Package path and checksum.",
 			},
 		},
 	}
@@ -73,10 +73,10 @@ func formatOutputS3(ctx context.Context, s3 map[string]interface{}) []map[string
 	s3["secret_access_key"] = s3["secretAccessKey"]
 	delete(s3, "secretAccessKey")
 	mapSlice := []map[string]interface{}{}
-	paths_formatted := formatOutputPaths(ctx, s3["paths"].(map[string]interface{}))
-	s3["paths"] = append(mapSlice, paths_formatted)
+	pathsFormatted := formatOutputPaths(ctx, s3["paths"].(map[string]interface{}))
+	s3["paths"] = append(mapSlice, pathsFormatted)
 
-	s3_formatted := []map[string]interface{}{}
-	s3_formatted = append(s3_formatted, s3)
-	return s3_formatted
+	s3Formatted := []map[string]interface{}{}
+	s3Formatted = append(s3Formatted, s3)
+	return s3Formatted
 }

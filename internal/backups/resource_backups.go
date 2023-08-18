@@ -37,7 +37,7 @@ import (
 // ResourceBackups creates and maintains resource for backup schedules
 func ResourceBackups() *schema.Resource {
 	return &schema.Resource{
-		Description: "Scheduled Backups for Universe",
+		Description: "Scheduled Backups for universe.",
 
 		CreateContext: resourceBackupsCreate,
 		ReadContext:   resourceBackupsRead,
@@ -107,8 +107,8 @@ func ResourceBackups() *schema.Resource {
 					}
 					return false
 				},
-				Description: "Frequency to run the backup.  Accepts string duration in the" +
-					" standard format https://pkg.go.dev/time#Duration.",
+				Description: "Frequency to run the backup.  Accepts string duration in the " +
+					"standard format <https://pkg.go.dev/time#Duration>.",
 			},
 			"keyspace": {
 				Type:        schema.TypeString,
@@ -127,8 +127,8 @@ func ResourceBackups() *schema.Resource {
 				Type:     schema.TypeString,
 				Optional: true, // If not provided, backups kept indefinitely
 				ForceNew: true,
-				Description: "Time before deleting the backup from storage. Accepts string" +
-					" duration in the standard format https://pkg.go.dev/time#Duration. " +
+				Description: "Time before deleting the backup from storage. Accepts " +
+					"string duration in the standard format <https://pkg.go.dev/time#Duration>. " +
 					"Backups are kept indefinitely if not set.",
 			},
 			"sse": {
@@ -174,8 +174,8 @@ func ResourceBackups() *schema.Resource {
 			"incremental_backup_frequency": {
 				Type:     schema.TypeString,
 				Optional: true,
-				Description: "Frequency to take incremental backups.  " +
-					"Accepts string duration in the standard format https://pkg.go.dev/time#Duration.",
+				Description: "Frequency to take incremental backups. " +
+					"Accepts string duration in the standard format <https://pkg.go.dev/time#Duration>.",
 			},
 		},
 	}

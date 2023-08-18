@@ -29,7 +29,7 @@ import (
 // ReleaseVersion data spurce keeps track of the imported releases on current YBA
 func ReleaseVersion() *schema.Resource {
 	return &schema.Resource{
-		Description: "Retrieve release version",
+		Description: "Retrieve release version.",
 
 		ReadContext: dataSourceReleaseVersionRead,
 
@@ -37,19 +37,20 @@ func ReleaseVersion() *schema.Resource {
 			"version": {
 				Type:        schema.TypeString,
 				Optional:    true,
-				Description: "Release version given by user",
+				Description: "Release version given by user.",
 			},
 			"selected_version": {
-				Type:        schema.TypeString,
-				Computed:    true,
-				Description: "Selected release version. If version is empty, use lastest version available",
+				Type:     schema.TypeString,
+				Computed: true,
+				Description: "Selected release version. If version is empty, use " +
+					"lastest version available.",
 			},
 			"version_list": {
 				Type:     schema.TypeList,
 				Elem:     &schema.Schema{Type: schema.TypeString},
 				Computed: true,
-				Description: "List of releases matching the selected release. If selected_version " +
-					"is not provided, returns entire list",
+				Description: "List of releases matching the selected release. " +
+					"If selected_version is not provided, returns entire list.",
 			},
 		},
 	}

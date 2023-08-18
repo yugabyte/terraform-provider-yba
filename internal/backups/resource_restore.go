@@ -33,9 +33,9 @@ import (
 // ResourceRestore to trigger Restore Operation
 func ResourceRestore() *schema.Resource {
 	return &schema.Resource{
-		Description: "Restoring backups for Universe. This resource does not track the remote " +
-			"state and is only provided as a convenience tool. It is recommended to remove this " +
-			"resource after running terraform apply.",
+		Description: "Restoring backups for universe. This resource does not " +
+			"track the remote state and is only provided as a convenience tool. It " +
+			"is recommended to remove this resource after running terraform apply.",
 
 		CreateContext: resourceRestoreCreate,
 		ReadContext:   resourceRestoreRead,
@@ -54,13 +54,13 @@ func ResourceRestore() *schema.Resource {
 				Type:        schema.TypeString,
 				Required:    true,
 				ForceNew:    true,
-				Description: "The UUID of the target universe of restore",
+				Description: "The UUID of the target universe of restore.",
 			},
 			"keyspace": {
 				Type:        schema.TypeString,
 				Optional:    true,
 				ForceNew:    true,
-				Description: "Target keyspace name",
+				Description: "Target keyspace name.",
 			},
 			"storage_location": {
 				Type:        schema.TypeString,
@@ -72,23 +72,22 @@ func ResourceRestore() *schema.Resource {
 				Type:        schema.TypeBool,
 				Optional:    true,
 				Default:     false,
-				Description: "Is SSE",
+				Description: "Is SSE.",
 			},
 			"restore_type": {
 				Type:     schema.TypeString,
 				Required: true,
 				ForceNew: true,
 				ValidateDiagFunc: validation.ToDiagFunc(validation.StringInSlice(
-					[]string{"YQL_TABLE_TYPE", "REDIS_TABLE_TYPE", "PGSQL_TABLE_TYPE",
-						"TRANSACTION_STATUS_TABLE_TYPE"}, false)),
-				Description: "Type of the restore. Permitted values: YQL_TABLE_TYPE, " +
-					"REDIS_TABLE_TYPE, PGSQL_TABLE_TYPE, TRANSACTION_STATUS_TABLE_TYPE",
+					[]string{"YQL_TABLE_TYPE", "REDIS_TABLE_TYPE", "PGSQL_TABLE_TYPE"}, false)),
+				Description: "Type of the restore. Permitted values: " +
+					"YQL_TABLE_TYPE, REDIS_TABLE_TYPE, PGSQL_TABLE_TYPE.",
 			},
 
 			"parallelism": {
 				Type:        schema.TypeInt,
 				Optional:    true,
-				Description: "Number of concurrent commands to run on nodes over SSH",
+				Description: "Number of concurrent commands to run on nodes over SSH.",
 			},
 			"storage_config_uuid": {
 				Type:     schema.TypeString,

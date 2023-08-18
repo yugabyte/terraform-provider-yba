@@ -32,11 +32,7 @@ import (
 // ResourceReleases creates and maintains resource for releases
 func ResourceReleases() *schema.Resource {
 	return &schema.Resource{
-		Description: "YBDB Release Version Import Resource" +
-			"\nRequires AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY env variables to be set to" +
-			" retrieve release from S3 bucket." +
-			"\nRequires GOOGLE_APPLICATION_CREDENTIALS env variable to be set to" +
-			" retrieve release from GCS bucket.",
+		Description: "YBDB Release Version Import Resource.",
 
 		CreateContext: resourceReleasesCreate,
 		ReadContext:   resourceReleasesRead,
@@ -60,38 +56,38 @@ func ResourceReleases() *schema.Resource {
 				Default:     nil,
 				Computed:    true,
 				Optional:    true,
-				Description: "State of Release",
+				Description: "State of Release.",
 			},
 			"image_tag": {
 				Type:        schema.TypeString,
 				Computed:    true,
 				Optional:    true,
-				Description: "Docker Image Tag for the release",
+				Description: "Docker Image Tag for the release.",
 			},
 			"notes": {
 				Type:        schema.TypeList,
 				Computed:    true,
 				Optional:    true,
 				Elem:        &schema.Schema{Type: schema.TypeString},
-				Description: "Release Notes",
+				Description: "Release Notes.",
 			},
 			"file_path": {
 				Type:        schema.TypeString,
 				Computed:    true,
 				Optional:    true,
-				Description: "File path where the release binary is stored",
+				Description: "File path where the release binary is stored.",
 			},
 			"chart_path": {
 				Type:        schema.TypeString,
 				Computed:    true,
 				Optional:    true,
-				Description: "File path where the release helm chart is stored",
+				Description: "File path where the release helm chart is stored.",
 			},
 			"version": {
 				Type:        schema.TypeString,
 				Required:    true,
 				ForceNew:    true,
-				Description: "Version name of the Package",
+				Description: "Version name of the Package.",
 			},
 			"packages": PackageSchema(),
 			"s3": {
@@ -100,7 +96,7 @@ func ResourceReleases() *schema.Resource {
 				ForceNew:    true,
 				Elem:        S3Schema(),
 				Optional:    true,
-				Description: "Location of release binary in S3",
+				Description: "Location of release binary in S3.",
 			},
 			"gcs": {
 				Type:        schema.TypeList,
@@ -108,15 +104,15 @@ func ResourceReleases() *schema.Resource {
 				ForceNew:    true,
 				Optional:    true,
 				Elem:        GcsSchema(),
-				Description: "Location of release binary in GCS",
+				Description: "Location of release binary in GCS.",
 			},
 			"http": {
 				Type:        schema.TypeList,
 				MaxItems:    1,
 				ForceNew:    true,
 				Optional:    true,
-				Elem:        HttpSchema(),
-				Description: "Location of release binary in HTTP",
+				Elem:        HTTPSchema(),
+				Description: "Location of release binary in HTTP.",
 			},
 		},
 	}
@@ -180,7 +176,7 @@ func resourceReleasesCreate(ctx context.Context, d *schema.ResourceData, meta in
 	if err != nil {
 		return diag.FromErr(err)
 	}
-	httpParams := formatInputHttp(ctx, http)
+	httpParams := formatInputHTTP(ctx, http)
 
 	vc := meta.(*api.APIClient).VanillaClient
 	resp, err := vc.ReleaseImport(ctx, cUUID, version, s3Params, gcsParams, httpParams, token)
@@ -273,7 +269,7 @@ func resourceReleasesRead(ctx context.Context, d *schema.ResourceData, meta inte
 	}
 
 	if p["http"] != nil {
-		httpFormatted := formatOutputHttp(ctx, p["http"].(map[string]interface{}))
+		httpFormatted := formatOutputHTTP(ctx, p["http"].(map[string]interface{}))
 		if err = d.Set("http", httpFormatted); err != nil {
 			tflog.Error(ctx, "HTTP Assignment Error")
 			return diag.FromErr(err)

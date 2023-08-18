@@ -31,7 +31,7 @@ import (
 // Lists fetches the backups within the given set of conditions
 func Lists() *schema.Resource {
 	return &schema.Resource{
-		Description: "Retrieve list of backups",
+		Description: "Retrieve list of backups.",
 
 		ReadContext: dataSourceBackupsListRead,
 
@@ -42,43 +42,43 @@ func Lists() *schema.Resource {
 				Type:         schema.TypeString,
 				Optional:     true,
 				ExactlyOneOf: []string{"universe_name", "universe_uuid"},
-				Description:  "Latest backup from this universe is stored in the ID",
+				Description:  "The name of the universe whose latest backup you want to fetch.",
 			},
 			"universe_uuid": {
 				Type:         schema.TypeString,
 				Optional:     true,
 				ExactlyOneOf: []string{"universe_name", "universe_uuid"},
-				Description:  "Latest backup from this universe is stored in the ID",
+				Description:  "The UUID of the universe whose latest backup you want to fetch.",
 			},
 			"date_range_start": {
 				Type:             schema.TypeString,
 				Optional:         true,
 				ValidateDiagFunc: validation.ToDiagFunc(validation.IsRFC3339Time),
-				Description: "Start of range for create time of the backup used for " +
-					"filtering",
+				Description: "Start date of range in which to fetch backups, " +
+					"in RFC3339 format.",
 			},
 
 			"date_range_end": {
 				Type:             schema.TypeString,
 				Optional:         true,
 				ValidateDiagFunc: validation.ToDiagFunc(validation.IsRFC3339Time),
-				Description:      "End of range for create time of the backup used for filtering",
+				Description: "End date of range in which to fetch backups, " +
+					"in RFC3339 format.",
 			},
 			"storage_location": {
 				Type:        schema.TypeString,
 				Computed:    true,
-				Description: "Storage location of the backup",
+				Description: "Storage location of the backup.",
 			},
 			"backup_type": {
-				Type:     schema.TypeString,
-				Computed: true,
-				Description: "Type of the backup. Permitted values: YQL_TABLE_TYPE, " +
-					"REDIS_TABLE_TYPE, PGSQL_TABLE_TYPE",
+				Type:        schema.TypeString,
+				Computed:    true,
+				Description: "Type of the backup fetched.",
 			},
 			"storage_config_uuid": {
 				Type:        schema.TypeString,
 				Computed:    true,
-				Description: "UUID of the storage configuration used for backup",
+				Description: "UUID of the storage configuration used for backup.",
 			},
 		},
 	}
