@@ -1,0 +1,40 @@
+---
+page_title: "{{.Name}} {{.Type}} - {{.RenderedProviderName}}"
+description: |-
+{{ .Description | plainmarkdown | trimspace | prefixlines "  " }}
+---
+
+# {{.Name}} ({{.Type}})
+
+{{ .Description | trimspace }}
+
+The following credentials are required as environment variables to configure the corresponding Backup storage configurations:
+
+|Cloud Provider|Setting|Environment Variable|
+|-------|--------|-------------------------------|
+|[S3](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-envvars.html)|||
+||Access Key ID|`AWS_ACCESS_KEY_ID`|
+||Secret Access Key|`AWS_SECRET_ACCESS_KEY`|
+|[GCS](https://cloud.google.com/docs/authentication/application-default-credentials)|||
+|| GCP Service Account Credentials File Path|`GOOGLE_APPLICATION_CREDENTIALS`|
+|[Azure](https://learn.microsoft.com/en-us/azure/developer/go/azure-sdk-authentication?tabs=bash)|||
+||Azure Storage SAS Token|`AZURE_STORAGE_SAS_TOKEN`|
+
+-> **Note:** S3 Environment variables are not required for IAM based S3 storage configurations. Please set *use_iam_instance_profile* to use host IAM configuration for S3 storage configurations.
+
+## Example Usage
+
+{{ tffile "examples/resources/yba_storage_config_resource/resource.tf" }}
+
+The details for configuration are available in the [YugabyteDB Anywhere Configure Backup Target Documentation](https://docs.yugabyte.com/preview/yugabyte-platform/configure-yugabyte-platform/backup-target/).
+
+{{ .SchemaMarkdown | trimspace }}
+
+## Import
+
+Storage configurations can be imported using `storage configuration uuid`:
+
+```sh
+terraform import yba_storage_config_resource.storage_config <storage configuration uuid>
+```
+

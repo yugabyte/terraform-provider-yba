@@ -1,0 +1,46 @@
+---
+page_title: "{{.Name}} {{.Type}} - {{.RenderedProviderName}}"
+description: |-
+{{ .Description | plainmarkdown | trimspace | prefixlines "  " }}
+---
+
+# {{.Name}} ({{.Type}})
+
+{{ .Description | trimspace }}
+
+The following credentials are required as environment variables to configure the corresponding Cloud Providers:
+
+|Cloud Provider|Setting|Environment Variable|
+|-------|--------|-------------------------------|
+|[AWS](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-envvars.html)|||
+||Access Key ID|`AWS_ACCESS_KEY_ID`|
+||Secret Access Key|`AWS_SECRET_ACCESS_KEY`|
+|[GCP](https://cloud.google.com/docs/authentication/application-default-credentials)|||
+|| GCP Service Account Credentials File Path|`GOOGLE_APPLICATION_CREDENTIALS`|
+|[Azure](https://learn.microsoft.com/en-us/azure/developer/go/azure-sdk-authentication?tabs=bash)|||
+||Active Subscription ID|`AZURE_SUBSCRIPTION_ID`|
+||Resource Group|`AZURE_RG`|
+||Tenant ID|`AZURE_TENANT_ID`|
+||Client ID|`AZURE_CLIENT_ID`|
+||Client Secret|`AZURE_CLIENT_SECRET`|
+
+-> **Note:** AWS Environment variables are not required for IAM based AWS cloud providers. Please set *aws_config_settings.use_iam_instance_profile* to use host IAM configuration for AWS cloud providers.
+
+## Example Usage
+
+{{ tffile "examples/resources/yba_cloud_provider/resource.tf" }}
+
+
+The details for configuration are available in the [YugabyteDB Anywhere Configure Cloud Provider Documentation](https://docs.yugabyte.com/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/aws/).
+
+{{ .SchemaMarkdown | trimspace }}
+
+## Import
+
+Cloud Providers can be imported using `cloud provider uuid`:
+
+```sh
+terraform import yba_cloud_provider.cloud_provider <cloud-provider-uuid>
+```
+
+

@@ -66,9 +66,9 @@ The following version of YugabyteDB Anywhere Terraform Provider supports the fol
 - YBA Installation
 - Create Cloud Provider
 - Create and Edit Universe
-  - Upgrade softwares
+  - Upgrade software
   - Upgrade GFlags
-  - Upgrade to SystemD
+  - Upgrade to Systemd
   - Toggle TLS settings
   - Edit cluster parameters:
     - Instance type

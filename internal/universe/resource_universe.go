@@ -314,7 +314,7 @@ func userIntentSchema() *schema.Resource {
 				Type:     schema.TypeString,
 				Optional: true,
 				Computed: true,
-				Description: "Flag to use if we need to deploy a loadbalancer/some kind of" +
+				Description: "Flag to use if we need to deploy a loadbalancer/some kind of " +
 					"exposing service for the cluster.",
 			},
 			"enable_ipv6": {
@@ -358,7 +358,7 @@ func userIntentSchema() *schema.Resource {
 				Type:        schema.TypeBool,
 				Optional:    true,
 				Default:     true,
-				Description: "Enable SystemD in universe nodes. True by default.",
+				Description: "Enable Systemd in universe nodes. True by default.",
 			},
 			"ysql_password": {
 				Type:        schema.TypeString,
@@ -484,14 +484,14 @@ func userIntentSchema() *schema.Resource {
 				Type:     schema.TypeBool,
 				Optional: true,
 				Default:  true,
-				Description: "Enable Encryption in Transit - Node to Node encrytption." +
+				Description: "Enable Encryption in Transit - Node to Node encryption." +
 					" True by default.",
 			},
 			"enable_client_to_node_encrypt": {
 				Type:     schema.TypeBool,
 				Optional: true,
 				Default:  true,
-				Description: "Enable Encryption in Transit - Client to Node encrytption." +
+				Description: "Enable Encryption in Transit - Client to Node encryption." +
 					" True by default.",
 			},
 			"enable_volume_encryption": {
@@ -569,7 +569,7 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 					if isNewPresent {
 						if oldPrimaryCluster.UserIntent.GetUseSystemd() == true &&
 							newPrimaryCluster.UserIntent.GetUseSystemd() == false {
-							return errors.New("Cannot disable SystemD")
+							return errors.New("Cannot disable Systemd")
 						}
 					}
 				}
@@ -796,8 +796,7 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 		}),
 	)
 }
-func resourceUniverseCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) (
-	diag.Diagnostics) {
+func resourceUniverseCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	c := meta.(*api.APIClient).YugawareClient
 	cUUID := meta.(*api.APIClient).CustomerID
 
@@ -832,8 +831,7 @@ func resourceUniverseCreate(ctx context.Context, d *schema.ResourceData, meta in
 	return resourceUniverseRead(ctx, d, meta)
 }
 
-func resourceUniverseRead(ctx context.Context, d *schema.ResourceData, meta interface{}) (
-	diag.Diagnostics) {
+func resourceUniverseRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	var diags diag.Diagnostics
 
 	c := meta.(*api.APIClient).YugawareClient
@@ -905,8 +903,7 @@ func editUniverseParameters(ctx context.Context, oldUserIntent client.UserIntent
 
 }
 
-func resourceUniverseUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) (
-	diag.Diagnostics) {
+func resourceUniverseUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	// Only updates user intent for each cluster
 	// cloud Info can have changes in zones
 	c := meta.(*api.APIClient).YugawareClient
@@ -1081,7 +1078,7 @@ func resourceUniverseUpdate(ctx context.Context, d *schema.ResourceData, meta in
 				}
 				oldUserIntent = updateUni.UniverseDetails.Clusters[i].UserIntent
 
-				//SystemD upgrade
+				//Systemd upgrade
 				if oldUserIntent.GetUseSystemd() == false &&
 					newUserIntent.GetUseSystemd() == true {
 					updateUni.UniverseDetails.Clusters[i].UserIntent = newUserIntent
@@ -1093,7 +1090,7 @@ func resourceUniverseUpdate(ctx context.Context, d *schema.ResourceData, meta in
 						ctx, cUUID, d.Id()).SystemdUpgradeParams(req).Execute()
 					if err != nil {
 						errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
-							"Universe", "Update - SystemD")
+							"Universe", "Update - Systemd")
 						return diag.FromErr(errMessage)
 					}
 					tflog.Info(ctx, "UpgradeSystemd task is executing")
@@ -1124,8 +1121,7 @@ func resourceUniverseUpdate(ctx context.Context, d *schema.ResourceData, meta in
 						newUserIntent.DeviceInfo.GetVolumeSize() {
 						//Only volume size should be changed to do smart resize, other changes
 						//handled in UpgradeCluster
-						updateUni.UniverseDetails.Clusters[i].UserIntent.DeviceInfo.VolumeSize = (
-							newUserIntent.DeviceInfo.VolumeSize)
+						updateUni.UniverseDetails.Clusters[i].UserIntent.DeviceInfo.VolumeSize = (newUserIntent.DeviceInfo.VolumeSize)
 						req := client.ResizeNodeParams{
 							UpgradeOption: "Rolling",
 							Clusters:      updateUni.UniverseDetails.Clusters,
@@ -1159,8 +1155,7 @@ func resourceUniverseUpdate(ctx context.Context, d *schema.ResourceData, meta in
 
 				// Num of nodes, Instance Type, Num of Volumes, Volume Size, User Tags changes
 				var editAllowed, editZoneAllowed bool
-				editAllowed, updateUni.UniverseDetails.Clusters[i].UserIntent = (
-					editUniverseParameters(ctx, oldUserIntent, newUserIntent))
+				editAllowed, updateUni.UniverseDetails.Clusters[i].UserIntent = (editUniverseParameters(ctx, oldUserIntent, newUserIntent))
 				if editAllowed || editZoneAllowed {
 					req := client.UniverseConfigureTaskParams{
 						UniverseUUID: utils.GetStringPointer(d.Id()),
@@ -1184,7 +1179,7 @@ func resourceUniverseUpdate(ctx context.Context, d *schema.ResourceData, meta in
 
 			} else {
 
-				//Ignore Software, GFlags, SystemD, TLS Upgrade changes to Read-Only Cluster
+				//Ignore Software, GFlags, Systemd, TLS Upgrade changes to Read-Only Cluster
 				updateUni, response, err := c.UniverseManagementApi.GetUniverse(ctx, cUUID, d.Id()).Execute()
 				if err != nil {
 					errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
@@ -1214,8 +1209,7 @@ func resourceUniverseUpdate(ctx context.Context, d *schema.ResourceData, meta in
 
 				// Num of nodes, Instance Type, Num of Volumes, Volume Size User Tags changes
 				var editAllowed bool
-				editAllowed, updateUni.UniverseDetails.Clusters[i].UserIntent = (
-					editUniverseParameters(ctx, oldUserIntent, newUserIntent))
+				editAllowed, updateUni.UniverseDetails.Clusters[i].UserIntent = (editUniverseParameters(ctx, oldUserIntent, newUserIntent))
 				if editAllowed {
 					req := client.UniverseConfigureTaskParams{
 						UniverseUUID: utils.GetStringPointer(d.Id()),
@@ -1244,8 +1238,7 @@ func resourceUniverseUpdate(ctx context.Context, d *schema.ResourceData, meta in
 	return resourceUniverseRead(ctx, d, meta)
 }
 
-func resourceUniverseDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) (
-	diag.Diagnostics) {
+func resourceUniverseDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	var diags diag.Diagnostics
 
 	c := meta.(*api.APIClient).YugawareClient

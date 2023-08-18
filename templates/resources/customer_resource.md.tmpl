@@ -1,0 +1,31 @@
+---
+page_title: "{{.Name}} {{.Type}} - {{.RenderedProviderName}}"
+description: |-
+{{ .Description | plainmarkdown | trimspace | prefixlines "  " }}
+---
+
+# {{.Name}} ({{.Type}})
+
+{{ .Description | trimspace }}
+
+The following credential is required as environment variable before creation:
+
+|Requirement|Environment Variable|
+|-------|--------|
+|[Customer Password](https://docs.yugabyte.com/preview/yugabyte-platform/configure-yugabyte-platform/create-admin-user/)|`YB_CUSTOMER_PASSWORD`|
+
+## Example Usage
+
+{{ tffile "examples/resources/yba_customer_resource/resource.tf" }}
+
+{{ .SchemaMarkdown | trimspace }}
+
+## Import
+
+Customer can be imported using `customer uuid`:
+
+```sh
+terraform import yba_customer_resource.customer <customer-uuid>
+```
+
+

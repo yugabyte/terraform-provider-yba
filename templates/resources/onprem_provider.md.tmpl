@@ -1,0 +1,37 @@
+---
+page_title: "{{.Name}} {{.Type}} - {{.RenderedProviderName}}"
+description: |-
+{{ .Description | plainmarkdown | trimspace | prefixlines "  " }}
+---
+
+# {{.Name}} ({{.Type}})
+
+{{ .Description | trimspace }}
+
+For information on configuring on-premises providers, refer to [Create provider configuration](https://docs.yugabyte.com/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises/).
+
+## Example Usage
+
+{{ tffile "examples/resources/yba_onprem_provider/resource.tf" }}
+
+
+If the user wishes to manually provision the nodes to be used in universe creation, the following methods can be followed (set *details.skip_provisioning* to *true*) :
+
+- Running the preprovisioning script: The output of the provider would have the field *provision_instance_script* in *details*. Using the script, follow the steps provided in [running the preprovisioned script](https://docs.yugabyte.com/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises/#run-the-preprovisioning-script). Command format:
+
+  ```sh
+  <Output of yba_onprem_provider.onprem.details[0].provision_instance_script> --ip <node instance ip> --mount_points <mount points>
+  ```
+
+- Setting up YBDB nodes manually: This is only required if SSH user does not have sudo access when *skip_provisioning* is *true*. Steps are provided in [setting up DB nodes manually](https://docs.yugabyte.com/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises/#set-up-database-nodes-manually).
+
+{{ .SchemaMarkdown | trimspace }}
+
+## Import
+
+On-premises providers can be imported using `provider uuid`:
+
+```sh
+terraform import yba_onprem_provider.onprem <provider-uuid>
+```
+
