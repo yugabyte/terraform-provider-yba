@@ -17,9 +17,11 @@ The YugabyteDB Anywhere Provider currently supports the following YugabyteDB Any
   - Backup Information (yba_backup_info)
   - Preflight checks for Nodes used in on-premises Providers (yba_onprem_preflight)
   - Filters for Nodes in on-premises Providers (yba_onprem_nodes)
+  - Filters for Providers (yba_provider_filter)
   - Cloud Provider Access Key Information (yba_provider_key)
   - Available YBDB Release Versions (yba_release_version)
   - Storage Configuration Information (yba_storage_configs)
+  - Filters for Universes (yba_universe_filter)
 
 - Resources:
   - Backup Schedules (yba_backups)

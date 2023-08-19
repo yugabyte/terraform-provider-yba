@@ -73,12 +73,14 @@ func New() *schema.Provider {
 			},
 		},
 		DataSourcesMap: map[string]*schema.Resource{
+			"yba_provider_filter":  cloud_provider.ProviderFilter(),
 			"yba_provider_key":     cloud_provider.ProviderKey(),
 			"yba_storage_configs":  backups.StorageConfigs(),
 			"yba_release_version":  releases.ReleaseVersion(),
 			"yba_backup_info":      backups.Lists(),
 			"yba_onprem_preflight": onprem.PreflightCheck(),
 			"yba_onprem_nodes":     onprem.NodeInstanceFilter(),
+			"yba_universe_filter":  universe.UniverseFilter(),
 		},
 		ResourcesMap: map[string]*schema.Resource{
 			"yba_installation":            installation.ResourceInstallation(),

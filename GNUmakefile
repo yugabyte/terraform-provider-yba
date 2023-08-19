@@ -16,3 +16,7 @@ documents:
 .PHONY: testacc
 testacc:
 	TF_ACC=1 go test ./... -v $(TESTARGS) -timeout 120m
+
+.PHONY: updateclient
+updateclient:
+	go get github.com/yugabyte/platform-go-client
