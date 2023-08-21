@@ -84,6 +84,10 @@ jobs:
           name: terraform-provider-yba
           path: ./acctest/azure/terraform.d/plugins/terraform.yugabyte.com/platform/yba/0.1.0/linux_amd64/
 
+      - name: Add permission to the binary
+        run: |
+          chmod +x ./acctest/aws/terraform.d/plugins/terraform.yugabyte.com/platform/yba/0.1.0/linux_amd64/terraform-provider-yba
+
       # use the modules to bring up platform instance for acceptance tests
       - name: Terraform Init
         run: terraform init
@@ -157,6 +161,10 @@ jobs:
           name: terraform-provider-yba
           path: ./acctest/aws/terraform.d/plugins/terraform.yugabyte.com/platform/yba/0.1.0/linux_amd64/
 
+      - name: Add permission to the binary
+        run: |
+          chmod +x ./acctest/aws/terraform.d/plugins/terraform.yugabyte.com/platform/yba/0.1.0/linux_amd64/terraform-provider-yba
+        
       # use the modules to bring up platform instance for acceptance tests
       - name: Terraform Init
         run: terraform init
@@ -230,6 +238,10 @@ jobs:
           name: terraform-provider-yba
           path: ./acctest/gcp/terraform.d/plugins/terraform.yugabyte.com/platform/yba/0.1.0/linux_amd64/
 
+      - name: Add permission to the binary
+        run: |
+          chmod +x ./acctest/aws/terraform.d/plugins/terraform.yugabyte.com/platform/yba/0.1.0/linux_amd64/terraform-provider-yba
+  
       # use the modules to bring up platform instance for acceptance tests
       - name: Terraform Init
         run: terraform init
