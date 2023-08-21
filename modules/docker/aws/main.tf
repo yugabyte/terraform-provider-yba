@@ -46,6 +46,13 @@ resource "aws_security_group" "yb_security_group" {
     cidr_blocks = var.allowed_sources
   }
   ingress {
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    self        = true
+    cidr_blocks = var.allowed_sources
+  }
+  ingress {
     from_port   = 7000
     to_port     = 7000
     protocol    = "tcp"

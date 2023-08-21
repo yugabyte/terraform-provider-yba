@@ -15,6 +15,7 @@ variable "cluster_name" {
 }
 variable "ssh_keypair" {
   description = "Name of existing AWS key pair"
+  sensitive   = true
   type        = string
 }
 variable "ssh_user" {
@@ -48,4 +49,5 @@ variable "tags" {
 variable "ssh_private_key" {
   description = "Path to private key to use when connecting to the instances"
   type        = string
+  sensitive   = true
 }

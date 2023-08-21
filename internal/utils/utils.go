@@ -160,7 +160,9 @@ func WaitForTask(ctx context.Context, tUUID string, cUUID string, c *client.APIC
 				subtasksStatus = fmt.Sprintf("%sTitle: \"%s\", Status: \"%s\"; ",
 					subtasksStatus, taskMap["title"].(string), taskMap["state"].(string))
 			}
-			tflog.Info(ctx, fmt.Sprintf("Substasks: %s", subtasksStatus))
+			if subtasksStatus != "" {
+				tflog.Info(ctx, fmt.Sprintf("Substasks: %s", subtasksStatus))
+			}
 			s := r["status"].(string)
 			return s, s, nil
 		},
