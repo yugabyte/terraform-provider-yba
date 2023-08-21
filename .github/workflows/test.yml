@@ -21,15 +21,22 @@ jobs:
       uses: actions/setup-go@v4.0.1
       with:
         go-version-file: 'go.mod'
+        cache: false
       id: go
-
-    - name: Get dependencies
-      run: |
-        go mod download
 
     - name: Build
       run: |
         go build -v .
+
+    - name: Upload binary
+      uses: actions/upload-artifact@v3
+      with:
+        name: terraform-provider-yba
+        path: ./terraform-provider-yba
+        retention-days: 1
+        if-no-files-found: error
+
+
 
   azuretest:
     name: Acceptance Test on Azure
@@ -64,16 +71,6 @@ jobs:
       - name: Check out code into the Go module directory
         uses: actions/checkout@v3.5.2
 
-      - name: Set up Go
-        uses: actions/setup-go@v4.0.1
-        with:
-          go-version-file: 'go.mod'
-        id: go
-      
-      - name: Get dependencies
-        run: |
-          go mod download
-
       - uses: hashicorp/setup-terraform@v1
         with:
           terraform_version: ${{ matrix.terraform }}
@@ -82,9 +79,10 @@ jobs:
       - name: Make YBA Terraform provider installation Directory
         run: mkdir -p ./acctest/azure/terraform.d/plugins/terraform.yugabyte.com/platform/yba/0.1.0/linux_amd64
 
-      - name: Install
-        run: |
-          go build -o ./acctest/azure/terraform.d/plugins/terraform.yugabyte.com/platform/yba/0.1.0/linux_amd64
+      - uses: actions/download-artifact@v3
+        with:
+          name: terraform-provider-yba
+          path: ./acctest/azure/terraform.d/plugins/terraform.yugabyte.com/platform/yba/0.1.0/linux_amd64/
 
       # use the modules to bring up platform instance for acceptance tests
       - name: Terraform Init
@@ -146,16 +144,6 @@ jobs:
       - name: Check out code into the Go module directory
         uses: actions/checkout@v3.5.2
       
-      - name: Set up Go
-        uses: actions/setup-go@v4.0.1
-        with:
-          go-version-file: 'go.mod'
-        id: go
-      
-      - name: Get dependencies
-        run: |
-          go mod download
-
       - uses: hashicorp/setup-terraform@v1
         with:
           terraform_version: ${{ matrix.terraform }}
@@ -164,9 +152,10 @@ jobs:
       - name: Make YBA Terraform provider installation Directory
         run: mkdir -p ./acctest/aws/terraform.d/plugins/terraform.yugabyte.com/platform/yba/0.1.0/linux_amd64
 
-      - name: Install
-        run: |
-          go build -o ./acctest/aws/terraform.d/plugins/terraform.yugabyte.com/platform/yba/0.1.0/linux_amd64
+      - uses: actions/download-artifact@v3
+        with:
+          name: terraform-provider-yba
+          path: ./acctest/aws/terraform.d/plugins/terraform.yugabyte.com/platform/yba/0.1.0/linux_amd64/
 
       # use the modules to bring up platform instance for acceptance tests
       - name: Terraform Init
@@ -228,16 +217,6 @@ jobs:
       - name: Check out code into the Go module directory
         uses: actions/checkout@v3.5.2
 
-      - name: Set up Go
-        uses: actions/setup-go@v4.0.1
-        with:
-          go-version-file: 'go.mod'
-        id: go
-
-      - name: Get dependencies
-        run: |
-          go mod download
-
       - uses: hashicorp/setup-terraform@v1
         with:
           terraform_version: ${{ matrix.terraform }}
@@ -246,9 +225,10 @@ jobs:
       - name: Make YBA Terraform provider installation Directory
         run: mkdir -p ./acctest/gcp/terraform.d/plugins/terraform.yugabyte.com/platform/yba/0.1.0/linux_amd64
 
-      - name: Install
-        run: |
-          go build -o ./acctest/gcp/terraform.d/plugins/terraform.yugabyte.com/platform/yba/0.1.0/linux_amd64
+      - uses: actions/download-artifact@v3
+        with:
+          name: terraform-provider-yba
+          path: ./acctest/gcp/terraform.d/plugins/terraform.yugabyte.com/platform/yba/0.1.0/linux_amd64/
 
       # use the modules to bring up platform instance for acceptance tests
       - name: Terraform Init
