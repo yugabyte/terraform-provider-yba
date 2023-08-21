@@ -260,7 +260,6 @@ jobs:
     needs: build
     runs-on: [ubuntu-latest]
     env:
-      TF_VAR_RESOURCES_DIR: ${{ secrets.TF_VAR_RESOURCES_DIR }}
       YB_CUSTOMER_PASSWORD: ${{ secrets.YB_CUSTOMER_PASSWORD }}
       GOOGLE_APPLICATION_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
       GOOGLE_PROJECT: ${{ secrets.GOOGLE_PROJECT }}
@@ -294,8 +293,8 @@ jobs:
 
       - name: Setup directory
         run: |
-          mkdir -p /home/deeptikumar/yugabyte/
-          mkdir -p ./acctest/aws/terraform.d/plugins/terraform.yugabyte.com/platform/yba/0.1.0/linux_amd64    
+          mkdir -p ./acctest/aws/terraform.d/plugins/terraform.yugabyte.com/platform/yba/0.1.0/linux_amd64 
+          echo "TF_VAR_RESOURCES_DIR=${{runner.temp}}" >> $GITHUB_ENV  
 
       - uses: actions/download-artifact@v3
         with:
@@ -306,14 +305,14 @@ jobs:
         uses: timheuer/base64-to-file@v1.2
         with:
           fileName: 'acctest'
-          fileDir: '/home/deeptikumar/yugabyte/'
+          fileDir: '${{runner.temp}}'
           encodedString: ${{ secrets.YBA_SSH_KEY }}
 
       - name: Write acctest pub key
         uses: timheuer/base64-to-file@v1.2
         with:
           fileName: 'acctest.pub'
-          fileDir: '/home/deeptikumar/yugabyte/'
+          fileDir: '${{runner.temp}}'
           encodedString: ${{ secrets.YBA_SSH_KEY_PUB }}
 
 
@@ -321,21 +320,21 @@ jobs:
         uses: timheuer/base64-to-file@v1.2
         with:
           fileName: 'acctest.rli'
-          fileDir: '/home/deeptikumar/yugabyte/'
+          fileDir: '${{runner.temp}}'
           encodedString: ${{ secrets.YBA_REPL_RLI }}
 
       - name: Write acctest replicated config
         uses: timheuer/base64-to-file@v1.2
         with:
           fileName: 'replicated.conf'
-          fileDir: '/home/deeptikumar/yugabyte/'
+          fileDir: '${{runner.temp}}'
           encodedString: ${{ secrets.YBA_REPL_CONF }}
 
       - name: Write acctest replicated config
         uses: timheuer/base64-to-file@v1.2
         with:
           fileName: 'application_settings.conf'
-          fileDir: '/home/deeptikumar/yugabyte/'
+          fileDir: '${{runner.temp}}'
           encodedString: ${{ secrets.YBA_REPL_APP_SETTINGS }}
 
       - uses: actions/download-artifact@v3
