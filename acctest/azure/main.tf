@@ -77,7 +77,7 @@ resource "yba_installation" "installation" {
   replicated_license_file   = "${var.RESOURCES_DIR}/acctest.rli"
   application_settings_file = "${var.RESOURCES_DIR}/application_settings.conf"
   timeouts {
-    create = "15m"
+    create = "30m"
   }
 }
 
