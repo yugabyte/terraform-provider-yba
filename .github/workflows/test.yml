@@ -331,12 +331,17 @@ jobs:
         with:
           terraform_version: ${{ matrix.terraform }}
           terraform_wrapper: false
+      
+      - name: Public IP
+        id: ip
+        uses: haythem/public-ip@v1.3
 
-      - name: Setup directory
+      - name: Setup 
         run: |
           mkdir -p ./acctest/azure/terraform.d/plugins/terraform.yugabyte.com/platform/yba/0.1.0/linux_amd64 
           echo "TF_VAR_RESOURCES_DIR=${{runner.temp}}" >> $GITHUB_ENV  
-          echo "GOOGLE_APPLICATION_CREDENTIALS=${{runner.temp}}/yugabyte-gce.json" >> $GITHUB_ENV 
+          echo "GOOGLE_APPLICATION_CREDENTIALS=${{runner.temp}}/yugabyte-gce.json" >> $GITHUB_ENV
+          echo "TF_VAR_RUNNER_IP=${{ steps.ip.outputs.ipv4 }}/32"   >> $GITHUB_ENV
 
       - uses: actions/download-artifact@v3
         with:

@@ -57,3 +57,8 @@ variable "ssh_public_key" {
   description = "Path to SSH public key to be use when creating the instances"
   type        = string
 }
+
+variable "runner_ip" {
+  description = "IP of the runners to be ablee to connect to the instances"
+  type = string
+}
