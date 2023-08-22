@@ -37,4 +37,5 @@ resource "google_compute_instance" "yb_anywhere_node" {
     subnetwork = var.vpc_subnetwork
     access_config {}
   }
+  depends_on = [ google_compute_firewall.yugaware-firewall ]
 }
