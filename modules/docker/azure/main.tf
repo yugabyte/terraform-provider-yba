@@ -23,9 +23,9 @@ resource "azurerm_network_security_group" "yb_sg" {
     protocol          = "Tcp"
     source_port_range = "*"
     destination_port_ranges = [
-      "22", "8800", "80", "7000", "7100", "9000", "9100", "11000", "12000", "9300", "9042", "5433", "6379"
+      "22", "8800", "80", "443"
     ]
-    source_address_prefix      = "*"
+    source_address_prefix      = var.runner_ip
     destination_address_prefix = "*"
   }
 
@@ -40,12 +40,12 @@ data "azurerm_subnet" "subnet" {
   resource_group_name  = var.resource_group
 }
 
-/*
+
 resource "azurerm_subnet_network_security_group_association" "yb_sg_association" {
   depends_on                = [azurerm_network_security_group.yb_sg]
   subnet_id                 = data.azurerm_subnet.subnet.id
   network_security_group_id = azurerm_network_security_group.yb_sg.id
-}*/
+}
 
 resource "azurerm_network_interface" "yb_network_interface" {
   depends_on          = [azurerm_public_ip.yb_public_ip]

@@ -35,6 +35,13 @@ variable "AZURE_RG" {
   description = "Azure resource group to run acceptance testing"
 }
 
+
+variable "RUNNER_IP" {
+  description = "IP of the runners to be able to connect to the instances"
+  type = string
+}
+
+
 resource "random_uuid" "random" {
 }
 
@@ -55,6 +62,7 @@ module "azure_yb_anywhere" {
   // files
   ssh_private_key = "${var.RESOURCES_DIR}/acctest"
   ssh_public_key  = "${var.RESOURCES_DIR}/acctest.pub"
+  runner_ip = "${var.RUNNER_IP}"
 }
 
 output "host" {
