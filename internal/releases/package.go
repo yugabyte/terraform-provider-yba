@@ -22,10 +22,10 @@ import (
 // PackageSchema is used to hold the package path and corresponding architecture
 func PackageSchema() *schema.Schema {
 	return &schema.Schema{
-		Type:     schema.TypeList,
-		ForceNew: true,
-		Optional: true,
-		Computed: true,
+		Type:        schema.TypeList,
+		ForceNew:    true,
+		Optional:    true,
+		Computed:    true,
 		Description: "Package path and architecture.",
 		Elem: &schema.Resource{
 			Schema: map[string]*schema.Schema{

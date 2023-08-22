@@ -10,6 +10,7 @@ variable "private_ip" {
 variable "ssh_host_ip" {
   description = "IP address of the VM instance to be accessed. If VM is within the same network, use private IP, else use public IP"
   type        = string
+  sensitive   = true
   default     = ""
 }
 variable "ssh_user" {
@@ -19,6 +20,7 @@ variable "ssh_user" {
 }
 variable "ssh_private_key_file" {
   description = "Private key file to ssh into YugabyteDB Anywhere node to configure cluster"
+  sensitive   = true
   type        = string
 }
 variable "replicated_directory" {
