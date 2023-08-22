@@ -38,105 +38,96 @@ jobs:
 
 
 
-  azuretest:
-    name: Acceptance Test on Azure
-    needs: build
-    runs-on: [ ubuntu-latest]
-    env:
-      YB_CUSTOMER_PASSWORD: ${{ secrets.YB_CUSTOMER_PASSWORD }}
-      AZURE_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
-      AZURE_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
-      AZURE_RG: ${{ secrets.ARM_RESOURCE_GROUP }}
-      AZURE_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
-      AZURE_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
-      ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
-      ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
-      ARM_RG: ${{ secrets.ARM_RESOURCE_GROUP }}
-      ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
-      ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
-      TF_VAR_AZURE_RG: ${{ vars.TF_VAR_AZURE_RG }}
-      TF_VAR_AZURE_SUBNET_ID: ${{ vars.TF_VAR_AZURE_SUBNET_ID }}
-      TF_VAR_AZURE_VNET_ID: ${{ vars.TF_VAR_AZURE_VNET_ID }}
-      TF_VAR_AZURE_SG_ID: ${{ vars.TF_VAR_AZURE_SG_ID }}
-    timeout-minutes: 120
-    strategy:
-      fail-fast: false
-      matrix:
-        terraform:
-          # add other versions to support
-          - '1.4.*'
+  # azuretest:
+  #   name: Acceptance Test on Azure
+  #   needs: build
+  #   runs-on: [ ubuntu-latest]
+  #   env:
+  #     YB_CUSTOMER_PASSWORD: ${{ secrets.YB_CUSTOMER_PASSWORD }}
+  #     AZURE_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
+  #     AZURE_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
+  #     AZURE_RG: ${{ secrets.ARM_RESOURCE_GROUP }}
+  #     AZURE_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+  #     AZURE_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
+  #     ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
+  #     ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
+  #     ARM_RG: ${{ secrets.ARM_RESOURCE_GROUP }}
+  #     ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+  #     ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
+  #     TF_VAR_AZURE_RG: ${{ vars.TF_VAR_AZURE_RG }}
+  #     TF_VAR_AZURE_SUBNET_ID: ${{ vars.TF_VAR_AZURE_SUBNET_ID }}
+  #     TF_VAR_AZURE_VNET_ID: ${{ vars.TF_VAR_AZURE_VNET_ID }}
+  #     TF_VAR_AZURE_SG_ID: ${{ vars.TF_VAR_AZURE_SG_ID }}
+  #   timeout-minutes: 120
+  #   strategy:
+  #     fail-fast: false
+  #     matrix:
+  #       terraform:
+  #         # add other versions to support
+  #         - '1.4.*'
 
-    steps:
-      - name: Check out code into the Go module directory
-        uses: actions/checkout@v3.5.2
+  #   steps:
+  #     - name: Check out code into the Go module directory
+  #       uses: actions/checkout@v3.5.2
 
-      - name: Set up Go
-        uses: actions/setup-go@v4.0.1
-        with:
-          go-version-file: 'go.mod'
-          cache: false
-        id: go
+  #     - name: Set up Go
+  #       uses: actions/setup-go@v4.0.1
+  #       with:
+  #         go-version-file: 'go.mod'
+  #         cache: false
+  #       id: go
 
-      - uses: hashicorp/setup-terraform@v1
-        with:
-          terraform_version: ${{ matrix.terraform }}
-          terraform_wrapper: false
+  #     - uses: hashicorp/setup-terraform@v1
+  #       with:
+  #         terraform_version: ${{ matrix.terraform }}
+  #         terraform_wrapper: false
 
-      - name: Setup directory
-        run: |
-          mkdir -p ./acctest/azure/terraform.d/plugins/terraform.yugabyte.com/platform/yba/0.1.0/linux_amd64 
-          echo "TF_VAR_RESOURCES_DIR=${{runner.temp}}" >> $GITHUB_ENV 
+  #     - name: Setup directory
+  #       run: |
+  #         mkdir -p ./acctest/azure/terraform.d/plugins/terraform.yugabyte.com/platform/yba/0.1.0/linux_amd64 
+  #         echo "TF_VAR_RESOURCES_DIR=${{runner.temp}}" >> $GITHUB_ENV 
  
 
-      - uses: actions/download-artifact@v3
-        with:
-          name: terraform-provider-yba
-          path: ./acctest/azure/terraform.d/plugins/terraform.yugabyte.com/platform/yba/0.1.0/linux_amd64/
+  #     - uses: actions/download-artifact@v3
+  #       with:
+  #         name: terraform-provider-yba
+  #         path: ./acctest/azure/terraform.d/plugins/terraform.yugabyte.com/platform/yba/0.1.0/linux_amd64/
 
-      - name: Write acctest key
-        uses: timheuer/base64-to-file@v1.2
-        with:
-          fileName: 'acctest'
-          fileDir: '${{runner.temp}}'
-          encodedString: ${{ secrets.YBA_SSH_KEY }}
+  #     - name: Write acctest key
+  #       uses: timheuer/base64-to-file@v1.2
+  #       with:
+  #         fileName: 'acctest'
+  #         fileDir: '${{runner.temp}}'
+  #         encodedString: ${{ secrets.YBA_SSH_KEY }}
 
-      - name: Write acctest pub key
-        uses: timheuer/base64-to-file@v1.2
-        with:
-          fileName: 'acctest.pub'
-          fileDir: '${{runner.temp}}'
-          encodedString: ${{ secrets.YBA_SSH_KEY_PUB }}
+  #     - name: Write acctest pub key
+  #       uses: timheuer/base64-to-file@v1.2
+  #       with:
+  #         fileName: 'acctest.pub'
+  #         fileDir: '${{runner.temp}}'
+  #         encodedString: ${{ secrets.YBA_SSH_KEY_PUB }}
 
 
-      - name: Write acctest RLI licenses
-        uses: timheuer/base64-to-file@v1.2
-        with:
-          fileName: 'acctest.rli'
-          fileDir: '${{runner.temp}}'
-          encodedString: ${{ secrets.YBA_REPL_RLI }}
+  #     - name: Write acctest RLI licenses
+  #       uses: timheuer/base64-to-file@v1.2
+  #       with:
+  #         fileName: 'acctest.rli'
+  #         fileDir: '${{runner.temp}}'
+  #         encodedString: ${{ secrets.YBA_REPL_RLI }}
 
-      - name: Write acctest replicated config
-        uses: timheuer/base64-to-file@v1.2
-        with:
-          fileName: 'replicated.conf'
-          fileDir: '${{runner.temp}}'
-          encodedString: ${{ secrets.YBA_REPL_CONF }}
+  #     - name: Write acctest replicated config
+  #       uses: timheuer/base64-to-file@v1.2
+  #       with:
+  #         fileName: 'replicated.conf'
+  #         fileDir: '${{runner.temp}}'
+  #         encodedString: ${{ secrets.YBA_REPL_CONF }}
 
-      - name: Write acctest replicated config
-        uses: timheuer/base64-to-file@v1.2
-        with:
-          fileName: 'application_settings.conf'
-          fileDir: '${{runner.temp}}'
-          encodedString: ${{ secrets.YBA_REPL_APP_SETTINGS }}
-
-      - name: checkfile md5
-        run: |
-          md5sum ${{runner.temp}}/application_settings.conf
-          md5sum ${{runner.temp}}/replicated.conf
-          md5sum ${{runner.temp}}/acctest.rli
-          md5sum ${{runner.temp}}/acctest.pub
-          md5sum ${{runner.temp}}/acctest
-
+  #     - name: Write acctest replicated config
+  #       uses: timheuer/base64-to-file@v1.2
+  #       with:
+  #         fileName: 'application_settings.conf'
+  #         fileDir: '${{runner.temp}}'
+  #         encodedString: ${{ secrets.YBA_REPL_APP_SETTINGS }}
 
       # - uses: actions/download-artifact@v3
       #   with:
@@ -306,136 +297,136 @@ jobs:
   #       run: terraform destroy -auto-approve
   #       working-directory: ./acctest/aws
           
-  # gcptest:
-  #   name: Acceptance Test on GCP
-  #   needs: build
-  #   runs-on: [ubuntu-latest]
-  #   env:
-  #     YB_CUSTOMER_PASSWORD: ${{ secrets.YB_CUSTOMER_PASSWORD }}
-  #     GOOGLE_PROJECT: ${{ secrets.GOOGLE_PROJECT }}
-  #     GOOGLE_REGION: ${{ secrets.GOOGLE_REGION }}
-  #     GOOGLE_ZONE: ${{ secrets.GOOGLE_ZONE }}
-  #     TF_VAR_GCP_VPC_NETWORK: ${{ vars.TF_VAR_GCP_VPC_NETWORK }}
-  #     TF_VAR_GCP_VPC_SUBNETWORK: ${{ vars.TF_VAR_GCP_VPC_SUBNETWORK }}
-  #   timeout-minutes: 120
-  #   strategy:
-  #     fail-fast: false
-  #     matrix:
-  #       terraform:
-  #         # add other versions to support
-  #         - '1.4.*'
+  gcptest:
+    name: Acceptance Test on GCP
+    needs: build
+    runs-on: [ubuntu-latest]
+    env:
+      YB_CUSTOMER_PASSWORD: ${{ secrets.YB_CUSTOMER_PASSWORD }}
+      GOOGLE_PROJECT: ${{ secrets.GOOGLE_PROJECT }}
+      GOOGLE_REGION: ${{ secrets.GOOGLE_REGION }}
+      GOOGLE_ZONE: ${{ secrets.GOOGLE_ZONE }}
+      TF_VAR_GCP_VPC_NETWORK: ${{ vars.TF_VAR_GCP_VPC_NETWORK }}
+      TF_VAR_GCP_VPC_SUBNETWORK: ${{ vars.TF_VAR_GCP_VPC_SUBNETWORK }}
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        terraform:
+          # add other versions to support
+          - '1.4.*'
 
-  #   steps:
-  #     - name: Check out code into the Go module directory
-  #       uses: actions/checkout@v3.5.2
+    steps:
+      - name: Check out code into the Go module directory
+        uses: actions/checkout@v3.5.2
 
-  #     - name: Set up Go
-  #       uses: actions/setup-go@v4.0.1
-  #       with:
-  #         go-version-file: 'go.mod'
-  #         cache: false
-  #       id: go
+      - name: Set up Go
+        uses: actions/setup-go@v4.0.1
+        with:
+          go-version-file: 'go.mod'
+          cache: false
+        id: go
 
-  #     - uses: hashicorp/setup-terraform@v1
-  #       with:
-  #         terraform_version: ${{ matrix.terraform }}
-  #         terraform_wrapper: false
+      - uses: hashicorp/setup-terraform@v1
+        with:
+          terraform_version: ${{ matrix.terraform }}
+          terraform_wrapper: false
 
-  #     - name: Setup directory
-  #       run: |
-  #         mkdir -p ./acctest/azure/terraform.d/plugins/terraform.yugabyte.com/platform/yba/0.1.0/linux_amd64 
-  #         echo "TF_VAR_RESOURCES_DIR=${{runner.temp}}" >> $GITHUB_ENV  
-  #         echo "GOOGLE_APPLICATION_CREDENTIALS=${{runner.temp}}/yugabyte-gce.json" >> $GITHUB_ENV 
+      - name: Setup directory
+        run: |
+          mkdir -p ./acctest/azure/terraform.d/plugins/terraform.yugabyte.com/platform/yba/0.1.0/linux_amd64 
+          echo "TF_VAR_RESOURCES_DIR=${{runner.temp}}" >> $GITHUB_ENV  
+          echo "GOOGLE_APPLICATION_CREDENTIALS=${{runner.temp}}/yugabyte-gce.json" >> $GITHUB_ENV 
 
-  #     - uses: actions/download-artifact@v3
-  #       with:
-  #         name: terraform-provider-yba
-  #         path: ./acctest/gcp/terraform.d/plugins/terraform.yugabyte.com/platform/yba/0.1.0/linux_amd64/
+      - uses: actions/download-artifact@v3
+        with:
+          name: terraform-provider-yba
+          path: ./acctest/gcp/terraform.d/plugins/terraform.yugabyte.com/platform/yba/0.1.0/linux_amd64/
 
-  #     - name: Write acctest key
-  #       uses: timheuer/base64-to-file@v1.2
-  #       with:
-  #         fileName: 'acctest'
-  #         fileDir: '${{runner.temp}}'
-  #         encodedString: ${{ secrets.YBA_SSH_KEY }}
+      - name: Write acctest key
+        uses: timheuer/base64-to-file@v1.2
+        with:
+          fileName: 'acctest'
+          fileDir: '${{runner.temp}}'
+          encodedString: ${{ secrets.YBA_SSH_KEY }}
 
-  #     - name: Write acctest pub key
-  #       uses: timheuer/base64-to-file@v1.2
-  #       with:
-  #         fileName: 'acctest.pub'
-  #         fileDir: '${{runner.temp}}'
-  #         encodedString: ${{ secrets.YBA_SSH_KEY_PUB }}
+      - name: Write acctest pub key
+        uses: timheuer/base64-to-file@v1.2
+        with:
+          fileName: 'acctest.pub'
+          fileDir: '${{runner.temp}}'
+          encodedString: ${{ secrets.YBA_SSH_KEY_PUB }}
 
 
-  #     - name: Write acctest RLI licenses
-  #       uses: timheuer/base64-to-file@v1.2
-  #       with:
-  #         fileName: 'acctest.rli'
-  #         fileDir: '${{runner.temp}}'
-  #         encodedString: ${{ secrets.YBA_REPL_RLI }}
+      - name: Write acctest RLI licenses
+        uses: timheuer/base64-to-file@v1.2
+        with:
+          fileName: 'acctest.rli'
+          fileDir: '${{runner.temp}}'
+          encodedString: ${{ secrets.YBA_REPL_RLI }}
 
-  #     - name: Write acctest replicated config
-  #       uses: timheuer/base64-to-file@v1.2
-  #       with:
-  #         fileName: 'replicated.conf'
-  #         fileDir: '${{runner.temp}}'
-  #         encodedString: ${{ secrets.YBA_REPL_CONF }}
+      - name: Write acctest replicated config
+        uses: timheuer/base64-to-file@v1.2
+        with:
+          fileName: 'replicated.conf'
+          fileDir: '${{runner.temp}}'
+          encodedString: ${{ secrets.YBA_REPL_CONF }}
 
-  #     - name: Write acctest replicated config
-  #       uses: timheuer/base64-to-file@v1.2
-  #       with:
-  #         fileName: 'application_settings.conf'
-  #         fileDir: '${{runner.temp}}'
-  #         encodedString: ${{ secrets.YBA_REPL_APP_SETTINGS }}
+      - name: Write acctest replicated config
+        uses: timheuer/base64-to-file@v1.2
+        with:
+          fileName: 'application_settings.conf'
+          fileDir: '${{runner.temp}}'
+          encodedString: ${{ secrets.YBA_REPL_APP_SETTINGS }}
 
-  #     - name: Write gcp credentials
-  #       uses: timheuer/base64-to-file@v1.2
-  #       with:
-  #         fileName: 'yugabyte-gce.json'
-  #         fileDir: '${{runner.temp}}'
-  #         encodedString: ${{ secrets.GCP_CREDS_FILES }}
+      - name: Write gcp credentials
+        uses: timheuer/base64-to-file@v1.2
+        with:
+          fileName: 'yugabyte-gce.json'
+          fileDir: '${{runner.temp}}'
+          encodedString: ${{ secrets.GCP_CREDS_FILES }}
   
 
-  #     - uses: actions/download-artifact@v3
-  #       with:
-  #         name: terraform-provider-yba
-  #         path: ./acctest/gcp/terraform.d/plugins/terraform.yugabyte.com/platform/yba/0.1.0/linux_amd64/
+      - uses: actions/download-artifact@v3
+        with:
+          name: terraform-provider-yba
+          path: ./acctest/gcp/terraform.d/plugins/terraform.yugabyte.com/platform/yba/0.1.0/linux_amd64/
 
-  #     - name: Add permission to the binary
-  #       run: |
-  #         chmod +x ./acctest/gcp/terraform.d/plugins/terraform.yugabyte.com/platform/yba/0.1.0/linux_amd64/terraform-provider-yba
+      - name: Add permission to the binary
+        run: |
+          chmod +x ./acctest/gcp/terraform.d/plugins/terraform.yugabyte.com/platform/yba/0.1.0/linux_amd64/terraform-provider-yba
 
-  #     # use the modules to bring up platform instance for acceptance tests
-  #     - name: Terraform Init
-  #       run: terraform init
-  #       working-directory: ./acctest/gcp
+      # use the modules to bring up platform instance for acceptance tests
+      - name: Terraform Init
+        run: terraform init
+        working-directory: ./acctest/gcp
 
-  #     - name: Terraform Plan
-  #       run: terraform plan -no-color
-  #       working-directory: ./acctest/gcp
+      - name: Terraform Plan
+        run: terraform plan -no-color
+        working-directory: ./acctest/gcp
 
-  #     - name: Terraform Apply
-  #       run: terraform apply -auto-approve
-  #       working-directory: ./acctest/gcp
+      - name: Terraform Apply
+        run: terraform apply -auto-approve
+        working-directory: ./acctest/gcp
 
-  #     - name: Set Platform Host
-  #       run: echo "YB_HOST=$(terraform output --raw host)" >> $GITHUB_ENV
-  #       working-directory: ./acctest/gcp
+      - name: Set Platform Host
+        run: echo "YB_HOST=$(terraform output --raw host)" >> $GITHUB_ENV
+        working-directory: ./acctest/gcp
 
-  #     - name: Set Platform API Key
-  #       run: echo "YB_API_KEY=$(terraform output --raw api_key)" >> $GITHUB_ENV
-  #       working-directory: ./acctest/gcp
-  #     # run acceptance tests
-  #     - name: TF Acceptance Tests
-  #       timeout-minutes: 120
-  #       env:
-  #         TF_ACC: "1"
+      - name: Set Platform API Key
+        run: echo "YB_API_KEY=$(terraform output --raw api_key)" >> $GITHUB_ENV
+        working-directory: ./acctest/gcp
+      # run acceptance tests
+      - name: TF Acceptance Tests
+        timeout-minutes: 120
+        env:
+          TF_ACC: "1"
 
-  #       run: |
-  #         go test -v -cover -timeout 2h ./... -run "GCP"
+        run: |
+          go test -v -cover -timeout 2h ./... -run "GCP"
 
-  #     # clean up platform instance
-  #     - name: Terraform Destroy
-  #       if: always()
-  #       run: terraform destroy -auto-approve
-  #       working-directory: ./acctest/gcp
+      # clean up platform instance
+      - name: Terraform Destroy
+        if: always()
+        run: terraform destroy -auto-approve
+        working-directory: ./acctest/gcp
