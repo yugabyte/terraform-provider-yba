@@ -130,12 +130,12 @@ jobs:
           encodedString: ${{ secrets.YBA_REPL_APP_SETTINGS }}
 
       - name: checkfile md5
-        run:
-          md5 ${{runner.temp}}/application_settings.conf
-          md5 ${{runner.temp}}/replicated.conf
-          md5 ${{runner.temp}}/acctest.rli
-          md5 ${{runner.temp}}/acctest.pub
-          md5 ${{runner.temp}}/acctest
+        run: |
+          md5sum ${{runner.temp}}/application_settings.conf
+          md5sum ${{runner.temp}}/replicated.conf
+          md5sum ${{runner.temp}}/acctest.rli
+          md5sum ${{runner.temp}}/acctest.pub
+          md5sum ${{runner.temp}}/acctest
 
 
       # - uses: actions/download-artifact@v3
