@@ -12,7 +12,7 @@ resource "azurerm_public_ip" "yb_public_ip" {
 
 resource "azurerm_network_security_group" "yb_sg" {
   location            = var.region_name
-  name                = "${var.cluster_name}-sg"
+  name                = "${var.cluster_name}-1-sg"
   resource_group_name = var.resource_group
 
   security_rule {
@@ -39,7 +39,6 @@ data "azurerm_subnet" "subnet" {
   virtual_network_name = var.vnet_name
   resource_group_name  = var.resource_group
 }
-
 
 resource "azurerm_subnet_network_security_group_association" "yb_sg_association" {
   depends_on                = [azurerm_network_security_group.yb_sg]
