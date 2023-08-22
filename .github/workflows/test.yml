@@ -58,6 +58,7 @@ jobs:
       TF_VAR_AZURE_SUBNET_ID: ${{ vars.TF_VAR_AZURE_SUBNET_ID }}
       TF_VAR_AZURE_VNET_ID: ${{ vars.TF_VAR_AZURE_VNET_ID }}
       TF_VAR_AZURE_SG_ID: ${{ vars.TF_VAR_AZURE_SG_ID }}
+      TF_LOG: "DEBUG"
     timeout-minutes: 120
     strategy:
       fail-fast: false
@@ -167,7 +168,6 @@ jobs:
         timeout-minutes: 120
         env:
           TF_ACC: "1"
-
         run: |
           go test -v -cover -timeout 2h ./... -run "Azure"
 
