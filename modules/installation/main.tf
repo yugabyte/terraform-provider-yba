@@ -1,8 +1,8 @@
 terraform {
   required_providers {
     yba = {
-      version = "~> 0.1.0"
-      source  = "terraform.yugabyte.com/platform/yba"
+      version = "~> 0.1.6"
+      source  = "yugabyte/yba"
     }
   }
 }
