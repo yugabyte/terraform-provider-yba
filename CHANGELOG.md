@@ -1,3 +1,22 @@
+## v0.1.7 (September 2023)
+
+The following version of YugabyteDB Anywhere Terraform Provider includes support:
+
+### Enhancements
+
+- Provider deletion task waits for completion.
+- Deprecating YugabyteDB Anywhere Installation via Replicated resource (yba_installation)
+
+### Data Sources
+
+- Filters for Nodes in on-premises Providers (yba_onprem_nodes)
+- Filters for Providers (yba_provider_filter)
+- Filters for Universes (yba_universe_filter)
+
+### Resources
+
+- YugabyteDB Anywhere Installation via YBA Installer (yba_installer)
+
 ## v0.1.6 (August 2023)
 
 The following version of YugabyteDB Anywhere Terraform Provider includes support for the following:
