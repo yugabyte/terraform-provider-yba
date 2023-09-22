@@ -1,6 +1,14 @@
+## v0.1.8 (Sptember 2023)
+
+The following version of YugabyteDB Anywhere Terraform Provider includes support for:
+
+### Enhancements
+
+- Increasing timeout for REST API calls to prevent Client Timeouts
+
 ## v0.1.7 (September 2023)
 
-The following version of YugabyteDB Anywhere Terraform Provider includes support:
+The following version of YugabyteDB Anywhere Terraform Provider includes support for:
 
 ### Enhancements
 
