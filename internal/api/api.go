@@ -55,7 +55,7 @@ func NewAPIClient(enableHTTPS bool, host string, apiKey string) (*APIClient, err
 
 	// create vanilla client for non-public APIs
 	vc := &VanillaClient{
-		Client:      &http.Client{Timeout: 10 * time.Second},
+		Client:      &http.Client{Timeout: 30 * time.Second},
 		Host:        host,
 		EnableHTTPS: enableHTTPS,
 	}
