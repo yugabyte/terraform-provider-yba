@@ -94,6 +94,7 @@ func New() *schema.Provider {
 			"yba_releases":                releases.ResourceReleases(),
 			"yba_restore":                 backups.ResourceRestore(),
 			"yba_onprem_provider":         onprem.ResourceOnPremProvider(),
+			"yba_onprem_node_instance":    onprem.ResourceOnPremNodeInstances(),
 		},
 		ConfigureContextFunc: providerConfigure,
 	}

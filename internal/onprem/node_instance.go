@@ -174,7 +174,17 @@ func nodeInstancesRead(ctx context.Context, c *client.APIClient, cUUID, pUUID st
 		return nil, errMessage
 	}
 	return r, nil
+}
 
+func nodeInstanceGet(ctx context.Context, c *client.APIClient, cUUID, nUUID string) (
+	client.NodeInstance, error) {
+	r, response, err := c.NodeInstancesApi.GetNodeInstance(ctx, cUUID, nUUID).Execute()
+	if err != nil {
+		errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
+			"Onprem Node Instance", "Get")
+		return client.NodeInstance{}, errMessage
+	}
+	return r, nil
 }
 
 func nodeInstanceDelete(ctx context.Context, c *client.APIClient, cUUID, pUUID,

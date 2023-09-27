@@ -10,20 +10,21 @@ description: |-
 
 For information on configuring on-premises providers, refer to [Create provider configuration](https://docs.yugabyte.com/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises/).
 
+~> **Warning:** YugabyteDB Anywhere Terraform Provider currently provides a standalone On-Premises Node Instance (*yba_onprem_node_instance*) resource, and allows Node Instances to be defined in-line in the On-Premises Provider (*yba_onprem_provider*) resource. Currently, you can't use an On-Premises Provider with in-line Node Instances in conjunction with any On-Premises Node Instance resources. Doing so will cause a conflict and might result in removal of nodes managed by the provider.
+
 ## Example Usage
 
 {{ tffile "examples/resources/yba_onprem_provider/resource.tf" }}
 
 
-If the user wishes to manually provision the nodes to be used in universe creation, the following methods can be followed (set *details.skip_provisioning* to *true*) :
+To manually provision the nodes to be used in universe creation, set *details.skip_provisioning* to *true* and do one of the following:
 
-- Running the preprovisioning script: The output of the provider would have the field *provision_instance_script* in *details*. Using the script, follow the steps provided in [running the preprovisioned script](https://docs.yugabyte.com/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises/#run-the-preprovisioning-script). Command format:
-
+- Run the pre-provisioning script. The output of the provider would have the field *provision_instance_script* in *details*. Using the script, follow the steps provided in [Manual setup with script](https://docs.yugabyte.com/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises-script/). Command format is as follows:
   ```sh
   <Output of yba_onprem_provider.onprem.details[0].provision_instance_script> --ip <node instance ip> --mount_points <mount points>
   ```
 
-- Setting up YBDB nodes manually: This is only required if SSH user does not have sudo access when *skip_provisioning* is *true*. Steps are provided in [setting up DB nodes manually](https://docs.yugabyte.com/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises/#set-up-database-nodes-manually).
+- Fully manual setup. This is only required if the SSH user does not have sudo access when *skip_provisioning* is *true*. Steps are provided in [Fully manual setup](https://docs.yugabyte.com/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises-manual/).
 
 {{ .SchemaMarkdown | trimspace }}
 
