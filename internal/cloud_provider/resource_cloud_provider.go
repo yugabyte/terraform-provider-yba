@@ -274,7 +274,7 @@ func resourceCloudProviderDiff() schema.CustomizeDiffFunc {
 
 				// if not IAM AWS cloud provider, check for credentials in env
 				if !isIAM {
-					_, isPresentAccessKeyID := os.LookupEnv(utils.GCPCredentialsEnv)
+					_, isPresentAccessKeyID := os.LookupEnv(utils.AWSAccessKeyEnv)
 					if !isPresentAccessKeyID {
 						errorString = fmt.Sprintf("%s%s ", errorString, utils.AWSAccessKeyEnv)
 					}
@@ -291,7 +291,7 @@ func resourceCloudProviderDiff() schema.CustomizeDiffFunc {
 			}),
 		customdiff.IfValue("code",
 			func(ctx context.Context, value, meta interface{}) bool {
-				// check if AWS cloud provider creation requires access keys
+				// check if GCP cloud provider creation requires access keys
 				return value.(string) == "gcp"
 			},
 			func(ctx context.Context, d *schema.ResourceDiff, meta interface{}) error {
@@ -302,7 +302,7 @@ func resourceCloudProviderDiff() schema.CustomizeDiffFunc {
 					isIAM = configSettings["use_host_credentials"].(bool)
 				}
 
-				// if not IAM AWS cloud provider, check for credentials in env
+				// if not IAM GCP cloud provider, check for credentials in env
 				if !isIAM {
 					_, isPresent := os.LookupEnv(utils.GCPCredentialsEnv)
 					if !isPresent {
