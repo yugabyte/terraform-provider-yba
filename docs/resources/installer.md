@@ -6,6 +6,8 @@ description: |-
 
 # yba_installer (Resource)
 
+-> **Note:** Ensure the YugabyteDB Anywhere host has **curl** installed to allow the YBA Installer package downloads during *terraform apply*.
+
 Manages the installation of YugabyteDB Anywhere on an existing virtual machine using YBA Installer.
 
 ## Example Usage

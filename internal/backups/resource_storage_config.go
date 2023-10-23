@@ -80,7 +80,7 @@ func ResourceStorageConfig() *schema.Resource {
 				Type:        schema.TypeString,
 				Required:    true,
 				ForceNew:    true,
-				Description: "Backup Location.",
+				Description: "The complete backup location including \"s3://\" or \"gs://\".",
 			},
 			"config_name": {
 				Type:        schema.TypeString,

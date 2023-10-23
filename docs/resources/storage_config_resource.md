@@ -39,7 +39,7 @@ The details for configuration are available in the [YugabyteDB Anywhere Configur
 
 ### Required
 
-- `backup_location` (String) Backup Location.
+- `backup_location` (String) The complete backup location including "s3://" or "gs://".
 - `config_name` (String) Name of the Storage Configuration.
 - `name` (String) Name of config provider. Allowed values: S3, GCS, NFS, AZ.
 

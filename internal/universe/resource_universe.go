@@ -116,7 +116,8 @@ func ResourceUniverse() *schema.Resource {
 							Required: true,
 							ValidateDiagFunc: validation.ToDiagFunc(validation.StringInSlice(
 								[]string{"PRIMARY", "ASYNC"}, false)),
-							Description: "Cluster Type. Permitted values: PRIMARY, ASYNC.",
+							Description: "The type of cluster, primary or read replica (async)." +
+								" Allowed values are PRIMARY or ASYNC.",
 						},
 						"user_intent": {
 							Type:     schema.TypeList,
@@ -796,7 +797,8 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 		}),
 	)
 }
-func resourceUniverseCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceUniverseCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) (
+	diag.Diagnostics) {
 	c := meta.(*api.APIClient).YugawareClient
 	cUUID := meta.(*api.APIClient).CustomerID
 
@@ -831,7 +833,8 @@ func resourceUniverseCreate(ctx context.Context, d *schema.ResourceData, meta in
 	return resourceUniverseRead(ctx, d, meta)
 }
 
-func resourceUniverseRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceUniverseRead(ctx context.Context, d *schema.ResourceData, meta interface{}) (
+	diag.Diagnostics) {
 	var diags diag.Diagnostics
 
 	c := meta.(*api.APIClient).YugawareClient
@@ -903,7 +906,8 @@ func editUniverseParameters(ctx context.Context, oldUserIntent client.UserIntent
 
 }
 
-func resourceUniverseUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceUniverseUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) (
+	diag.Diagnostics) {
 	// Only updates user intent for each cluster
 	// cloud Info can have changes in zones
 	c := meta.(*api.APIClient).YugawareClient
@@ -1121,7 +1125,8 @@ func resourceUniverseUpdate(ctx context.Context, d *schema.ResourceData, meta in
 						newUserIntent.DeviceInfo.GetVolumeSize() {
 						//Only volume size should be changed to do smart resize, other changes
 						//handled in UpgradeCluster
-						updateUni.UniverseDetails.Clusters[i].UserIntent.DeviceInfo.VolumeSize = (newUserIntent.DeviceInfo.VolumeSize)
+						updateUni.UniverseDetails.Clusters[i].UserIntent.DeviceInfo.VolumeSize = (
+							newUserIntent.DeviceInfo.VolumeSize)
 						req := client.ResizeNodeParams{
 							UpgradeOption: "Rolling",
 							Clusters:      updateUni.UniverseDetails.Clusters,
@@ -1155,7 +1160,8 @@ func resourceUniverseUpdate(ctx context.Context, d *schema.ResourceData, meta in
 
 				// Num of nodes, Instance Type, Num of Volumes, Volume Size, User Tags changes
 				var editAllowed, editZoneAllowed bool
-				editAllowed, updateUni.UniverseDetails.Clusters[i].UserIntent = (editUniverseParameters(ctx, oldUserIntent, newUserIntent))
+				editAllowed, updateUni.UniverseDetails.Clusters[i].UserIntent = (
+					editUniverseParameters(ctx, oldUserIntent, newUserIntent))
 				if editAllowed || editZoneAllowed {
 					req := client.UniverseConfigureTaskParams{
 						UniverseUUID: utils.GetStringPointer(d.Id()),
@@ -1209,7 +1215,8 @@ func resourceUniverseUpdate(ctx context.Context, d *schema.ResourceData, meta in
 
 				// Num of nodes, Instance Type, Num of Volumes, Volume Size User Tags changes
 				var editAllowed bool
-				editAllowed, updateUni.UniverseDetails.Clusters[i].UserIntent = (editUniverseParameters(ctx, oldUserIntent, newUserIntent))
+				editAllowed, updateUni.UniverseDetails.Clusters[i].UserIntent = (
+					editUniverseParameters(ctx, oldUserIntent, newUserIntent))
 				if editAllowed {
 					req := client.UniverseConfigureTaskParams{
 						UniverseUUID: utils.GetStringPointer(d.Id()),
@@ -1238,7 +1245,8 @@ func resourceUniverseUpdate(ctx context.Context, d *schema.ResourceData, meta in
 	return resourceUniverseRead(ctx, d, meta)
 }
 
-func resourceUniverseDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+func resourceUniverseDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) (
+	diag.Diagnostics) {
 	var diags diag.Diagnostics
 
 	c := meta.(*api.APIClient).YugawareClient
