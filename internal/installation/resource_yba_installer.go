@@ -422,7 +422,7 @@ func getYBAInstallerPackageString(version, os, arch string) (folder, bundle, v s
 func getYBAInstallerBundle(version, os, arch string) (string, []string) {
 	getBundle := make([]string, 0)
 	folder, bundle, v := getYBAInstallerPackageString(version, os, arch)
-	s := fmt.Sprintf("wget https://downloads.yugabyte.com/releases/%s/%s.tar.gz", v, bundle)
+	s := fmt.Sprintf("curl -O https://downloads.yugabyte.com/releases/%s/%s.tar.gz", v, bundle)
 	getBundle = append(getBundle, s)
 	s = fmt.Sprintf("tar -xf %s.tar.gz", bundle)
 	getBundle = append(getBundle, s)

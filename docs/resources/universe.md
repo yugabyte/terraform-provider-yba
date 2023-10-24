@@ -80,7 +80,7 @@ The following operations are supported in the Edit universe workflow:
 
 Required:
 
-- `cluster_type` (String) Cluster Type. Permitted values: PRIMARY, ASYNC.
+- `cluster_type` (String) The type of cluster, primary or read replica (async). Allowed values are PRIMARY or ASYNC.
 - `user_intent` (Block List, Min: 1, Max: 1) Configuration values used in universe creation. Only these values can be updated. (see [below for nested schema](#nestedblock--clusters--user_intent))
 
 Optional:
