@@ -321,7 +321,6 @@ func resourceCloudProviderDiff() schema.CustomizeDiffFunc {
 func buildConfig(d *schema.ResourceData) (map[string]interface{}, error) {
 	cloudCode := d.Get("code").(string)
 	config := make(map[string]interface{})
-	var err error
 	if cloudCode == "gcp" {
 		var isIAM bool
 		if len(d.Get("gcp_config_settings").([]interface{})) > 0 {
@@ -351,9 +350,12 @@ func buildConfig(d *schema.ResourceData) (map[string]interface{}, error) {
 			}
 		}
 		if !isIAM {
-			config, err = utils.GcpGetCredentialsAsMap()
+			iamConfig, err := utils.GcpGetCredentialsAsMap()
 			if err != nil {
 				return nil, err
+			}
+			for k, v := range iamConfig {
+				config[k] = v
 			}
 		}
 	} else if cloudCode == "aws" {
