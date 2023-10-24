@@ -227,11 +227,6 @@ func resourceCloudProviderDiff() schema.CustomizeDiffFunc {
 			meta interface{}) error {
 			errorMessage := "Empty env variable: "
 			switch code := value.(string); code {
-			case "gcp":
-				_, isPresent := os.LookupEnv(utils.GCPCredentialsEnv)
-				if !isPresent {
-					return fmt.Errorf("%s%s", errorMessage, utils.GCPCredentialsEnv)
-				}
 			case "azu":
 				var errorString string
 				_, isPresentClientID := os.LookupEnv(utils.AzureClientIDEnv)
@@ -273,7 +268,9 @@ func resourceCloudProviderDiff() schema.CustomizeDiffFunc {
 
 				var isIAM bool
 				if len(d.Get("aws_config_settings").([]interface{})) > 0 {
-					configSettings := utils.MapFromSingletonList(d.Get("aws_config_settings").([]interface{}))
+					configSettings := utils.MapFromSingletonList(
+						d.Get("aws_config_settings").([]interface{}),
+					)
 					isIAM = configSettings["use_iam_instance_profile"].(bool)
 				}
 
@@ -294,20 +291,42 @@ func resourceCloudProviderDiff() schema.CustomizeDiffFunc {
 				}
 				return nil
 			}),
+		customdiff.IfValue("code",
+			func(ctx context.Context, value, meta interface{}) bool {
+				// check if GCP cloud provider creation requires access keys
+				return value.(string) == "gcp"
+			},
+			func(ctx context.Context, d *schema.ResourceDiff, meta interface{}) error {
+				errorMessage := "Empty env variable: "
+				var isIAM bool
+				if len(d.Get("gcp_config_settings").([]interface{})) > 0 {
+					configSettings := utils.MapFromSingletonList(
+						d.Get("gcp_config_settings").([]interface{}),
+					)
+					isIAM = configSettings["use_host_credentials"].(bool)
+				}
+
+				// if not IAM GCP cloud provider, check for credentials in env
+				if !isIAM {
+					_, isPresent := os.LookupEnv(utils.GCPCredentialsEnv)
+					if !isPresent {
+						return fmt.Errorf("%s%s", errorMessage, utils.GCPCredentialsEnv)
+					}
+				}
+				return nil
+			}),
 	)
 }
 
 func buildConfig(d *schema.ResourceData) (map[string]interface{}, error) {
 	cloudCode := d.Get("code").(string)
 	config := make(map[string]interface{})
-	var err error
 	if cloudCode == "gcp" {
-		config, err = utils.GcpGetCredentialsAsMap()
-		if err != nil {
-			return nil, err
-		}
+		var isIAM bool
 		if len(d.Get("gcp_config_settings").([]interface{})) > 0 {
-			configSettings := utils.MapFromSingletonList(d.Get("gcp_config_settings").([]interface{}))
+			configSettings := utils.MapFromSingletonList(
+				d.Get("gcp_config_settings").([]interface{}),
+			)
 			ybFirewallTags := configSettings["yb_firewall_tags"].(string)
 			if len(ybFirewallTags) > 0 {
 				config["YB_FIREWALL_TAGS"] = ybFirewallTags
@@ -319,6 +338,7 @@ func buildConfig(d *schema.ResourceData) (map[string]interface{}, error) {
 			useHostCredentials := strconv.FormatBool(configSettings["use_host_credentials"].(bool))
 			if len(useHostCredentials) > 0 {
 				config["use_host_credentials"] = useHostCredentials
+				isIAM = configSettings["use_host_credentials"].(bool)
 			}
 			projectID := configSettings["project_id"].(string)
 			if len(projectID) > 0 {
@@ -327,6 +347,15 @@ func buildConfig(d *schema.ResourceData) (map[string]interface{}, error) {
 			network := configSettings["network"].(string)
 			if len(network) > 0 {
 				config["network"] = network
+			}
+		}
+		if !isIAM {
+			iamConfig, err := utils.GcpGetCredentialsAsMap()
+			if err != nil {
+				return nil, err
+			}
+			for k, v := range iamConfig {
+				config[k] = v
 			}
 		}
 	} else if cloudCode == "aws" {
@@ -369,8 +398,11 @@ func buildConfig(d *schema.ResourceData) (map[string]interface{}, error) {
 	return config, nil
 }
 
-func resourceCloudProviderCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) (
-	diag.Diagnostics) {
+func resourceCloudProviderCreate(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta interface{},
+) diag.Diagnostics {
 	c := meta.(*api.APIClient).YugawareClient
 	cUUID := meta.(*api.APIClient).CustomerID
 
@@ -421,8 +453,11 @@ func findProvider(providers []client.Provider, uuid string) (*client.Provider, e
 	return nil, fmt.Errorf("could not find provider %s", uuid)
 }
 
-func resourceCloudProviderRead(ctx context.Context, d *schema.ResourceData, meta interface{}) (
-	diag.Diagnostics) {
+func resourceCloudProviderRead(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta interface{},
+) diag.Diagnostics {
 	var diags diag.Diagnostics
 
 	c := meta.(*api.APIClient).YugawareClient
@@ -467,8 +502,11 @@ func resourceCloudProviderRead(ctx context.Context, d *schema.ResourceData, meta
 	return diags
 }
 
-func resourceCloudProviderDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) (
-	diag.Diagnostics) {
+func resourceCloudProviderDelete(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta interface{},
+) diag.Diagnostics {
 	var diags diag.Diagnostics
 
 	c := meta.(*api.APIClient).YugawareClient
