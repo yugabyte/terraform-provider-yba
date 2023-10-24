@@ -797,8 +797,10 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 		}),
 	)
 }
-func resourceUniverseCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) (
-	diag.Diagnostics) {
+func resourceUniverseCreate(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta interface{}) diag.Diagnostics {
 	c := meta.(*api.APIClient).YugawareClient
 	cUUID := meta.(*api.APIClient).CustomerID
 
@@ -833,8 +835,10 @@ func resourceUniverseCreate(ctx context.Context, d *schema.ResourceData, meta in
 	return resourceUniverseRead(ctx, d, meta)
 }
 
-func resourceUniverseRead(ctx context.Context, d *schema.ResourceData, meta interface{}) (
-	diag.Diagnostics) {
+func resourceUniverseRead(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta interface{}) diag.Diagnostics {
 	var diags diag.Diagnostics
 
 	c := meta.(*api.APIClient).YugawareClient
@@ -906,8 +910,10 @@ func editUniverseParameters(ctx context.Context, oldUserIntent client.UserIntent
 
 }
 
-func resourceUniverseUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) (
-	diag.Diagnostics) {
+func resourceUniverseUpdate(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta interface{}) diag.Diagnostics {
 	// Only updates user intent for each cluster
 	// cloud Info can have changes in zones
 	c := meta.(*api.APIClient).YugawareClient
@@ -1245,8 +1251,10 @@ func resourceUniverseUpdate(ctx context.Context, d *schema.ResourceData, meta in
 	return resourceUniverseRead(ctx, d, meta)
 }
 
-func resourceUniverseDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) (
-	diag.Diagnostics) {
+func resourceUniverseDelete(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta interface{}) diag.Diagnostics {
 	var diags diag.Diagnostics
 
 	c := meta.(*api.APIClient).YugawareClient

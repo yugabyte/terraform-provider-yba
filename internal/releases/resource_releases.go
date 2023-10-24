@@ -156,8 +156,10 @@ func resourceReleaseDiff() schema.CustomizeDiffFunc {
 	)
 }
 
-func resourceReleasesCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) (
-	diag.Diagnostics) {
+func resourceReleasesCreate(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta interface{}) diag.Diagnostics {
 	var diags diag.Diagnostics
 
 	cUUID := meta.(*api.APIClient).CustomerID
@@ -201,8 +203,10 @@ func findReleases(ctx context.Context, releases map[string]map[string]interface{
 	return nil, fmt.Errorf("Could not find release %s", version)
 }
 
-func resourceReleasesRead(ctx context.Context, d *schema.ResourceData, meta interface{}) (
-	diag.Diagnostics) {
+func resourceReleasesRead(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta interface{}) diag.Diagnostics {
 	var diags diag.Diagnostics
 	c := meta.(*api.APIClient).YugawareClient
 	cUUID := meta.(*api.APIClient).CustomerID
@@ -280,8 +284,10 @@ func resourceReleasesRead(ctx context.Context, d *schema.ResourceData, meta inte
 
 }
 
-func resourceReleasesDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) (
-	diag.Diagnostics) {
+func resourceReleasesDelete(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta interface{}) diag.Diagnostics {
 	var diags diag.Diagnostics
 
 	c := meta.(*api.APIClient).YugawareClient

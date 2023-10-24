@@ -83,8 +83,10 @@ func ResourceUser() *schema.Resource {
 	}
 }
 
-func resourceUserCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) (
-	diag.Diagnostics) {
+func resourceUserCreate(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta interface{}) diag.Diagnostics {
 	c := meta.(*api.APIClient).YugawareClient
 	cUUID := meta.(*api.APIClient).CustomerID
 
@@ -105,8 +107,10 @@ func resourceUserCreate(ctx context.Context, d *schema.ResourceData, meta interf
 	return resourceUserRead(ctx, d, meta)
 }
 
-func resourceUserRead(ctx context.Context, d *schema.ResourceData, meta interface{}) (
-	diag.Diagnostics) {
+func resourceUserRead(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta interface{}) diag.Diagnostics {
 	var diags diag.Diagnostics
 
 	c := meta.(*api.APIClient).YugawareClient
@@ -131,8 +135,10 @@ func resourceUserRead(ctx context.Context, d *schema.ResourceData, meta interfac
 	return diags
 }
 
-func resourceUserUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) (
-	diag.Diagnostics) {
+func resourceUserUpdate(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta interface{}) diag.Diagnostics {
 	c := meta.(*api.APIClient).YugawareClient
 	cUUID := meta.(*api.APIClient).CustomerID
 
@@ -162,8 +168,10 @@ func resourceUserUpdate(ctx context.Context, d *schema.ResourceData, meta interf
 	}
 	return resourceUserRead(ctx, d, meta)
 }
-func resourceUserDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) (
-	diag.Diagnostics) {
+func resourceUserDelete(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta interface{}) diag.Diagnostics {
 	var diags diag.Diagnostics
 
 	c := meta.(*api.APIClient).YugawareClient

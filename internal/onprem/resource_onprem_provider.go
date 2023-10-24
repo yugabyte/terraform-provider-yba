@@ -233,8 +233,10 @@ func resourceOnPremDiff() schema.CustomizeDiffFunc {
 	)
 }
 
-func resourceOnPremProviderCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) (
-	diag.Diagnostics) {
+func resourceOnPremProviderCreate(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta interface{}) diag.Diagnostics {
 	c := meta.(*api.APIClient).YugawareClient
 	cUUID := meta.(*api.APIClient).CustomerID
 
@@ -309,8 +311,10 @@ func findProvider(providers []client.Provider, uuid string) (*client.Provider, e
 	return nil, fmt.Errorf("Could not find provider %s", uuid)
 }
 
-func resourceOnPremProviderRead(ctx context.Context, d *schema.ResourceData, meta interface{}) (
-	diag.Diagnostics) {
+func resourceOnPremProviderRead(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta interface{}) diag.Diagnostics {
 	var diags diag.Diagnostics
 	c := meta.(*api.APIClient).YugawareClient
 	cUUID := meta.(*api.APIClient).CustomerID
@@ -390,8 +394,10 @@ func resourceOnPremProviderRead(ctx context.Context, d *schema.ResourceData, met
 	return diags
 }
 
-func resourceOnPremProviderUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) (
-	diag.Diagnostics) {
+func resourceOnPremProviderUpdate(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta interface{}) diag.Diagnostics {
 	c := meta.(*api.APIClient).YugawareClient
 	cUUID := meta.(*api.APIClient).CustomerID
 	pUUID := d.Id()
@@ -558,8 +564,10 @@ func resourceOnPremProviderUpdate(ctx context.Context, d *schema.ResourceData, m
 	return resourceOnPremProviderRead(ctx, d, meta)
 }
 
-func resourceOnPremProviderDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) (
-	diag.Diagnostics) {
+func resourceOnPremProviderDelete(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta interface{}) diag.Diagnostics {
 	// delete provider
 	// instance type, node instances, regions and az are deleted due to foreign key constraint
 	var diags diag.Diagnostics

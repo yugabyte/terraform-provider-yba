@@ -225,8 +225,10 @@ func resourceYBAInstallerDiff() schema.CustomizeDiffFunc {
 	)
 }
 
-func resourceYBAInstallerCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) (
-	diag.Diagnostics) {
+func resourceYBAInstallerCreate(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta interface{}) diag.Diagnostics {
 	var diags diag.Diagnostics
 
 	hostIPForSSH := d.Get("ssh_host_ip").(string)
@@ -284,14 +286,18 @@ func resourceYBAInstallerCreate(ctx context.Context, d *schema.ResourceData, met
 	return diags
 }
 
-func resourceYBAInstallerRead(ctx context.Context, d *schema.ResourceData, meta interface{}) (
-	diag.Diagnostics) {
+func resourceYBAInstallerRead(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta interface{}) diag.Diagnostics {
 	// remote state is not read for this resource
 	return diag.Diagnostics{}
 }
 
-func resourceYBAInstallerUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) (
-	diag.Diagnostics) {
+func resourceYBAInstallerUpdate(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta interface{}) diag.Diagnostics {
 	// same steps as installation
 	// run ./yba-ctl with upgrade instead of install
 
@@ -382,8 +388,10 @@ func resourceYBAInstallerUpdate(ctx context.Context, d *schema.ResourceData, met
 	return diag.Diagnostics{}
 }
 
-func resourceYBAInstallerDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) (
-	diag.Diagnostics) {
+func resourceYBAInstallerDelete(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta interface{}) diag.Diagnostics {
 	var diags diag.Diagnostics
 
 	hostIPForSSH := d.Get("ssh_host_ip").(string)
@@ -429,8 +437,9 @@ func getYBAInstallerBundle(version, os, arch string) (string, []string) {
 	return folder, getBundle
 }
 
-func getInstallCommands(version, os, arch string, config bool, skipPreflightCheckList *[]string) (
-	[]string) {
+func getInstallCommands(
+	version, os, arch string,
+	config bool, skipPreflightCheckList *[]string) []string {
 	var s string
 	folder, installationCommands := getYBAInstallerBundle(version, os, arch)
 	s = getAddLicenseCommands(folder)

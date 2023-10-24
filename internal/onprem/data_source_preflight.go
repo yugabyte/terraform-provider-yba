@@ -51,8 +51,10 @@ func PreflightCheck() *schema.Resource {
 	}
 }
 
-func dataSourcePreflightCheckRead(ctx context.Context, d *schema.ResourceData, meta interface{}) (
-	diag.Diagnostics) {
+func dataSourcePreflightCheckRead(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta interface{}) diag.Diagnostics {
 	var diags diag.Diagnostics
 
 	c := meta.(*api.APIClient).YugawareClient

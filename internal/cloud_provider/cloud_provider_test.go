@@ -124,8 +124,9 @@ func testAccCheckDestroyCloudProvider(s *terraform.State) error {
 	return nil
 }
 
-func testAccCheckCloudProviderExists(name string, provider *client.Provider) (
-	resource.TestCheckFunc) {
+func testAccCheckCloudProviderExists(
+	name string,
+	provider *client.Provider) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
 		r, ok := s.RootModule().Resources[name]
 		if !ok {

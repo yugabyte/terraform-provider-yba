@@ -91,8 +91,10 @@ func waitForIP(ctx context.Context, user string, ip string, pk string, timeout t
 	return c.(*ssh.Client), nil
 }
 
-func scpFile(ctx context.Context, sshClient *ssh.Client, localFile string, remoteFile string) (
-	error) {
+func scpFile(ctx context.Context,
+	sshClient *ssh.Client,
+	localFile string,
+	remoteFile string) error {
 	tflog.Info(ctx, fmt.Sprintf("Copying local file %s to remote host under filename %s", localFile,
 		remoteFile))
 

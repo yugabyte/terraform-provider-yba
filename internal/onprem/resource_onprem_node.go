@@ -262,8 +262,10 @@ func fetchProviderUUIDAndName(ctx context.Context, c *client.APIClient, cUUID, p
 	return pUUID, pName, nil
 }
 
-func resourceOnPremNodeCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) (
-	diag.Diagnostics) {
+func resourceOnPremNodeCreate(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta interface{}) diag.Diagnostics {
 	c := meta.(*api.APIClient).YugawareClient
 	cUUID := meta.(*api.APIClient).CustomerID
 	var err error
@@ -322,8 +324,10 @@ func resourceOnPremNodeCreate(ctx context.Context, d *schema.ResourceData, meta 
 
 }
 
-func resourceOnPremNodeRead(ctx context.Context, d *schema.ResourceData, meta interface{}) (
-	diag.Diagnostics) {
+func resourceOnPremNodeRead(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta interface{}) diag.Diagnostics {
 	var diags diag.Diagnostics
 	c := meta.(*api.APIClient).YugawareClient
 	cUUID := meta.(*api.APIClient).CustomerID
@@ -415,13 +419,17 @@ func resourceOnPremNodeRead(ctx context.Context, d *schema.ResourceData, meta in
 
 }
 
-func resourceOnPremNodeUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) (
-	diag.Diagnostics) {
+func resourceOnPremNodeUpdate(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta interface{}) diag.Diagnostics {
 	return diag.Diagnostics{}
 }
 
-func resourceOnPremNodeDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) (
-	diag.Diagnostics) {
+func resourceOnPremNodeDelete(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta interface{}) diag.Diagnostics {
 	var diags diag.Diagnostics
 
 	c := meta.(*api.APIClient).YugawareClient

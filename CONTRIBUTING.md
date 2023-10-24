@@ -84,15 +84,17 @@ To build the source code locally, checkout and update the `main` branch:
 ```
 
 Compile and install terraform provider binary
+
 ```sh
     make install
 ```
 
 Update your terraform provider file to use the local provider
+
 ```hcl
 terraform {
   required_providers {
-    ybm = {
+    yba = {
       version = "0.1.0-dev"
       source  = "yugabyte/yba"
     }

@@ -265,8 +265,10 @@ func backupYBAVersionCheck(ctx context.Context, c *client.APIClient) (bool, stri
 	return allowed, version, err
 }
 
-func resourceBackupsCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) (
-	diag.Diagnostics) {
+func resourceBackupsCreate(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta interface{}) diag.Diagnostics {
 	c := meta.(*api.APIClient).YugawareClient
 	cUUID := meta.(*api.APIClient).CustomerID
 
@@ -369,8 +371,10 @@ func resourceBackupsCreate(ctx context.Context, d *schema.ResourceData, meta int
 	return resourceBackupsRead(ctx, d, meta)
 }
 
-func resourceBackupsRead(ctx context.Context, d *schema.ResourceData, meta interface{}) (
-	diag.Diagnostics) {
+func resourceBackupsRead(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta interface{}) diag.Diagnostics {
 	var diags diag.Diagnostics
 
 	c := meta.(*api.APIClient).YugawareClient
@@ -432,8 +436,10 @@ func findBackup(backups []client.Schedule, sUUID string) (client.Schedule, error
 	return client.Schedule{}, fmt.Errorf("Can't find backup schedule %s", sUUID)
 }
 
-func resourceBackupsUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) (
-	diag.Diagnostics) {
+func resourceBackupsUpdate(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta interface{}) diag.Diagnostics {
 	c := meta.(*api.APIClient).YugawareClient
 	cUUID := meta.(*api.APIClient).CustomerID
 
@@ -524,8 +530,10 @@ func resourceBackupsUpdate(ctx context.Context, d *schema.ResourceData, meta int
 	return resourceBackupsRead(ctx, d, meta)
 }
 
-func resourceBackupsDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) (
-	diag.Diagnostics) {
+func resourceBackupsDelete(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta interface{}) diag.Diagnostics {
 	c := meta.(*api.APIClient).YugawareClient
 	cUUID := meta.(*api.APIClient).CustomerID
 	allowed, version, err := backupYBAVersionCheck(ctx, c)

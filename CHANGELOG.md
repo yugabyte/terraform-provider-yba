@@ -1,4 +1,17 @@
-## v0.1.8 (Sptember 2023)
+## v0.1.9 (October 2023)
+
+The following version of YugabyteDB Anywhere Terraform Provider includes support for:
+
+### Enhancements
+
+- Remove check for GCP credentials if *use_host_credentials* is set
+- Rename local development provider location and add path to makefile
+
+### Resources
+
+- Adding nodes to an on premises provider (yba_onprem_node_instance)
+
+## v0.1.8 (September 2023)
 
 The following version of YugabyteDB Anywhere Terraform Provider includes support for:
 

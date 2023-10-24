@@ -56,8 +56,10 @@ func ReleaseVersion() *schema.Resource {
 	}
 }
 
-func dataSourceReleaseVersionRead(ctx context.Context, d *schema.ResourceData, meta interface{}) (
-	diag.Diagnostics) {
+func dataSourceReleaseVersionRead(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta interface{}) diag.Diagnostics {
 	var diags diag.Diagnostics
 
 	c := meta.(*api.APIClient).YugawareClient

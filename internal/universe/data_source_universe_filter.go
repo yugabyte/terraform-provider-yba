@@ -84,8 +84,10 @@ func UniverseFilter() *schema.Resource {
 	}
 }
 
-func dataSourceUniverseFilterRead(ctx context.Context, d *schema.ResourceData, meta interface{}) (
-	diag.Diagnostics) {
+func dataSourceUniverseFilterRead(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta interface{}) diag.Diagnostics {
 	var diags diag.Diagnostics
 
 	c := meta.(*api.APIClient).YugawareClient

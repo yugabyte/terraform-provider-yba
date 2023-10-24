@@ -223,8 +223,8 @@ func buildVolumeDetails(list []interface{}) []client.VolumeDetails {
 	return volumeDetailsList
 }
 
-func buildInstanceTypeFromInstanceTypeResp(instanceTypeList []client.InstanceTypeResp) (
-	[]client.InstanceType) {
+func buildInstanceTypeFromInstanceTypeResp(
+	instanceTypeList []client.InstanceTypeResp) []client.InstanceType {
 	instanceTypes := make([]client.InstanceType, 0)
 	for _, i := range instanceTypeList {
 		details := i.GetInstanceTypeDetails()

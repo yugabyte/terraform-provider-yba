@@ -113,8 +113,10 @@ func fetchCustomerPasswordFromEnv() (string, error) {
 	return customerPassword, nil
 }
 
-func resourceCustomerCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) (
-	diag.Diagnostics) {
+func resourceCustomerCreate(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta interface{}) diag.Diagnostics {
 	var diags diag.Diagnostics
 
 	c := meta.(*api.APIClient).YugawareClient
@@ -153,8 +155,10 @@ func resourceCustomerCreate(ctx context.Context, d *schema.ResourceData, meta in
 	return diags
 }
 
-func resourceCustomerRead(ctx context.Context, d *schema.ResourceData, meta interface{}) (
-	diag.Diagnostics) {
+func resourceCustomerRead(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta interface{}) diag.Diagnostics {
 	var diags diag.Diagnostics
 
 	vc := meta.(*api.APIClient).VanillaClient
@@ -185,8 +189,10 @@ func resourceCustomerRead(ctx context.Context, d *schema.ResourceData, meta inte
 	return diags
 }
 
-func resourceCustomerDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) (
-	diag.Diagnostics) {
+func resourceCustomerDelete(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta interface{}) diag.Diagnostics {
 	tflog.Debug(ctx, "marking as deleted; customer resources cannot be deleted or changed")
 	d.SetId("")
 	return diag.Diagnostics{}

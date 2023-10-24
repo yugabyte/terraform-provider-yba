@@ -179,8 +179,9 @@ func buildDeviceInfo(di map[string]interface{}) *client.DeviceInfo {
 	}
 }
 
-func buildNodeDetailsRespArrayToNodeDetailsArray(nodes *[]client.NodeDetailsResp) (
-	*[]client.NodeDetails) {
+func buildNodeDetailsRespArrayToNodeDetailsArray(
+	nodes *[]client.NodeDetailsResp,
+) *[]client.NodeDetails {
 	var nodesDetails []client.NodeDetails
 	for _, v := range *nodes {
 		nodeDetail := client.NodeDetails{

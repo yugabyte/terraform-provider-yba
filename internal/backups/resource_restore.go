@@ -112,8 +112,10 @@ func resourceRestoreDiff() schema.CustomizeDiffFunc {
 	)
 }
 
-func resourceRestoreCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) (
-	diag.Diagnostics) {
+func resourceRestoreCreate(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta interface{}) diag.Diagnostics {
 	c := meta.(*api.APIClient).YugawareClient
 	cUUID := meta.(*api.APIClient).CustomerID
 
@@ -162,8 +164,10 @@ func resourceRestoreCreate(ctx context.Context, d *schema.ResourceData, meta int
 	return resourceRestoreRead(ctx, d, meta)
 }
 
-func resourceRestoreRead(ctx context.Context, d *schema.ResourceData, meta interface{}) (
-	diag.Diagnostics) {
+func resourceRestoreRead(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta interface{}) diag.Diagnostics {
 
 	// fetch restore from restore table
 	var diags diag.Diagnostics
@@ -238,13 +242,17 @@ func resourceRestoreRead(ctx context.Context, d *schema.ResourceData, meta inter
 
 }
 
-func resourceRestoreUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) (
-	diag.Diagnostics) {
+func resourceRestoreUpdate(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta interface{}) diag.Diagnostics {
 	return diag.Diagnostics{}
 }
 
-func resourceRestoreDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) (
-	diag.Diagnostics) {
+func resourceRestoreDelete(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta interface{}) diag.Diagnostics {
 	d.SetId("")
 	return nil
 }

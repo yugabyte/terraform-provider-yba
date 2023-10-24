@@ -218,8 +218,10 @@ func resourceInstallationDiff() schema.CustomizeDiffFunc {
 	)
 }
 
-func resourceInstallationCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) (
-	diag.Diagnostics) {
+func resourceInstallationCreate(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta interface{}) diag.Diagnostics {
 	var diags diag.Diagnostics
 
 	publicIP := d.Get("public_ip").(string)
@@ -267,20 +269,26 @@ func resourceInstallationCreate(ctx context.Context, d *schema.ResourceData, met
 	return diags
 }
 
-func resourceInstallationRead(ctx context.Context, d *schema.ResourceData, meta interface{}) (
-	diag.Diagnostics) {
+func resourceInstallationRead(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta interface{}) diag.Diagnostics {
 	// remote state is not read for this resource
 	return diag.Diagnostics{}
 }
 
-func resourceInstallationUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) (
-	diag.Diagnostics) {
+func resourceInstallationUpdate(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta interface{}) diag.Diagnostics {
 	// do nothing
 	return diag.Diagnostics{}
 }
 
-func resourceInstallationDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) (
-	diag.Diagnostics) {
+func resourceInstallationDelete(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta interface{}) diag.Diagnostics {
 	var diags diag.Diagnostics
 
 	cleanup := d.Get("cleanup").(bool)

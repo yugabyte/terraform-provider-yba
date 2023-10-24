@@ -203,8 +203,10 @@ func buildData(ctx context.Context, d *schema.ResourceData) (map[string]interfac
 	return data, nil
 }
 
-func resourceStorageConfigCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) (
-	diag.Diagnostics) {
+func resourceStorageConfigCreate(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta interface{}) diag.Diagnostics {
 	c := meta.(*api.APIClient).YugawareClient
 	cUUID := meta.(*api.APIClient).CustomerID
 
@@ -232,8 +234,10 @@ func resourceStorageConfigCreate(ctx context.Context, d *schema.ResourceData, me
 	return resourceStorageConfigRead(ctx, d, meta)
 }
 
-func resourceStorageConfigRead(ctx context.Context, d *schema.ResourceData, meta interface{}) (
-		diag.Diagnostics) {
+func resourceStorageConfigRead(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta interface{}) diag.Diagnostics {
 	var diags diag.Diagnostics
 
 	c := meta.(*api.APIClient).YugawareClient
@@ -274,8 +278,10 @@ func findCustomerConfig(configs []client.CustomerConfigUI, uuid string) (
 	return nil, errors.New("Could not find config with id " + uuid)
 }
 
-func resourceStorageConfigUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) (
-	diag.Diagnostics) {
+func resourceStorageConfigUpdate(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta interface{}) diag.Diagnostics {
 	c := meta.(*api.APIClient).YugawareClient
 	cUUID := meta.(*api.APIClient).CustomerID
 
@@ -303,8 +309,10 @@ func resourceStorageConfigUpdate(ctx context.Context, d *schema.ResourceData, me
 	return resourceStorageConfigRead(ctx, d, meta)
 }
 
-func resourceStorageConfigDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) (
-		diag.Diagnostics) {
+func resourceStorageConfigDelete(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta interface{}) diag.Diagnostics {
 	var diags diag.Diagnostics
 
 	c := meta.(*api.APIClient).YugawareClient

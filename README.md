@@ -23,16 +23,21 @@ The automated tests in this repository are based on the Alpha channel of yugawar
 
 ## Installation
 
-Install the [Terraform CLI](https://www.terraform.io/downloads). Once the CLI is installed, there are a few steps for [manually installing](https://www.terraform.io/cli/config/config-file#explicit-installation-method-configuration) this provider since it is not in the Terraform registry:
+Install the [Terraform CLI](https://www.terraform.io/downloads). Once the CLI is installed, there are a few steps to [manually install](https://www.terraform.io/cli/config/config-file#explicit-installation-method-configuration) and test the local provider:
 
-* Create the required folders in the [implied local mirror directories](https://www.terraform.io/cli/config/config-file#implied-local-mirror-directories)
-  * `mkdir -p <implied_mirror_directory>/terraform.yugabyte.com/platform/yba/<provider_version>/<system_architecture>`
-  * `implied_mirror_directory` can be found from the link above
-  * `provider_version` is the version of the provider you wish to use (only `0.1.0` for now)
-  * `system_architecture` can be found by running `terraform -version`
-  * An example for `x64 Linux` is `mkdir -p /usr/local/share/terraform/plugins/terraform.yugabyte.com/platform/yba/0.1.0/linux_amd64`
-* Build the binary into the previously created folder
-  * In the root directory, `go build -o <implied_mirror_directory>/terraform.yugabyte.com/platform/yba/<provider_version>/<system_architecture>`
+* Run `make install` in the root directory of the project
+* Add the following block to the configuration file to test the local provider:
+
+```hcl
+terraform {
+  required_providers {
+    yba = {
+      version = "0.1.0-dev"
+      source  = "yugabyte/yba"
+    }
+  }
+}
+```
 
 ## Resource files
 
