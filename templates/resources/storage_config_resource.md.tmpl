@@ -8,17 +8,17 @@ description: |-
 
 {{ .Description | trimspace }}
 
-The following credentials are required as environment variables to configure the corresponding Backup storage configurations:
+The following credentials are required as environment variables (if fields are not set) to configure the corresponding Backup storage configurations:
 
-|Cloud Provider|Setting|Environment Variable|
-|-------|--------|-------------------------------|
-|[S3](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-envvars.html)|||
-||Access Key ID|`AWS_ACCESS_KEY_ID`|
-||Secret Access Key|`AWS_SECRET_ACCESS_KEY`|
-|[GCS](https://cloud.google.com/docs/authentication/application-default-credentials)|||
-|| GCP Service Account Credentials File Path|`GOOGLE_APPLICATION_CREDENTIALS`|
-|[Azure](https://learn.microsoft.com/en-us/azure/developer/go/azure-sdk-authentication?tabs=bash)|||
-||Azure Storage SAS Token|`AZURE_STORAGE_SAS_TOKEN`|
+|Cloud Provider|Setting|Configuration Field|Environment Variable|
+|-------|--------|----------|-------------------------------|
+|[S3](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-envvars.html)||||
+||Access Key ID|`s3_credentials.access_key_id`|`AWS_ACCESS_KEY_ID`|
+||Secret Access Key|`s3_credentials.secret_access_key`|`AWS_SECRET_ACCESS_KEY`|
+|[GCS](https://cloud.google.com/docs/authentication/application-default-credentials)||||
+|| GCP Service Account Credentials File Path||`GOOGLE_APPLICATION_CREDENTIALS`|
+|[Azure](https://learn.microsoft.com/en-us/azure/developer/go/azure-sdk-authentication?tabs=bash)||||
+||Azure Storage SAS Token|`azure_credentials.sas_token`|`AZURE_STORAGE_SAS_TOKEN`|
 
 -> **Note:** S3 Environment variables are not required for IAM based S3 storage configurations. Please set *use_iam_instance_profile* to use host IAM configuration for S3 storage configurations.
 

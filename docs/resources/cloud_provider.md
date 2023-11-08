@@ -8,21 +8,21 @@ description: |-
 
 Cloud Provider Resource.
 
-The following credentials are required as environment variables to configure the corresponding Cloud Providers:
+The following credentials are required as environment variables (if fields are not set) to configure the corresponding Cloud Providers:
 
-|Cloud Provider|Setting|Environment Variable|
-|-------|--------|-------------------------------|
-|[AWS](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-envvars.html)|||
-||Access Key ID|`AWS_ACCESS_KEY_ID`|
-||Secret Access Key|`AWS_SECRET_ACCESS_KEY`|
-|[GCP](https://cloud.google.com/docs/authentication/application-default-credentials)|||
-|| GCP Service Account Credentials File Path|`GOOGLE_APPLICATION_CREDENTIALS`|
-|[Azure](https://learn.microsoft.com/en-us/azure/developer/go/azure-sdk-authentication?tabs=bash)|||
-||Active Subscription ID|`AZURE_SUBSCRIPTION_ID`|
-||Resource Group|`AZURE_RG`|
-||Tenant ID|`AZURE_TENANT_ID`|
-||Client ID|`AZURE_CLIENT_ID`|
-||Client Secret|`AZURE_CLIENT_SECRET`|
+|Cloud Provider|Setting|Configuration Field|Environment Variable|
+|-------|--------|---------|-------------------------------|
+|[AWS](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-envvars.html)||||
+||Access Key ID|`aws_config_settings.access_key_id`|`AWS_ACCESS_KEY_ID`|
+||Secret Access Key|`aws_config_settings.secret_access_key`|`AWS_SECRET_ACCESS_KEY`|
+|[GCP](https://cloud.google.com/docs/authentication/application-default-credentials)||||
+|| GCP Service Account Credentials File Path|`gcp_config_settings.application_credentials`|`GOOGLE_APPLICATION_CREDENTIALS`|
+|[Azure](https://learn.microsoft.com/en-us/azure/developer/go/azure-sdk-authentication?tabs=bash)||||
+||Active Subscription ID|`azure_config_settings.subscription_id`|`AZURE_SUBSCRIPTION_ID`|
+||Resource Group|`azure_config_settings.resource_group`|`AZURE_RG`|
+||Tenant ID|`azure_config_settings.tenant_id`|`AZURE_TENANT_ID`|
+||Client ID|`azure_config_settings.client_id`|`AZURE_CLIENT_ID`|
+||Client Secret|`azure_config_settings.client_secret`|`AZURE_CLIENT_SECRET`|
 
 -> **Note:** AWS Environment variables are not required for IAM based AWS cloud providers. Please set *aws_config_settings.use_iam_instance_profile* to use host IAM configuration for AWS cloud providers.
 
@@ -117,7 +117,9 @@ Read-Only:
 
 Optional:
 
+- `access_key_id` (String, Sensitive) AWS Access Key ID. Can also be set using environment variable AWS_ACCESS_KEY_ID.
 - `hosted_zone_id` (String) Hosted Zone ID for AWS corresponsding to Amazon Route53.
+- `secret_access_key` (String, Sensitive) AWS Secret Access Key. Can also be set using environment variable AWS_SECRET_ACCESS_KEY.
 - `use_iam_instance_profile` (Boolean) Use IAM Role from the YugabyteDB Anywhere Host. Provider creation will fail on insufficient permissions on the host. False by default.
 
 
@@ -126,7 +128,12 @@ Optional:
 
 Optional:
 
+- `client_id` (String) Azure Client ID. Can also be set using environment variable AZURE_CLIENT_ID.
+- `client_secret` (String, Sensitive) Azure Client Secret. Can also be set using environment variable AZURE_CLIENT_SECRET. Required with client_id.
 - `hosted_zone_id` (String) Private DNS Zone for Azure.
+- `resource_group` (String) Azure Resource Group. Can also be set using environment variable AZURE_RG. Required with client_id.
+- `subscription_id` (String) Azure Subscription ID. Can also be set using environment variable AZURE_SUBSCRIPTION_ID. Required with client_id.
+- `tenant_id` (String) Azure Tenant ID. Can also be set using environment variable AZURE_TENANT_ID. Required with client_id.
 
 
 <a id="nestedblock--gcp_config_settings"></a>

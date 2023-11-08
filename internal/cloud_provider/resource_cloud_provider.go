@@ -157,6 +157,27 @@ func ResourceCloudProvider() *schema.Resource {
 							Description: "Use IAM Role from the YugabyteDB Anywhere Host. Provider " +
 								"creation will fail on insufficient permissions on the host. False by default.",
 						},
+						"access_key_id": {
+							Type:      schema.TypeString,
+							Optional:  true,
+							Sensitive: true,
+							DiffSuppressFunc: func(k, old, new string, d *schema.ResourceData) bool {
+								return len(old) > 0 && utils.ObfuscateString(new) == old
+							},
+							Description: "AWS Access Key ID. Can also be set using " +
+								"environment variable AWS_ACCESS_KEY_ID.",
+						},
+						"secret_access_key": {
+							Type:      schema.TypeString,
+							Optional:  true,
+							Sensitive: true,
+							DiffSuppressFunc: func(k, old, new string, d *schema.ResourceData) bool {
+								return len(old) > 0 && utils.ObfuscateString(new) == old
+							},
+							RequiredWith: []string{"aws_config_settings.0.access_key_id"},
+							Description: "AWS Secret Access Key. Can also be set using " +
+								"environment variable AWS_SECRET_ACCESS_KEY.",
+						},
 					}},
 				ForceNew:    true,
 				Description: "Settings that can be configured for AWS.",
@@ -172,6 +193,48 @@ func ResourceCloudProvider() *schema.Resource {
 							Optional:    true,
 							ForceNew:    true,
 							Description: "Private DNS Zone for Azure.",
+						},
+						"subscription_id": {
+							Type:         schema.TypeString,
+							Optional:     true,
+							RequiredWith: []string{"azure_config_settings.0.client_id"},
+							Description: "Azure Subscription ID. Can also be set using " +
+								"environment variable AZURE_SUBSCRIPTION_ID. Required with " +
+								"client_id.",
+						},
+						"resource_group": {
+							Type:         schema.TypeString,
+							Optional:     true,
+							RequiredWith: []string{"azure_config_settings.0.client_id"},
+							Description: "Azure Resource Group. Can also be set using " +
+								"environment variable AZURE_RG. Required with " +
+								"client_id.",
+						},
+						"tenant_id": {
+							Type:         schema.TypeString,
+							Optional:     true,
+							RequiredWith: []string{"azure_config_settings.0.client_id"},
+							Description: "Azure Tenant ID. Can also be set using " +
+								"environment variable AZURE_TENANT_ID. Required with " +
+								"client_id.",
+						},
+						"client_id": {
+							Type:     schema.TypeString,
+							Optional: true,
+							Description: "Azure Client ID. Can also be set using " +
+								"environment variable AZURE_CLIENT_ID.",
+						},
+						"client_secret": {
+							Type:      schema.TypeString,
+							Optional:  true,
+							Sensitive: true,
+							DiffSuppressFunc: func(k, old, new string, d *schema.ResourceData) bool {
+								return len(old) > 0 && utils.ObfuscateString(new) == old
+							},
+							RequiredWith: []string{"azure_config_settings.0.client_id"},
+							Description: "Azure Client Secret. Can also be set using " +
+								"environment variable AZURE_CLIENT_SECRET. Required with " +
+								"client_id.",
 						},
 					}},
 				ForceNew:    true,
@@ -223,40 +286,78 @@ func ResourceCloudProvider() *schema.Resource {
 
 func resourceCloudProviderDiff() schema.CustomizeDiffFunc {
 	return customdiff.All(
-		customdiff.ValidateValue("code", func(ctx context.Context, value,
-			meta interface{}) error {
-			errorMessage := "Empty env variable: "
-			switch code := value.(string); code {
-			case "azu":
+		customdiff.IfValue("code",
+			func(ctx context.Context, value, meta interface{}) bool {
+				return value.(string) == "azu"
+			},
+			func(ctx context.Context, d *schema.ResourceDiff, meta interface{}) error {
 				var errorString string
-				_, isPresentClientID := os.LookupEnv(utils.AzureClientIDEnv)
-				if !isPresentClientID {
-					errorString = fmt.Sprintf("%s%s ", errorString, utils.AzureClientIDEnv)
+				errorMessage := "Empty env variable: "
+
+				configInterface := d.Get("azure_config_settings").([]interface{})
+				var configSettings map[string]interface{}
+				if len(configInterface) > 0 && configInterface[0] != nil {
+					configSettings = utils.MapFromSingletonList(
+						configInterface,
+					)
 				}
-				_, isPresentClientSecret := os.LookupEnv(utils.AzureClientSecretEnv)
-				if !isPresentClientSecret {
-					errorString = fmt.Sprintf("%s%s ", errorString, utils.AzureClientSecretEnv)
+
+				if len(configSettings) == 0 ||
+					(configSettings["client_id"] == nil ||
+						len(configSettings["client_id"].(string)) == 0) {
+					_, isPresentClientID := os.LookupEnv(utils.AzureClientIDEnv)
+					if !isPresentClientID {
+						errorString = fmt.Sprintf("%s%s ", errorString, utils.AzureClientIDEnv)
+					}
+					_, isPresentClientSecret := os.LookupEnv(utils.AzureClientSecretEnv)
+					if !isPresentClientSecret {
+						errorString = fmt.Sprintf("%s%s ", errorString, utils.AzureClientSecretEnv)
+					}
+					_, isPresentSubscriptionID := os.LookupEnv(utils.AzureSubscriptionIDEnv)
+					if !isPresentSubscriptionID {
+						errorString = fmt.Sprintf("%s%s ", errorString, utils.AzureSubscriptionIDEnv)
+					}
+					_, isPresentTenantID := os.LookupEnv(utils.AzureTenantIDEnv)
+					if !isPresentTenantID {
+						errorString = fmt.Sprintf("%s%s ", errorString, utils.AzureTenantIDEnv)
+					}
+					_, isPresentRG := os.LookupEnv(utils.AzureRGEnv)
+					if !isPresentRG {
+						errorString = fmt.Sprintf("%s%s ", errorString, utils.AzureRGEnv)
+					}
+					if !(isPresentClientID && isPresentClientSecret && isPresentRG &&
+						isPresentSubscriptionID && isPresentTenantID) {
+						errorString = fmt.Sprintf("%s%s", errorMessage, errorString)
+						return fmt.Errorf(errorString)
+					}
+				} else {
+					clientSecret := configSettings["client_secret"]
+					subscriptionID := configSettings["subscription_id"]
+					tenantID := configSettings["tenant_id"]
+					rg := configSettings["resource_group"]
+					if clientSecret == nil || len(clientSecret.(string)) == 0 {
+						errorString = "Azure Client Secret cannot be empty when " +
+							"Azure Client ID is set"
+						return fmt.Errorf(errorString)
+					}
+					if subscriptionID == nil || len(subscriptionID.(string)) == 0 {
+						errorString = "Azure Subscription ID cannot be empty when " +
+							"Azure Client ID is set"
+						return fmt.Errorf(errorString)
+					}
+					if tenantID == nil || len(tenantID.(string)) == 0 {
+						errorString = "Azure Tenant ID cannot be empty when " +
+							"Azure Client ID is set"
+						return fmt.Errorf(errorString)
+					}
+					if rg == nil || len(rg.(string)) == 0 {
+						errorString = "Azure Resource Group cannot be empty when " +
+							"Azure Client ID is set"
+						return fmt.Errorf(errorString)
+					}
 				}
-				_, isPresentSubscriptionID := os.LookupEnv(utils.AzureSubscriptionIDEnv)
-				if !isPresentSubscriptionID {
-					errorString = fmt.Sprintf("%s%s ", errorString, utils.AzureSubscriptionIDEnv)
-				}
-				_, isPresentTenantID := os.LookupEnv(utils.AzureTenantIDEnv)
-				if !isPresentTenantID {
-					errorString = fmt.Sprintf("%s%s ", errorString, utils.AzureTenantIDEnv)
-				}
-				_, isPresentRG := os.LookupEnv(utils.AzureRGEnv)
-				if !isPresentRG {
-					errorString = fmt.Sprintf("%s%s ", errorString, utils.AzureRGEnv)
-				}
-				if !(isPresentClientID && isPresentClientSecret && isPresentRG &&
-					isPresentSubscriptionID && isPresentTenantID) {
-					errorString = fmt.Sprintf("%s%s", errorMessage, errorString)
-					return fmt.Errorf(errorString)
-				}
-			}
-			return nil
-		}),
+				return nil
+			}),
 		customdiff.IfValue("code",
 			func(ctx context.Context, value, meta interface{}) bool {
 				// check if AWS cloud provider creation requires access keys
@@ -266,27 +367,41 @@ func resourceCloudProviderDiff() schema.CustomizeDiffFunc {
 				var errorString string
 				errorMessage := "Empty env variable: "
 
+				configInterface := d.Get("aws_config_settings").([]interface{})
+				var configSettings map[string]interface{}
 				var isIAM bool
-				if len(d.Get("aws_config_settings").([]interface{})) > 0 {
-					configSettings := utils.MapFromSingletonList(
-						d.Get("aws_config_settings").([]interface{}),
+				if len(configInterface) > 0 && configInterface[0] != nil {
+					configSettings = utils.MapFromSingletonList(
+						configInterface,
 					)
 					isIAM = configSettings["use_iam_instance_profile"].(bool)
 				}
 
-				// if not IAM AWS cloud provider, check for credentials in env
+				// if not IAM AWS cloud provider, check for credentials in
+				// aws_config_settings block or env
 				if !isIAM {
-					_, isPresentAccessKeyID := os.LookupEnv(utils.AWSAccessKeyEnv)
-					if !isPresentAccessKeyID {
-						errorString = fmt.Sprintf("%s%s ", errorString, utils.AWSAccessKeyEnv)
-					}
-					_, isPresentSecretAccessKey := os.LookupEnv(utils.AWSSecretAccessKeyEnv)
-					if !isPresentSecretAccessKey {
-						errorString = fmt.Sprintf("%s%s ", errorString, utils.AWSSecretAccessKeyEnv)
-					}
-					if !(isPresentAccessKeyID && isPresentSecretAccessKey) {
-						errorString = fmt.Sprintf("%s%s", errorMessage, errorString)
-						return fmt.Errorf(errorString)
+					if len(configSettings) == 0 ||
+						(configSettings["access_key_id"] == nil ||
+							len(configSettings["access_key_id"].(string)) == 0) {
+						_, isPresentAccessKeyID := os.LookupEnv(utils.AWSAccessKeyEnv)
+						if !isPresentAccessKeyID {
+							errorString = fmt.Sprintf("%s%s ", errorString, utils.AWSAccessKeyEnv)
+						}
+						_, isPresentSecretAccessKey := os.LookupEnv(utils.AWSSecretAccessKeyEnv)
+						if !isPresentSecretAccessKey {
+							errorString = fmt.Sprintf("%s%s ", errorString, utils.AWSSecretAccessKeyEnv)
+						}
+						if !(isPresentAccessKeyID && isPresentSecretAccessKey) {
+							errorString = fmt.Sprintf("%s%s", errorMessage, errorString)
+							return fmt.Errorf(errorString)
+						}
+					} else {
+						secretAccessKey := configSettings["secret_access_key"]
+						if secretAccessKey == nil || len(secretAccessKey.(string)) == 0 {
+							errorString = "AWS Secret Access Key cannot be empty when " +
+								"AWS Access Key ID is set"
+							return fmt.Errorf(errorString)
+						}
 					}
 				}
 				return nil
@@ -360,8 +475,10 @@ func buildConfig(d *schema.ResourceData) (map[string]interface{}, error) {
 		}
 	} else if cloudCode == "aws" {
 		var isIAM bool
-		if len(d.Get("aws_config_settings").([]interface{})) > 0 {
-			configSettings := utils.MapFromSingletonList(d.Get("aws_config_settings").([]interface{}))
+		configInterface := d.Get("aws_config_settings").([]interface{})
+		var configSettings map[string]interface{}
+		if len(configInterface) > 0 && configInterface[0] != nil {
+			configSettings = utils.MapFromSingletonList(configInterface)
 			hostedZoneID := configSettings["hosted_zone_id"].(string)
 			if len(hostedZoneID) > 0 {
 				config["HOSTED_ZONE_ID"] = hostedZoneID
@@ -370,28 +487,65 @@ func buildConfig(d *schema.ResourceData) (map[string]interface{}, error) {
 
 		}
 		if !isIAM {
-			awsCreds, err := utils.AwsCredentialsFromEnv()
-			if err != nil {
-				return nil, err
+			if len(configSettings) == 0 ||
+				(configSettings["access_key_id"] == nil ||
+					len(configSettings["access_key_id"].(string)) == 0) {
+				awsCreds, err := utils.AwsCredentialsFromEnv()
+				if err != nil {
+					return nil, err
+				}
+				config[utils.AWSAccessKeyEnv] = awsCreds.AccessKeyID
+				config[utils.AWSSecretAccessKeyEnv] = awsCreds.SecretAccessKey
+			} else {
+				config[utils.AWSAccessKeyEnv] = configSettings["access_key_id"].(string)
+				secretAccessKey := configSettings["secret_access_key"]
+				if secretAccessKey != nil && len(secretAccessKey.(string)) > 0 {
+					config[utils.AWSSecretAccessKeyEnv] = secretAccessKey
+				}
 			}
-			config[utils.AWSAccessKeyEnv] = awsCreds.AccessKeyID
-			config[utils.AWSSecretAccessKeyEnv] = awsCreds.SecretAccessKey
 		}
 	} else if cloudCode == "azu" {
-		azureCreds, err := utils.AzureCredentialsFromEnv()
-		if err != nil {
-			return nil, err
-		}
-		config[utils.AzureClientIDEnv] = azureCreds.ClientID
-		config[utils.AzureClientSecretEnv] = azureCreds.ClientSecret
-		config[utils.AzureSubscriptionIDEnv] = azureCreds.SubscriptionID
-		config[utils.AzureTenantIDEnv] = azureCreds.TenantID
-		config[utils.AzureRGEnv] = azureCreds.ResourceGroup
-		if len(d.Get("azure_config_settings").([]interface{})) > 0 {
-			configSettings := utils.MapFromSingletonList(d.Get("azure_config_settings").([]interface{}))
+		configInterface := d.Get("azure_config_settings").([]interface{})
+		var configSettings map[string]interface{}
+		if len(configInterface) > 0 && configInterface[0] != nil {
+			configSettings = utils.MapFromSingletonList(configInterface)
 			hostedZoneID := configSettings["hosted_zone_id"].(string)
 			if len(hostedZoneID) > 0 {
 				config["HOSTED_ZONE_ID"] = hostedZoneID
+			}
+		}
+		if configSettings == nil ||
+			(configSettings["client_id"] == nil ||
+				len(configSettings["client_id"].(string)) == 0) {
+			azureCreds, err := utils.AzureCredentialsFromEnv()
+			if err != nil {
+				return nil, err
+			}
+			config[utils.AzureClientIDEnv] = azureCreds.ClientID
+			config[utils.AzureClientSecretEnv] = azureCreds.ClientSecret
+			config[utils.AzureSubscriptionIDEnv] = azureCreds.SubscriptionID
+			config[utils.AzureTenantIDEnv] = azureCreds.TenantID
+			config[utils.AzureRGEnv] = azureCreds.ResourceGroup
+		} else {
+			clientID := configSettings["client_id"]
+			clientSecret := configSettings["client_secret"]
+			subscriptionID := configSettings["subscription_id"]
+			tenantID := configSettings["tenant_id"]
+			rg := configSettings["resource_group"]
+			if clientID != nil && len(clientID.(string)) != 0 {
+				config[utils.AzureClientIDEnv] = clientID.(string)
+			}
+			if clientSecret != nil && len(clientSecret.(string)) != 0 {
+				config[utils.AzureClientSecretEnv] = clientSecret.(string)
+			}
+			if subscriptionID != nil && len(subscriptionID.(string)) != 0 {
+				config[utils.AzureSubscriptionIDEnv] = subscriptionID.(string)
+			}
+			if tenantID != nil && len(tenantID.(string)) != 0 {
+				config[utils.AzureTenantIDEnv] = tenantID.(string)
+			}
+			if rg != nil && len(rg.(string)) != 0 {
+				config[utils.AzureRGEnv] = rg.(string)
 			}
 		}
 	}
@@ -498,6 +652,76 @@ func resourceCloudProviderRead(
 	}
 	if err = d.Set("regions", flattenRegions(p.Regions)); err != nil {
 		return diag.FromErr(err)
+	}
+
+	if p.GetCode() == "aws" {
+		configInterface := d.Get("aws_config_settings").([]interface{})
+		if len(configInterface) > 0 && configInterface[0] != nil {
+			configSettings := utils.MapFromSingletonList(configInterface)
+			accessKeyID := configSettings["access_key_id"]
+			secretAccessKey := configSettings["secret_access_key"]
+			hostedZoneID := configSettings["hosted_zone_id"]
+			if accessKeyID != nil && len(accessKeyID.(string)) > 0 {
+				configSettings["access_key_id"] = p.GetConfig()[utils.AWSAccessKeyEnv]
+			}
+			if secretAccessKey != nil && len(secretAccessKey.(string)) > 0 {
+				configSettings["secret_access_key"] = p.GetConfig()[utils.AWSSecretAccessKeyEnv]
+			}
+			if hostedZoneID != nil && len(hostedZoneID.(string)) > 0 {
+				configSettings["hosted_zone_id"] = p.GetConfig()["HOSTED_ZONE_ID"]
+			}
+			configSettingsList := make([]interface{}, 0)
+			configSettingsList = append(configSettingsList, configSettings)
+			if err = d.Set("aws_config_settings", configSettingsList); err != nil {
+				return diag.FromErr(err)
+			}
+		} else {
+			configSettingsList := make([]interface{}, 0)
+			if err = d.Set("aws_config_settings", configSettingsList); err != nil {
+				return diag.FromErr(err)
+			}
+		}
+	}
+
+	if p.GetCode() == "azu" {
+		configInterface := d.Get("azure_config_settings").([]interface{})
+		if len(configInterface) > 0 && configInterface[0] != nil {
+			configSettings := utils.MapFromSingletonList(configInterface)
+			clientSecret := configSettings["client_secret"]
+			clientID := configSettings["client_id"]
+			subscriptionID := configSettings["subscription_id"]
+			tenantID := configSettings["tenant_id"]
+			rg := configSettings["resource_group"]
+			hostedZoneID := configSettings["hosted_zone_id"]
+			if clientSecret != nil && len(clientSecret.(string)) > 0 {
+				configSettings["client_secret"] = p.GetConfig()[utils.AzureClientSecretEnv]
+			}
+			if clientID != nil && len(clientID.(string)) > 0 {
+				configSettings["client_id"] = p.GetConfig()[utils.AzureClientIDEnv]
+			}
+			if subscriptionID != nil && len(subscriptionID.(string)) > 0 {
+				configSettings["subscription_id"] = p.GetConfig()[utils.AzureSubscriptionIDEnv]
+			}
+			if tenantID != nil && len(tenantID.(string)) > 0 {
+				configSettings["tenant_id"] = p.GetConfig()[utils.AzureTenantIDEnv]
+			}
+			if rg != nil && len(rg.(string)) > 0 {
+				configSettings["resource_group"] = p.GetConfig()[utils.AzureRGEnv]
+			}
+			if hostedZoneID != nil && len(hostedZoneID.(string)) > 0 {
+				configSettings["hosted_zone_id"] = p.GetConfig()["HOSTED_ZONE_ID"]
+			}
+			configSettingsList := make([]interface{}, 0)
+			configSettingsList = append(configSettingsList, configSettings)
+			if err = d.Set("azure_config_settings", configSettingsList); err != nil {
+				return diag.FromErr(err)
+			}
+		} else {
+			configSettingsList := make([]interface{}, 0)
+			if err = d.Set("azure_config_settings", configSettingsList); err != nil {
+				return diag.FromErr(err)
+			}
+		}
 	}
 	return diags
 }

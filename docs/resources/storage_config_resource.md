@@ -8,17 +8,17 @@ description: |-
 
 Create Storage configurations.
 
-The following credentials are required as environment variables to configure the corresponding Backup storage configurations:
+The following credentials are required as environment variables (if fields are not set) to configure the corresponding Backup storage configurations:
 
-|Cloud Provider|Setting|Environment Variable|
-|-------|--------|-------------------------------|
-|[S3](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-envvars.html)|||
-||Access Key ID|`AWS_ACCESS_KEY_ID`|
-||Secret Access Key|`AWS_SECRET_ACCESS_KEY`|
-|[GCS](https://cloud.google.com/docs/authentication/application-default-credentials)|||
-|| GCP Service Account Credentials File Path|`GOOGLE_APPLICATION_CREDENTIALS`|
-|[Azure](https://learn.microsoft.com/en-us/azure/developer/go/azure-sdk-authentication?tabs=bash)|||
-||Azure Storage SAS Token|`AZURE_STORAGE_SAS_TOKEN`|
+|Cloud Provider|Setting|Configuration Field|Environment Variable|
+|-------|--------|----------|-------------------------------|
+|[S3](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-envvars.html)||||
+||Access Key ID|`s3_credentials.access_key_id`|`AWS_ACCESS_KEY_ID`|
+||Secret Access Key|`s3_credentials.secret_access_key`|`AWS_SECRET_ACCESS_KEY`|
+|[GCS](https://cloud.google.com/docs/authentication/application-default-credentials)||||
+|| GCP Service Account Credentials File Path||`GOOGLE_APPLICATION_CREDENTIALS`|
+|[Azure](https://learn.microsoft.com/en-us/azure/developer/go/azure-sdk-authentication?tabs=bash)||||
+||Azure Storage SAS Token|`azure_credentials.sas_token`|`AZURE_STORAGE_SAS_TOKEN`|
 
 -> **Note:** S3 Environment variables are not required for IAM based S3 storage configurations. Please set *use_iam_instance_profile* to use host IAM configuration for S3 storage configurations.
 
@@ -45,6 +45,8 @@ The details for configuration are available in the [YugabyteDB Anywhere Configur
 
 ### Optional
 
+- `azure_credentials` (Block List, Max: 1) Credentials for Azure storage configurations. (see [below for nested schema](#nestedblock--azure_credentials))
+- `s3_credentials` (Block List, Max: 1) Credentials for S3 storage configurations. (see [below for nested schema](#nestedblock--s3_credentials))
 - `timeouts` (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))
 - `use_iam_instance_profile` (Boolean) Use IAM Role from the YugabyteDB Anywhere Host for S3. Storage configuration creation will fail on insufficient permissions on the host. False by default.
 
@@ -52,6 +54,23 @@ The details for configuration are available in the [YugabyteDB Anywhere Configur
 
 - `data` (Map of String) Location and Credentials.
 - `id` (String) The ID of this resource.
+
+<a id="nestedblock--azure_credentials"></a>
+### Nested Schema for `azure_credentials`
+
+Required:
+
+- `sas_token` (String, Sensitive) Azure SAS Token. Can also be set using environment variable AZURE_STORAGE_SAS_TOKEN.
+
+
+<a id="nestedblock--s3_credentials"></a>
+### Nested Schema for `s3_credentials`
+
+Required:
+
+- `access_key_id` (String, Sensitive) S3 Access Key ID. Can also be set using environment variable AWS_ACCESS_KEY_ID.
+- `secret_access_key` (String, Sensitive) S3 Secret Access Key. Can also be set using environment variable AWS_SECRET_ACCESS_KEY.
+
 
 <a id="nestedblock--timeouts"></a>
 ### Nested Schema for `timeouts`

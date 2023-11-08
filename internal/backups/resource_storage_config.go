@@ -71,6 +71,99 @@ func ResourceStorageConfig() *schema.Resource {
 					"Storage configuration creation will fail on insufficient permissions on " +
 					"the host. False by default.",
 			},
+			"azure_credentials": {
+				Type:        schema.TypeList,
+				Optional:    true,
+				MaxItems:    1,
+				Description: "Credentials for Azure storage configurations.",
+				Elem: &schema.Resource{
+					Schema: map[string]*schema.Schema{
+						"sas_token": {
+							Type:      schema.TypeString,
+							Required:  true,
+							Sensitive: true,
+							DiffSuppressFunc: func(k, old, new string, d *schema.ResourceData) bool {
+								if len(old) > 0 && utils.ObfuscateString(new) == old {
+									azCredentialsInterface := d.Get("azure_credentials").([]interface{})
+									if len(azCredentialsInterface) > 0 &&
+										azCredentialsInterface[0] != nil {
+										azCredentials := utils.MapFromSingletonList(
+											azCredentialsInterface)
+										azCredentials["sas_token"] = new
+										azCredentialsList := []map[string]interface{}{
+											azCredentials,
+										}
+										d.Set("azure_credentials", azCredentialsList)
+
+									}
+									return true
+								}
+								return false
+							},
+							Description: "Azure SAS Token. Can also be set using " +
+								"environment variable AZURE_STORAGE_SAS_TOKEN.",
+						},
+					}},
+			},
+			"s3_credentials": {
+				Type:     schema.TypeList,
+				Optional: true,
+				MaxItems: 1,
+				Elem: &schema.Resource{
+					Schema: map[string]*schema.Schema{
+						"access_key_id": {
+							Type:      schema.TypeString,
+							Required:  true,
+							Sensitive: true,
+							DiffSuppressFunc: func(k, old, new string, d *schema.ResourceData) bool {
+								if len(old) > 0 && utils.ObfuscateString(new) == old {
+									s3CredentialsInterface := d.Get("s3_credentials").([]interface{})
+									if len(s3CredentialsInterface) > 0 &&
+										s3CredentialsInterface[0] != nil {
+										s3Credentials := utils.MapFromSingletonList(
+											s3CredentialsInterface)
+										s3Credentials["access_key_id"] = new
+										s3CredentialsList := []map[string]interface{}{
+											s3Credentials,
+										}
+										d.Set("s3_credentials", s3CredentialsList)
+
+									}
+									return true
+								}
+								return false
+							},
+							Description: "S3 Access Key ID. Can also be set using " +
+								"environment variable AWS_ACCESS_KEY_ID.",
+						},
+						"secret_access_key": {
+							Type:      schema.TypeString,
+							Required:  true,
+							Sensitive: true,
+							DiffSuppressFunc: func(k, old, new string, d *schema.ResourceData) bool {
+								if len(old) > 0 && utils.ObfuscateString(new) == old {
+									s3CredentialsInterface := d.Get("s3_credentials").([]interface{})
+									if len(s3CredentialsInterface) > 0 &&
+										s3CredentialsInterface[0] != nil {
+										s3Credentials := utils.MapFromSingletonList(
+											s3CredentialsInterface)
+										s3Credentials["secret_access_key"] = new
+										s3CredentialsList := []map[string]interface{}{
+											s3Credentials,
+										}
+										d.Set("s3_credentials", s3CredentialsList)
+
+									}
+									return true
+								}
+								return false
+							},
+							Description: "S3 Secret Access Key. Can also be set using " +
+								"environment variable AWS_SECRET_ACCESS_KEY.",
+						},
+					}},
+				Description: "Credentials for S3 storage configurations.",
+			},
 			"data": {
 				Type:        schema.TypeMap,
 				Computed:    true,
@@ -102,13 +195,33 @@ func resourceStorageConfigDiff() schema.CustomizeDiffFunc {
 				if !isPresent {
 					return fmt.Errorf("%s%s", errorMessage, utils.GCPCredentialsEnv)
 				}
-			case "AZ":
-				if _, isPresent := os.LookupEnv(utils.AzureStorageSasTokenEnv); !isPresent {
-					return fmt.Errorf("%s%s", errorMessage, utils.AzureStorageSasTokenEnv)
-				}
 			}
 			return nil
 		}),
+		customdiff.IfValue("name",
+			func(ctx context.Context, value, meta interface{}) bool {
+				return value.(string) == "AZ"
+			},
+			func(ctx context.Context, d *schema.ResourceDiff, meta interface{}) error {
+				errorMessage := "Empty env variable: "
+
+				azCredentialsInterface := d.Get("azure_credentials").([]interface{})
+				if len(azCredentialsInterface) == 0 ||
+					(len(azCredentialsInterface) > 0 && azCredentialsInterface[0] == nil) {
+					if _, isPresent := os.LookupEnv(utils.AzureStorageSasTokenEnv); !isPresent {
+						return fmt.Errorf("%s%s", errorMessage, utils.AzureStorageSasTokenEnv)
+					}
+				} else {
+					azCredentials := utils.MapFromSingletonList(azCredentialsInterface)
+					sasToken := azCredentials["sas_token"]
+
+					if sasToken == nil || len(sasToken.(string)) == 0 {
+						return fmt.Errorf("SAS Token cannot be empty in azure_credentials")
+					}
+				}
+
+				return nil
+			}),
 		customdiff.IfValue("use_iam_instance_profile",
 			func(ctx context.Context, value, meta interface{}) bool {
 				// check if use_iam_credentials is set for configs other than S3
@@ -146,18 +259,32 @@ func resourceStorageConfigDiff() schema.CustomizeDiffFunc {
 				name := d.Get("name").(string)
 
 				if name == "S3" {
-					_, isPresentAccessKeyID := os.LookupEnv(utils.AWSAccessKeyEnv)
-					if !isPresentAccessKeyID {
-						errorString = fmt.Sprintf("%s%s ", errorString, utils.AWSAccessKeyEnv)
-					}
-					_, isPresentSecretAccessKey := os.LookupEnv(utils.AWSSecretAccessKeyEnv)
-					if !isPresentSecretAccessKey {
-						errorString = fmt.Sprintf("%s%s ", errorString,
-							utils.AWSSecretAccessKeyEnv)
-					}
-					if !(isPresentAccessKeyID && isPresentSecretAccessKey) {
-						errorString = fmt.Sprintf("%s%s", errorMessage, errorString)
-						return fmt.Errorf(errorString)
+					s3CredentialsInterface := d.Get("s3_credentials").([]interface{})
+					if len(s3CredentialsInterface) == 0 ||
+						(len(s3CredentialsInterface) > 0 && s3CredentialsInterface[0] == nil) {
+						_, isPresentAccessKeyID := os.LookupEnv(utils.AWSAccessKeyEnv)
+						if !isPresentAccessKeyID {
+							errorString = fmt.Sprintf("%s%s ", errorString, utils.AWSAccessKeyEnv)
+						}
+						_, isPresentSecretAccessKey := os.LookupEnv(utils.AWSSecretAccessKeyEnv)
+						if !isPresentSecretAccessKey {
+							errorString = fmt.Sprintf("%s%s ", errorString,
+								utils.AWSSecretAccessKeyEnv)
+						}
+						if !(isPresentAccessKeyID && isPresentSecretAccessKey) {
+							errorString = fmt.Sprintf("%s%s", errorMessage, errorString)
+							return fmt.Errorf(errorString)
+						}
+					} else {
+						s3Credentials := utils.MapFromSingletonList(s3CredentialsInterface)
+						accessKeyID := s3Credentials["access_key_id"]
+						secretAccessKey := s3Credentials["secret_access_key"]
+						if accessKeyID == nil || len(accessKeyID.(string)) == 0 {
+							return fmt.Errorf("access Key ID cannot be empty in s3_credentials")
+						}
+						if secretAccessKey == nil || len(secretAccessKey.(string)) == 0 {
+							return fmt.Errorf("secret Access Key cannot be empty in s3_credentials")
+						}
 					}
 				}
 
@@ -180,25 +307,49 @@ func buildData(ctx context.Context, d *schema.ResourceData) (map[string]interfac
 	}
 
 	if d.Get("name").(string) == "S3" {
-
+		s3CredentialsInterface := d.Get("s3_credentials").([]interface{})
 		isIAM := d.Get("use_iam_instance_profile").(bool)
 		if isIAM {
 			data["IAM_INSTANCE_PROFILE"] = strconv.FormatBool(isIAM)
 		} else {
-			awsCreds, err := utils.AwsCredentialsFromEnv()
-			if err != nil {
-				return nil, err
+			if len(s3CredentialsInterface) == 0 ||
+				(len(s3CredentialsInterface) > 0 && s3CredentialsInterface[0] == nil) {
+				awsCreds, err := utils.AwsCredentialsFromEnv()
+				if err != nil {
+					return nil, err
+				}
+				data[utils.AWSAccessKeyEnv] = awsCreds.AccessKeyID
+				data[utils.AWSSecretAccessKeyEnv] = awsCreds.SecretAccessKey
+			} else {
+				s3Credentials := utils.MapFromSingletonList(s3CredentialsInterface)
+				accessKeyID := s3Credentials["access_key_id"]
+				secretAccessKey := s3Credentials["secret_access_key"]
+				if accessKeyID != nil && len(accessKeyID.(string)) > 0 {
+					data[utils.AWSAccessKeyEnv] = accessKeyID.(string)
+				}
+				if secretAccessKey != nil && len(secretAccessKey.(string)) > 0 {
+					data[utils.AWSSecretAccessKeyEnv] = secretAccessKey.(string)
+				}
 			}
-			data[utils.AWSAccessKeyEnv] = awsCreds.AccessKeyID
-			data[utils.AWSSecretAccessKeyEnv] = awsCreds.SecretAccessKey
 		}
 	}
 	if d.Get("name").(string) == "AZ" {
-		azureCreds, err := utils.AzureStorageCredentialsFromEnv()
-		if err != nil {
-			return nil, err
+		azCredentialsInterface := d.Get("azure_credentials").([]interface{})
+		if len(azCredentialsInterface) == 0 ||
+			(len(azCredentialsInterface) > 0 && azCredentialsInterface[0] == nil) {
+			azureCreds, err := utils.AzureStorageCredentialsFromEnv()
+			if err != nil {
+				return nil, err
+			}
+			data[utils.AzureStorageSasTokenEnv] = azureCreds
+		} else {
+			azCredentials := utils.MapFromSingletonList(azCredentialsInterface)
+			sasToken := azCredentials["sas_token"]
+			if sasToken != nil && len(sasToken.(string)) > 0 {
+				data[utils.AzureStorageSasTokenEnv] = sasToken.(string)
+			}
 		}
-		data[utils.AzureStorageSasTokenEnv] = azureCreds
+
 	}
 	return data, nil
 }
@@ -262,6 +413,49 @@ func resourceStorageConfigRead(
 	}
 	if err = d.Set("name", config.Name); err != nil {
 		return diag.FromErr(err)
+	}
+	if config.GetName() == "S3" {
+		s3CredentialsInterface := d.Get("s3_credentials").([]interface{})
+		if len(s3CredentialsInterface) > 0 && s3CredentialsInterface[0] != nil {
+			s3Credentials := utils.MapFromSingletonList(s3CredentialsInterface)
+			accessKeyID := s3Credentials["access_key_id"]
+			secretAccessKey := s3Credentials["secret_access_key"]
+			if accessKeyID != nil && len(accessKeyID.(string)) > 0 {
+				s3Credentials["access_key_id"] = config.GetData()[utils.AWSAccessKeyEnv]
+			}
+			if secretAccessKey != nil && len(secretAccessKey.(string)) > 0 {
+				s3Credentials["secret_access_key"] = config.GetData()[utils.AWSSecretAccessKeyEnv]
+			}
+			s3CredentialsList := []map[string]interface{}{s3Credentials}
+			if err = d.Set("s3_credentials", s3CredentialsList); err != nil {
+				return diag.FromErr(err)
+			}
+		} else {
+			s3CredentialsList := make([]map[string]interface{}, 0)
+			if err = d.Set("s3_credentials", s3CredentialsList); err != nil {
+				return diag.FromErr(err)
+			}
+		}
+	}
+
+	if config.GetName() == "AZ" {
+		azCredentialsInterface := d.Get("azure_credentials").([]interface{})
+		if len(azCredentialsInterface) > 0 && azCredentialsInterface[0] != nil {
+			azCredentials := utils.MapFromSingletonList(azCredentialsInterface)
+			sasToken := azCredentials["sas_token"]
+			if sasToken != nil && len(sasToken.(string)) > 0 {
+				azCredentials["sas_token"] = config.GetData()[utils.AzureStorageSasTokenEnv]
+			}
+			azCredentialsList := []map[string]interface{}{azCredentials}
+			if err = d.Set("azure_credentials", azCredentialsList); err != nil {
+				return diag.FromErr(err)
+			}
+		} else {
+			azCredentialsList := make([]map[string]interface{}, 0)
+			if err = d.Set("azure_credentials", azCredentialsList); err != nil {
+				return diag.FromErr(err)
+			}
+		}
 	}
 
 	d.SetId(*config.ConfigUUID)
