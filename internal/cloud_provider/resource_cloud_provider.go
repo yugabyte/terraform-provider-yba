@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-log/tflog"
@@ -161,8 +162,9 @@ func ResourceCloudProvider() *schema.Resource {
 							Type:      schema.TypeString,
 							Optional:  true,
 							Sensitive: true,
+							ForceNew:  true,
 							DiffSuppressFunc: func(k, old, new string, d *schema.ResourceData) bool {
-								return len(old) > 0 && utils.ObfuscateString(new) == old
+								return len(old) > 0 && utils.ObfuscateString(new, 2) == old
 							},
 							Description: "AWS Access Key ID. Can also be set using " +
 								"environment variable AWS_ACCESS_KEY_ID.",
@@ -171,8 +173,9 @@ func ResourceCloudProvider() *schema.Resource {
 							Type:      schema.TypeString,
 							Optional:  true,
 							Sensitive: true,
+							ForceNew:  true,
 							DiffSuppressFunc: func(k, old, new string, d *schema.ResourceData) bool {
-								return len(old) > 0 && utils.ObfuscateString(new) == old
+								return len(old) > 0 && utils.ObfuscateString(new, 2) == old
 							},
 							RequiredWith: []string{"aws_config_settings.0.access_key_id"},
 							Description: "AWS Secret Access Key. Can also be set using " +
@@ -197,6 +200,7 @@ func ResourceCloudProvider() *schema.Resource {
 						"subscription_id": {
 							Type:         schema.TypeString,
 							Optional:     true,
+							ForceNew:     true,
 							RequiredWith: []string{"azure_config_settings.0.client_id"},
 							Description: "Azure Subscription ID. Can also be set using " +
 								"environment variable AZURE_SUBSCRIPTION_ID. Required with " +
@@ -205,6 +209,7 @@ func ResourceCloudProvider() *schema.Resource {
 						"resource_group": {
 							Type:         schema.TypeString,
 							Optional:     true,
+							ForceNew:     true,
 							RequiredWith: []string{"azure_config_settings.0.client_id"},
 							Description: "Azure Resource Group. Can also be set using " +
 								"environment variable AZURE_RG. Required with " +
@@ -213,6 +218,7 @@ func ResourceCloudProvider() *schema.Resource {
 						"tenant_id": {
 							Type:         schema.TypeString,
 							Optional:     true,
+							ForceNew:     true,
 							RequiredWith: []string{"azure_config_settings.0.client_id"},
 							Description: "Azure Tenant ID. Can also be set using " +
 								"environment variable AZURE_TENANT_ID. Required with " +
@@ -221,6 +227,7 @@ func ResourceCloudProvider() *schema.Resource {
 						"client_id": {
 							Type:     schema.TypeString,
 							Optional: true,
+							ForceNew: true,
 							Description: "Azure Client ID. Can also be set using " +
 								"environment variable AZURE_CLIENT_ID.",
 						},
@@ -228,8 +235,9 @@ func ResourceCloudProvider() *schema.Resource {
 							Type:      schema.TypeString,
 							Optional:  true,
 							Sensitive: true,
+							ForceNew:  true,
 							DiffSuppressFunc: func(k, old, new string, d *schema.ResourceData) bool {
-								return len(old) > 0 && utils.ObfuscateString(new) == old
+								return len(old) > 0 && utils.ObfuscateString(new, 2) == old
 							},
 							RequiredWith: []string{"azure_config_settings.0.client_id"},
 							Description: "Azure Client Secret. Can also be set using " +
@@ -275,6 +283,30 @@ func ResourceCloudProvider() *schema.Resource {
 							Optional:    true,
 							ForceNew:    true,
 							Description: "VPC network name in GCP.",
+						},
+						"application_credentials": {
+							Type:     schema.TypeMap,
+							Elem:     schema.TypeString,
+							Optional: true,
+							ForceNew: true,
+							DiffSuppressFunc: func(k, old, new string, d *schema.ResourceData) bool {
+								oldInterface, newInterface := d.GetChange("gcp_config_settings.0.application_credentials")
+								oldMap := oldInterface.(map[string]interface{})
+								newMap := newInterface.(map[string]interface{})
+								if new == "" {
+									return false
+								}
+								if (oldMap != nil && newMap != nil) && (oldMap["private_key_id"] != nil &&
+									newMap["private_key_id"] != nil) &&
+									(oldMap["private_key_id"].(string) ==
+										utils.ObfuscateString(newMap["private_key_id"].(string), 1)) {
+									return true
+								}
+								return false
+							},
+							Description: "Google Service Account JSON Credentials. Can also be set " +
+								"by providing the JSON file path with the " +
+								"environment variable GOOGLE_APPLICATION_CREDENTIALS.",
 						},
 					}},
 				ForceNew:    true,
@@ -414,18 +446,27 @@ func resourceCloudProviderDiff() schema.CustomizeDiffFunc {
 			func(ctx context.Context, d *schema.ResourceDiff, meta interface{}) error {
 				errorMessage := "Empty env variable: "
 				var isIAM bool
-				if len(d.Get("gcp_config_settings").([]interface{})) > 0 {
-					configSettings := utils.MapFromSingletonList(
-						d.Get("gcp_config_settings").([]interface{}),
+
+				configInterface := d.Get("gcp_config_settings").([]interface{})
+				var configSettings map[string]interface{}
+
+				if len(configInterface) > 0 && configInterface[0] != nil {
+					configSettings = utils.MapFromSingletonList(
+						configInterface,
 					)
 					isIAM = configSettings["use_host_credentials"].(bool)
 				}
 
 				// if not IAM GCP cloud provider, check for credentials in env
 				if !isIAM {
-					_, isPresent := os.LookupEnv(utils.GCPCredentialsEnv)
-					if !isPresent {
-						return fmt.Errorf("%s%s", errorMessage, utils.GCPCredentialsEnv)
+					applicationCreds := configSettings["application_credentials"]
+					if len(configSettings) == 0 ||
+						(applicationCreds == nil ||
+							len(applicationCreds.(map[string]interface{})) == 0) {
+						_, isPresent := os.LookupEnv(utils.GCPCredentialsEnv)
+						if !isPresent {
+							return fmt.Errorf("%s%s", errorMessage, utils.GCPCredentialsEnv)
+						}
 					}
 				}
 				return nil
@@ -438,9 +479,11 @@ func buildConfig(d *schema.ResourceData) (map[string]interface{}, error) {
 	config := make(map[string]interface{})
 	if cloudCode == "gcp" {
 		var isIAM bool
-		if len(d.Get("gcp_config_settings").([]interface{})) > 0 {
-			configSettings := utils.MapFromSingletonList(
-				d.Get("gcp_config_settings").([]interface{}),
+		var configSettings map[string]interface{}
+		configInterface := d.Get("gcp_config_settings").([]interface{})
+		if len(configInterface) > 0 && configInterface[0] != nil {
+			configSettings = utils.MapFromSingletonList(
+				configInterface,
 			)
 			ybFirewallTags := configSettings["yb_firewall_tags"].(string)
 			if len(ybFirewallTags) > 0 {
@@ -465,12 +508,20 @@ func buildConfig(d *schema.ResourceData) (map[string]interface{}, error) {
 			}
 		}
 		if !isIAM {
-			iamConfig, err := utils.GcpGetCredentialsAsMap()
-			if err != nil {
-				return nil, err
-			}
-			for k, v := range iamConfig {
-				config[k] = v
+			applicationCreds := configSettings["application_credentials"]
+			if len(configSettings) == 0 || applicationCreds == nil ||
+				len(applicationCreds.(map[string]interface{})) == 0 {
+				iamConfig, err := utils.GcpGetCredentialsAsMap()
+				if err != nil {
+					return nil, err
+				}
+				for k, v := range iamConfig {
+					config[k] = v
+				}
+			} else {
+				for k, v := range applicationCreds.(map[string]interface{}) {
+					config[k] = v
+				}
 			}
 		}
 	} else if cloudCode == "aws" {
@@ -719,6 +770,73 @@ func resourceCloudProviderRead(
 		} else {
 			configSettingsList := make([]interface{}, 0)
 			if err = d.Set("azure_config_settings", configSettingsList); err != nil {
+				return diag.FromErr(err)
+			}
+		}
+	}
+
+	if p.GetCode() == "gcp" {
+		configInterface := d.Get("gcp_config_settings").([]interface{})
+		if len(configInterface) > 0 && configInterface[0] != nil {
+			configSettings := utils.MapFromSingletonList(configInterface)
+			applicationCreds := configSettings["application_credentials"]
+			ybFirewallTags := configSettings["yb_firewall_tags"]
+			network := configSettings["network"]
+			projectID := configSettings["project_id"]
+			useHostCredentials := configSettings["use_host_credentials"]
+			useHostVPC := configSettings["use_host_vpc"]
+			if ybFirewallTags != nil && len(ybFirewallTags.(string)) > 0 {
+				configSettings["yb_firewall_tags"] = p.GetConfig()["yb_firewall_tags"]
+			}
+			if network != nil && len(network.(string)) > 0 {
+				configSettings["network"] = p.GetConfig()["network"]
+			}
+			if projectID != nil && len(projectID.(string)) > 0 {
+				configProjectID := p.GetConfig()["project_id"]
+				if len(configProjectID) == 0 {
+					configProjectID = p.GetConfig()["GCE_PROJECT"]
+					configProjectID = strings.Trim(configProjectID, "\"")
+				}
+				configSettings["project_id"] = configProjectID
+			}
+			if useHostCredentials != nil && useHostCredentials.(bool) {
+				configUseHostCredentials := p.GetConfig()["use_host_credentials"]
+				if len(configUseHostCredentials) > 0 {
+					useHostCredsBool, err := strconv.ParseBool(configUseHostCredentials)
+					if err != nil {
+						return diag.FromErr(err)
+					}
+					configSettings["use_host_credentials"] = useHostCredsBool
+				}
+			}
+			if useHostVPC != nil && useHostVPC.(bool) {
+				configUseHostVpc := p.GetConfig()["use_host_vpc"]
+				if len(configUseHostVpc) > 0 {
+					useHostVpcBool, err := strconv.ParseBool(configUseHostVpc)
+					if err != nil {
+						return diag.FromErr(err)
+					}
+					configSettings["use_host_vpc"] = useHostVpcBool
+				}
+			}
+			if applicationCreds != nil && len(applicationCreds.(map[string]interface{})) > 0 {
+				credentials := p.GetConfig()
+				credentialsMap := utils.MapFromSingletonList(
+					[]interface{}{configSettings["application_credentials"]})
+				credentialsMap["private_key"] = strings.Trim(credentials["private_key"], "\"")
+				credentialsMap["private_key_id"] = strings.Trim(credentials["private_key_id"], "\"")
+				configSettings["application_credentials"] = credentialsMap
+
+			}
+			configSettingsList := make([]interface{}, 0)
+			configSettingsList = append(configSettingsList, configSettings)
+			if err = d.Set("gcp_config_settings", configSettingsList); err != nil {
+				return diag.FromErr(err)
+			}
+
+		} else {
+			configSettingsList := make([]interface{}, 0)
+			if err = d.Set("gcp_config_settings", configSettingsList); err != nil {
 				return diag.FromErr(err)
 			}
 		}

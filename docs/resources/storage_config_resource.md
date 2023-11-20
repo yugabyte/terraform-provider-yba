@@ -16,7 +16,7 @@ The following credentials are required as environment variables (if fields are n
 ||Access Key ID|`s3_credentials.access_key_id`|`AWS_ACCESS_KEY_ID`|
 ||Secret Access Key|`s3_credentials.secret_access_key`|`AWS_SECRET_ACCESS_KEY`|
 |[GCS](https://cloud.google.com/docs/authentication/application-default-credentials)||||
-|| GCP Service Account Credentials File Path||`GOOGLE_APPLICATION_CREDENTIALS`|
+|| GCP Service Account Credentials File Path|`gcs_credentials.application_credentials`|`GOOGLE_APPLICATION_CREDENTIALS`|
 |[Azure](https://learn.microsoft.com/en-us/azure/developer/go/azure-sdk-authentication?tabs=bash)||||
 ||Azure Storage SAS Token|`azure_credentials.sas_token`|`AZURE_STORAGE_SAS_TOKEN`|
 
@@ -29,6 +29,36 @@ resource "yba_storage_config_resource" "storage_config" {
   name            = "<storage-config-code>"
   backup_location = "<storage-location/bucket-location>"
   config_name     = "<storage-config-name>"
+}
+
+resource "yba_storage_config_resource" "s3_storage_config" {
+  name            = "S3"
+  backup_location = "<storage-location/bucket-location>"
+  config_name     = "<storage-config-name>"
+  s3_credentials {
+    access_key_id     = "<s3-access-key-id>"
+    secret_access_key = "<s3-secret-access-key>"
+  }
+}
+
+resource "yba_storage_config_resource" "gcs_storage_config" {
+  name            = "GCS"
+  backup_location = "<storage-location/bucket-location>"
+  config_name     = "<storage-config-name>"
+  gcs_credentials {
+    application_credentials = <<EOT
+    <gcs-service-account-credentials-json>
+    EOT
+  }
+}
+
+resource "yba_storage_config_resource" "az_storage_config" {
+  name            = "AZ"
+  backup_location = "<storage-location/bucket-location>"
+  config_name     = "<storage-config-name>"
+  azure_credentials {
+    sas_token = "<azure-sas-token>"
+  }
 }
 ```
 
@@ -46,6 +76,7 @@ The details for configuration are available in the [YugabyteDB Anywhere Configur
 ### Optional
 
 - `azure_credentials` (Block List, Max: 1) Credentials for Azure storage configurations. (see [below for nested schema](#nestedblock--azure_credentials))
+- `gcs_credentials` (Block List, Max: 1) Credentials for GCS storage configurations. (see [below for nested schema](#nestedblock--gcs_credentials))
 - `s3_credentials` (Block List, Max: 1) Credentials for S3 storage configurations. (see [below for nested schema](#nestedblock--s3_credentials))
 - `timeouts` (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))
 - `use_iam_instance_profile` (Boolean) Use IAM Role from the YugabyteDB Anywhere Host for S3. Storage configuration creation will fail on insufficient permissions on the host. False by default.
@@ -61,6 +92,14 @@ The details for configuration are available in the [YugabyteDB Anywhere Configur
 Required:
 
 - `sas_token` (String, Sensitive) Azure SAS Token. Can also be set using environment variable AZURE_STORAGE_SAS_TOKEN.
+
+
+<a id="nestedblock--gcs_credentials"></a>
+### Nested Schema for `gcs_credentials`
+
+Required:
+
+- `application_credentials` (String, Sensitive) Google Service Account JSON Credentials as string. Can also be set by providing the JSON file path with the environment variable GOOGLE_APPLICATION_CREDENTIALS.
 
 
 <a id="nestedblock--s3_credentials"></a>

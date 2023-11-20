@@ -498,11 +498,11 @@ func failureSubTaskListYBAVersionCheck(ctx context.Context, c *client.APIClient)
 }
 
 // ObfuscateString masks sensitive strings in the state file
-func ObfuscateString(s string) string {
+func ObfuscateString(s string, n int) string {
 	if len(s) < 6 {
 		return "*"
 	}
-	substring := s[2 : len(s)-2]
+	substring := s[n : len(s)-n]
 	replaced := strings.Replace(s, substring, strings.Repeat("*", len(substring)), 1)
 	return replaced
 }

@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
@@ -83,7 +84,7 @@ func ResourceStorageConfig() *schema.Resource {
 							Required:  true,
 							Sensitive: true,
 							DiffSuppressFunc: func(k, old, new string, d *schema.ResourceData) bool {
-								if len(old) > 0 && utils.ObfuscateString(new) == old {
+								if len(old) > 0 && utils.ObfuscateString(new, 2) == old {
 									azCredentialsInterface := d.Get("azure_credentials").([]interface{})
 									if len(azCredentialsInterface) > 0 &&
 										azCredentialsInterface[0] != nil {
@@ -105,6 +106,43 @@ func ResourceStorageConfig() *schema.Resource {
 						},
 					}},
 			},
+			"gcs_credentials": {
+				Type:        schema.TypeList,
+				Optional:    true,
+				MaxItems:    1,
+				Description: "Credentials for GCS storage configurations.",
+				Elem: &schema.Resource{
+					Schema: map[string]*schema.Schema{
+						"application_credentials": {
+							Type:      schema.TypeString,
+							Required:  true,
+							Sensitive: true,
+							DiffSuppressFunc: func(k, old, new string, d *schema.ResourceData) bool {
+								new = strings.ReplaceAll(new, "\n", "")
+								old = strings.ReplaceAll(old, "\n", "")
+								if len(old) > 0 && utils.ObfuscateString(new, 2) == old {
+									gcsCredentialsInterface := d.Get("gcs_credentials").([]interface{})
+									if len(gcsCredentialsInterface) > 0 &&
+										gcsCredentialsInterface[0] != nil {
+										gcsCredentials := utils.MapFromSingletonList(
+											gcsCredentialsInterface)
+										gcsCredentials["application_credentials"] = new
+										gcsCredentialsList := []map[string]interface{}{
+											gcsCredentials,
+										}
+										d.Set("gcs_credentials", gcsCredentialsList)
+
+									}
+									return true
+								}
+								return false
+							},
+							Description: "Google Service Account JSON Credentials as string. " +
+								"Can also be set by providing the JSON file path with the " +
+								"environment variable GOOGLE_APPLICATION_CREDENTIALS.",
+						},
+					}},
+			},
 			"s3_credentials": {
 				Type:     schema.TypeList,
 				Optional: true,
@@ -116,7 +154,7 @@ func ResourceStorageConfig() *schema.Resource {
 							Required:  true,
 							Sensitive: true,
 							DiffSuppressFunc: func(k, old, new string, d *schema.ResourceData) bool {
-								if len(old) > 0 && utils.ObfuscateString(new) == old {
+								if len(old) > 0 && utils.ObfuscateString(new, 2) == old {
 									s3CredentialsInterface := d.Get("s3_credentials").([]interface{})
 									if len(s3CredentialsInterface) > 0 &&
 										s3CredentialsInterface[0] != nil {
@@ -141,7 +179,7 @@ func ResourceStorageConfig() *schema.Resource {
 							Required:  true,
 							Sensitive: true,
 							DiffSuppressFunc: func(k, old, new string, d *schema.ResourceData) bool {
-								if len(old) > 0 && utils.ObfuscateString(new) == old {
+								if len(old) > 0 && utils.ObfuscateString(new, 2) == old {
 									s3CredentialsInterface := d.Get("s3_credentials").([]interface{})
 									if len(s3CredentialsInterface) > 0 &&
 										s3CredentialsInterface[0] != nil {
@@ -186,18 +224,30 @@ func ResourceStorageConfig() *schema.Resource {
 
 func resourceStorageConfigDiff() schema.CustomizeDiffFunc {
 	return customdiff.All(
-		customdiff.ValidateValue("name", func(ctx context.Context, value,
-			meta interface{}) error {
-			errorMessage := "Empty env variable: "
-			switch code := value.(string); code {
-			case "GCS":
-				_, isPresent := os.LookupEnv(utils.GCPCredentialsEnv)
-				if !isPresent {
-					return fmt.Errorf("%s%s", errorMessage, utils.GCPCredentialsEnv)
+		customdiff.IfValue("name",
+			func(ctx context.Context, value, meta interface{}) bool {
+				return value.(string) == "GCS"
+			},
+			func(ctx context.Context, d *schema.ResourceDiff, meta interface{}) error {
+				errorMessage := "Empty env variable: "
+
+				gcsCredentialsInterface := d.Get("gcs_credentials").([]interface{})
+				if len(gcsCredentialsInterface) == 0 ||
+					(len(gcsCredentialsInterface) > 0 && gcsCredentialsInterface[0] == nil) {
+					if _, isPresent := os.LookupEnv(utils.GCPCredentialsEnv); !isPresent {
+						return fmt.Errorf("%s%s", errorMessage, utils.GCPCredentialsEnv)
+					}
+				} else {
+					gcsCredentials := utils.MapFromSingletonList(gcsCredentialsInterface)
+					applicationCreds := gcsCredentials["application_credentials"]
+
+					if applicationCreds == nil || len(applicationCreds.(string)) == 0 {
+						return fmt.Errorf("application credentials cannot be empty in gcs_credentials")
+					}
 				}
-			}
-			return nil
-		}),
+
+				return nil
+			}),
 		customdiff.IfValue("name",
 			func(ctx context.Context, value, meta interface{}) bool {
 				return value.(string) == "AZ"
@@ -299,9 +349,22 @@ func buildData(ctx context.Context, d *schema.ResourceData) (map[string]interfac
 	}
 
 	if d.Get("name").(string) == "GCS" {
-		gcsCredString, err := utils.GcpGetCredentialsAsString()
-		if err != nil {
-			return nil, err
+		var gcsCredString string
+		var err error
+		gcsCredentialsInterface := d.Get("gcs_credentials").([]interface{})
+		if len(gcsCredentialsInterface) == 0 ||
+			(len(gcsCredentialsInterface) > 0 && gcsCredentialsInterface[0] == nil) {
+			gcsCredString, err = utils.GcpGetCredentialsAsString()
+			if err != nil {
+				return nil, err
+			}
+
+		} else {
+			gcsCredentials := utils.MapFromSingletonList(gcsCredentialsInterface)
+			applicationCreds := gcsCredentials["application_credentials"]
+			if applicationCreds != nil && len(applicationCreds.(string)) > 0 {
+				gcsCredString = strings.ReplaceAll(applicationCreds.(string), "\n", "")
+			}
 		}
 		data[utils.GCSCredentialsJSON] = gcsCredString
 	}
@@ -453,6 +516,27 @@ func resourceStorageConfigRead(
 		} else {
 			azCredentialsList := make([]map[string]interface{}, 0)
 			if err = d.Set("azure_credentials", azCredentialsList); err != nil {
+				return diag.FromErr(err)
+			}
+		}
+	}
+
+	if config.GetName() == "GCS" {
+		gcsCredentialsInterface := d.Get("gcs_credentials").([]interface{})
+		if len(gcsCredentialsInterface) > 0 && gcsCredentialsInterface[0] != nil {
+			gcsCredentials := utils.MapFromSingletonList(gcsCredentialsInterface)
+			applicationCredentials := gcsCredentials["application_credentials"]
+			if applicationCredentials != nil && len(applicationCredentials.(string)) > 0 {
+				gcsCredentials["application_credentials"] = strings.Trim(strings.ReplaceAll(
+					config.GetData()[utils.GCSCredentialsJSON].(string), "\n", ""), "\"")
+			}
+			gcsCredentialsList := []map[string]interface{}{gcsCredentials}
+			if err = d.Set("gcs_credentials", gcsCredentialsList); err != nil {
+				return diag.FromErr(err)
+			}
+		} else {
+			gcsCredentialsList := make([]map[string]interface{}, 0)
+			if err = d.Set("gcs_credentials", gcsCredentialsList); err != nil {
 				return diag.FromErr(err)
 			}
 		}

@@ -21,19 +21,19 @@ Error: Resource: Onprem Node Instance, Operation: Get - 400 Bad Request: Invalid
 
 ```terraform
 resource "yba_onprem_node_instance" "onprem" {
-    provider_uuid = "<onprem-provider-uuid>"
-    instance_type = "<instance-type-name>"
-    ip            = "<node-ip-instance>"
-    region        = "<region-name>"
-    zone          = "<zone-name>" 
+  provider_uuid = "<onprem-provider-uuid>"
+  instance_type = "<instance-type-name>"
+  ip            = "<node-ip-instance>"
+  region        = "<region-name>"
+  zone          = "<zone-name>"
 }
 
 resource "yba_onprem_node_instance" "onprem" {
-    provider_name = "<onprem-provider-name>"
-    instance_type = "<instance-type-name>"
-    ip            = "<node-ip-instance>"
-    region        = "<region-name>"
-    zone          = "<zone-name>" 
+  provider_name = "<onprem-provider-name>"
+  instance_type = "<instance-type-name>"
+  ip            = "<node-ip-instance>"
+  region        = "<region-name>"
+  zone          = "<zone-name>"
 }
 ```
 
