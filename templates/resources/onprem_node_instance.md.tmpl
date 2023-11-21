@@ -12,7 +12,7 @@ For information on adding node instances to on-premises providers, refer to [Add
 
 ~> **Warning:** YugabyteDB Anywhere Terraform Provider currently provides a standalone On-Premises Node Instance (*yba_onprem_node_instance*) resource, and allows Node Instances to be defined in-line in the On-Premises Provider (*yba_onprem_provider*) resource. Currently, you can't use an On-Premises Provider with in-line Node Instances in conjunction with any On-Premises Node Instance resources. Doing so will cause a conflict and might result in removal of nodes managed by the provider.
 
-On-premises nodes are automatically deleted when their provider is deleted. The following error is thrown by the *yba_onprem_node_instance* resource when its provider is deleted:
+~> **Warning:** On-premises nodes are automatically deleted when their provider is deleted. The following error is thrown by the *yba_onprem_node_instance* resource when its provider is deleted:
 ```
 Error: Resource: Onprem Node Instance, Operation: Get - 400 Bad Request: Invalid node UUID: <node-uuid>
 ```

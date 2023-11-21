@@ -17,6 +17,7 @@ package onprem
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
@@ -100,9 +101,21 @@ func KeyInfoSchema() *schema.Schema {
 					Description: "SSH Key Pair name.",
 				},
 				"ssh_private_key_file_path": {
-					Type:        schema.TypeString,
-					Required:    true,
-					Description: "Private Key Path to access YBDB nodes.",
+					Type:     schema.TypeString,
+					Optional: true,
+					Description: "Private Key Path to access YugabyteDB nodes. " +
+						"Provide one of file path or key contents using ssh_private_key_content." +
+						"If both are provided, preference is given to ssh_private_key_file_path.",
+				},
+				"ssh_private_key_content": {
+					Type:      schema.TypeString,
+					Optional:  true,
+					Sensitive: true,
+					Description: "Private Key content to access YugabyteDB nodes. " +
+						"Provide one of private key content or file paths using " +
+						"ssh_private_key_file_path." +
+						"If both are provided, preference is given to ssh_private_key_file_path." +
+						" **Note**: The terraform state file will contain the value of this field.",
 				},
 				"node_exporter_port": {
 					Type:        schema.TypeInt,
@@ -206,7 +219,8 @@ func buildKeyInfo(keyInfo interface{}) (client.KeyInfo, error) {
 	// When the provider is imported, the path for the ssh_private_key_file
 	// can be left empty, since the private key infomation is stored in YBA.
 
-	// If both ssh_private_key_file_path and private_key are empty, there is
+	// If both ssh_private_key_file_path/ssh_private_key_content
+	// and private_key are empty, there is
 	// no access key provided to connect to the nodes, and will throw an error
 	if key["ssh_private_key_file_path"].(string) != "" {
 		sshFilePath := key["ssh_private_key_file_path"].(string)
@@ -217,11 +231,16 @@ func buildKeyInfo(keyInfo interface{}) (client.KeyInfo, error) {
 		if err != nil {
 			return client.KeyInfo{}, err
 		}
+	} else if key["ssh_private_key_content"].(string) != "" {
+		sshPrivateKeyContent = utils.GetStringPointer(
+			strings.Trim(key["ssh_private_key_content"].(string), " "))
 	} else {
 		if ybaPrivateKey, exists := key["private_key"]; !exists || ybaPrivateKey == "" {
-			return client.KeyInfo{}, fmt.Errorf("ssh_private_key_file_path is empty")
+			err := fmt.Errorf("Provide either of ssh_private_key_file_path or ssh_private_key_content")
+			return client.KeyInfo{}, err
 		}
 	}
+	fmt.Println("SSH PRIVATE KEY::  ", *sshPrivateKeyContent)
 
 	return client.KeyInfo{
 		KeyPairName:          utils.GetStringPointer(keyPairName),
@@ -273,6 +292,7 @@ func flattenKeyInfo(key client.KeyInfo, d *schema.ResourceData) (res []map[strin
 		"vault_file":                key.GetVaultFile(),
 		"vault_password_file":       key.GetVaultPasswordFile(),
 		"ssh_private_key_file_path": d.Get("access_keys.0.key_info.0.ssh_private_key_file_path"),
+		"ssh_private_key_content":   d.Get("access_keys.0.key_info.0.ssh_private_key_content"),
 	}
 	res = append(res, k)
 	return res

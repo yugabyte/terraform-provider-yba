@@ -111,13 +111,14 @@ Read-Only:
 Required:
 
 - `key_pair_name` (String) SSH Key Pair name.
-- `ssh_private_key_file_path` (String) Private Key Path to access YBDB nodes.
 
 Optional:
 
 - `air_gap_install` (Boolean) Air Gap Installation required. False by default.
 - `delete_remote` (Boolean) Delete Remote.
 - `public_key` (String) Public Key to access YBDB nodes.
+- `ssh_private_key_content` (String, Sensitive) Private Key content to access YugabyteDB nodes. Provide one of private key content or file paths using ssh_private_key_file_path.If both are provided, preference is given to ssh_private_key_file_path. **Note**: The terraform state file will contain the value of this field.
+- `ssh_private_key_file_path` (String) Private Key Path to access YugabyteDB nodes. Provide one of file path or key contents using ssh_private_key_content.If both are provided, preference is given to ssh_private_key_file_path.
 - `vault_file` (String) Vault file.
 - `vault_password_file` (String) Vault password file.
 

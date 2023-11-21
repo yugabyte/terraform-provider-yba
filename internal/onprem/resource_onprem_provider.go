@@ -200,34 +200,37 @@ func resourceOnPremDiff() schema.CustomizeDiffFunc {
 				return !reflect.DeepEqual(old, new) && len(old.([]interface{})) != 0
 			},
 			func(ctx context.Context, d *schema.ResourceDiff, meta interface{}) error {
-				// if node is in use, restrict removal
-				c := meta.(*api.APIClient).YugawareClient
-				cUUID := meta.(*api.APIClient).CustomerID
-				pUUID := d.Id()
-				nodeInstancesInterface := d.Get("node_instances").([]interface{})
-				newNodeIPs := make([]string, 0)
-				for _, i := range nodeInstancesInterface {
-					node := i.(map[string]interface{})
-					newNodeIPs = append(newNodeIPs, node["ip"].(string))
-				}
-				existingNodeInstances, err := nodeInstancesRead(ctx, c, cUUID, pUUID)
-				if err != nil {
-					return err
-				}
-				inUseNodes := make([]string, 0)
-				for _, n := range existingNodeInstances {
-					if n.GetInUse() {
-						details := n.GetDetails()
-						ip := details.GetIp()
-						if !slices.Contains(newNodeIPs, ip) {
-							inUseNodes = append(inUseNodes, ip)
+				if len(d.Get("node_instances").([]interface{})) != 0 {
+					// if node is in use, restrict removal
+					c := meta.(*api.APIClient).YugawareClient
+					cUUID := meta.(*api.APIClient).CustomerID
+					pUUID := d.Id()
+					nodeInstancesInterface := d.Get("node_instances").([]interface{})
+					newNodeIPs := make([]string, 0)
+					for _, i := range nodeInstancesInterface {
+						node := i.(map[string]interface{})
+						newNodeIPs = append(newNodeIPs, node["ip"].(string))
+					}
+					existingNodeInstances, err := nodeInstancesRead(ctx, c, cUUID, pUUID)
+					if err != nil {
+						return err
+					}
+					inUseNodes := make([]string, 0)
+					for _, n := range existingNodeInstances {
+						if n.GetInUse() {
+							details := n.GetDetails()
+							ip := details.GetIp()
+							if !slices.Contains(newNodeIPs, ip) {
+								inUseNodes = append(inUseNodes, ip)
+							}
 						}
 					}
-				}
-				if len(inUseNodes) > 0 {
-					return fmt.Errorf("Cannot remove in use nodes: %v", inUseNodes)
+					if len(inUseNodes) > 0 {
+						return fmt.Errorf("Cannot remove in use nodes: %v", inUseNodes)
+					}
 				}
 				return nil
+
 			},
 		),
 	)
@@ -339,16 +342,6 @@ func resourceOnPremProviderRead(
 		}
 	}
 
-	// Get order of node ips
-	nodeInstancesOrderList := make([]string, 0)
-	nodeInstancesInterface := d.Get("node_instances")
-	if nodeInstancesInterface != nil && len(nodeInstancesInterface.([]interface{})) > 0 {
-		for _, m := range nodeInstancesInterface.([]interface{}) {
-			n := m.(map[string]interface{})
-			nodeInstancesOrderList = append(nodeInstancesOrderList, n["ip"].(string))
-		}
-	}
-
 	p, err := findProvider(r, pUUID)
 	if err != nil {
 		return diag.FromErr(err)
@@ -382,13 +375,23 @@ func resourceOnPremProviderRead(
 		return diag.FromErr(err)
 	}
 
-	nodeInstances, err := nodeInstancesRead(ctx, c, cUUID, pUUID)
-	if err != nil {
-		return diag.FromErr(err)
-	}
-	err = d.Set("node_instances", flattenNodeInstances(nodeInstances, nodeInstancesOrderList))
-	if err != nil {
-		return diag.FromErr(err)
+	// Get order of node ips
+	// Add node Ips to the provider state only if nodes are defined inline
+	nodeInstancesOrderList := make([]string, 0)
+	nodeInstancesInterface := d.Get("node_instances")
+	if nodeInstancesInterface != nil && len(nodeInstancesInterface.([]interface{})) > 0 {
+		for _, m := range nodeInstancesInterface.([]interface{}) {
+			n := m.(map[string]interface{})
+			nodeInstancesOrderList = append(nodeInstancesOrderList, n["ip"].(string))
+		}
+		nodeInstances, err := nodeInstancesRead(ctx, c, cUUID, pUUID)
+		if err != nil {
+			return diag.FromErr(err)
+		}
+		err = d.Set("node_instances", flattenNodeInstances(nodeInstances, nodeInstancesOrderList))
+		if err != nil {
+			return diag.FromErr(err)
+		}
 	}
 
 	return diags
