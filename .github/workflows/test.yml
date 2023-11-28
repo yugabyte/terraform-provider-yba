@@ -79,12 +79,8 @@ jobs:
           terraform_version: ${{ matrix.terraform }}
           terraform_wrapper: false
 
-      - name: Make YBA Terraform provider installation Directory
-        run: mkdir -p ./acctest/azure/terraform.d/plugins/terraform.yugabyte.com/platform/yba/0.1.0/linux_amd64
-
-      - name: Install
-        run: |
-          go build -o ./acctest/azure/terraform.d/plugins/terraform.yugabyte.com/platform/yba/0.1.0/linux_amd64
+      - name: Make YBA Terraform provider
+        run: make install
 
       # use the modules to bring up platform instance for acceptance tests
       - name: Terraform Init
@@ -161,12 +157,8 @@ jobs:
           terraform_version: ${{ matrix.terraform }}
           terraform_wrapper: false
 
-      - name: Make YBA Terraform provider installation Directory
-        run: mkdir -p ./acctest/aws/terraform.d/plugins/terraform.yugabyte.com/platform/yba/0.1.0/linux_amd64
-
-      - name: Install
-        run: |
-          go build -o ./acctest/aws/terraform.d/plugins/terraform.yugabyte.com/platform/yba/0.1.0/linux_amd64
+      - name: Make YBA Terraform provider 
+        run: make install
 
       # use the modules to bring up platform instance for acceptance tests
       - name: Terraform Init
@@ -243,12 +235,8 @@ jobs:
           terraform_version: ${{ matrix.terraform }}
           terraform_wrapper: false
 
-      - name: Make YBA Terraform provider installation Directory
-        run: mkdir -p ./acctest/gcp/terraform.d/plugins/terraform.yugabyte.com/platform/yba/0.1.0/linux_amd64
-
-      - name: Install
-        run: |
-          go build -o ./acctest/gcp/terraform.d/plugins/terraform.yugabyte.com/platform/yba/0.1.0/linux_amd64
+      - name: Make YBA Terraform provider 
+        run: make install
 
       # use the modules to bring up platform instance for acceptance tests
       - name: Terraform Init
