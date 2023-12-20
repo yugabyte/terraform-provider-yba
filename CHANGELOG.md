@@ -1,3 +1,12 @@
+## v0.1.10 (December 2023)
+
+The following version of YugabyteDB Anywhere Terraform Provider includes support for:
+
+### Enhancements
+
+- Allow credentials to be added as fields in yba_cloud_provider and yba_storage_config_resource
+- Remove storing of node instances in state file if not provided inline in yba_onprem_provider
+
 ## v0.1.9 (October 2023)
 
 The following version of YugabyteDB Anywhere Terraform Provider includes support for:

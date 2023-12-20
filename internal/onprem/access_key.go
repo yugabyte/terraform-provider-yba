@@ -240,7 +240,6 @@ func buildKeyInfo(keyInfo interface{}) (client.KeyInfo, error) {
 			return client.KeyInfo{}, err
 		}
 	}
-	fmt.Println("SSH PRIVATE KEY::  ", *sshPrivateKeyContent)
 
 	return client.KeyInfo{
 		KeyPairName:          utils.GetStringPointer(keyPairName),

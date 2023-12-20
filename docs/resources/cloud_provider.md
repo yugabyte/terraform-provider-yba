@@ -24,7 +24,9 @@ The following credentials are required as environment variables (if fields are n
 ||Client ID|`azure_config_settings.client_id`|`AZURE_CLIENT_ID`|
 ||Client Secret|`azure_config_settings.client_secret`|`AZURE_CLIENT_SECRET`|
 
--> **Note:** AWS Environment variables are not required for IAM based AWS cloud providers. Please set *aws_config_settings.use_iam_instance_profile* to use host IAM configuration for AWS cloud providers.
+-> **Note:** AWS Environment variables or credential fields are not required for IAM based AWS cloud providers. Please set *aws_config_settings.use_iam_instance_profile* to use host IAM configuration for AWS cloud providers.
+
+-> **Note:** GCP Environment variables or credential fileds are not required for Host credentials based GCP cloud providers. Please set *gcp_config_settings.use_host_credentials* to use host credentials for GCP cloud providers.
 
 ## Example Usage
 
