@@ -1,4 +1,4 @@
-## v0.1.10 (December 2023)
+## v0.1.10 (January 2024)
 
 The following version of YugabyteDB Anywhere Terraform Provider includes support for:
 
