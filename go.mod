@@ -3,7 +3,7 @@ module github.com/yugabyte/terraform-provider-yba
 go 1.18
 
 require (
-	github.com/aws/aws-sdk-go v1.44.122
+	github.com/aws/aws-sdk-go v1.50.3
 	github.com/bramvdbogaerde/go-scp v1.2.0
 	github.com/google/uuid v1.3.0
 	github.com/hashicorp/terraform-plugin-docs v0.16.0
