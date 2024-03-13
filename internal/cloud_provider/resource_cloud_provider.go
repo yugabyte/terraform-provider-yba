@@ -244,6 +244,22 @@ func ResourceCloudProvider() *schema.Resource {
 								"environment variable AZURE_CLIENT_SECRET. Required with " +
 								"client_id.",
 						},
+						"network_subscription_id": {
+							Type:     schema.TypeString,
+							Optional: true,
+							ForceNew: true,
+							Description: "Azure Network Subscription ID." +
+								"All network resources and NIC resouce of VMs will " +
+								"be created in this group. If left empty, the default subscription ID will be used.",
+						},
+						"network_resource_group": {
+							Type:     schema.TypeString,
+							Optional: true,
+							ForceNew: true,
+							Description: "Azure Network Resource Group." +
+								"All network resources and NIC resouce of VMs will " +
+								"be created in this group. If left empty, the default resource group will be used.",
+						},
 					}},
 				ForceNew:    true,
 				Description: "Settings that can be configured for Azure.",
@@ -277,6 +293,13 @@ func ResourceCloudProvider() *schema.Resource {
 							Optional:    true,
 							ForceNew:    true,
 							Description: "Project ID that hosts universe nodes in GCP.",
+						},
+						"shared_vpc_project_id": {
+							Type:     schema.TypeString,
+							Optional: true,
+							ForceNew: true,
+							Description: "Specify the project to use Shared VPC to connect " +
+								"resources from multiple GCP projects to a common VPC.",
 						},
 						"network": {
 							Type:        schema.TypeString,
@@ -498,10 +521,6 @@ func buildConfig(d *schema.ResourceData) (map[string]interface{}, error) {
 				config["use_host_credentials"] = useHostCredentials
 				isIAM = configSettings["use_host_credentials"].(bool)
 			}
-			projectID := configSettings["project_id"].(string)
-			if len(projectID) > 0 {
-				config["project_id"] = projectID
-			}
 			network := configSettings["network"].(string)
 			if len(network) > 0 {
 				config["network"] = network
@@ -523,6 +542,14 @@ func buildConfig(d *schema.ResourceData) (map[string]interface{}, error) {
 					config[k] = v
 				}
 			}
+		}
+		projectID := configSettings["project_id"].(string)
+		if len(projectID) > 0 {
+			config["project_id"] = projectID
+		}
+		sharedVPCProjectID := configSettings["shared_vpc_project_id"].(string)
+		if len(sharedVPCProjectID) > 0 {
+			config["host_project_id"] = sharedVPCProjectID
 		}
 	} else if cloudCode == "aws" {
 		var isIAM bool
@@ -563,6 +590,14 @@ func buildConfig(d *schema.ResourceData) (map[string]interface{}, error) {
 			hostedZoneID := configSettings["hosted_zone_id"].(string)
 			if len(hostedZoneID) > 0 {
 				config["HOSTED_ZONE_ID"] = hostedZoneID
+			}
+			networkSubscriptionID := configSettings["network_subscription_id"].(string)
+			if len(networkSubscriptionID) > 0 {
+				config[utils.AzureNetworkSubscriptionIDEnv] = networkSubscriptionID
+			}
+			networkRG := configSettings["network_resource_group"].(string)
+			if len(networkRG) > 0 {
+				config[utils.AzureNetworkRGEnv] = networkRG
 			}
 		}
 		if configSettings == nil ||
@@ -744,6 +779,8 @@ func resourceCloudProviderRead(
 			tenantID := configSettings["tenant_id"]
 			rg := configSettings["resource_group"]
 			hostedZoneID := configSettings["hosted_zone_id"]
+			networkRG := configSettings["network_resource_group"]
+			networkSubscriptionID := configSettings["network_subscription_id"]
 			if clientSecret != nil && len(clientSecret.(string)) > 0 {
 				configSettings["client_secret"] = p.GetConfig()[utils.AzureClientSecretEnv]
 			}
@@ -758,6 +795,13 @@ func resourceCloudProviderRead(
 			}
 			if rg != nil && len(rg.(string)) > 0 {
 				configSettings["resource_group"] = p.GetConfig()[utils.AzureRGEnv]
+			}
+			if networkSubscriptionID != nil && len(networkSubscriptionID.(string)) > 0 {
+				configSettings["network_subscription_id"] =
+					p.GetConfig()[utils.AzureNetworkSubscriptionIDEnv]
+			}
+			if networkRG != nil && len(networkRG.(string)) > 0 {
+				configSettings["network_resource_group"] = p.GetConfig()[utils.AzureNetworkRGEnv]
 			}
 			if hostedZoneID != nil && len(hostedZoneID.(string)) > 0 {
 				configSettings["hosted_zone_id"] = p.GetConfig()["HOSTED_ZONE_ID"]
@@ -783,6 +827,7 @@ func resourceCloudProviderRead(
 			ybFirewallTags := configSettings["yb_firewall_tags"]
 			network := configSettings["network"]
 			projectID := configSettings["project_id"]
+			sharedProjectID := configSettings["shared_vpc_project_id"]
 			useHostCredentials := configSettings["use_host_credentials"]
 			useHostVPC := configSettings["use_host_vpc"]
 			if ybFirewallTags != nil && len(ybFirewallTags.(string)) > 0 {
@@ -798,6 +843,14 @@ func resourceCloudProviderRead(
 					configProjectID = strings.Trim(configProjectID, "\"")
 				}
 				configSettings["project_id"] = configProjectID
+			}
+			if sharedProjectID != nil && len(sharedProjectID.(string)) > 0 {
+				configSharedProjectID := p.GetConfig()["host_project_id"]
+				if len(configSharedProjectID) == 0 {
+					configSharedProjectID = p.GetConfig()["GCE_HOST_PROJECT"]
+					configSharedProjectID = strings.Trim(configSharedProjectID, "\"")
+				}
+				configSettings["shared_vpc_project_id"] = configSharedProjectID
 			}
 			if useHostCredentials != nil && useHostCredentials.(bool) {
 				configUseHostCredentials := p.GetConfig()["use_host_credentials"]

@@ -39,8 +39,8 @@ func ProviderRegions() *schema.Resource {
 				Description: "UUID of the provider.",
 			},
 			"regions_uuid": {
-				Type:		schema.TypeList,
-				Computed: 	true,
+				Type:        schema.TypeList,
+				Computed:    true,
 				Elem:        &schema.Schema{Type: schema.TypeString},
 				Description: "List of region UUIDs associated with the provider.",
 			},

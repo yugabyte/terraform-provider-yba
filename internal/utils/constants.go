@@ -50,6 +50,10 @@ const (
 	AzureClientIDEnv = "AZURE_CLIENT_ID"
 	// AzureClientSecretEnv env variable name for azure provider
 	AzureClientSecretEnv = "AZURE_CLIENT_SECRET"
+	// AzureNetworkSubscriptionIDEnv env variable name for azure provider
+	AzureNetworkSubscriptionIDEnv = "AZURE_NETWORK_SUBSCRIPTION_ID"
+	// AzureNetworkRGEnv env variable name for azure provider
+	AzureNetworkRGEnv = "AZURE_NETWORK_RG"
 
 	// AzureStorageSasTokenEnv env variable name azure storage config
 	AzureStorageSasTokenEnv = "AZURE_STORAGE_SAS_TOKEN"

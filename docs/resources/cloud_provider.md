@@ -246,6 +246,8 @@ Optional:
 - `client_id` (String) Azure Client ID. Can also be set using environment variable AZURE_CLIENT_ID.
 - `client_secret` (String, Sensitive) Azure Client Secret. Can also be set using environment variable AZURE_CLIENT_SECRET. Required with client_id.
 - `hosted_zone_id` (String) Private DNS Zone for Azure.
+- `network_resource_group` (String) Azure Network Resource Group.All network resources and NIC resouce of VMs will be created in this group. If left empty, the default resource group will be used.
+- `network_subscription_id` (String) Azure Network Subscription ID.All network resources and NIC resouce of VMs will be created in this group. If left empty, the default subscription ID will be used.
 - `resource_group` (String) Azure Resource Group. Can also be set using environment variable AZURE_RG. Required with client_id.
 - `subscription_id` (String) Azure Subscription ID. Can also be set using environment variable AZURE_SUBSCRIPTION_ID. Required with client_id.
 - `tenant_id` (String) Azure Tenant ID. Can also be set using environment variable AZURE_TENANT_ID. Required with client_id.
@@ -259,6 +261,7 @@ Optional:
 - `application_credentials` (Map of String) Google Service Account JSON Credentials. Can also be set by providing the JSON file path with the environment variable GOOGLE_APPLICATION_CREDENTIALS.
 - `network` (String) VPC network name in GCP.
 - `project_id` (String) Project ID that hosts universe nodes in GCP.
+- `shared_vpc_project_id` (String) Specify the project to use Shared VPC to connect resources from multiple GCP projects to a common VPC.
 - `use_host_credentials` (Boolean) Enabling Host Credentials in GCP.
 - `use_host_vpc` (Boolean) Enabling Host VPC in GCP.
 - `yb_firewall_tags` (String) Tags for firewall rules in GCP.
