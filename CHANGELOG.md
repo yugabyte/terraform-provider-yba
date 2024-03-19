@@ -1,3 +1,16 @@
+## v0.1.11 (March 2024)
+
+The following version of YugabyteDB Anywhere Terraform Provider includes support for:
+
+### Enhancements
+
+- Allow GCP shared VPC project and host project to be declared separately in yba_cloud_provider
+- Support Azure Network Subscription ID and Azure Network Resource Group in yba_cloud_provider
+
+### Data Sources
+
+- Fetch regions of a provider (yba_provider_regions)
+
 ## v0.1.10 (January 2024)
 
 The following version of YugabyteDB Anywhere Terraform Provider includes support for:
