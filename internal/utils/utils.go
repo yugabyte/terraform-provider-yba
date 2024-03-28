@@ -199,9 +199,16 @@ func WaitForTask(ctx context.Context, tUUID string, cUUID string, c *client.APIC
 	return nil
 }
 
+// YBAMinimumVersion corresponds to the oldest version which allows an operation
+// With the new name change, need separate Stable and Preview releases for comparison
+type YBAMinimumVersion struct {
+	Stable  string
+	Preview string
+}
+
 // CheckValidYBAVersion allows operation if version is higher than listed versions
-func CheckValidYBAVersion(ctx context.Context, c *client.APIClient, versions []string) (bool,
-	string, error) {
+func CheckValidYBAVersion(ctx context.Context, c *client.APIClient, versions YBAMinimumVersion) (
+	bool, string, error) {
 
 	r, response, err := c.SessionManagementApi.AppVersion(ctx).Execute()
 	if err != nil {
@@ -210,24 +217,41 @@ func CheckValidYBAVersion(ctx context.Context, c *client.APIClient, versions []s
 		return false, "", errMessage
 	}
 	currentVersion := r["version"]
-	for _, v := range versions {
-		check, err := CompareYbVersions(currentVersion, v)
-		if err != nil {
-			return false, "", err
-		}
-		if check == 0 || check == 1 {
-			return true, currentVersion, err
-		}
+	var v string
+	isStable, err := IsVersionStable(currentVersion)
+	if err != nil {
+		return false, currentVersion, err
 	}
+	if isStable {
+		v = versions.Stable
+	} else {
+		v = versions.Preview
+	}
+	check, err := CompareYbVersions(currentVersion, v)
+	if err != nil {
+		return false, "", err
+	}
+	if check == 0 || check == 1 {
+		return true, currentVersion, err
+	}
+
 	return false, currentVersion, err
 }
 
-// IsVersionAllowed checks if a current version (>= Min version)
+// IsPreviewVersionAllowed checks if a current version (>= Min version)
 // is equal to the restricted version for the operation.
 // Used in cases where certain preview build errors are not
 // resolved and need to be blocked on YugabyteDB Anywhere Terraform
 // provider
-func IsVersionAllowed(currentVersion, restrictedVersion string) (bool, error) {
+func IsPreviewVersionAllowed(currentVersion, restrictedVersion string) (bool, error) {
+	isStable, err := IsVersionStable(currentVersion)
+	if err != nil {
+		return true, err
+	}
+	// Check only with preview builds, stable current versions return true
+	if isStable {
+		return true, nil
+	}
 	compare, errCompare := CompareYbVersions(restrictedVersion, currentVersion)
 	if errCompare != nil {
 		return false, errCompare
@@ -236,6 +260,19 @@ func IsVersionAllowed(currentVersion, restrictedVersion string) (bool, error) {
 		return false, nil
 	}
 	return true, nil
+}
+
+// IsVersionStable checks if a given version string is on stable track or not.
+// Eg: 2024.1.0.0-b1/2.20.0.0-b1 for
+//  stable and 2.23.0.0-b1 for preview.
+func IsVersionStable(version string) (bool, error) {
+	v := strings.Split(version, ".")
+	v1, err := strconv.Atoi(v[1])
+	if err != nil {
+		err = fmt.Errorf("Unable to parse YB version strings")
+		return false, err
+	}
+	return (v1%2 == 0 || len(v[0]) == 4), nil
 }
 
 // CompareYbVersions returns -1 if version1 < version2, 0 if version1 = version2,
@@ -479,7 +516,9 @@ func GetUniversesForProvider(ctx context.Context, c *client.APIClient, cUUID, pU
 
 func failureSubTaskListYBAVersionCheck(ctx context.Context, c *client.APIClient) (
 	bool, string, error) {
-	allowedVersions := []string{YBAAllowFailureSubTaskListMinVersion}
+	allowedVersions := YBAMinimumVersion{
+		Stable:  YBAAllowFailureSubTaskListMinVersion,
+		Preview: YBAAllowFailureSubTaskListMinVersion}
 	allowed, version, err := CheckValidYBAVersion(ctx, c, allowedVersions)
 	if err != nil {
 		return false, "", err
@@ -488,7 +527,7 @@ func failureSubTaskListYBAVersionCheck(ctx context.Context, c *client.APIClient)
 		// if the release is 2.19.0.0, block it like YBA < 2.18.1.0 and send generic message
 		restrictedVersions := YBARestrictFailedSubtasksVersions()
 		for _, i := range restrictedVersions {
-			allowed, err = IsVersionAllowed(version, i)
+			allowed, err = IsPreviewVersionAllowed(version, i)
 			if err != nil {
 				return false, version, err
 			}

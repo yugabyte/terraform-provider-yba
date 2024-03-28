@@ -246,7 +246,10 @@ func resourceBackupDiff() schema.CustomizeDiffFunc {
 }
 
 func backupYBAVersionCheck(ctx context.Context, c *client.APIClient) (bool, string, error) {
-	allowedVersions := []string{utils.YBAAllowBackupMinVersion}
+	allowedVersions := utils.YBAMinimumVersion{
+		Stable:  utils.YBAAllowBackupMinVersion,
+		Preview: utils.YBAAllowBackupMinVersion,
+	}
 	allowed, version, err := utils.CheckValidYBAVersion(ctx, c, allowedVersions)
 	if err != nil {
 		return false, "", err
@@ -256,7 +259,7 @@ func backupYBAVersionCheck(ctx context.Context, c *client.APIClient) (bool, stri
 		// Usually preview builds.
 		restrictedVersions := utils.YBARestrictBackupVersions()
 		for _, i := range restrictedVersions {
-			allowed, err = utils.IsVersionAllowed(version, i)
+			allowed, err = utils.IsPreviewVersionAllowed(version, i)
 			if err != nil {
 				return false, version, err
 			}

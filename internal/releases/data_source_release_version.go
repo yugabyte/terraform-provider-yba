@@ -45,6 +45,12 @@ func ReleaseVersion() *schema.Resource {
 				Description: "Selected release version. If version is empty, use " +
 					"lastest version available.",
 			},
+			"track": {
+				Type: schema.TypeString,
+				Optional: true,
+				Description: "YugabyteDB release verion track. Allowed values: stable, preview." +
+					" Uses the latest/user given version from the corresponding track.",
+			},
 			"version_list": {
 				Type:     schema.TypeList,
 				Elem:     &schema.Schema{Type: schema.TypeString},
@@ -80,15 +86,23 @@ func dataSourceReleaseVersionRead(
 		return diag.FromErr(errMessage)
 	}
 
-	versions := make([]string, 0)
+	versionsStable := make([]string, 0)
+	versionsPreview := make([]string, 0)
 	for v := range r {
-		versions = append(versions, v)
+		isStable, err := utils.IsVersionStable(v)
+		if err != nil {
+			diag.FromErr(err)
+		}
+		if isStable {
+			versionsStable = append(versionsStable, v)
+		} else {
+			versionsPreview = append(versionsPreview, v)
+		}
 	}
-
 	// the function as described in the documentation is the less function,
 	// but for the purpose of getting the latest release, it's described as
 	// a function returning the greater of the 2 versions
-	slices.SortStableFunc(versions, func(x, y string) bool {
+	slices.SortStableFunc(versionsStable, func(x, y string) bool {
 		compare, err := utils.CompareYbVersions(x, y)
 		if err != nil {
 			return false
@@ -98,6 +112,29 @@ func dataSourceReleaseVersionRead(
 		}
 		return true
 	})
+
+	slices.SortStableFunc(versionsPreview, func(x, y string) bool {
+		compare, err := utils.CompareYbVersions(x, y)
+		if err != nil {
+			return false
+		}
+		if compare == 0 || compare == -1 {
+			return false
+		}
+		return true
+	})
+
+	var versions []string
+	releaseTrack := d.Get("track").(string)
+	if len(releaseTrack) != 0 {
+		if strings.Compare("stable", releaseTrack) == 0 {
+			versions = versionsStable
+		} else {
+			versions = versionsPreview
+		}
+	} else {
+		versions = append(versionsStable, versionsPreview...)
+	}
 
 	if d.Get("version").(string) == "" {
 		d.Set("version_list", versions)

@@ -600,7 +600,10 @@ func resourceOnPremProviderDelete(
 }
 
 func editOnpremYBAVersionCheck(ctx context.Context, c *client.APIClient) (bool, string, error) {
-	allowedVersions := []string{utils.YBAAllowEditProviderMinVersion}
+	allowedVersions := utils.YBAMinimumVersion{
+		Stable:  utils.YBAAllowEditProviderMinVersion,
+		Preview: utils.YBAAllowEditProviderMinVersion,
+	}
 	allowed, version, err := utils.CheckValidYBAVersion(ctx, c, allowedVersions)
 	if err != nil {
 		return false, "", err

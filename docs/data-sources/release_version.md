@@ -26,6 +26,7 @@ data "yba_release_version" "release_version_x" {
 
 ### Optional
 
+- `track` (String) YugabyteDB release verion track. Allowed values: stable, preview. Uses the latest/user given version from the corresponding track.
 - `version` (String) Release version given by user.
 
 ### Read-Only

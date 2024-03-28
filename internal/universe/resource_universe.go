@@ -528,7 +528,10 @@ func userIntentSchema() *schema.Resource {
 }
 
 func universeYBAVersionCheck(ctx context.Context, c *client.APIClient) (bool, string, error) {
-	allowedVersions := []string{utils.YBAAllowUniverseMinVersion}
+	allowedVersions := utils.YBAMinimumVersion{
+		Stable:  utils.YBAAllowUniverseMinVersion,
+		Preview: utils.YBAAllowUniverseMinVersion,
+	}
 	allowed, version, err := utils.CheckValidYBAVersion(ctx, c, allowedVersions)
 	if err != nil {
 		return false, "", err
