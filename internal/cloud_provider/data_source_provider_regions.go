@@ -64,6 +64,17 @@ func dataSourceProviderRegionsRead(
 	cUUID := meta.(*api.APIClient).CustomerID
 	pUUID := d.Get("provider_id").(string)
 
+	rProvider, response, err := c.CloudProvidersApi.GetListOfProviders(ctx, cUUID).Execute()
+	if err != nil {
+		errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
+			"Provider Regions", "Get Cloud Provider")
+		return diag.FromErr(errMessage)
+	}
+	p, err := findProvider(rProvider, pUUID)
+	if err != nil {
+		return diag.FromErr(err)
+	}
+
 	r, response, err := c.RegionManagementApi.GetRegion(ctx, cUUID, pUUID).Execute()
 
 	if err != nil {
@@ -82,7 +93,7 @@ func dataSourceProviderRegionsRead(
 		return diag.FromErr(err)
 	}
 
-	if err = d.Set("regions", flattenRegions(r)); err != nil {
+	if err = d.Set("regions", flattenRegions(r, p.GetCode())); err != nil {
 		return diag.FromErr(err)
 	}
 

@@ -94,7 +94,7 @@ func resourceUserCreate(
 		Email:           d.Get("email").(string),
 		Password:        utils.GetStringPointer(d.Get("password").(string)),
 		ConfirmPassword: utils.GetStringPointer(d.Get("password").(string)),
-		Role:            d.Get("role").(string),
+		Role:            utils.GetStringPointer(d.Get("role").(string)),
 	}
 	r, response, err := c.UserManagementApi.CreateUser(ctx, cUUID).User(req).Execute()
 	if err != nil {
@@ -152,13 +152,12 @@ func resourceUserUpdate(
 		}
 	}
 	if d.HasChange("password") {
-		req := client.UserRegistrationData{
-			Email:           d.Get("email").(string),
-			Password:        utils.GetStringPointer(d.Get("password").(string)),
-			ConfirmPassword: utils.GetStringPointer(d.Get("password").(string)),
-			Role:            d.Get("role").(string),
+		oldPassword, newPassword := d.GetChange("password")
+		req := client.UserPasswordChangeFormData{
+			CurrentPassword: utils.GetStringPointer(oldPassword.(string)),
+			NewPassword:     utils.GetStringPointer(newPassword.(string)),
 		}
-		_, response, err := c.UserManagementApi.UpdateUserPassword(ctx, cUUID, d.Id()).Users(
+		_, response, err := c.UserManagementApi.ResetUserPassword(ctx, cUUID).Users(
 			req).Execute()
 		if err != nil {
 			errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,

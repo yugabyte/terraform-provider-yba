@@ -16,6 +16,10 @@
 package cloud_provider
 
 import (
+	"context"
+	"fmt"
+
+	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	client "github.com/yugabyte/platform-go-client"
 	"github.com/yugabyte/terraform-provider-yba/internal/utils"
@@ -82,7 +86,6 @@ func RegionsSchema() *schema.Schema {
 					Type:     schema.TypeString,
 					Optional: true,
 					Computed: true,
-					ForceNew: true,
 					Description: "Security group ID to use for this region. " +
 						"Only set for AWS/Azure providers.",
 				},
@@ -90,7 +93,6 @@ func RegionsSchema() *schema.Schema {
 					Type:     schema.TypeString,
 					Optional: true,
 					Computed: true,
-					ForceNew: true,
 					Description: "Name of the virtual network/VPC ID to use for this region." +
 						" Only set for AWS/Azure providers.",
 				},
@@ -98,8 +100,15 @@ func RegionsSchema() *schema.Schema {
 					Type:        schema.TypeString,
 					Optional:    true,
 					Computed:    true,
-					ForceNew:    true,
 					Description: "AMI to be used in this region.",
+				},
+				"instance_template": {
+					Type:     schema.TypeString,
+					Optional: true,
+					Computed: true,
+					Description: "Instance template to be used in this region." +
+						" Only set for GCP provider. Allowed in YugabyteDB Anywhere versions above" +
+						" 2.18.0.0-b65.",
 				},
 				"zones": {
 					Type:        schema.TypeList,
@@ -171,20 +180,54 @@ func RegionsSchema() *schema.Schema {
 	}
 }
 
-func buildRegions(regions []interface{}) (res []client.Region) {
+func buildRegions(
+	ctx context.Context,
+	regions []interface{},
+	cloudCode string,
+	allowed bool,
+	version string,
+) (res []client.Region) {
+
 	for _, v := range regions {
 		region := v.(map[string]interface{})
 		r := client.Region{
-			Config:          utils.StringMap(region["config"].(map[string]interface{})),
-			Code:            utils.GetStringPointer(region["code"].(string)),
-			Name:            utils.GetStringPointer(region["name"].(string)),
-			SecurityGroupId: utils.GetStringPointer(region["security_group_id"].(string)),
-			VnetName:        utils.GetStringPointer(region["vnet_name"].(string)),
-			YbImage:         utils.GetStringPointer(region["yb_image"].(string)),
-			Zones:           buildZones(region["zones"].([]interface{})),
-			Latitude:        utils.GetFloat64Pointer(region["latitude"].(float64)),
-			Longitude:       utils.GetFloat64Pointer(region["longitude"].(float64)),
+			Code:      utils.GetStringPointer(region["code"].(string)),
+			Name:      utils.GetStringPointer(region["name"].(string)),
+			Zones:     buildZones(region["zones"].([]interface{})),
+			Latitude:  utils.GetFloat64Pointer(region["latitude"].(float64)),
+			Longitude: utils.GetFloat64Pointer(region["longitude"].(float64)),
 		}
+
+		regionCloudInfo := client.RegionCloudInfo{}
+		details := client.RegionDetails{}
+		if cloudCode == "gcp" {
+			gcpRegionInfo := client.GCPRegionCloudInfo{
+				YbImage: utils.GetStringPointer(region["yb_image"].(string)),
+			}
+			if allowed {
+				gcpRegionInfo.SetInstanceTemplate(region["instance_template"].(string))
+			} else {
+				tflog.Info(ctx, fmt.Sprintf("YugabyteDB Anywhere version %s does not support Instance "+
+					"Templates, ignoring value.\n", version))
+			}
+			regionCloudInfo.SetGcp(gcpRegionInfo)
+		} else if cloudCode == "aws" {
+			awsRegionInfo := client.AWSRegionCloudInfo{
+				YbImage:         utils.GetStringPointer(region["yb_image"].(string)),
+				Vnet:            utils.GetStringPointer(region["vnet_name"].(string)),
+				SecurityGroupId: utils.GetStringPointer(region["security_group_id"].(string)),
+			}
+			regionCloudInfo.SetAws(awsRegionInfo)
+		} else if cloudCode == "azure" {
+			azureCloudInfo := client.AzureRegionCloudInfo{
+				YbImage:         utils.GetStringPointer(region["yb_image"].(string)),
+				Vnet:            utils.GetStringPointer(region["vnet_name"].(string)),
+				SecurityGroupId: utils.GetStringPointer(region["security_group_id"].(string)),
+			}
+			regionCloudInfo.SetAzu(azureCloudInfo)
+		}
+		details.SetCloudInfo(regionCloudInfo)
+		r.SetDetails(details)
 		res = append(res, r)
 	}
 	return res
@@ -205,7 +248,7 @@ func buildZones(zones []interface{}) (res []client.AvailabilityZone) {
 	return res
 }
 
-func flattenRegions(regions []client.Region) (res []map[string]interface{}) {
+func flattenRegions(regions []client.Region, cloudCode string) (res []map[string]interface{}) {
 	for _, region := range regions {
 		r := map[string]interface{}{
 			"uuid":      region.Uuid,
@@ -216,11 +259,29 @@ func flattenRegions(regions []client.Region) (res []map[string]interface{}) {
 			// TODO: the region name is being changed by the server, which messes with terraform state
 			// stop-gap fix is to use the code value
 			// https://yugabyte.atlassian.net/browse/PLAT-3034
-			"name":              region.Code,
-			"security_group_id": region.SecurityGroupId,
-			"vnet_name":         region.VnetName,
-			"yb_image":          region.YbImage,
-			"zones":             flattenZones(region.Zones),
+			"name":  region.Code,
+			"zones": flattenZones(region.Zones),
+		}
+		if cloudCode == "gcp" {
+			details := region.GetDetails()
+			cloudInfo := details.GetCloudInfo()
+			gcp := cloudInfo.GetGcp()
+			r["instance_template"] = gcp.GetInstanceTemplate()
+			r["yb_image"] = gcp.GetYbImage()
+		} else if cloudCode == "aws" {
+			details := region.GetDetails()
+			cloudInfo := details.GetCloudInfo()
+			aws := cloudInfo.GetAws()
+			r["vnet_name"] = aws.GetVnet()
+			r["yb_image"] = aws.GetYbImage()
+			r["security_group_id"] = aws.GetSecurityGroupId()
+		} else if cloudCode == "azure" {
+			details := region.GetDetails()
+			cloudInfo := details.GetCloudInfo()
+			azure := cloudInfo.GetAzu()
+			r["vnet_name"] = azure.GetVnet()
+			r["yb_image"] = azure.GetYbImage()
+			r["security_group_id"] = azure.GetSecurityGroupId()
 		}
 		res = append(res, r)
 	}

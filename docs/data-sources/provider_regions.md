@@ -36,6 +36,7 @@ Read-Only:
 
 - `code` (String)
 - `config` (Map of String)
+- `instance_template` (String)
 - `latitude` (Number)
 - `longitude` (Number)
 - `name` (String)

@@ -209,7 +209,7 @@ func buildInstanceTypeDetails(details []interface{}) *client.InstanceTypeDetails
 	}
 }
 
-func buildVolumeDetails(list []interface{}) []client.VolumeDetails {
+func buildVolumeDetails(list []interface{}) *[]client.VolumeDetails {
 	volumeDetailsList := make([]client.VolumeDetails, 0)
 	for _, v := range list {
 		details := v.(map[string]interface{})
@@ -220,7 +220,7 @@ func buildVolumeDetails(list []interface{}) []client.VolumeDetails {
 		}
 		volumeDetailsList = append(volumeDetailsList, vD)
 	}
-	return volumeDetailsList
+	return &volumeDetailsList
 }
 
 func buildInstanceTypeFromInstanceTypeResp(

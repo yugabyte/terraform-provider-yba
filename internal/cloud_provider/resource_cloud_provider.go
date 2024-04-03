@@ -72,7 +72,6 @@ func ResourceCloudProvider() *schema.Resource {
 			"config": {
 				Type:     schema.TypeMap,
 				Elem:     &schema.Schema{Type: schema.TypeString},
-				ForceNew: true,
 				Computed: true,
 				Description: "Configuration values to be set for the provider. " +
 					"AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY must be set for AWS providers." +
@@ -81,22 +80,31 @@ func ResourceCloudProvider() *schema.Resource {
 					" AZURE_CLIENT_SECRET must be set for AZURE providers.",
 			},
 			"dest_vpc_id": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				ForceNew:    true,
-				Description: "Destination VPC network.",
+				Type:     schema.TypeString,
+				Optional: true,
+				ForceNew: true,
+				Deprecated: "Deprecated since YugabyteDB Anywhere 2.17.2.0. " +
+					"Please use 'gcp_config_settings.network' instead.",
+				Description: "Destination VPC network. Deprecated since YugabyteDB Anywhere 2.17.2.0. " +
+					"Please use 'gcp_config_settings.network' instead.",
 			},
 			"host_vpc_id": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				ForceNew:    true,
-				Description: "Host VPC Network.",
+				Type:     schema.TypeString,
+				Optional: true,
+				ForceNew: true,
+				Deprecated: "Deprecated since YugabyteDB Anywhere 2.17.2.0. " +
+					"Will be removed in the next terraform-provider-yba release.",
+				Description: "Host VPC Network. Deprecated since YugabyteDB Anywhere 2.17.2.0. " +
+					"Will be removed in the next terraform-provider-yba release.",
 			},
 			"host_vpc_region": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				ForceNew:    true,
-				Description: "Host VPC Region.",
+				Type:     schema.TypeString,
+				Optional: true,
+				ForceNew: true,
+				Deprecated: "Deprecated since YugabyteDB Anywhere 2.17.2.0." +
+					"Will be removed in the next terraform-provider-yba release.",
+				Description: "Host VPC Region. Deprecated since YugabyteDB Anywhere 2.17.2.0." +
+					"Will be removed in the next terraform-provider-yba release.",
 			},
 			"key_pair_name": {
 				Type:        schema.TypeString,
@@ -115,7 +123,6 @@ func ResourceCloudProvider() *schema.Resource {
 				Type:        schema.TypeInt,
 				Optional:    true,
 				Computed:    true,
-				ForceNew:    true,
 				Description: "Port to use for ssh commands.",
 			},
 			"ssh_private_key_content": {
@@ -127,7 +134,6 @@ func ResourceCloudProvider() *schema.Resource {
 			"ssh_user": {
 				Type:     schema.TypeString,
 				Optional: true,
-				ForceNew: true,
 				DiffSuppressFunc: func(k, old, new string, d *schema.ResourceData) bool {
 					// ssh_user field can be empty in the configuration block of the resource
 					// In that event YBA uses a default ssh user as per the cloud provider
@@ -136,6 +142,7 @@ func ResourceCloudProvider() *schema.Resource {
 
 					return len(old) > 0 && len(new) == 0
 				},
+				ForceNew:    true,
 				Description: "User to use for ssh commands.",
 			},
 			"aws_config_settings": {
@@ -273,61 +280,61 @@ func ResourceCloudProvider() *schema.Resource {
 						"yb_firewall_tags": {
 							Type:        schema.TypeString,
 							Optional:    true,
-							ForceNew:    true,
 							Description: "Tags for firewall rules in GCP.",
 						},
 						"use_host_vpc": {
-							Type:        schema.TypeBool,
-							Optional:    true,
-							ForceNew:    true,
-							Description: "Enabling Host VPC in GCP.",
+							Type:     schema.TypeBool,
+							Optional: true,
+							Default:  false,
+							Description: "Enabling Host VPC in GCP. " +
+								"gcp_config_settings.network is required if use_host_vpc is not set.",
+						},
+						"create_vpc": {
+							Type:     schema.TypeBool,
+							Optional: true,
+							Default:  false,
+							Description: "Create VPC in GCP. " +
+								"gcp_config_settings.network is required if create_vpc is set.",
 						},
 						"use_host_credentials": {
 							Type:        schema.TypeBool,
 							Optional:    true,
-							ForceNew:    true,
 							Description: "Enabling Host Credentials in GCP.",
 						},
 						"project_id": {
 							Type:        schema.TypeString,
 							Optional:    true,
-							ForceNew:    true,
 							Description: "Project ID that hosts universe nodes in GCP.",
 						},
 						"shared_vpc_project_id": {
 							Type:     schema.TypeString,
 							Optional: true,
-							ForceNew: true,
 							Description: "Specify the project to use Shared VPC to connect " +
 								"resources from multiple GCP projects to a common VPC.",
 						},
 						"network": {
 							Type:        schema.TypeString,
 							Optional:    true,
-							ForceNew:    true,
 							Description: "VPC network name in GCP.",
 						},
-						"application_credentials": {
-							Type:     schema.TypeMap,
-							Elem:     schema.TypeString,
-							Optional: true,
-							ForceNew: true,
+						"credentials": {
+							Type:      schema.TypeString,
+							Optional:  true,
+							Sensitive: true,
 							DiffSuppressFunc: func(k, old, new string, d *schema.ResourceData) bool {
-								oldInterface, newInterface := d.GetChange("gcp_config_settings.0.application_credentials")
-								oldMap := oldInterface.(map[string]interface{})
-								newMap := newInterface.(map[string]interface{})
-								if new == "" {
+								oldInterface, newInterface := d.GetChange("gcp_config_settings.0.credentials")
+								oldString := oldInterface.(string)
+								newString := newInterface.(string)
+								newString = strings.ReplaceAll(newString, "\n", "")
+								if newString == "" {
 									return false
 								}
-								if (oldMap != nil && newMap != nil) && (oldMap["private_key_id"] != nil &&
-									newMap["private_key_id"] != nil) &&
-									(oldMap["private_key_id"].(string) ==
-										utils.ObfuscateString(newMap["private_key_id"].(string), 1)) {
+								if oldString != "" && newString != "" {
 									return true
 								}
 								return false
 							},
-							Description: "Google Service Account JSON Credentials. Can also be set " +
+							Description: "Google Service Account Credentials. Can also be set " +
 								"by providing the JSON file path with the " +
 								"environment variable GOOGLE_APPLICATION_CREDENTIALS.",
 						},
@@ -482,25 +489,50 @@ func resourceCloudProviderDiff() schema.CustomizeDiffFunc {
 
 				// if not IAM GCP cloud provider, check for credentials in env
 				if !isIAM {
-					applicationCreds := configSettings["application_credentials"]
+					applicationCreds := configSettings["credentials"]
 					if len(configSettings) == 0 ||
 						(applicationCreds == nil ||
-							len(applicationCreds.(map[string]interface{})) == 0) {
+							len(applicationCreds.(string)) == 0) {
 						_, isPresent := os.LookupEnv(utils.GCPCredentialsEnv)
 						if !isPresent {
 							return fmt.Errorf("%s%s", errorMessage, utils.GCPCredentialsEnv)
 						}
 					}
 				}
+
+				createVpc := configSettings["create_vpc"].(bool)
+				useHostVpc := configSettings["use_host_vpc"].(bool)
+
+				if createVpc && useHostVpc {
+					return fmt.Errorf("create_vpc and use_host_vpc cannot be true at the same time")
+				}
+
 				return nil
 			}),
 	)
 }
 
-func buildConfig(d *schema.ResourceData) (map[string]interface{}, error) {
+// Check if the current version of YBA can support edit provider and/or newly introduced fields
+func providerYBAVersionCheck(ctx context.Context, c *client.APIClient) (bool, string, error) {
+	allowedVersions := utils.YBAMinimumVersion{
+		Stable:  utils.YBAAllowEditProviderMinVersion,
+		Preview: utils.YBAAllowEditProviderMinVersion,
+	}
+	allowed, version, err := utils.CheckValidYBAVersion(ctx, c, allowedVersions)
+	if err != nil {
+		return false, "", err
+	}
+	return allowed, version, err
+}
+
+func buildCloudInfo(
+	d *schema.ResourceData,
+) (client.CloudInfo, error) {
+	cloudInfo := client.CloudInfo{}
 	cloudCode := d.Get("code").(string)
-	config := make(map[string]interface{})
+
 	if cloudCode == "gcp" {
+		gcpCloudInfo := client.GCPCloudInfo{}
 		var isIAM bool
 		var configSettings map[string]interface{}
 		configInterface := d.Get("gcp_config_settings").([]interface{})
@@ -510,48 +542,127 @@ func buildConfig(d *schema.ResourceData) (map[string]interface{}, error) {
 			)
 			ybFirewallTags := configSettings["yb_firewall_tags"].(string)
 			if len(ybFirewallTags) > 0 {
-				config["YB_FIREWALL_TAGS"] = ybFirewallTags
+				gcpCloudInfo.SetYbFirewallTags(ybFirewallTags)
 			}
-			useHostVpc := strconv.FormatBool(configSettings["use_host_vpc"].(bool))
-			if len(useHostVpc) > 0 {
-				config["use_host_vpc"] = useHostVpc
-			}
-			useHostCredentials := strconv.FormatBool(configSettings["use_host_credentials"].(bool))
-			if len(useHostCredentials) > 0 {
-				config["use_host_credentials"] = useHostCredentials
-				isIAM = configSettings["use_host_credentials"].(bool)
-			}
+			createVpc := strconv.FormatBool(configSettings["create_vpc"].(bool))
 			network := configSettings["network"].(string)
-			if len(network) > 0 {
-				config["network"] = network
+			if len(createVpc) > 0 {
+				if strings.Compare(createVpc, "true") == 0 {
+					gcpCloudInfo.SetUseHostVPC(false)
+					if len(network) > 0 {
+						gcpCloudInfo.SetDestVpcId(network)
+
+					} else {
+						return cloudInfo, fmt.Errorf("Network required if create_vpc is set")
+					}
+				} else if strings.Compare(createVpc, "false") == 0 {
+					useHostVpc := configSettings["use_host_vpc"].(bool)
+					useHostVpcString := strconv.FormatBool(useHostVpc)
+					if len(useHostVpcString) > 0 {
+						if strings.Compare(useHostVpcString, "true") == 0 {
+							gcpCloudInfo.SetUseHostVPC(useHostVpc)
+						} else {
+							gcpCloudInfo.SetUseHostVPC(true)
+							if len(network) > 0 {
+								gcpCloudInfo.SetDestVpcId(network)
+							} else {
+								return cloudInfo,
+									fmt.Errorf("Network required if use_host_vpc is not set")
+							}
+
+						}
+					}
+				}
 			}
+			useHostCredentials := configSettings["use_host_credentials"].(bool)
+			useHostCredentialsString := strconv.FormatBool(useHostCredentials)
+			if len(useHostCredentialsString) > 0 {
+				gcpCloudInfo.SetUseHostCredentials(useHostCredentials)
+				isIAM = useHostCredentials
+			}
+
 		}
 		if !isIAM {
-			applicationCreds := configSettings["application_credentials"]
-			if len(configSettings) == 0 || applicationCreds == nil ||
-				len(applicationCreds.(map[string]interface{})) == 0 {
-				iamConfig, err := utils.GcpGetCredentialsAsMap()
+			credentials := configSettings["credentials"]
+			if len(configSettings) == 0 || credentials == nil ||
+				len(credentials.(string)) == 0 {
+				iamConfig, err := utils.GcpGetCredentialsAsString()
 				if err != nil {
-					return nil, err
+					return cloudInfo, err
 				}
-				for k, v := range iamConfig {
-					config[k] = v
-				}
+				gcpCloudInfo.SetGceApplicationCredentials(iamConfig)
 			} else {
-				for k, v := range applicationCreds.(map[string]interface{}) {
-					config[k] = v
-				}
+				gcpCloudInfo.SetGceApplicationCredentials(credentials.(string))
 			}
 		}
 		projectID := configSettings["project_id"].(string)
 		if len(projectID) > 0 {
-			config["project_id"] = projectID
+			gcpCloudInfo.SetGceProject(projectID)
 		}
 		sharedVPCProjectID := configSettings["shared_vpc_project_id"].(string)
 		if len(sharedVPCProjectID) > 0 {
-			config["host_project_id"] = sharedVPCProjectID
+			gcpCloudInfo.SetSharedVPCProject(sharedVPCProjectID)
 		}
+		cloudInfo.SetGcp(gcpCloudInfo)
+
+	} else if cloudCode == "azu" {
+		azCloudInfo := client.AzureCloudInfo{}
+		configInterface := d.Get("azure_config_settings").([]interface{})
+		var configSettings map[string]interface{}
+		if len(configInterface) > 0 && configInterface[0] != nil {
+			configSettings = utils.MapFromSingletonList(configInterface)
+			hostedZoneID := configSettings["hosted_zone_id"].(string)
+			if len(hostedZoneID) > 0 {
+				azCloudInfo.SetAzuHostedZoneId(hostedZoneID)
+			}
+			networkSubscriptionID := configSettings["network_subscription_id"].(string)
+			if len(networkSubscriptionID) > 0 {
+				azCloudInfo.SetAzuNetworkSubscriptionId(networkSubscriptionID)
+			}
+			networkRG := configSettings["network_resource_group"].(string)
+			if len(networkRG) > 0 {
+				azCloudInfo.SetAzuNetworkRG(networkRG)
+			}
+		}
+		if configSettings == nil ||
+			(configSettings["client_id"] == nil ||
+				len(configSettings["client_id"].(string)) == 0) {
+			azureCreds, err := utils.AzureCredentialsFromEnv()
+			if err != nil {
+				return cloudInfo, err
+			}
+			azCloudInfo.SetAzuClientId(azureCreds.ClientID)
+			azCloudInfo.SetAzuClientSecret(azureCreds.ClientSecret)
+			azCloudInfo.SetAzuSubscriptionId(azureCreds.SubscriptionID)
+			azCloudInfo.SetAzuTenantId(azureCreds.TenantID)
+			azCloudInfo.SetAzuRG(azureCreds.ResourceGroup)
+
+		} else {
+			clientID := configSettings["client_id"]
+			clientSecret := configSettings["client_secret"]
+			subscriptionID := configSettings["subscription_id"]
+			tenantID := configSettings["tenant_id"]
+			rg := configSettings["resource_group"]
+			if clientID != nil && len(clientID.(string)) != 0 {
+				azCloudInfo.SetAzuClientId(clientID.(string))
+			}
+			if clientSecret != nil && len(clientSecret.(string)) != 0 {
+				azCloudInfo.SetAzuClientSecret(clientSecret.(string))
+			}
+			if subscriptionID != nil && len(subscriptionID.(string)) != 0 {
+				azCloudInfo.SetAzuSubscriptionId(subscriptionID.(string))
+			}
+			if tenantID != nil && len(tenantID.(string)) != 0 {
+				azCloudInfo.SetAzuTenantId(tenantID.(string))
+			}
+			if rg != nil && len(rg.(string)) != 0 {
+				azCloudInfo.SetAzuRG(rg.(string))
+			}
+		}
+		cloudInfo.SetAzu(azCloudInfo)
+
 	} else if cloudCode == "aws" {
+		awsCloudInfo := client.AWSCloudInfo{}
 		var isIAM bool
 		configInterface := d.Get("aws_config_settings").([]interface{})
 		var configSettings map[string]interface{}
@@ -559,7 +670,7 @@ func buildConfig(d *schema.ResourceData) (map[string]interface{}, error) {
 			configSettings = utils.MapFromSingletonList(configInterface)
 			hostedZoneID := configSettings["hosted_zone_id"].(string)
 			if len(hostedZoneID) > 0 {
-				config["HOSTED_ZONE_ID"] = hostedZoneID
+				awsCloudInfo.SetAwsHostedZoneId(hostedZoneID)
 			}
 			isIAM = configSettings["use_iam_instance_profile"].(bool)
 
@@ -570,72 +681,23 @@ func buildConfig(d *schema.ResourceData) (map[string]interface{}, error) {
 					len(configSettings["access_key_id"].(string)) == 0) {
 				awsCreds, err := utils.AwsCredentialsFromEnv()
 				if err != nil {
-					return nil, err
+					return cloudInfo, err
 				}
-				config[utils.AWSAccessKeyEnv] = awsCreds.AccessKeyID
-				config[utils.AWSSecretAccessKeyEnv] = awsCreds.SecretAccessKey
+				awsCloudInfo.SetAwsAccessKeyID(awsCreds.AccessKeyID)
+				awsCloudInfo.SetAwsAccessKeySecret(awsCreds.SecretAccessKey)
 			} else {
-				config[utils.AWSAccessKeyEnv] = configSettings["access_key_id"].(string)
+				awsCloudInfo.SetAwsAccessKeyID(configSettings["access_key_id"].(string))
 				secretAccessKey := configSettings["secret_access_key"]
 				if secretAccessKey != nil && len(secretAccessKey.(string)) > 0 {
-					config[utils.AWSSecretAccessKeyEnv] = secretAccessKey
+					awsCloudInfo.SetAwsAccessKeySecret(secretAccessKey.(string))
 				}
 			}
 		}
-	} else if cloudCode == "azu" {
-		configInterface := d.Get("azure_config_settings").([]interface{})
-		var configSettings map[string]interface{}
-		if len(configInterface) > 0 && configInterface[0] != nil {
-			configSettings = utils.MapFromSingletonList(configInterface)
-			hostedZoneID := configSettings["hosted_zone_id"].(string)
-			if len(hostedZoneID) > 0 {
-				config["HOSTED_ZONE_ID"] = hostedZoneID
-			}
-			networkSubscriptionID := configSettings["network_subscription_id"].(string)
-			if len(networkSubscriptionID) > 0 {
-				config[utils.AzureNetworkSubscriptionIDEnv] = networkSubscriptionID
-			}
-			networkRG := configSettings["network_resource_group"].(string)
-			if len(networkRG) > 0 {
-				config[utils.AzureNetworkRGEnv] = networkRG
-			}
-		}
-		if configSettings == nil ||
-			(configSettings["client_id"] == nil ||
-				len(configSettings["client_id"].(string)) == 0) {
-			azureCreds, err := utils.AzureCredentialsFromEnv()
-			if err != nil {
-				return nil, err
-			}
-			config[utils.AzureClientIDEnv] = azureCreds.ClientID
-			config[utils.AzureClientSecretEnv] = azureCreds.ClientSecret
-			config[utils.AzureSubscriptionIDEnv] = azureCreds.SubscriptionID
-			config[utils.AzureTenantIDEnv] = azureCreds.TenantID
-			config[utils.AzureRGEnv] = azureCreds.ResourceGroup
-		} else {
-			clientID := configSettings["client_id"]
-			clientSecret := configSettings["client_secret"]
-			subscriptionID := configSettings["subscription_id"]
-			tenantID := configSettings["tenant_id"]
-			rg := configSettings["resource_group"]
-			if clientID != nil && len(clientID.(string)) != 0 {
-				config[utils.AzureClientIDEnv] = clientID.(string)
-			}
-			if clientSecret != nil && len(clientSecret.(string)) != 0 {
-				config[utils.AzureClientSecretEnv] = clientSecret.(string)
-			}
-			if subscriptionID != nil && len(subscriptionID.(string)) != 0 {
-				config[utils.AzureSubscriptionIDEnv] = subscriptionID.(string)
-			}
-			if tenantID != nil && len(tenantID.(string)) != 0 {
-				config[utils.AzureTenantIDEnv] = tenantID.(string)
-			}
-			if rg != nil && len(rg.(string)) != 0 {
-				config[utils.AzureRGEnv] = rg.(string)
-			}
-		}
+		cloudInfo.SetAws(awsCloudInfo)
+
 	}
-	return config, nil
+
+	return cloudInfo, nil
 }
 
 func resourceCloudProviderCreate(
@@ -646,23 +708,42 @@ func resourceCloudProviderCreate(
 	c := meta.(*api.APIClient).YugawareClient
 	cUUID := meta.(*api.APIClient).CustomerID
 
-	config, err := buildConfig(d)
+	allowed, version, err := providerYBAVersionCheck(ctx, c)
 	if err != nil {
 		return diag.FromErr(err)
 	}
+
+	cloudInfo, err := buildCloudInfo(d)
+	if err != nil {
+		return diag.FromErr(err)
+	}
+
+	allAccessKeys := make([]client.AccessKey, 0)
+	accessKey := client.AccessKey{
+		KeyInfo: client.KeyInfo{
+			KeyPairName:          utils.GetStringPointer(d.Get("key_pair_name").(string)),
+			SshPrivateKeyContent: utils.GetStringPointer(d.Get("ssh_private_key_content").(string)),
+		},
+	}
+	allAccessKeys = append(allAccessKeys, accessKey)
 	req := client.Provider{
-		AirGapInstall:        utils.GetBoolPointer(d.Get("air_gap_install").(bool)),
-		Code:                 utils.GetStringPointer(d.Get("code").(string)),
-		Config:               utils.StringMap(config),
-		DestVpcId:            utils.GetStringPointer(d.Get("dest_vpc_id").(string)),
-		HostVpcId:            utils.GetStringPointer(d.Get("host_vpc_id").(string)),
-		HostVpcRegion:        utils.GetStringPointer(d.Get("host_vpc_region").(string)),
-		KeyPairName:          utils.GetStringPointer(d.Get("key_pair_name").(string)),
-		Name:                 utils.GetStringPointer(d.Get("name").(string)),
-		SshPort:              utils.GetInt32Pointer(int32(d.Get("ssh_port").(int))),
-		SshPrivateKeyContent: utils.GetStringPointer(d.Get("ssh_private_key_content").(string)),
-		SshUser:              utils.GetStringPointer(d.Get("ssh_user").(string)),
-		Regions:              buildRegions(d.Get("regions").([]interface{})),
+		AllAccessKeys: &allAccessKeys,
+		Code:          utils.GetStringPointer(d.Get("code").(string)),
+		DestVpcId:     utils.GetStringPointer(d.Get("dest_vpc_id").(string)),
+		HostVpcId:     utils.GetStringPointer(d.Get("host_vpc_id").(string)),
+		HostVpcRegion: utils.GetStringPointer(d.Get("host_vpc_region").(string)),
+		Name:          utils.GetStringPointer(d.Get("name").(string)),
+		Regions: buildRegions(
+			ctx,
+			d.Get("regions").([]interface{}),
+			d.Get("code").(string),
+			allowed, version),
+		Details: &client.ProviderDetails{
+			AirGapInstall: utils.GetBoolPointer(d.Get("air_gap_install").(bool)),
+			SshPort:       utils.GetInt32Pointer(int32(d.Get("ssh_port").(int))),
+			SshUser:       utils.GetStringPointer(d.Get("ssh_user").(string)),
+			CloudInfo:     &cloudInfo,
+		},
 	}
 	r, response, err := c.CloudProvidersApi.CreateProviders(ctx, cUUID).CreateProviderRequest(
 		req).Execute()
@@ -715,7 +796,9 @@ func resourceCloudProviderRead(
 		return diag.FromErr(err)
 	}
 
-	if err = d.Set("air_gap_install", p.AirGapInstall); err != nil {
+	details := p.GetDetails()
+
+	if err = d.Set("air_gap_install", details.AirGapInstall); err != nil {
 		return diag.FromErr(err)
 	}
 	if err = d.Set("code", p.Code); err != nil {
@@ -727,18 +810,23 @@ func resourceCloudProviderRead(
 	if err = d.Set("name", p.Name); err != nil {
 		return diag.FromErr(err)
 	}
-	if err = d.Set("ssh_port", p.SshPort); err != nil {
+	if err = d.Set("dest_vpc_id", p.DestVpcId); err != nil {
+		return diag.FromErr(err)
+	}
+	if err = d.Set("ssh_port", details.SshPort); err != nil {
 		return diag.FromErr(err)
 	}
 	if err = d.Set("ssh_private_key_content", p.SshPrivateKeyContent); err != nil {
 		return diag.FromErr(err)
 	}
-	if err = d.Set("ssh_user", p.SshUser); err != nil {
+	if err = d.Set("ssh_user", details.SshUser); err != nil {
 		return diag.FromErr(err)
 	}
-	if err = d.Set("regions", flattenRegions(p.Regions)); err != nil {
+	if err = d.Set("regions", flattenRegions(p.Regions, p.GetCode())); err != nil {
 		return diag.FromErr(err)
 	}
+
+	cloudInfo := details.GetCloudInfo()
 
 	if p.GetCode() == "aws" {
 		configInterface := d.Get("aws_config_settings").([]interface{})
@@ -747,14 +835,16 @@ func resourceCloudProviderRead(
 			accessKeyID := configSettings["access_key_id"]
 			secretAccessKey := configSettings["secret_access_key"]
 			hostedZoneID := configSettings["hosted_zone_id"]
+
+			awsCloudInfo := cloudInfo.GetAws()
 			if accessKeyID != nil && len(accessKeyID.(string)) > 0 {
-				configSettings["access_key_id"] = p.GetConfig()[utils.AWSAccessKeyEnv]
+				configSettings["access_key_id"] = awsCloudInfo.GetAwsAccessKeyID()
 			}
 			if secretAccessKey != nil && len(secretAccessKey.(string)) > 0 {
-				configSettings["secret_access_key"] = p.GetConfig()[utils.AWSSecretAccessKeyEnv]
+				configSettings["secret_access_key"] = awsCloudInfo.GetAwsAccessKeySecret()
 			}
 			if hostedZoneID != nil && len(hostedZoneID.(string)) > 0 {
-				configSettings["hosted_zone_id"] = p.GetConfig()["HOSTED_ZONE_ID"]
+				configSettings["hosted_zone_id"] = awsCloudInfo.GetAwsHostedZoneId()
 			}
 			configSettingsList := make([]interface{}, 0)
 			configSettingsList = append(configSettingsList, configSettings)
@@ -781,30 +871,31 @@ func resourceCloudProviderRead(
 			hostedZoneID := configSettings["hosted_zone_id"]
 			networkRG := configSettings["network_resource_group"]
 			networkSubscriptionID := configSettings["network_subscription_id"]
+
+			azureCloudInfo := cloudInfo.GetAzu()
 			if clientSecret != nil && len(clientSecret.(string)) > 0 {
-				configSettings["client_secret"] = p.GetConfig()[utils.AzureClientSecretEnv]
+				configSettings["client_secret"] = azureCloudInfo.GetAzuClientSecret()
 			}
 			if clientID != nil && len(clientID.(string)) > 0 {
-				configSettings["client_id"] = p.GetConfig()[utils.AzureClientIDEnv]
+				configSettings["client_id"] = azureCloudInfo.GetAzuClientId()
 			}
 			if subscriptionID != nil && len(subscriptionID.(string)) > 0 {
-				configSettings["subscription_id"] = p.GetConfig()[utils.AzureSubscriptionIDEnv]
+				configSettings["subscription_id"] = azureCloudInfo.GetAzuSubscriptionId()
 			}
 			if tenantID != nil && len(tenantID.(string)) > 0 {
-				configSettings["tenant_id"] = p.GetConfig()[utils.AzureTenantIDEnv]
+				configSettings["tenant_id"] = azureCloudInfo.GetAzuTenantId()
 			}
 			if rg != nil && len(rg.(string)) > 0 {
-				configSettings["resource_group"] = p.GetConfig()[utils.AzureRGEnv]
+				configSettings["resource_group"] = azureCloudInfo.GetAzuRG()
 			}
 			if networkSubscriptionID != nil && len(networkSubscriptionID.(string)) > 0 {
-				configSettings["network_subscription_id"] =
-					p.GetConfig()[utils.AzureNetworkSubscriptionIDEnv]
+				configSettings["network_subscription_id"] = azureCloudInfo.GetAzuNetworkSubscriptionId()
 			}
 			if networkRG != nil && len(networkRG.(string)) > 0 {
-				configSettings["network_resource_group"] = p.GetConfig()[utils.AzureNetworkRGEnv]
+				configSettings["network_resource_group"] = azureCloudInfo.GetAzuNetworkRG()
 			}
 			if hostedZoneID != nil && len(hostedZoneID.(string)) > 0 {
-				configSettings["hosted_zone_id"] = p.GetConfig()["HOSTED_ZONE_ID"]
+				configSettings["hosted_zone_id"] = azureCloudInfo.GetAzuHostedZoneId()
 			}
 			configSettingsList := make([]interface{}, 0)
 			configSettingsList = append(configSettingsList, configSettings)
@@ -823,21 +914,23 @@ func resourceCloudProviderRead(
 		configInterface := d.Get("gcp_config_settings").([]interface{})
 		if len(configInterface) > 0 && configInterface[0] != nil {
 			configSettings := utils.MapFromSingletonList(configInterface)
-			applicationCreds := configSettings["application_credentials"]
+			applicationCreds := configSettings["credentials"]
 			ybFirewallTags := configSettings["yb_firewall_tags"]
 			network := configSettings["network"]
 			projectID := configSettings["project_id"]
 			sharedProjectID := configSettings["shared_vpc_project_id"]
 			useHostCredentials := configSettings["use_host_credentials"]
 			useHostVPC := configSettings["use_host_vpc"]
+
+			gcpCloudInfo := cloudInfo.GetGcp()
 			if ybFirewallTags != nil && len(ybFirewallTags.(string)) > 0 {
-				configSettings["yb_firewall_tags"] = p.GetConfig()["yb_firewall_tags"]
+				configSettings["yb_firewall_tags"] = gcpCloudInfo.GetYbFirewallTags()
 			}
 			if network != nil && len(network.(string)) > 0 {
-				configSettings["network"] = p.GetConfig()["network"]
+				configSettings["network"] = gcpCloudInfo.GetDestVpcId()
 			}
 			if projectID != nil && len(projectID.(string)) > 0 {
-				configProjectID := p.GetConfig()["project_id"]
+				configProjectID := gcpCloudInfo.GetGceProject()
 				if len(configProjectID) == 0 {
 					configProjectID = p.GetConfig()["GCE_PROJECT"]
 					configProjectID = strings.Trim(configProjectID, "\"")
@@ -845,7 +938,7 @@ func resourceCloudProviderRead(
 				configSettings["project_id"] = configProjectID
 			}
 			if sharedProjectID != nil && len(sharedProjectID.(string)) > 0 {
-				configSharedProjectID := p.GetConfig()["host_project_id"]
+				configSharedProjectID := gcpCloudInfo.GetSharedVPCProject()
 				if len(configSharedProjectID) == 0 {
 					configSharedProjectID = p.GetConfig()["GCE_HOST_PROJECT"]
 					configSharedProjectID = strings.Trim(configSharedProjectID, "\"")
@@ -853,33 +946,26 @@ func resourceCloudProviderRead(
 				configSettings["shared_vpc_project_id"] = configSharedProjectID
 			}
 			if useHostCredentials != nil && useHostCredentials.(bool) {
-				configUseHostCredentials := p.GetConfig()["use_host_credentials"]
-				if len(configUseHostCredentials) > 0 {
-					useHostCredsBool, err := strconv.ParseBool(configUseHostCredentials)
-					if err != nil {
-						return diag.FromErr(err)
-					}
-					configSettings["use_host_credentials"] = useHostCredsBool
-				}
+				useHostCredsBool := gcpCloudInfo.GetUseHostCredentials()
+				configSettings["use_host_credentials"] = useHostCredsBool
+
 			}
 			if useHostVPC != nil && useHostVPC.(bool) {
-				configUseHostVpc := p.GetConfig()["use_host_vpc"]
-				if len(configUseHostVpc) > 0 {
-					useHostVpcBool, err := strconv.ParseBool(configUseHostVpc)
-					if err != nil {
-						return diag.FromErr(err)
+				useHostVpcBool := gcpCloudInfo.GetUseHostVPC()
+				if !useHostVpcBool {
+					configSettings["create_vpc"] = true
+				} else {
+					if network != nil && len(network.(string)) > 0 {
+						configSettings["use_host_vpc"] = false
+					} else {
+						configSettings["use_host_vpc"] = true
 					}
-					configSettings["use_host_vpc"] = useHostVpcBool
 				}
-			}
-			if applicationCreds != nil && len(applicationCreds.(map[string]interface{})) > 0 {
-				credentials := p.GetConfig()
-				credentialsMap := utils.MapFromSingletonList(
-					[]interface{}{configSettings["application_credentials"]})
-				credentialsMap["private_key"] = strings.Trim(credentials["private_key"], "\"")
-				credentialsMap["private_key_id"] = strings.Trim(credentials["private_key_id"], "\"")
-				configSettings["application_credentials"] = credentialsMap
 
+			}
+			if applicationCreds != nil && len(applicationCreds.(string)) > 0 {
+				credentials := gcpCloudInfo.GetGceApplicationCredentials()
+				configSettings["credentials"] = credentials
 			}
 			configSettingsList := make([]interface{}, 0)
 			configSettingsList = append(configSettingsList, configSettings)

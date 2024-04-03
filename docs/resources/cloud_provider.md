@@ -174,10 +174,10 @@ The details for configuration are available in the [YugabyteDB Anywhere Configur
 - `air_gap_install` (Boolean) Flag indicating if the universe should use an air-gapped installation.
 - `aws_config_settings` (Block List, Max: 1) Settings that can be configured for AWS. (see [below for nested schema](#nestedblock--aws_config_settings))
 - `azure_config_settings` (Block List, Max: 1) Settings that can be configured for Azure. (see [below for nested schema](#nestedblock--azure_config_settings))
-- `dest_vpc_id` (String) Destination VPC network.
+- `dest_vpc_id` (String, Deprecated) Destination VPC network. Deprecated since YugabyteDB Anywhere 2.17.2.0. Please use 'gcp_config_settings.network' instead.
 - `gcp_config_settings` (Block List, Max: 1) Settings that can be configured for GCP. (see [below for nested schema](#nestedblock--gcp_config_settings))
-- `host_vpc_id` (String) Host VPC Network.
-- `host_vpc_region` (String) Host VPC Region.
+- `host_vpc_id` (String, Deprecated) Host VPC Network. Deprecated since YugabyteDB Anywhere 2.17.2.0. Will be removed in the next terraform-provider-yba release.
+- `host_vpc_region` (String, Deprecated) Host VPC Region. Deprecated since YugabyteDB Anywhere 2.17.2.0.Will be removed in the next terraform-provider-yba release.
 - `key_pair_name` (String) Access Key Pair name.
 - `ssh_port` (Number) Port to use for ssh commands.
 - `ssh_private_key_content` (String) Private key to use for ssh commands.
@@ -196,6 +196,7 @@ Optional:
 
 - `code` (String) Region code. Varies by cloud provider.
 - `config` (Map of String) Config details corresponding to region.
+- `instance_template` (String) Instance template to be used in this region. Only set for GCP provider. Allowed in YugabyteDB Anywhere versions above 2.18.0.0-b65.
 - `latitude` (Number) Latitude of the region.
 - `longitude` (Number) Longitude of the region.
 - `name` (String) Name of the region. Varies by cloud provider.
@@ -258,12 +259,13 @@ Optional:
 
 Optional:
 
-- `application_credentials` (Map of String) Google Service Account JSON Credentials. Can also be set by providing the JSON file path with the environment variable GOOGLE_APPLICATION_CREDENTIALS.
+- `create_vpc` (Boolean) Create VPC in GCP. gcp_config_settings.network is required if create_vpc is set.
+- `credentials` (String, Sensitive) Google Service Account Credentials. Can also be set by providing the JSON file path with the environment variable GOOGLE_APPLICATION_CREDENTIALS.
 - `network` (String) VPC network name in GCP.
 - `project_id` (String) Project ID that hosts universe nodes in GCP.
 - `shared_vpc_project_id` (String) Specify the project to use Shared VPC to connect resources from multiple GCP projects to a common VPC.
 - `use_host_credentials` (Boolean) Enabling Host Credentials in GCP.
-- `use_host_vpc` (Boolean) Enabling Host VPC in GCP.
+- `use_host_vpc` (Boolean) Enabling Host VPC in GCP. gcp_config_settings.network is required if use_host_vpc is not set.
 - `yb_firewall_tags` (String) Tags for firewall rules in GCP.
 
 
