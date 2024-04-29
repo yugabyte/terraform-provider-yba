@@ -264,7 +264,8 @@ func IsPreviewVersionAllowed(currentVersion, restrictedVersion string) (bool, er
 
 // IsVersionStable checks if a given version string is on stable track or not.
 // Eg: 2024.1.0.0-b1/2.20.0.0-b1 for
-//  stable and 2.23.0.0-b1 for preview.
+//
+//	stable and 2.23.0.0-b1 for preview.
 func IsVersionStable(version string) (bool, error) {
 	v := strings.Split(version, ".")
 	v1, err := strconv.Atoi(v[1])

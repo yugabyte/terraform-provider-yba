@@ -46,7 +46,7 @@ func ReleaseVersion() *schema.Resource {
 					"lastest version available.",
 			},
 			"track": {
-				Type: schema.TypeString,
+				Type:     schema.TypeString,
 				Optional: true,
 				Description: "YugabyteDB release verion track. Allowed values: stable, preview." +
 					" Uses the latest/user given version from the corresponding track.",
