@@ -74,6 +74,7 @@ The following operations are supported in the Edit universe workflow:
 ### Read-Only
 
 - `id` (String) The ID of this resource.
+- `node_details_set` (List of Object) (see [below for nested schema](#nestedatt--node_details_set))
 
 <a id="nestedblock--clusters"></a>
 ### Nested Schema for `clusters`
@@ -224,6 +225,73 @@ Optional:
 - `create` (String)
 - `delete` (String)
 - `update` (String)
+
+
+<a id="nestedatt--node_details_set"></a>
+### Nested Schema for `node_details_set`
+
+Read-Only:
+
+- `az_uuid` (String)
+- `cloud_info` (List of Object) (see [below for nested schema](#nestedobjatt--node_details_set--cloud_info))
+- `crons_active` (Boolean)
+- `dedicated_to` (String)
+- `disks_are_mounted_by_uuid` (Boolean)
+- `is_master` (Boolean)
+- `is_redis_server` (Boolean)
+- `is_tserver` (Boolean)
+- `is_yql_server` (Boolean)
+- `is_ysql_server` (Boolean)
+- `kubernetes_overrides` (String)
+- `last_volume_update_time` (String)
+- `machine_image` (String)
+- `master_http_port` (Number)
+- `master_rpc_port` (Number)
+- `master_state` (String)
+- `node_exporter_port` (Number)
+- `node_idx` (Number)
+- `node_name` (String)
+- `node_uuid` (String)
+- `otel_collector_metrics_port` (Number)
+- `placement_uuid` (String)
+- `redis_server_http_port` (Number)
+- `redis_server_rpc_port` (Number)
+- `ssh_port_override` (Number)
+- `ssh_user_override` (String)
+- `state` (String)
+- `tserver_http_port` (Number)
+- `tserver_rpc_port` (Number)
+- `yb_controller_http_port` (Number)
+- `yb_controller_rpc_port` (Number)
+- `yb_prebuilt_ami` (Boolean)
+- `yql_server_http_port` (Number)
+- `yql_server_rpc_port` (Number)
+- `ysql_server_http_port` (Number)
+- `ysql_server_rpc_port` (Number)
+
+<a id="nestedobjatt--node_details_set--cloud_info"></a>
+### Nested Schema for `node_details_set.cloud_info`
+
+Read-Only:
+
+- `assign_public_ip` (Boolean)
+- `az` (String)
+- `cloud` (String)
+- `instance_type` (String)
+- `kubernetes_namespace` (String)
+- `kubernetes_pod_name` (String)
+- `lun_indexes` (List of Number)
+- `mount_roots` (String)
+- `private_dns` (String)
+- `private_ip` (String)
+- `public_dns` (String)
+- `public_ip` (String)
+- `region` (String)
+- `root_volume` (String)
+- `secondary_private_ip` (String)
+- `secondary_subnet_id` (String)
+- `subnet_id` (String)
+- `use_time_sync` (Boolean)
 
 ## Import
 
