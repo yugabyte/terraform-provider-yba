@@ -140,3 +140,73 @@ func flattenDeviceInfo(di *client.DeviceInfo) []interface{} {
 	}
 	return utils.CreateSingletonList(v)
 }
+
+func flattenNodeDetailsSet(nsd []client.NodeDetailsResp) (res []interface{}) {
+	for _, n := range nsd {
+		i := map[string]interface{}{
+			"az_uuid":                     n.AzUuid,
+			"cloud_info":                  flattenCloudInfo(n.CloudInfo),
+			"crons_active":                n.CronsActive,
+			"dedicated_to":                n.DedicatedTo,
+			"disks_are_mounted_by_uuid":   n.DisksAreMountedByUUID,
+			"is_master":                   n.IsMaster,
+			"is_redis_server":             n.IsRedisServer,
+			"is_tserver":                  n.IsTserver,
+			"is_yql_server":               n.IsYqlServer,
+			"is_ysql_server":              n.IsYsqlServer,
+			"kubernetes_overrides":        n.KubernetesOverrides,
+			"last_volume_update_time":     n.LastVolumeUpdateTime,
+			"machine_image":               n.MachineImage,
+			"master_http_port":            n.MasterHttpPort,
+			"master_rpc_port":             n.MasterRpcPort,
+			"master_state":                n.MasterState,
+			"node_exporter_port":          n.NodeExporterPort,
+			"node_idx":                    n.NodeIdx,
+			"node_name":                   n.NodeName,
+			"node_uuid":                   n.NodeUuid,
+			"otel_collector_metrics_port": n.OtelCollectorMetricsPort,
+			"placement_uuid":              n.PlacementUuid,
+			"redis_server_http_port":      n.RedisServerHttpPort,
+			"redis_server_rpc_port":       n.RedisServerRpcPort,
+			"ssh_port_override":           n.SshPortOverride,
+			"ssh_user_override":           n.SshUserOverride,
+			"state":                       n.State,
+			"tserver_http_port":           n.TserverHttpPort,
+			"tserver_rpc_port":            n.TserverRpcPort,
+			"yb_controller_http_port":     n.YbControllerHttpPort,
+			"yb_controller_rpc_port":      n.YbControllerRpcPort,
+			"yb_prebuilt_ami":             n.YbPrebuiltAmi,
+			"yql_server_http_port":        n.YqlServerHttpPort,
+			"yql_server_rpc_port":         n.YqlServerRpcPort,
+			"ysql_server_http_port":       n.YsqlServerHttpPort,
+			"ysql_server_rpc_port":        n.YsqlServerRpcPort,
+		}
+		res = append(res, i)
+	}
+	return res
+}
+
+func flattenCloudInfo(ci *client.CloudSpecificInfo) []interface{} {
+	v := map[string]interface{}{
+
+		"assign_public_ip":     ci.AssignPublicIP,
+		"az":                   ci.Az,
+		"cloud":                ci.Cloud,
+		"instance_type":        ci.InstanceType,
+		"kubernetes_namespace": ci.KubernetesNamespace,
+		"kubernetes_pod_name":  ci.KubernetesPodName,
+		"lun_indexes":          ci.LunIndexes,
+		"mount_roots":          ci.MountRoots,
+		"private_dns":          ci.PrivateDns,
+		"private_ip":           ci.PrivateIp,
+		"public_dns":           ci.PublicDns,
+		"public_ip":            ci.PublicIp,
+		"region":               ci.Region,
+		"root_volume":          ci.RootVolume,
+		"secondary_private_ip": ci.SecondaryPrivateIp,
+		"secondary_subnet_id":  ci.SecondarySubnetId,
+		"subnet_id":            ci.SubnetId,
+		"use_time_sync":        ci.UseTimeSync,
+	}
+	return utils.CreateSingletonList(v)
+}
