@@ -39,7 +39,6 @@ resource "yba_cloud_provider" "cloud_provider" {
     code = "<region-code>"
     name = "<region-name>"
   }
-  ssh_port        = 22
   air_gap_install = false
 }
 
@@ -71,8 +70,6 @@ resource "yba_cloud_provider" "aws_cloud_provider" {
       subnet = "<subnet-id>"
     }
   }
-
-  ssh_port        = 22
   air_gap_install = false
 }
 
@@ -93,8 +90,6 @@ resource "yba_cloud_provider" "aws_iam_cloud_provider" {
       subnet = "<subnet-id>"
     }
   }
-
-  ssh_port        = 22
   air_gap_install = false
 }
 
@@ -128,18 +123,15 @@ resource "yba_cloud_provider" "azure_cloud_provider" {
       subnet = "<azure-subnet-id>"
     }
   }
-
-  ssh_port        = 22
   air_gap_install = false
 }
 
 resource "yba_cloud_provider" "gcp_cloud_provider" {
-  code        = "gcp"
-  dest_vpc_id = "<destination-vpc-id/network>"
-  name        = "gcp-provider"
+  code = "gcp"
+  name = "gcp-provider"
   gcp_config_settings {
     network      = "<gcp-network>"
-    use_host_vpc = true
+    use_host_vpc = false
     project_id   = "<gcp-project-id>"
     application_credentials = {
       // GCP Service Account credentials JSON as map of strings
@@ -152,7 +144,101 @@ resource "yba_cloud_provider" "gcp_cloud_provider" {
       subnet = "<gcp-shared-subnet-id>"
     }
   }
-  ssh_port        = 22
+  air_gap_install = false
+}
+
+resource "yba_cloud_provider" "gcp_cloud_provider_with_image_bundles" {
+  code = "gcp"
+  name = "gcp-provider"
+  gcp_config_settings {
+    network      = "<gcp-network>"
+    use_host_vpc = false
+    project_id   = "<gcp-project-id>"
+    application_credentials = {
+      // GCP Service Account credentials JSON as map of strings
+    }
+  }
+  regions {
+    code = "us-west1"
+    name = "us-west1"
+    zones {
+      subnet = "<gcp-shared-subnet-id>"
+    }
+  }
+  image_bundles {
+    name           = "<gcp-image-bundle-name-1>"
+    use_as_default = false
+    details {
+      arch            = "x86_64"
+      global_yb_image = "<ami-id>"
+      ssh_user        = "centos"
+      ssh_port        = 22
+      use_imds_v2     = false
+    }
+  }
+  image_bundles {
+    name           = "<gcp-image-bundle-name-2>"
+    use_as_default = true
+    details {
+      arch            = "x86_64"
+      global_yb_image = "<ami-id>"
+      ssh_user        = "centos"
+      ssh_port        = 22
+      use_imds_v2     = false
+    }
+  }
+  air_gap_install = false
+}
+
+resource "yba_cloud_provider" "aws_cloud_provider_image_bundles" {
+  code = "aws"
+  name = "aws-provider"
+  aws_config_settings {
+    access_key_id     = "<s3-access-key-id>"
+    secret_access_key = "<s3-secret-access-key>"
+  }
+  regions {
+    code              = "us-west-2"
+    name              = "us-west-2"
+    security_group_id = "<aws-sg-id>"
+    vnet_name         = "<aws-vpc-id>"
+    zones {
+      code   = "us-west-2a"
+      name   = "us-west-2a"
+      subnet = "<subnet-id>"
+    }
+    zones {
+      code   = "us-west-2b"
+      name   = "us-west-2b"
+      subnet = "<subnet-id>"
+    }
+  }
+  image_bundles {
+    name           = "<image-bundle-name-1>"
+    use_as_default = false
+    details {
+      arch = "x86_64"
+      region_overrides = {
+        "us-west-2" = "<ami-id>"
+      }
+      ssh_user    = "ec2-user"
+      ssh_port    = 22
+      use_imds_v2 = false
+    }
+  }
+  image_bundles {
+    name           = "<image-bundle-name-2>"
+    use_as_default = true
+    details {
+      arch = "x86_64"
+      region_overrides = {
+        "us-west-2" = "<ami-id>"
+      }
+      ssh_user    = "ec2-user"
+      ssh_port    = 22
+      use_imds_v2 = false
+    }
+  }
   air_gap_install = false
 }
 ```
@@ -178,10 +264,11 @@ The details for configuration are available in the [YugabyteDB Anywhere Configur
 - `gcp_config_settings` (Block List, Max: 1) Settings that can be configured for GCP. (see [below for nested schema](#nestedblock--gcp_config_settings))
 - `host_vpc_id` (String, Deprecated) Host VPC Network. Deprecated since YugabyteDB Anywhere 2.17.2.0. Will be removed in the next terraform-provider-yba release.
 - `host_vpc_region` (String, Deprecated) Host VPC Region. Deprecated since YugabyteDB Anywhere 2.17.2.0.Will be removed in the next terraform-provider-yba release.
+- `image_bundles` (Block List) Image bundles associated with cloud providers. Supported from YugabyteDB Anywhere version: 2.20.3.0-b68 (see [below for nested schema](#nestedblock--image_bundles))
 - `key_pair_name` (String) Access Key Pair name.
-- `ssh_port` (Number) Port to use for ssh commands.
+- `ssh_port` (Number, Deprecated) Port to use for ssh commands. Deprecated since YugabyteDB Anywhere 2.20.3.0. Please use 'image_bundles[*].details.ssh_port' instead.
 - `ssh_private_key_content` (String) Private key to use for ssh commands.
-- `ssh_user` (String) User to use for ssh commands.
+- `ssh_user` (String, Deprecated) User to use for ssh commands. Deprecated since YugabyteDB Anywhere 2.20.3.0. Please use 'image_bundles[*].details.ssh_user' instead.
 - `timeouts` (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))
 
 ### Read-Only
@@ -195,18 +282,18 @@ The details for configuration are available in the [YugabyteDB Anywhere Configur
 Optional:
 
 - `code` (String) Region code. Varies by cloud provider.
-- `config` (Map of String) Config details corresponding to region.
 - `instance_template` (String) Instance template to be used in this region. Only set for GCP provider. Allowed in YugabyteDB Anywhere versions above 2.18.0.0-b65.
 - `latitude` (Number) Latitude of the region.
 - `longitude` (Number) Longitude of the region.
 - `name` (String) Name of the region. Varies by cloud provider.
 - `security_group_id` (String) Security group ID to use for this region. Only set for AWS/Azure providers.
 - `vnet_name` (String) Name of the virtual network/VPC ID to use for this region. Only set for AWS/Azure providers.
-- `yb_image` (String) AMI to be used in this region.
+- `yb_image` (String, Deprecated) AMI to be used in this region. Deprecated since YugabyteDB Anywhere 2.20.3.0. Please use image_bundles block instead.
 - `zones` (Block List) Zones associated with the region. (see [below for nested schema](#nestedblock--regions--zones))
 
 Read-Only:
 
+- `config` (Map of String) Config details corresponding to region.
 - `uuid` (String) Region UUID.
 
 <a id="nestedblock--regions--zones"></a>
@@ -215,7 +302,6 @@ Read-Only:
 Optional:
 
 - `code` (String) Code of the zone. Varies by cloud provider.
-- `config` (Map of String) Configuration details corresponding to zone.
 - `name` (String) Name of the zone. Varies by cloud provider.
 - `secondary_subnet` (String) The secondary subnet in the AZ.
 - `subnet` (String) Subnet to use for this zone.
@@ -223,6 +309,7 @@ Optional:
 Read-Only:
 
 - `active` (Boolean) Flag indicating if the zone is active.
+- `config` (Map of String) Configuration details corresponding to zone.
 - `kube_config_path` (String) Path to Kubernetes configuration file.
 - `uuid` (String) Zone UUID.
 
@@ -267,6 +354,50 @@ Optional:
 - `use_host_credentials` (Boolean) Enabling Host Credentials in GCP.
 - `use_host_vpc` (Boolean) Enabling Host VPC in GCP. gcp_config_settings.network is required if use_host_vpc is not set.
 - `yb_firewall_tags` (String) Tags for firewall rules in GCP.
+
+
+<a id="nestedblock--image_bundles"></a>
+### Nested Schema for `image_bundles`
+
+Required:
+
+- `details` (Block List, Min: 1, Max: 1) (see [below for nested schema](#nestedblock--image_bundles--details))
+- `name` (String) Name of the image bundle.
+
+Optional:
+
+- `use_as_default` (Boolean) Flag indicating if the image bundle should be used as default for this archietecture.
+
+Read-Only:
+
+- `active` (Boolean) Is the image bundle active.
+- `metadata` (List of Object) (see [below for nested schema](#nestedatt--image_bundles--metadata))
+- `uuid` (String) Image bundle UUID.
+
+<a id="nestedblock--image_bundles--details"></a>
+### Nested Schema for `image_bundles.details`
+
+Required:
+
+- `arch` (String) Image bundle architecture.
+- `ssh_user` (String) SSH user for the image.
+
+Optional:
+
+- `global_yb_image` (String) Global YB image for the bundle.
+- `region_overrides` (Map of String) Region overrides for the bundle. Provide region code as the key and override image as the value.
+- `ssh_port` (Number) SSH port for the image. Default is 22.
+- `use_imds_v2` (Boolean) Use IMDS v2 for the image.
+
+
+<a id="nestedatt--image_bundles--metadata"></a>
+### Nested Schema for `image_bundles.metadata`
+
+Read-Only:
+
+- `type` (String)
+- `version` (String)
+
 
 
 <a id="nestedblock--timeouts"></a>

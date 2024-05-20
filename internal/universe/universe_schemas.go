@@ -151,6 +151,11 @@ func userIntentSchema() *schema.Resource {
 				Optional:    true,
 				Description: "Enable YSQL authentication.",
 			},
+			"image_bundle_uuid": {
+				Type:        schema.TypeString,
+				Optional:    true,
+				Description: "Image Bundle UUID.",
+			},
 			"instance_tags": {
 				Type:        schema.TypeMap,
 				Elem:        &schema.Schema{Type: schema.TypeString},

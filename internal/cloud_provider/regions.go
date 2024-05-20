@@ -56,7 +56,6 @@ func RegionsSchema() *schema.Schema {
 				"config": {
 					Type:        schema.TypeMap,
 					Elem:        schema.TypeString,
-					Optional:    true,
 					Computed:    true,
 					ForceNew:    true,
 					Description: "Config details corresponding to region.",
@@ -97,10 +96,14 @@ func RegionsSchema() *schema.Schema {
 						" Only set for AWS/Azure providers.",
 				},
 				"yb_image": {
-					Type:        schema.TypeString,
-					Optional:    true,
-					Computed:    true,
-					Description: "AMI to be used in this region.",
+					Type:     schema.TypeString,
+					Optional: true,
+					Computed: true,
+					Deprecated: "Deprecated since YugabyteDB Anywhere 2.20.3.0. " +
+						"Please use image_bundles block instead.",
+					Description: "AMI to be used in this region. " +
+						"Deprecated since YugabyteDB Anywhere 2.20.3.0. " +
+						"Please use image_bundles block instead.",
 				},
 				"instance_template": {
 					Type:     schema.TypeString,
@@ -140,7 +143,6 @@ func RegionsSchema() *schema.Schema {
 							"config": {
 								Type:        schema.TypeMap,
 								Elem:        schema.TypeString,
-								Optional:    true,
 								Computed:    true,
 								ForceNew:    true,
 								Description: "Configuration details corresponding to zone.",
@@ -238,7 +240,6 @@ func buildZones(zones []interface{}) (res []client.AvailabilityZone) {
 		zone := v.(map[string]interface{})
 		z := client.AvailabilityZone{
 			Code:            utils.GetStringPointer(zone["code"].(string)),
-			Config:          utils.StringMap(zone["config"].(map[string]interface{})),
 			Name:            zone["name"].(string),
 			SecondarySubnet: utils.GetStringPointer(zone["secondary_subnet"].(string)),
 			Subnet:          utils.GetStringPointer(zone["subnet"].(string)),

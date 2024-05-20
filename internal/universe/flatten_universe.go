@@ -99,6 +99,7 @@ func flattenUserIntent(ui client.UserIntent) []interface{} {
 		"enable_ycql":                   ui.EnableYCQL,
 		"enable_ycql_auth":              ui.EnableYCQLAuth,
 		"enable_ysql_auth":              ui.EnableYSQLAuth,
+		"image_bundle_uuid":             ui.GetImageBundleUUID(),
 		"instance_tags":                 ui.GetInstanceTags(),
 		"preferred_region":              ui.PreferredRegion,
 		"use_host_name":                 ui.UseHostname,

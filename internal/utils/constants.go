@@ -75,6 +75,11 @@ const (
 	// via YBA Terraform
 	YBAAllowEditProviderMinVersion = "2.18.0.0-b65"
 
+	// YBAAllowImageBundlesMinVersion specifies minimum version
+	// required to specify image bundles (onprem or cloud) resource
+	// via YBA Terraform
+	YBAAllowImageBundlesMinVersion = "2.20.3.0-b68"
+
 	// YBAAllowFailureSubTaskListMinVersion specifies minimum version
 	// required to fetch failed subtask message from YugabyteDB Anywhere
 	YBAAllowFailureSubTaskListMinVersion = "2.18.1.0-b68"

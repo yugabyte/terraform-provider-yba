@@ -106,6 +106,7 @@ func ResourceCloudProvider() *schema.Resource {
 				Description: "Host VPC Region. Deprecated since YugabyteDB Anywhere 2.17.2.0." +
 					"Will be removed in the next terraform-provider-yba release.",
 			},
+			"image_bundles": ImageBundleSchema(),
 			"key_pair_name": {
 				Type:        schema.TypeString,
 				Optional:    true,
@@ -120,10 +121,14 @@ func ResourceCloudProvider() *schema.Resource {
 			},
 			"regions": RegionsSchema(),
 			"ssh_port": {
-				Type:        schema.TypeInt,
-				Optional:    true,
-				Computed:    true,
-				Description: "Port to use for ssh commands.",
+				Type:     schema.TypeInt,
+				Optional: true,
+				Computed: true,
+				Deprecated: "Deprecated since YugabyteDB Anywhere 2.20.3.0. " +
+					"Please use 'image_bundles[*].details.ssh_port' instead.",
+				Description: "Port to use for ssh commands. " +
+					"Deprecated since YugabyteDB Anywhere 2.20.3.0. " +
+					"Please use 'image_bundles[*].details.ssh_port' instead.",
 			},
 			"ssh_private_key_content": {
 				Type:        schema.TypeString,
@@ -142,8 +147,12 @@ func ResourceCloudProvider() *schema.Resource {
 
 					return len(old) > 0 && len(new) == 0
 				},
-				ForceNew:    true,
-				Description: "User to use for ssh commands.",
+				ForceNew: true,
+				Deprecated: "Deprecated since YugabyteDB Anywhere 2.20.3.0. " +
+					"Please use 'image_bundles[*].details.ssh_user' instead.",
+				Description: "User to use for ssh commands. " +
+					"Deprecated since YugabyteDB Anywhere 2.20.3.0. " +
+					"Please use 'image_bundles[*].details.ssh_user' instead.",
 			},
 			"aws_config_settings": {
 				Type:     schema.TypeList,
@@ -525,6 +534,21 @@ func providerYBAVersionCheck(ctx context.Context, c *client.APIClient) (bool, st
 	return allowed, version, err
 }
 
+// Check if the current version of YBA can support image bundles
+func imageBundlesYBAVersionCheck(
+	ctx context.Context,
+	c *client.APIClient) (bool, string, error) {
+	allowedVersions := utils.YBAMinimumVersion{
+		Stable:  utils.YBAAllowImageBundlesMinVersion,
+		Preview: utils.YBAAllowImageBundlesMinVersion,
+	}
+	allowed, version, err := utils.CheckValidYBAVersion(ctx, c, allowedVersions)
+	if err != nil {
+		return false, "", err
+	}
+	return allowed, version, err
+}
+
 func buildCloudInfo(
 	d *schema.ResourceData,
 ) (client.CloudInfo, error) {
@@ -718,6 +742,20 @@ func resourceCloudProviderCreate(
 		return diag.FromErr(err)
 	}
 
+	imageBundleAllowed, imageBundleVersion, err := imageBundlesYBAVersionCheck(ctx, c)
+	if err != nil {
+		return diag.FromErr(err)
+	}
+
+	if !imageBundleAllowed {
+		return diag.FromErr(
+			fmt.Errorf("Image bundle blocks are not supported below version %s, currently on %s",
+				utils.YBAAllowImageBundlesMinVersion,
+				imageBundleVersion))
+	}
+
+	imageBundles := buildImageBundles(d.Get("image_bundles").([]interface{}))
+
 	allAccessKeys := make([]client.AccessKey, 0)
 	accessKey := client.AccessKey{
 		KeyInfo: client.KeyInfo{
@@ -733,6 +771,7 @@ func resourceCloudProviderCreate(
 		HostVpcId:     utils.GetStringPointer(d.Get("host_vpc_id").(string)),
 		HostVpcRegion: utils.GetStringPointer(d.Get("host_vpc_region").(string)),
 		Name:          utils.GetStringPointer(d.Get("name").(string)),
+		ImageBundles:  imageBundles,
 		Regions: buildRegions(
 			ctx,
 			d.Get("regions").([]interface{}),
@@ -823,6 +862,9 @@ func resourceCloudProviderRead(
 		return diag.FromErr(err)
 	}
 	if err = d.Set("regions", flattenRegions(p.Regions, p.GetCode())); err != nil {
+		return diag.FromErr(err)
+	}
+	if err = d.Set("image_bundles", flattenImageBundles(p.GetImageBundles())); err != nil {
 		return diag.FromErr(err)
 	}
 

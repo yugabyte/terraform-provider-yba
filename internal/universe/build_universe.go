@@ -26,6 +26,7 @@ func buildUniverse(d *schema.ResourceData) client.UniverseConfigureTaskParams {
 	enableYbc := true
 	return client.UniverseConfigureTaskParams{
 		ClientRootCA: utils.GetStringPointer(d.Get("client_root_ca").(string)),
+		Arch:         utils.GetStringPointer(d.Get("arch").(string)),
 		Clusters:     clusters,
 		CommunicationPorts: buildCommunicationPorts(
 			utils.MapFromSingletonList(d.Get("communication_ports").([]interface{}))),
@@ -138,6 +139,7 @@ func buildUserIntent(ui map[string]interface{}) client.UserIntent {
 		EnableYCQL:            utils.GetBoolPointer(ui["enable_ycql"].(bool)),
 		EnableYCQLAuth:        utils.GetBoolPointer(ui["enable_ycql_auth"].(bool)),
 		EnableYSQLAuth:        utils.GetBoolPointer(ui["enable_ysql_auth"].(bool)),
+		ImageBundleUUID:       utils.GetStringPointer(ui["image_bundle_uuid"].(string)),
 		InstanceTags:          utils.StringMap(ui["instance_tags"].(map[string]interface{})),
 		PreferredRegion:       utils.GetStringPointer(ui["preferred_region"].(string)),
 		UseHostname:           utils.GetBoolPointer(ui["use_host_name"].(bool)),
