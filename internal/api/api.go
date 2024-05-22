@@ -37,7 +37,7 @@ type APIClient struct {
 }
 
 // NewAPIClient creates a wrapper for public and non-public APIs
-func NewAPIClient(enableHTTPS bool, host string, apiKey string) (*APIClient, error) {
+func NewAPIClient(enableHTTPS bool, host, apiKey string) (*APIClient, error) {
 	// create swagger go client
 	cfg := client.NewConfiguration()
 	cfg.Host = host

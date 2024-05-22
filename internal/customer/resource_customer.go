@@ -142,7 +142,7 @@ func resourceCustomerCreate(
 
 	token := ""
 	if r.ApiToken != nil {
-		token = *r.ApiToken
+		token = r.GetApiToken()
 	}
 	if err = d.Set("api_token", token); err != nil {
 		return diag.FromErr(err)
@@ -179,7 +179,7 @@ func resourceCustomerRead(
 		return diag.FromErr(errMessage)
 	}
 
-	if err = d.Set("api_token", *r.ApiToken); err != nil {
+	if err = d.Set("api_token", apiKey); err != nil {
 		return diag.FromErr(err)
 	}
 	if err = d.Set("cuuid", *r.CustomerUUID); err != nil {
