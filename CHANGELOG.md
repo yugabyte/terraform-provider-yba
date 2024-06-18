@@ -1,3 +1,22 @@
+## v1.0.0 (June 2024)
+
+The following version of YugabyteDB Anywhere Terraform Provider includes support for:
+
+### Notes
+
+- S3 and GCS release import paths have been deprecated in favour of HTTP path in yba_releases and will be removed in the next major release
+- Destination VPC ID, Host VPC ID and Host VPC Regions have been deprecated in favour of cloud specific settings in yba_cloud_provider and will be removed in the next major release
+- SSH Port, SSH User and YB Image (in Regions) have been deprecated in favour of image bundle support in yba_cloud_provider and will be removed in the next major release
+
+### Enhancements
+
+- Introduction of `create_vpc` boolean in GCP cloud provider configuration and difference from `use_host_vpc` for network settings.
+- Switching GCP credentials input form from Map of strings to String in yba_cloud_provider
+- Support Instance templates in GCP cloud provider regions in yba_cloud_provider
+- Provide universe node details in yba_universe
+- Support Image Bundles in yba_cloud_provider
+
+
 ## v0.1.11 (March 2024)
 
 The following version of YugabyteDB Anywhere Terraform Provider includes support for:

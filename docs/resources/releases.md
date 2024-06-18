@@ -64,7 +64,7 @@ The details for configuration are available in the [YugabyteDB Anywhere Upgrade 
 
 - `chart_path` (String) File path where the release helm chart is stored.
 - `file_path` (String) File path where the release binary is stored.
-- `gcs` (Block List, Max: 1, Deprecated) Location of release binary in GCS.Deprecated since YugabyteDB Anywhere 2.20. Please use 'http' instead. (see [below for nested schema](#nestedblock--gcs))
+- `gcs` (Block List, Max: 1, Deprecated) Location of release binary in GCS. Deprecated since YugabyteDB Anywhere 2.20. Please use 'http' instead. (see [below for nested schema](#nestedblock--gcs))
 - `http` (Block List, Max: 1) Location of release binary in HTTP. (see [below for nested schema](#nestedblock--http))
 - `image_tag` (String) Docker Image Tag for the release.
 - `notes` (List of String) Release Notes.

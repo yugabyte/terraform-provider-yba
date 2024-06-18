@@ -107,7 +107,7 @@ func ResourceReleases() *schema.Resource {
 				Optional:   true,
 				Elem:       GcsSchema(),
 				Deprecated: "Deprecated since YugabyteDB Anywhere 2.20. Please use 'http' instead.",
-				Description: "Location of release binary in GCS." +
+				Description: "Location of release binary in GCS. " +
 					"Deprecated since YugabyteDB Anywhere 2.20. Please use 'http' instead.",
 			},
 			"http": {
