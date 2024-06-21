@@ -16,7 +16,7 @@ The following credentials are required as environment variables (if fields are n
 ||Access Key ID|`aws_config_settings.access_key_id`|`AWS_ACCESS_KEY_ID`|
 ||Secret Access Key|`aws_config_settings.secret_access_key`|`AWS_SECRET_ACCESS_KEY`|
 |[GCP](https://cloud.google.com/docs/authentication/application-default-credentials)||||
-|| GCP Service Account Credentials File Path|`gcp_config_settings.application_credentials`|`GOOGLE_APPLICATION_CREDENTIALS`|
+|| GCP Service Account Credentials File Path|`gcp_config_settings.credentials`|`GOOGLE_APPLICATION_CREDENTIALS`|
 |[Azure](https://learn.microsoft.com/en-us/azure/developer/go/azure-sdk-authentication?tabs=bash)||||
 ||Active Subscription ID|`azure_config_settings.subscription_id`|`AZURE_SUBSCRIPTION_ID`|
 ||Resource Group|`azure_config_settings.resource_group`|`AZURE_RG`|
@@ -133,9 +133,7 @@ resource "yba_cloud_provider" "gcp_cloud_provider" {
     network      = "<gcp-network>"
     use_host_vpc = false
     project_id   = "<gcp-project-id>"
-    application_credentials = {
-      // GCP Service Account credentials JSON as map of strings
-    }
+    credentials  = "<GCP Service Account credentials JSON as a string>"
   }
   regions {
     code = "us-west1"
@@ -154,9 +152,7 @@ resource "yba_cloud_provider" "gcp_cloud_provider_with_image_bundles" {
     network      = "<gcp-network>"
     use_host_vpc = false
     project_id   = "<gcp-project-id>"
-    application_credentials = {
-      // GCP Service Account credentials JSON as map of strings
-    }
+    credentials = "<GCP Service Account credentials JSON as a string>"
   }
   regions {
     code = "us-west1"

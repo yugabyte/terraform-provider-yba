@@ -2,6 +2,11 @@
 
 The following version of YugabyteDB Anywhere Terraform Provider includes support for:
 
+### Breaking changes
+
+- Introduction of `create_vpc` boolean in GCP cloud provider configuration and difference from `use_host_vpc` for network settings. Set `use_host_vpc` to false (`network` field is required for this setting)  to use existing VPC in GCP providers.
+- Switching GCP `application_credentials` input (Map of strings) to `credentials` (String) in yba_cloud_provider
+
 ### Notes
 
 - S3 and GCS release import paths have been deprecated in favour of HTTP path in yba_releases and will be removed in the next major release
@@ -10,8 +15,6 @@ The following version of YugabyteDB Anywhere Terraform Provider includes support
 
 ### Enhancements
 
-- Introduction of `create_vpc` boolean in GCP cloud provider configuration and difference from `use_host_vpc` for network settings.
-- Switching GCP credentials input form from Map of strings to String in yba_cloud_provider
 - Support Instance templates in GCP cloud provider regions in yba_cloud_provider
 - Provide universe node details in yba_universe
 - Support Image Bundles in yba_cloud_provider

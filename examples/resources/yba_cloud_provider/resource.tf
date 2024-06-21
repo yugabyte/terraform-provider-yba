@@ -100,9 +100,7 @@ resource "yba_cloud_provider" "gcp_cloud_provider" {
     network      = "<gcp-network>"
     use_host_vpc = false
     project_id   = "<gcp-project-id>"
-    application_credentials = {
-      // GCP Service Account credentials JSON as map of strings
-    }
+    credentials  = "<GCP Service Account credentials JSON as a string>"
   }
   regions {
     code = "us-west1"
@@ -121,9 +119,7 @@ resource "yba_cloud_provider" "gcp_cloud_provider_with_image_bundles" {
     network      = "<gcp-network>"
     use_host_vpc = false
     project_id   = "<gcp-project-id>"
-    application_credentials = {
-      // GCP Service Account credentials JSON as map of strings
-    }
+    credentials = "<GCP Service Account credentials JSON as a string>"
   }
   regions {
     code = "us-west1"
