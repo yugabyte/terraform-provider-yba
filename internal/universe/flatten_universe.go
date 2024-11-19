@@ -164,7 +164,6 @@ func flattenNodeDetailsSet(nsd []client.NodeDetailsResp) (res []interface{}) {
 			"node_idx":                    n.NodeIdx,
 			"node_name":                   n.NodeName,
 			"node_uuid":                   n.NodeUuid,
-			"otel_collector_metrics_port": n.OtelCollectorMetricsPort,
 			"placement_uuid":              n.PlacementUuid,
 			"redis_server_http_port":      n.RedisServerHttpPort,
 			"redis_server_rpc_port":       n.RedisServerRpcPort,
