@@ -123,6 +123,7 @@ Optional:
 - `enable_yedis` (Boolean) Enable YEDIS. False by default.
 - `enable_ysql` (Boolean) Enable YSQL. True by default.
 - `enable_ysql_auth` (Boolean) Enable YSQL authentication.
+- `image_bundle_uuid` (String) Image Bundle UUID.
 - `instance_tags` (Map of String) Instance Tags.
 - `master_gflags` (Map of String) Set of Master GFlags.
 - `preferred_region` (String) Preferred Region for node placement.

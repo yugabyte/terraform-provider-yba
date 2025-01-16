@@ -223,6 +223,11 @@ func userIntentSchema() *schema.Resource {
 				Required:    true,
 				Description: "Instance type of universe nodes.",
 			},
+			"image_bundle_uuid": {
+				Type:        schema.TypeString,
+				Optional:    true,
+				Description: "Image Bundle UUID.",
+			},
 			"device_info": {
 				Type:     schema.TypeList,
 				MaxItems: 1,

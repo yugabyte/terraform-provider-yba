@@ -94,7 +94,7 @@ func resourceUserCreate(
 		Email:           d.Get("email").(string),
 		Password:        utils.GetStringPointer(d.Get("password").(string)),
 		ConfirmPassword: utils.GetStringPointer(d.Get("password").(string)),
-		Role:            d.Get("role").(string),
+		Role:            utils.GetStringPointer(d.Get("role").(string)),
 	}
 	r, response, err := c.UserManagementApi.CreateUser(ctx, cUUID).User(req).Execute()
 	if err != nil {
@@ -156,7 +156,7 @@ func resourceUserUpdate(
 			Email:           d.Get("email").(string),
 			Password:        utils.GetStringPointer(d.Get("password").(string)),
 			ConfirmPassword: utils.GetStringPointer(d.Get("password").(string)),
-			Role:            d.Get("role").(string),
+			Role:            utils.GetStringPointer(d.Get("role").(string)),
 		}
 		_, response, err := c.UserManagementApi.UpdateUserPassword(ctx, cUUID, d.Id()).Users(
 			req).Execute()

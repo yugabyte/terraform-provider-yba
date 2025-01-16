@@ -95,11 +95,14 @@ func RegionsSchema() *schema.Schema {
 						" Only set for AWS/Azure providers.",
 				},
 				"yb_image": {
-					Type:        schema.TypeString,
-					Optional:    true,
-					Computed:    true,
-					ForceNew:    true,
-					Description: "AMI to be used in this region.",
+					Type:     schema.TypeString,
+					Optional: true,
+					Computed: true,
+					Deprecated: "Deprecated since YugabyteDB Anywhere 2.20.3.0. " +
+						"Please use image_bundles block instead.",
+					Description: "AMI to be used in this region. " +
+						"Deprecated since YugabyteDB Anywhere 2.20.3.0. " +
+						"Please use image_bundles block instead.",
 				},
 				"zones": {
 					Type:        schema.TypeList,

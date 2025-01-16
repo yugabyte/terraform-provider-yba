@@ -164,6 +164,7 @@ func buildUserIntent(ui map[string]interface{}) client.UserIntent {
 		AccessKeyCode:             utils.GetStringPointer(ui["access_key_code"].(string)),
 		TserverGFlags:             utils.StringMap(ui["tserver_gflags"].(map[string]interface{})),
 		MasterGFlags:              utils.StringMap(ui["master_gflags"].(map[string]interface{})),
+		ImageBundleUUID:           utils.GetStringPointer(ui["image_bundle_uuid"].(string)),
 	}
 }
 
