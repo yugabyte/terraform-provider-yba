@@ -343,6 +343,29 @@ func ResourceCloudProvider() *schema.Resource {
 				ForceNew:    true,
 				Description: "Settings that can be configured for GCP.",
 			},
+			"ntp_servers": {
+				Type:     schema.TypeList,
+				Optional: true,
+				ForceNew: true,
+				Elem: &schema.Schema{
+					Type: schema.TypeString,
+				},
+				Description: "NTP servers. Set \"set_up_chrony\" to true to use these servers.",
+			},
+			"show_set_up_chrony": {
+				Type:        schema.TypeBool,
+				Optional:    true,
+				Default:     true,
+				ForceNew:    true,
+				Description: "Show setup chrony.",
+			},
+			"set_up_chrony": {
+				Type:        schema.TypeBool,
+				Optional:    true,
+				Default:     false,
+				ForceNew:    true,
+				Description: "Set up NTP servers.",
+			},
 		},
 	}
 }
@@ -700,6 +723,9 @@ func resourceCloudProviderCreate(
 		SshUser:              utils.GetStringPointer(d.Get("ssh_user").(string)),
 		Regions:              buildRegions(d.Get("regions").([]interface{})),
 		ImageBundles:         imageBundles,
+		NtpServers:           utils.StringSlice(d.Get("ntp_servers").([]interface{})),
+		ShowSetUpChrony:      utils.GetBoolPointer(d.Get("show_set_up_chrony").(bool)),
+		SetUpChrony:          utils.GetBoolPointer(d.Get("set_up_chrony").(bool)),
 	}
 	r, response, err := c.CloudProvidersApi.CreateProviders(ctx, cUUID).CreateProviderRequest(
 		req).Execute()
@@ -752,7 +778,41 @@ func resourceCloudProviderRead(
 		return diag.FromErr(err)
 	}
 
+	details := p.GetDetails()
+
 	if err = d.Set("air_gap_install", p.AirGapInstall); err != nil {
+		return diag.FromErr(err)
+	}
+	ntpServersPointer := p.NtpServers
+	ntpServers := make([]string, 0)
+	if ntpServersPointer == nil {
+		ntpServers = details.GetNtpServers()
+	} else {
+		ntpServers = *ntpServersPointer
+	}
+	if err = d.Set("ntp_servers", ntpServers); err != nil {
+		return diag.FromErr(err)
+	}
+
+	showSetUpChronyPointer := p.ShowSetUpChrony
+	showSetUpChrony := false
+	if showSetUpChronyPointer == nil {
+		showSetUpChrony = details.GetShowSetUpChrony()
+	} else {
+		showSetUpChrony = *showSetUpChronyPointer
+	}
+	if err = d.Set("show_set_up_chrony", showSetUpChrony); err != nil {
+		return diag.FromErr(err)
+	}
+
+	setUpChronyPointer := p.SetUpChrony
+	setUpChrony := false
+	if setUpChronyPointer == nil {
+		setUpChrony = details.GetSetUpChrony()
+	} else {
+		setUpChrony = *setUpChronyPointer
+	}
+	if err = d.Set("set_up_chrony", setUpChrony); err != nil {
 		return diag.FromErr(err)
 	}
 	if err = d.Set("code", p.Code); err != nil {
@@ -777,11 +837,9 @@ func resourceCloudProviderRead(
 		return diag.FromErr(err)
 	}
 
-	imageBundles := d.Get("image_bundles").([]interface{})
 	if err = d.Set(
 		"image_bundles",
-		flattenImageBundles(p.GetImageBundles(),
-			imageBundles)); err != nil {
+		flattenImageBundles(p.GetImageBundles())); err != nil {
 		return diag.FromErr(err)
 	}
 

@@ -263,6 +263,9 @@ The details for configuration are available in the [YugabyteDB Anywhere Configur
 - `host_vpc_region` (String) Host VPC Region.
 - `image_bundles` (Block List) Image bundles associated with cloud providers. Supported from YugabyteDB Anywhere version: 2.20.3.0-b68 (see [below for nested schema](#nestedblock--image_bundles))
 - `key_pair_name` (String) Access Key Pair name.
+- `ntp_servers` (List of String) NTP servers. Set "set_up_chrony" to true to use these servers.
+- `set_up_chrony` (Boolean) Set up NTP servers.
+- `show_set_up_chrony` (Boolean) Show setup chrony.
 - `ssh_port` (Number, Deprecated) Port to use for ssh commands. Deprecated since YugabyteDB Anywhere 2.20.3.0. Please use 'image_bundles[*].details.ssh_port' instead.
 - `ssh_private_key_content` (String) Private key to use for ssh commands.
 - `ssh_user` (String, Deprecated) User to use for ssh commands. Deprecated since YugabyteDB Anywhere 2.20.3.0. Please use 'image_bundles[*].details.ssh_user' instead.
@@ -366,6 +369,7 @@ Optional:
 Read-Only:
 
 - `active` (Boolean) Is the image bundle active.
+- `metadata` (List of Object) (see [below for nested schema](#nestedatt--image_bundles--metadata))
 - `uuid` (String) Image bundle UUID.
 
 <a id="nestedblock--image_bundles--details"></a>
@@ -381,6 +385,16 @@ Optional:
 - `global_yb_image` (String) Global YB image for the bundle.
 - `region_overrides` (Map of String) Region overrides for the bundle. Provide region code as the key and override image as the value.
 - `ssh_port` (Number) SSH port for the image. Default is 22.
+- `use_imds_v2` (Boolean) Use IMDS v2 for the image.
+
+
+<a id="nestedatt--image_bundles--metadata"></a>
+### Nested Schema for `image_bundles.metadata`
+
+Read-Only:
+
+- `type` (String)
+- `version` (String)
 
 
 

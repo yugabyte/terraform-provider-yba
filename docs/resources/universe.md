@@ -66,6 +66,7 @@ The following operations are supported in the Edit universe workflow:
 
 ### Optional
 
+- `arch` (String) The architecture of the universe nodes. Allowed values are x86_64 and aarch64.
 - `client_root_ca` (String) The UUID of the clientRootCA to be used to generate client certificates and facilitate TLS communication between server and client.
 - `communication_ports` (Block List, Max: 1) Communication ports. (see [below for nested schema](#nestedblock--communication_ports))
 - `delete_options` (Block List, Max: 1) (see [below for nested schema](#nestedblock--delete_options))

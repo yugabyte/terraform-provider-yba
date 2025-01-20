@@ -79,6 +79,29 @@ func ImageBundleSchema() *schema.Schema {
 								Default:     22,
 								Description: "SSH port for the image. Default is 22.",
 							},
+							"use_imds_v2": {
+								Type:        schema.TypeBool,
+								Optional:    true,
+								Description: "Use IMDS v2 for the image.",
+							},
+						},
+					},
+				},
+				"metadata": {
+					Type:     schema.TypeList,
+					Computed: true,
+					Elem: &schema.Resource{
+						Schema: map[string]*schema.Schema{
+							"type": {
+								Type:        schema.TypeString,
+								Optional:    true,
+								Description: "Type of the image bundle.",
+							},
+							"version": {
+								Type:        schema.TypeString,
+								Optional:    true,
+								Description: "Version of the image bundle.",
+							},
 						},
 					},
 				},
@@ -118,54 +141,32 @@ func buildImageBundleDetails(details []interface{}) *client.ImageBundleDetails {
 	res := client.ImageBundleDetails{
 		Arch:          utils.GetStringPointer(d["arch"].(string)),
 		GlobalYbImage: utils.GetStringPointer(d["global_yb_image"].(string)),
-		Regions: buildImageBundleRegionOverrides(
-			d["region_overrides"].(map[string]interface{}),
-			d["ssh_user"].(string),
-			int32(d["ssh_port"].(int))),
+		Regions:       buildImageBundleRegionOverrides(d["region_overrides"].(map[string]interface{})),
+		SshUser:       utils.GetStringPointer(d["ssh_user"].(string)),
+		SshPort:       utils.GetInt32Pointer(int32(d["ssh_port"].(int))),
+		UseIMDSv2:     utils.GetBoolPointer(d["use_imds_v2"].(bool)),
 	}
 	return &res
 }
 
 func buildImageBundleRegionOverrides(
 	overrides map[string]interface{},
-	sshUser string,
-	sshPort int32,
 ) *map[string]client.BundleInfo {
 	res := make(map[string]client.BundleInfo)
 	for k, v := range overrides {
 		res[k] = client.BundleInfo{
-			YbImage:         utils.GetStringPointer(v.(string)),
-			SshPortOverride: utils.GetInt32Pointer(sshPort),
-			SshUserOverride: utils.GetStringPointer(sshUser),
+			YbImage: utils.GetStringPointer(v.(string)),
 		}
 	}
 	return &res
 }
 
-func flattenImageBundles(
-	imageBundles []client.ImageBundle,
-	imageBundlesInput []interface{}) []map[string]interface{} {
+func flattenImageBundles(imageBundles []client.ImageBundle) []map[string]interface{} {
 	res := make([]map[string]interface{}, 0)
 	for _, bundle := range imageBundles {
-		bundleName := bundle.GetName()
-		bundleDetails := bundle.GetDetails()
-		arch := bundleDetails.GetArch()
-		sshUser := ""
-		sshPort := int32(22)
-		for _, b := range imageBundlesInput {
-			bundle := b.(map[string]interface{})
-			details := buildImageBundleDetails(bundle["details"].([]interface{}))
-			name := bundle["name"].(string)
-			if details.GetArch() == arch && name == bundleName {
-				regions := details.GetRegions()
-				for _, r := range regions {
-					sshPort = r.GetSshPortOverride()
-					sshUser = r.GetSshUserOverride()
-				}
-			}
-		}
 		r := map[string]interface{}{
-			"details":        flattenImageBundleDetails(bundle.GetDetails(), sshUser, sshPort),
+			"details":        flattenImageBundleDetails(bundle.GetDetails()),
+			"metadata":       flattenImageBundleMetadata(bundle.GetMetadata()),
 			"name":           bundle.GetName(),
 			"use_as_default": bundle.GetUseAsDefault(),
 			"uuid":           bundle.GetUuid(),
@@ -178,15 +179,15 @@ func flattenImageBundles(
 
 func flattenImageBundleDetails(
 	details client.ImageBundleDetails,
-	sshUser string, sshPort int32,
 ) []map[string]interface{} {
 	res := make([]map[string]interface{}, 0)
 	r := map[string]interface{}{
 		"arch":             details.GetArch(),
 		"global_yb_image":  details.GetGlobalYbImage(),
 		"region_overrides": flattenImageBundleRegionOverrides(details.GetRegions()),
-		"ssh_user":         sshUser,
-		"ssh_port":         sshPort,
+		"ssh_user":         details.GetSshUser(),
+		"ssh_port":         details.GetSshPort(),
+		"use_imds_v2":      details.GetUseIMDSv2(),
 	}
 	res = append(res, r)
 	return res
@@ -199,5 +200,17 @@ func flattenImageBundleRegionOverrides(
 	for k, v := range overrides {
 		res[k] = v.GetYbImage()
 	}
+	return res
+}
+
+func flattenImageBundleMetadata(
+	metadata client.Metadata,
+) []map[string]interface{} {
+	res := make([]map[string]interface{}, 0)
+	r := map[string]interface{}{
+		"type":    metadata.GetType(),
+		"version": metadata.GetVersion(),
+	}
+	res = append(res, r)
 	return res
 }

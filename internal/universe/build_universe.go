@@ -26,6 +26,7 @@ func buildUniverse(d *schema.ResourceData) client.UniverseConfigureTaskParams {
 	enableYbc := true
 	return client.UniverseConfigureTaskParams{
 		ClientRootCA: utils.GetStringPointer(d.Get("client_root_ca").(string)),
+		Arch:         utils.GetStringPointer(d.Get("arch").(string)),
 		Clusters:     clusters,
 		CommunicationPorts: buildCommunicationPorts(
 			utils.MapFromSingletonList(d.Get("communication_ports").([]interface{}))),

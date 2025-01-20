@@ -101,6 +101,13 @@ func ResourceUniverse() *schema.Resource {
 				Description: "The UUID of the clientRootCA to be used to generate client" +
 					" certificates and facilitate TLS communication between server and client.",
 			},
+			"arch": {
+				Type:     schema.TypeString,
+				Optional: true,
+				Default:  "x86_64",
+				Description: "The architecture of the universe nodes." +
+					" Allowed values are x86_64 and aarch64.",
+			},
 			"clusters": {
 				Type:     schema.TypeList,
 				Required: true,
@@ -542,6 +549,9 @@ func resourceUniverseRead(
 
 	u := r.UniverseDetails
 	if err = d.Set("client_root_ca", u.ClientRootCA); err != nil {
+		return diag.FromErr(err)
+	}
+	if err = d.Set("arch", u.GetArch()); err != nil {
 		return diag.FromErr(err)
 	}
 	if err = d.Set("clusters", flattenClusters(u.Clusters)); err != nil {
