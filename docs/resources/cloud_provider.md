@@ -262,6 +262,9 @@ The details for configuration are available in the [YugabyteDB Anywhere Configur
 - `host_vpc_region` (String, Deprecated) Host VPC Region. Deprecated since YugabyteDB Anywhere 2.17.2.0.Will be removed in the next terraform-provider-yba release.
 - `image_bundles` (Block List) Image bundles associated with cloud providers. Supported from YugabyteDB Anywhere version: 2.20.3.0-b68 (see [below for nested schema](#nestedblock--image_bundles))
 - `key_pair_name` (String) Access Key Pair name.
+- `ntp_servers` (List of String) NTP servers. Set "set_up_chrony" to true to use these servers.
+- `set_up_chrony` (Boolean) Set up NTP servers.
+- `show_set_up_chrony` (Boolean) Show setup chrony.
 - `ssh_port` (Number, Deprecated) Port to use for ssh commands. Deprecated since YugabyteDB Anywhere 2.20.3.0. Please use 'image_bundles[*].details.ssh_port' instead.
 - `ssh_private_key_content` (String) Private key to use for ssh commands.
 - `ssh_user` (String, Deprecated) User to use for ssh commands. Deprecated since YugabyteDB Anywhere 2.20.3.0. Please use 'image_bundles[*].details.ssh_user' instead.

@@ -351,6 +351,29 @@ func ResourceCloudProvider() *schema.Resource {
 				ForceNew:    true,
 				Description: "Settings that can be configured for GCP.",
 			},
+			"ntp_servers": {
+				Type:     schema.TypeList,
+				Optional: true,
+				ForceNew: true,
+				Elem: &schema.Schema{
+					Type: schema.TypeString,
+				},
+				Description: "NTP servers. Set \"set_up_chrony\" to true to use these servers.",
+			},
+			"show_set_up_chrony": {
+				Type:        schema.TypeBool,
+				Optional:    true,
+				Default:     true,
+				ForceNew:    true,
+				Description: "Show setup chrony.",
+			},
+			"set_up_chrony": {
+				Type:        schema.TypeBool,
+				Optional:    true,
+				Default:     false,
+				ForceNew:    true,
+				Description: "Set up NTP servers.",
+			},
 		},
 	}
 }
@@ -778,10 +801,13 @@ func resourceCloudProviderCreate(
 			d.Get("code").(string),
 			allowed, version),
 		Details: &client.ProviderDetails{
-			AirGapInstall: utils.GetBoolPointer(d.Get("air_gap_install").(bool)),
-			SshPort:       utils.GetInt32Pointer(int32(d.Get("ssh_port").(int))),
-			SshUser:       utils.GetStringPointer(d.Get("ssh_user").(string)),
-			CloudInfo:     &cloudInfo,
+			AirGapInstall:   utils.GetBoolPointer(d.Get("air_gap_install").(bool)),
+			SshPort:         utils.GetInt32Pointer(int32(d.Get("ssh_port").(int))),
+			SshUser:         utils.GetStringPointer(d.Get("ssh_user").(string)),
+			NtpServers:      utils.StringSlice(d.Get("ntp_servers").([]interface{})),
+			ShowSetUpChrony: utils.GetBoolPointer(d.Get("show_set_up_chrony").(bool)),
+			SetUpChrony:     utils.GetBoolPointer(d.Get("set_up_chrony").(bool)),
+			CloudInfo:       &cloudInfo,
 		},
 	}
 	r, response, err := c.CloudProvidersApi.CreateProviders(ctx, cUUID).CreateProviderRequest(
@@ -838,6 +864,15 @@ func resourceCloudProviderRead(
 	details := p.GetDetails()
 
 	if err = d.Set("air_gap_install", details.AirGapInstall); err != nil {
+		return diag.FromErr(err)
+	}
+	if err = d.Set("ntp_servers", details.NtpServers); err != nil {
+		return diag.FromErr(err)
+	}
+	if err = d.Set("show_set_up_chrony", details.ShowSetUpChrony); err != nil {
+		return diag.FromErr(err)
+	}
+	if err = d.Set("set_up_chrony", details.SetUpChrony); err != nil {
 		return diag.FromErr(err)
 	}
 	if err = d.Set("code", p.Code); err != nil {

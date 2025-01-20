@@ -129,7 +129,7 @@ func resourceUserRead(
 	if err = d.Set("role", r.Role); err != nil {
 		return diag.FromErr(err)
 	}
-	if err = d.Set("is_primary", r.IsPrimary); err != nil {
+	if err = d.Set("is_primary", r.Primary); err != nil {
 		return diag.FromErr(err)
 	}
 	return diags
