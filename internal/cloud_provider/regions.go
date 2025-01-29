@@ -18,6 +18,7 @@ package cloud_provider
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
@@ -207,7 +208,9 @@ func buildRegions(
 				YbImage: utils.GetStringPointer(region["yb_image"].(string)),
 			}
 			if allowed {
-				gcpRegionInfo.SetInstanceTemplate(region["instance_template"].(string))
+				if len(strings.TrimSpace(region["instance_template"].(string))) > 0 {
+					gcpRegionInfo.SetInstanceTemplate(region["instance_template"].(string))
+				}
 			} else {
 				tflog.Info(ctx, fmt.Sprintf("YugabyteDB Anywhere version %s does not support Instance "+
 					"Templates, ignoring value.\n", version))

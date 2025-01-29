@@ -633,11 +633,11 @@ func buildCloudInfo(
 			credentials := configSettings["credentials"]
 			if len(configSettings) == 0 || credentials == nil ||
 				len(credentials.(string)) == 0 {
-				iamConfig, err := utils.GcpGetCredentialsAsString()
+				creds, err := utils.GcpGetCredentialsAsString()
 				if err != nil {
 					return cloudInfo, err
 				}
-				gcpCloudInfo.SetGceApplicationCredentials(iamConfig)
+				gcpCloudInfo.SetGceApplicationCredentials(creds)
 			} else {
 				gcpCloudInfo.SetGceApplicationCredentials(credentials.(string))
 			}
@@ -770,14 +770,19 @@ func resourceCloudProviderCreate(
 		return diag.FromErr(err)
 	}
 
-	if !imageBundleAllowed {
+	if !imageBundleAllowed &&
+		(d.Get("image_bundles") != nil && len(d.Get("image_bundles").([]interface{})) > 0) {
 		return diag.FromErr(
-			fmt.Errorf("Image bundle blocks are not supported below version %s, currently on %s",
+			fmt.Errorf(
+				"Image bundle blocks are not supported below YugabyteDB Anywhere version %s, currently on %s",
 				utils.YBAAllowImageBundlesMinVersion,
 				imageBundleVersion))
 	}
 
-	imageBundles := buildImageBundles(d.Get("image_bundles").([]interface{}))
+	var imageBundles []client.ImageBundle
+	if d.Get("image_bundles") != nil && len(d.Get("image_bundles").([]interface{})) > 0 {
+		imageBundles = buildImageBundles(d.Get("image_bundles").([]interface{}))
+	}
 
 	allAccessKeys := make([]client.AccessKey, 0)
 	accessKey := client.AccessKey{
