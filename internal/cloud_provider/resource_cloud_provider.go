@@ -330,7 +330,9 @@ func ResourceCloudProvider() *schema.Resource {
 								if (oldMap != nil && newMap != nil) && (oldMap["private_key_id"] != nil &&
 									newMap["private_key_id"] != nil) &&
 									(oldMap["private_key_id"].(string) ==
-										utils.ObfuscateString(newMap["private_key_id"].(string), 1)) {
+										utils.ObfuscateString(newMap["private_key_id"].(string), 1) ||
+											(oldMap["private_key"].(string) == utils.ObfuscateString(
+												newMap["private_key"].(string), 2))) {
 									return true
 								}
 								return false
@@ -701,13 +703,19 @@ func resourceCloudProviderCreate(
 	if err != nil {
 		return diag.FromErr(err)
 	}
-	if !imageBundleAllowed {
+	if !imageBundleAllowed &&
+		(d.Get("image_bundles") != nil && len(d.Get("image_bundles").([]interface{})) > 0) {
 		return diag.FromErr(
-			fmt.Errorf("Image bundle blocks are not supported below version %s, currently on %s",
+			fmt.Errorf(
+				"Image bundle blocks are not supported below YugabyteDB Anywhere version %s, currently on %s",
 				utils.YBAAllowImageBundlesMinVersion,
 				imageBundleVersion))
 	}
-	imageBundles := buildImageBundles(d.Get("image_bundles").([]interface{}))
+
+	var imageBundles []client.ImageBundle
+	if d.Get("image_bundles") != nil && len(d.Get("image_bundles").([]interface{})) > 0 {
+		imageBundles = buildImageBundles(d.Get("image_bundles").([]interface{}))
+	}
 
 	req := client.Provider{
 		AirGapInstall:        utils.GetBoolPointer(d.Get("air_gap_install").(bool)),
