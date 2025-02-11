@@ -16,6 +16,10 @@
 package cloud_provider
 
 import (
+	"encoding/json"
+	"reflect"
+	"sort"
+
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	client "github.com/yugabyte/platform-go-client"
 	"github.com/yugabyte/terraform-provider-yba/internal/utils"
@@ -29,6 +33,32 @@ func ImageBundleSchema() *schema.Schema {
 		Type:     schema.TypeList,
 		Optional: true,
 		Computed: true,
+		DiffSuppressFunc: func(k, old, new string, d *schema.ResourceData) bool {
+			oldList, newList := d.GetChange("image_bundles")
+			oldBundles, okOld := oldList.([]interface{})
+			newBundles, okNew := newList.([]interface{})
+
+			if !okOld || !okNew {
+				return false
+			}
+
+			// Convert to a consistent format (e.g., JSON) for comparison
+			normalize := func(bundles []interface{}) []string {
+				var normalized []string
+				for _, bundle := range bundles {
+					if bundleMap, ok := bundle.(map[string]interface{}); ok {
+						jsonStr, err := json.Marshal(bundleMap)
+						if err == nil {
+							normalized = append(normalized, string(jsonStr))
+						}
+					}
+				}
+				sort.Strings(normalized) // Sort to make order irrelevant
+				return normalized
+			}
+
+			return reflect.DeepEqual(normalize(oldBundles), normalize(newBundles))
+		},
 		Elem: &schema.Resource{
 			Schema: map[string]*schema.Schema{
 				"uuid": {
@@ -59,11 +89,13 @@ func ImageBundleSchema() *schema.Schema {
 								Type:        schema.TypeString,
 								Optional:    true,
 								ForceNew:    true,
+								Computed:    true,
 								Description: "Global YB image for the bundle.",
 							},
 							"region_overrides": {
 								Type:     schema.TypeMap,
 								Optional: true,
+								Computed: true,
 								Elem:     &schema.Schema{Type: schema.TypeString},
 								Description: "Region overrides for the bundle. " +
 									"Provide region code as the key and override image as the value.",
@@ -82,6 +114,7 @@ func ImageBundleSchema() *schema.Schema {
 							"use_imds_v2": {
 								Type:        schema.TypeBool,
 								Optional:    true,
+								Computed:    true,
 								Description: "Use IMDS v2 for the image.",
 							},
 						},

@@ -328,12 +328,13 @@ func ResourceCloudProvider() *schema.Resource {
 									return false
 								}
 								if (oldMap != nil && newMap != nil) && (oldMap["private_key_id"] != nil &&
-									newMap["private_key_id"] != nil) &&
-									(oldMap["private_key_id"].(string) ==
+									newMap["private_key_id"] != nil) {
+									if (oldMap["private_key_id"].(string) ==
 										utils.ObfuscateString(newMap["private_key_id"].(string), 1) ||
-											(oldMap["private_key"].(string) == utils.ObfuscateString(
-												newMap["private_key"].(string), 2))) {
-									return true
+											(oldMap["private_key_id"].(string) == utils.ObfuscateString(
+												newMap["private_key_id"].(string), 2))) {
+										return true
+									}
 								}
 								return false
 							},
