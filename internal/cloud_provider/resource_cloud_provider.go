@@ -18,6 +18,7 @@ package cloud_provider
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
@@ -329,10 +330,10 @@ func ResourceCloudProvider() *schema.Resource {
 								}
 								if (oldMap != nil && newMap != nil) && (oldMap["private_key_id"] != nil &&
 									newMap["private_key_id"] != nil) {
-									if (oldMap["private_key_id"].(string) ==
+									if oldMap["private_key_id"].(string) ==
 										utils.ObfuscateString(newMap["private_key_id"].(string), 1) ||
-											(oldMap["private_key_id"].(string) == utils.ObfuscateString(
-												newMap["private_key_id"].(string), 2))) {
+										(oldMap["private_key_id"].(string) == utils.ObfuscateString(
+											newMap["private_key_id"].(string), 2)) {
 										return true
 									}
 								}
@@ -718,30 +719,40 @@ func resourceCloudProviderCreate(
 		imageBundles = buildImageBundles(d.Get("image_bundles").([]interface{}))
 	}
 
-	req := client.Provider{
-		AirGapInstall:        utils.GetBoolPointer(d.Get("air_gap_install").(bool)),
-		Code:                 utils.GetStringPointer(d.Get("code").(string)),
-		Config:               utils.StringMap(config),
-		DestVpcId:            utils.GetStringPointer(d.Get("dest_vpc_id").(string)),
-		HostVpcId:            utils.GetStringPointer(d.Get("host_vpc_id").(string)),
-		HostVpcRegion:        utils.GetStringPointer(d.Get("host_vpc_region").(string)),
-		KeyPairName:          utils.GetStringPointer(d.Get("key_pair_name").(string)),
-		Name:                 utils.GetStringPointer(d.Get("name").(string)),
-		SshPort:              utils.GetInt32Pointer(int32(d.Get("ssh_port").(int))),
-		SshPrivateKeyContent: utils.GetStringPointer(d.Get("ssh_private_key_content").(string)),
-		SshUser:              utils.GetStringPointer(d.Get("ssh_user").(string)),
-		Regions:              buildRegions(d.Get("regions").([]interface{})),
-		ImageBundles:         imageBundles,
-		NtpServers:           utils.StringSlice(d.Get("ntp_servers").([]interface{})),
-		ShowSetUpChrony:      utils.GetBoolPointer(d.Get("show_set_up_chrony").(bool)),
-		SetUpChrony:          utils.GetBoolPointer(d.Get("set_up_chrony").(bool)),
-	}
-	r, response, err := c.CloudProvidersApi.CreateProviders(ctx, cUUID).CreateProviderRequest(
-		req).Execute()
-	if err != nil {
-		errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
-			"Cloud Provider", "Create")
-		return diag.FromErr(errMessage)
+	var r client.YBPTask
+	var response *http.Response
+	if d.Get("code").(string) != "gcp" {
+
+		req := client.Provider{
+			AirGapInstall:        utils.GetBoolPointer(d.Get("air_gap_install").(bool)),
+			Code:                 utils.GetStringPointer(d.Get("code").(string)),
+			Config:               utils.StringMap(config),
+			DestVpcId:            utils.GetStringPointer(d.Get("dest_vpc_id").(string)),
+			HostVpcId:            utils.GetStringPointer(d.Get("host_vpc_id").(string)),
+			HostVpcRegion:        utils.GetStringPointer(d.Get("host_vpc_region").(string)),
+			KeyPairName:          utils.GetStringPointer(d.Get("key_pair_name").(string)),
+			Name:                 utils.GetStringPointer(d.Get("name").(string)),
+			SshPort:              utils.GetInt32Pointer(int32(d.Get("ssh_port").(int))),
+			SshPrivateKeyContent: utils.GetStringPointer(d.Get("ssh_private_key_content").(string)),
+			SshUser:              utils.GetStringPointer(d.Get("ssh_user").(string)),
+			Regions:              buildRegions(d.Get("regions").([]interface{})),
+			ImageBundles:         imageBundles,
+			NtpServers:           utils.StringSlice(d.Get("ntp_servers").([]interface{})),
+			ShowSetUpChrony:      utils.GetBoolPointer(d.Get("show_set_up_chrony").(bool)),
+			SetUpChrony:          utils.GetBoolPointer(d.Get("set_up_chrony").(bool)),
+		}
+		r, response, err = c.CloudProvidersApi.CreateProviders(ctx, cUUID).CreateProviderRequest(
+			req).Execute()
+		if err != nil {
+			errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
+				"Cloud Provider", "Create")
+			return diag.FromErr(errMessage)
+		}
+	} else {
+		r, err = gcpProviderCreate(ctx, d, meta, imageBundles)
+		if err != nil {
+			return diag.FromErr(err)
+		}
 	}
 
 	d.SetId(*r.ResourceUUID)
@@ -754,6 +765,7 @@ func resourceCloudProviderCreate(
 	}
 
 	return resourceCloudProviderRead(ctx, d, meta)
+
 }
 
 func findProvider(providers []client.Provider, uuid string) (*client.Provider, error) {
@@ -785,6 +797,15 @@ func resourceCloudProviderRead(
 	p, err := findProvider(r, d.Id())
 	if err != nil {
 		return diag.FromErr(err)
+	}
+
+	if p.GetCode() == "gcp" {
+		// Do a rest call for list so that we can get the credential details
+		err := gcpProviderRead(ctx, d, meta)
+		if err != nil {
+			return diag.FromErr(err)
+		}
+		return diags
 	}
 
 	details := p.GetDetails()
