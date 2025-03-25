@@ -382,11 +382,10 @@ func gcpProviderRead(
 				credentials = *utils.StringMap(credentialsInterface.(map[string]interface{}))
 			} else if reflect.TypeOf(gcp.GceApplicationCredentials) ==
 				reflect.TypeOf(checkInterfaceIsString) {
-			}
-			err := json.Unmarshal([]byte(gcp.GceApplicationCredentials.(string)), &credentials)
-			if err != nil {
-
-				return err
+				err := json.Unmarshal([]byte(gcp.GceApplicationCredentials.(string)), &credentials)
+				if err != nil {
+					return err
+				}
 			}
 			credentialsMap := utils.MapFromSingletonList(
 				[]interface{}{configSettings["application_credentials"]})
