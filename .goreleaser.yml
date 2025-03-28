@@ -65,5 +65,4 @@ release:
   # If you want to manually examine the release before it goes live, uncomment the line below:
   # draft: true
 
-changelog:
-  skip: false
+changelog: {}
