@@ -1,3 +1,15 @@
+## v0.1.12 (March 2025)
+
+The following version of YugabyteDB Anywhere Terraform Provider includes support for:
+
+### Enhancements
+
+- Improve YugabyteDB version comparisons
+- Fetch node details for universes in yba_universe
+- Improve API token handling mechanism
+- Support adding Image Bundles (Linux versions) in yba_cloud_provider
+- Support NTP server fields in yba_cloud_provider
+
 ## v0.1.11 (March 2024)
 
 The following version of YugabyteDB Anywhere Terraform Provider includes support for:
