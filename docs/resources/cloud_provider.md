@@ -10,19 +10,19 @@ Cloud Provider Resource.
 
 The following credentials are required as environment variables (if fields are not set) to configure the corresponding Cloud Providers:
 
-|Cloud Provider|Setting|Configuration Field|Environment Variable|
-|-------|--------|---------|-------------------------------|
-|[AWS](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-envvars.html)||||
-||Access Key ID|`aws_config_settings.access_key_id`|`AWS_ACCESS_KEY_ID`|
-||Secret Access Key|`aws_config_settings.secret_access_key`|`AWS_SECRET_ACCESS_KEY`|
-|[GCP](https://cloud.google.com/docs/authentication/application-default-credentials)||||
-|| GCP Service Account Credentials File Path|`gcp_config_settings.application_credentials`|`GOOGLE_APPLICATION_CREDENTIALS`|
-|[Azure](https://learn.microsoft.com/en-us/azure/developer/go/azure-sdk-authentication?tabs=bash)||||
-||Active Subscription ID|`azure_config_settings.subscription_id`|`AZURE_SUBSCRIPTION_ID`|
-||Resource Group|`azure_config_settings.resource_group`|`AZURE_RG`|
-||Tenant ID|`azure_config_settings.tenant_id`|`AZURE_TENANT_ID`|
-||Client ID|`azure_config_settings.client_id`|`AZURE_CLIENT_ID`|
-||Client Secret|`azure_config_settings.client_secret`|`AZURE_CLIENT_SECRET`|
+| Cloud Provider                                                                                   | Setting                                   | Configuration Field                           | Environment Variable             |
+| ------------------------------------------------------------------------------------------------ | ----------------------------------------- | --------------------------------------------- | -------------------------------- |
+| [AWS](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-envvars.html)               |                                           |                                               |                                  |
+|                                                                                                  | Access Key ID                             | `aws_config_settings.access_key_id`           | `AWS_ACCESS_KEY_ID`              |
+|                                                                                                  | Secret Access Key                         | `aws_config_settings.secret_access_key`       | `AWS_SECRET_ACCESS_KEY`          |
+| [GCP](https://cloud.google.com/docs/authentication/application-default-credentials)              |                                           |                                               |                                  |
+|                                                                                                  | GCP Service Account Credentials File Path | `gcp_config_settings.application_credentials` | `GOOGLE_APPLICATION_CREDENTIALS` |
+| [Azure](https://learn.microsoft.com/en-us/azure/developer/go/azure-sdk-authentication?tabs=bash) |                                           |                                               |                                  |
+|                                                                                                  | Active Subscription ID                    | `azure_config_settings.subscription_id`       | `AZURE_SUBSCRIPTION_ID`          |
+|                                                                                                  | Resource Group                            | `azure_config_settings.resource_group`        | `AZURE_RG`                       |
+|                                                                                                  | Tenant ID                                 | `azure_config_settings.tenant_id`             | `AZURE_TENANT_ID`                |
+|                                                                                                  | Client ID                                 | `azure_config_settings.client_id`             | `AZURE_CLIENT_ID`                |
+|                                                                                                  | Client Secret                             | `azure_config_settings.client_secret`         | `AZURE_CLIENT_SECRET`            |
 
 -> **Note:** AWS Environment variables or credential fields are not required for IAM based AWS cloud providers. Please set *aws_config_settings.use_iam_instance_profile* to use host IAM configuration for AWS cloud providers.
 
