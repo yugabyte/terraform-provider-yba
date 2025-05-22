@@ -877,6 +877,7 @@ func resourceUniverseUpdate(
 						Clusters:     updateUni.UniverseDetails.Clusters,
 						NodeDetailsSet: buildNodeDetailsRespArrayToNodeDetailsArray(
 							updateUni.UniverseDetails.NodeDetailsSet),
+						CommunicationPorts: updateUni.UniverseDetails.CommunicationPorts,
 					}
 					r, response, err := c.UniverseClusterMutationsApi.UpdatePrimaryCluster(
 						ctx, cUUID, d.Id()).UniverseConfigureTaskParams(req).Execute()
@@ -932,6 +933,7 @@ func resourceUniverseUpdate(
 						Clusters:     updateUni.UniverseDetails.Clusters,
 						NodeDetailsSet: buildNodeDetailsRespArrayToNodeDetailsArray(
 							updateUni.UniverseDetails.NodeDetailsSet),
+						CommunicationPorts: updateUni.UniverseDetails.CommunicationPorts,
 					}
 					r, response, err := c.UniverseClusterMutationsApi.UpdateReadOnlyCluster(
 						ctx, cUUID, d.Id()).UniverseConfigureTaskParams(req).Execute()
