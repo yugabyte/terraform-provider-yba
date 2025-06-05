@@ -1,3 +1,11 @@
+## v0.1.13 (June 2025)
+
+The following version of YugabyteDB Anywhere Terraform Provider includes support for:
+
+### Enhancements
+
+- Fix "Communication ports not honoured when edit cluster task is spun"
+
 ## v0.1.12 (March 2025)
 
 The following version of YugabyteDB Anywhere Terraform Provider includes support for:
