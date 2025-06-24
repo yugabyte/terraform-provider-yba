@@ -10,7 +10,7 @@ on:
 jobs:
   build:
     name: Build
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
     
@@ -21,22 +21,28 @@ jobs:
       uses: actions/setup-go@v4.0.1
       with:
         go-version-file: 'go.mod'
+        cache: true
       id: go
-
-    - name: Get dependencies
-      run: |
-        go mod download
 
     - name: Build
       run: |
         go build -v .
 
+    - name: Upload binary
+      uses: actions/upload-artifact@v3
+      with:
+        name: terraform-provider-yba
+        path: ./terraform-provider-yba
+        retention-days: 1
+        if-no-files-found: error
+
+
+
   azuretest:
     name: Acceptance Test on Azure
     needs: build
-    runs-on: [ self-hosted, azure ]
+    runs-on: [ ubuntu-latest]
     env:
-      TF_VAR_RESOURCES_DIR: ${{ secrets.TF_VAR_RESOURCES_DIR }}
       YB_CUSTOMER_PASSWORD: ${{ secrets.YB_CUSTOMER_PASSWORD }}
       AZURE_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
       AZURE_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
@@ -52,6 +58,7 @@ jobs:
       TF_VAR_AZURE_SUBNET_ID: ${{ vars.TF_VAR_AZURE_SUBNET_ID }}
       TF_VAR_AZURE_VNET_ID: ${{ vars.TF_VAR_AZURE_VNET_ID }}
       TF_VAR_AZURE_SG_ID: ${{ vars.TF_VAR_AZURE_SG_ID }}
+      TF_LOG: "DEBUG"
     timeout-minutes: 120
     strategy:
       fail-fast: false
@@ -68,24 +75,74 @@ jobs:
         uses: actions/setup-go@v4.0.1
         with:
           go-version-file: 'go.mod'
+          cache: false
         id: go
-      
-      - name: Get dependencies
-        run: |
-          go mod download
 
       - uses: hashicorp/setup-terraform@v1
         with:
           terraform_version: ${{ matrix.terraform }}
           terraform_wrapper: false
 
-      - name: Make YBA Terraform provider installation Directory
-        run: mkdir -p ./acctest/azure/terraform.d/plugins/terraform.yugabyte.com/platform/yba/0.1.0/linux_amd64
+      - name: Public IP
+        id: ip
+        uses: haythem/public-ip@v1.3
 
-      - name: Install
+      - name: Setup directory
         run: |
-          go build -o ./acctest/azure/terraform.d/plugins/terraform.yugabyte.com/platform/yba/0.1.0/linux_amd64
+          mkdir -p ./acctest/azure/terraform.d/plugins/terraform.yugabyte.com/platform/yba/0.1.0/linux_amd64 
+          echo "TF_VAR_RESOURCES_DIR=${{runner.temp}}" >> $GITHUB_ENV
+          echo "TF_VAR_RUNNER_IP=${{ steps.ip.outputs.ipv4 }}/32"   >> $GITHUB_ENV 
+ 
 
+      - uses: actions/download-artifact@v3
+        with:
+          name: terraform-provider-yba
+          path: ./acctest/azure/terraform.d/plugins/terraform.yugabyte.com/platform/yba/0.1.0/linux_amd64/
+
+      - name: Write acctest key
+        uses: timheuer/base64-to-file@v1.2
+        with:
+          fileName: 'acctest'
+          fileDir: '${{runner.temp}}'
+          encodedString: ${{ secrets.YBA_SSH_KEY }}
+
+      - name: Write acctest pub key
+        uses: timheuer/base64-to-file@v1.2
+        with:
+          fileName: 'acctest.pub'
+          fileDir: '${{runner.temp}}'
+          encodedString: ${{ secrets.YBA_SSH_KEY_PUB }}
+
+
+      - name: Write acctest RLI licenses
+        uses: timheuer/base64-to-file@v1.2
+        with:
+          fileName: 'acctest.rli'
+          fileDir: '${{runner.temp}}'
+          encodedString: ${{ secrets.YBA_REPL_RLI }}
+
+      - name: Write acctest replicated config
+        uses: timheuer/base64-to-file@v1.2
+        with:
+          fileName: 'replicated.conf'
+          fileDir: '${{runner.temp}}'
+          encodedString: ${{ secrets.YBA_REPL_CONF }}
+
+      - name: Write acctest replicated config
+        uses: timheuer/base64-to-file@v1.2
+        with:
+          fileName: 'application_settings.conf'
+          fileDir: '${{runner.temp}}'
+          encodedString: ${{ secrets.YBA_REPL_APP_SETTINGS }}
+
+      - uses: actions/download-artifact@v3
+        with:
+          name: terraform-provider-yba
+          path: ./acctest/azure/terraform.d/plugins/terraform.yugabyte.com/platform/yba/0.1.0/linux_amd64/
+
+      - name: Add permission to the binary
+        run: |
+          chmod +x ./acctest/azure/terraform.d/plugins/terraform.yugabyte.com/platform/yba/0.1.0/linux_amd64/terraform-provider-yba
       # use the modules to bring up platform instance for acceptance tests
       - name: Terraform Init
         run: terraform init
@@ -111,7 +168,6 @@ jobs:
         timeout-minutes: 120
         env:
           TF_ACC: "1"
-
         run: |
           go test -v -cover -timeout 2h ./... -run "Azure"
 
@@ -121,166 +177,266 @@ jobs:
         run: terraform destroy -auto-approve
         working-directory: ./acctest/azure
 
-  awstest:
-    name: Acceptance Test on AWS
-    needs: build
-    runs-on: [self-hosted, aws]
-    env:
-      TF_VAR_RESOURCES_DIR: ${{ secrets.TF_VAR_RESOURCES_DIR }}
-      YB_CUSTOMER_PASSWORD: ${{ secrets.YB_CUSTOMER_PASSWORD }}
-      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-      TF_VAR_AWS_VPC_ID: ${{ vars.TF_VAR_AWS_VPC_ID }}
-      TF_VAR_AWS_SUBNET_ID: ${{ vars.TF_VAR_AWS_SUBNET_ID }}
-      TF_VAR_AWS_SG_ID: ${{ vars.TF_VAR_AWS_SG_ID }}
-      TF_VAR_AWS_ZONE_SUBNET_ID: ${{ vars.TF_VAR_AWS_ZONE_SUBNET_ID }}
-    timeout-minutes: 120
-    strategy:
-      fail-fast: false
-      matrix:
-        terraform:
-          # add other versions to support
-          - '1.4.*'
+  # awstest:
+  #   name: Acceptance Test on AWS
+  #   needs: build
+  #   runs-on: [ubuntu-latest]
+  #   env:
+  #     TF_VAR_RESOURCES_DIR: ${{ secrets.TF_VAR_RESOURCES_DIR }}
+  #     YB_CUSTOMER_PASSWORD: ${{ secrets.YB_CUSTOMER_PASSWORD }}
+  #     AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+  #     AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+  #     TF_VAR_AWS_VPC_ID: ${{ vars.TF_VAR_AWS_VPC_ID }}
+  #     TF_VAR_AWS_SUBNET_ID: ${{ vars.TF_VAR_AWS_SUBNET_ID }}
+  #     TF_VAR_AWS_SG_ID: ${{ vars.TF_VAR_AWS_SG_ID }}
+  #     TF_VAR_AWS_ZONE_SUBNET_ID: ${{ vars.TF_VAR_AWS_ZONE_SUBNET_ID }}
+  #   timeout-minutes: 120
+  #   strategy:
+  #     fail-fast: false
+  #     matrix:
+  #       terraform:
+  #         # add other versions to support
+  #         - '1.4.*'
 
-    steps:
-      - name: Check out code into the Go module directory
-        uses: actions/checkout@v3.5.2
+  #   steps:
+  #     - name: Check out code into the Go module directory
+  #       uses: actions/checkout@v3.5.2
+
+  #     - name: Set up Go
+  #       uses: actions/setup-go@v4.0.1
+  #       with:
+  #         go-version-file: 'go.mod'
+  #         cache: false
+  #       id: go
       
-      - name: Set up Go
-        uses: actions/setup-go@v4.0.1
-        with:
-          go-version-file: 'go.mod'
-        id: go
-      
-      - name: Get dependencies
-        run: |
-          go mod download
+  #     - uses: hashicorp/setup-terraform@v1
+  #       with:
+  #         terraform_version: ${{ matrix.terraform }}
+  #         terraform_wrapper: false
 
-      - uses: hashicorp/setup-terraform@v1
-        with:
-          terraform_version: ${{ matrix.terraform }}
-          terraform_wrapper: false
 
-      - name: Make YBA Terraform provider installation Directory
-        run: mkdir -p ./acctest/aws/terraform.d/plugins/terraform.yugabyte.com/platform/yba/0.1.0/linux_amd64
+  #     - name: Setup directory
+  #       run: |
+  #         mkdir /home/deeptikumar/yugabyte/.ssh
+  #         mkdir -p ./acctest/aws/terraform.d/plugins/terraform.yugabyte.com/platform/yba/0.1.0/linux_amd64    
+  
+  #     - name: Write acctest key
+  #       uses: timheuer/base64-to-file@v1.2
+  #       with:
+  #         fileName: 'acctest'
+  #         fileDir: '/home/deeptikumar/yugabyte/.ssh/'
+  #         encodedString: ${{ secrets.YBA_SSH_KEY }}
 
-      - name: Install
-        run: |
-          go build -o ./acctest/aws/terraform.d/plugins/terraform.yugabyte.com/platform/yba/0.1.0/linux_amd64
+  #     - name: Write acctest pub key
+  #       uses: timheuer/base64-to-file@v1.2
+  #       with:
+  #         fileName: 'acctest.pub'
+  #         fileDir: '/home/deeptikumar/yugabyte/.ssh/'
+  #         encodedString: ${{ secrets.YBA_SSH_KEY_PUB }}
 
-      # use the modules to bring up platform instance for acceptance tests
-      - name: Terraform Init
-        run: terraform init
-        working-directory: ./acctest/aws
 
-      - name: Terraform Plan
-        run: terraform plan -no-color
-        working-directory: ./acctest/aws
+  #     - name: Write acctest RLI licenses
+  #       uses: timheuer/base64-to-file@v1.2
+  #       with:
+  #         fileName: 'acctest.rli'
+  #         fileDir: '/home/deeptikumar/yugabyte/'
+  #         encodedString: ${{ secrets.YBA_REPL_RLI }}
 
-      - name: Terraform Apply
-        run: terraform apply -auto-approve
-        working-directory: ./acctest/aws
+  #     - name: Write acctest replicated config
+  #       uses: timheuer/base64-to-file@v1.2
+  #       with:
+  #         fileName: 'replicated.conf'
+  #         fileDir: '/home/deeptikumar/yugabyte/'
+  #         encodedString: ${{ secrets.YBA_REPL_CONF }}
 
-      - name: Set Platform Host
-        run: echo "YB_HOST=$(terraform output --raw host)" >> $GITHUB_ENV
-        working-directory: ./acctest/aws
+  #     - name: Write acctest replicated config
+  #       uses: timheuer/base64-to-file@v1.2
+  #       with:
+  #         fileName: 'application_settings.conf'
+  #         fileDir: '/home/deeptikumar/yugabyte/'
+  #         encodedString: ${{ secrets.YBA_REPL_APP_SETTINGS }}
 
-      - name: Set Platform API Key
-        run: echo "YB_API_KEY=$(terraform output --raw api_key)" >> $GITHUB_ENV
-        working-directory: ./acctest/aws
-      # run acceptance tests
-      - name: TF Acceptance Tests
-        timeout-minutes: 120
-        env:
-          TF_ACC: "1"
+  #     - uses: actions/download-artifact@v3
+  #       with:
+  #         name: terraform-provider-yba
+  #         path: ./acctest/aws/terraform.d/plugins/terraform.yugabyte.com/platform/yba/0.1.0/linux_amd64/
 
-        run: |
-          go test -v -cover -timeout 2h ./... -run "AWS"
+  #     - name: Add permission to the binary
+  #       run: |
+  #         chmod +x ./acctest/aws/terraform.d/plugins/terraform.yugabyte.com/platform/yba/0.1.0/linux_amd64/terraform-provider-yba
+  #         chmod 600
+  #         chmod 600 
+        
+  #     # use the modules to bring up platform instance for acceptance tests
+  #     - name: Terraform Init
+  #       run: terraform init
+  #       working-directory: ./acctest/aws
 
-      # clean up platform instance
-      - name: Terraform Destroy
-        if: always()
-        run: terraform destroy -auto-approve
-        working-directory: ./acctest/aws
+  #     - name: Terraform Plan
+  #       run: terraform plan -no-color
+  #       working-directory: ./acctest/aws
+
+  #     - name: Terraform Apply
+  #       run: terraform apply -auto-approve
+  #       working-directory: ./acctest/aws
+
+  #     - name: Set Platform Host
+  #       run: echo "YB_HOST=$(terraform output --raw host)" >> $GITHUB_ENV
+  #       working-directory: ./acctest/aws
+
+  #     - name: Set Platform API Key
+  #       run: echo "YB_API_KEY=$(terraform output --raw api_key)" >> $GITHUB_ENV
+  #       working-directory: ./acctest/aws
+  #     # run acceptance tests
+  #     - name: TF Acceptance Tests
+  #       timeout-minutes: 120
+  #       env:
+  #         TF_ACC: "1"
+
+  #       run: |
+  #         go test -v -cover -timeout 2h ./... -run "AWS"
+
+  #     # clean up platform instance
+  #     - name: Terraform Destroy
+  #       if: always()
+  #       run: terraform destroy -auto-approve
+  #       working-directory: ./acctest/aws
           
-  gcptest:
-    name: Acceptance Test on GCP
-    needs: build
-    runs-on: [self-hosted, gcp]
-    env:
-      TF_VAR_RESOURCES_DIR: ${{ secrets.TF_VAR_RESOURCES_DIR }}
-      YB_CUSTOMER_PASSWORD: ${{ secrets.YB_CUSTOMER_PASSWORD }}
-      GOOGLE_APPLICATION_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
-      GOOGLE_PROJECT: ${{ secrets.GOOGLE_PROJECT }}
-      GOOGLE_REGION: ${{ secrets.GOOGLE_REGION }}
-      GOOGLE_ZONE: ${{ secrets.GOOGLE_ZONE }}
-      TF_VAR_GCP_VPC_NETWORK: ${{ vars.TF_VAR_GCP_VPC_NETWORK }}
-      TF_VAR_GCP_VPC_SUBNETWORK: ${{ vars.TF_VAR_GCP_VPC_SUBNETWORK }}
-    timeout-minutes: 120
-    strategy:
-      fail-fast: false
-      matrix:
-        terraform:
-          # add other versions to support
-          - '1.4.*'
+  # gcptest:
+  #   name: Acceptance Test on GCP
+  #   needs: build
+  #   runs-on: [ubuntu-latest]
+  #   env:
+  #     YB_CUSTOMER_PASSWORD: ${{ secrets.YB_CUSTOMER_PASSWORD }}
+  #     GOOGLE_PROJECT: ${{ secrets.GOOGLE_PROJECT }}
+  #     GOOGLE_REGION: ${{ secrets.GOOGLE_REGION }}
+  #     GOOGLE_ZONE: ${{ secrets.GOOGLE_ZONE }}
+  #     TF_VAR_GCP_VPC_NETWORK: ${{ vars.TF_VAR_GCP_VPC_NETWORK }}
+  #     TF_VAR_GCP_VPC_SUBNETWORK: ${{ vars.TF_VAR_GCP_VPC_SUBNETWORK }}
+  #   timeout-minutes: 120
+  #   strategy:
+  #     fail-fast: false
+  #     matrix:
+  #       terraform:
+  #         # add other versions to support
+  #         - '1.4.*'
 
-    steps:
-      - name: Check out code into the Go module directory
-        uses: actions/checkout@v3.5.2
+  #   steps:
+  #     - name: Check out code into the Go module directory
+  #       uses: actions/checkout@v3.5.2
 
-      - name: Set up Go
-        uses: actions/setup-go@v4.0.1
-        with:
-          go-version-file: 'go.mod'
-        id: go
+  #     - name: Set up Go
+  #       uses: actions/setup-go@v4.0.1
+  #       with:
+  #         go-version-file: 'go.mod'
+  #         cache: false
+  #       id: go
 
-      - name: Get dependencies
-        run: |
-          go mod download
+  #     - uses: hashicorp/setup-terraform@v1
+  #       with:
+  #         terraform_version: ${{ matrix.terraform }}
+  #         terraform_wrapper: false
+      
+  #     - name: Public IP
+  #       id: ip
+  #       uses: haythem/public-ip@v1.3
 
-      - uses: hashicorp/setup-terraform@v1
-        with:
-          terraform_version: ${{ matrix.terraform }}
-          terraform_wrapper: false
+  #     - name: Setup 
+  #       run: |
+  #         mkdir -p ./acctest/azure/terraform.d/plugins/terraform.yugabyte.com/platform/yba/0.1.0/linux_amd64 
+  #         echo "TF_VAR_RESOURCES_DIR=${{runner.temp}}" >> $GITHUB_ENV  
+  #         echo "GOOGLE_APPLICATION_CREDENTIALS=${{runner.temp}}/yugabyte-gce.json" >> $GITHUB_ENV
+  #         echo "TF_VAR_RUNNER_IP=${{ steps.ip.outputs.ipv4 }}/32"   >> $GITHUB_ENV
 
-      - name: Make YBA Terraform provider installation Directory
-        run: mkdir -p ./acctest/gcp/terraform.d/plugins/terraform.yugabyte.com/platform/yba/0.1.0/linux_amd64
+  #     - uses: actions/download-artifact@v3
+  #       with:
+  #         name: terraform-provider-yba
+  #         path: ./acctest/gcp/terraform.d/plugins/terraform.yugabyte.com/platform/yba/0.1.0/linux_amd64/
 
-      - name: Install
-        run: |
-          go build -o ./acctest/gcp/terraform.d/plugins/terraform.yugabyte.com/platform/yba/0.1.0/linux_amd64
+  #     - name: Write acctest key
+  #       uses: timheuer/base64-to-file@v1.2
+  #       with:
+  #         fileName: 'acctest'
+  #         fileDir: '${{runner.temp}}'
+  #         encodedString: ${{ secrets.YBA_SSH_KEY }}
 
-      # use the modules to bring up platform instance for acceptance tests
-      - name: Terraform Init
-        run: terraform init
-        working-directory: ./acctest/gcp
+  #     - name: Write acctest pub key
+  #       uses: timheuer/base64-to-file@v1.2
+  #       with:
+  #         fileName: 'acctest.pub'
+  #         fileDir: '${{runner.temp}}'
+  #         encodedString: ${{ secrets.YBA_SSH_KEY_PUB }}
 
-      - name: Terraform Plan
-        run: terraform plan -no-color
-        working-directory: ./acctest/gcp
 
-      - name: Terraform Apply
-        run: terraform apply -auto-approve
-        working-directory: ./acctest/gcp
+  #     - name: Write acctest RLI licenses
+  #       uses: timheuer/base64-to-file@v1.2
+  #       with:
+  #         fileName: 'acctest.rli'
+  #         fileDir: '${{runner.temp}}'
+  #         encodedString: ${{ secrets.YBA_REPL_RLI }}
 
-      - name: Set Platform Host
-        run: echo "YB_HOST=$(terraform output --raw host)" >> $GITHUB_ENV
-        working-directory: ./acctest/gcp
+  #     - name: Write acctest replicated config
+  #       uses: timheuer/base64-to-file@v1.2
+  #       with:
+  #         fileName: 'replicated.conf'
+  #         fileDir: '${{runner.temp}}'
+  #         encodedString: ${{ secrets.YBA_REPL_CONF }}
 
-      - name: Set Platform API Key
-        run: echo "YB_API_KEY=$(terraform output --raw api_key)" >> $GITHUB_ENV
-        working-directory: ./acctest/gcp
-      # run acceptance tests
-      - name: TF Acceptance Tests
-        timeout-minutes: 120
-        env:
-          TF_ACC: "1"
+  #     - name: Write acctest replicated config
+  #       uses: timheuer/base64-to-file@v1.2
+  #       with:
+  #         fileName: 'application_settings.conf'
+  #         fileDir: '${{runner.temp}}'
+  #         encodedString: ${{ secrets.YBA_REPL_APP_SETTINGS }}
 
-        run: |
-          go test -v -cover -timeout 2h ./... -run "GCP"
+  #     - name: Write gcp credentials
+  #       uses: timheuer/base64-to-file@v1.2
+  #       with:
+  #         fileName: 'yugabyte-gce.json'
+  #         fileDir: '${{runner.temp}}'
+  #         encodedString: ${{ secrets.GCP_CREDS_FILES }}
+  
 
-      # clean up platform instance
-      - name: Terraform Destroy
-        if: always()
-        run: terraform destroy -auto-approve
-        working-directory: ./acctest/gcp
+  #     - uses: actions/download-artifact@v3
+  #       with:
+  #         name: terraform-provider-yba
+  #         path: ./acctest/gcp/terraform.d/plugins/terraform.yugabyte.com/platform/yba/0.1.0/linux_amd64/
+
+  #     - name: Add permission to the binary
+  #       run: |
+  #         chmod +x ./acctest/gcp/terraform.d/plugins/terraform.yugabyte.com/platform/yba/0.1.0/linux_amd64/terraform-provider-yba
+
+  #     # use the modules to bring up platform instance for acceptance tests
+  #     - name: Terraform Init
+  #       run: terraform init
+  #       working-directory: ./acctest/gcp
+
+  #     - name: Terraform Plan
+  #       run: terraform plan -no-color
+  #       working-directory: ./acctest/gcp
+
+  #     - name: Terraform Apply
+  #       run: terraform apply -auto-approve
+  #       working-directory: ./acctest/gcp
+
+  #     - name: Set Platform Host
+  #       run: echo "YB_HOST=$(terraform output --raw host)" >> $GITHUB_ENV
+  #       working-directory: ./acctest/gcp
+
+  #     - name: Set Platform API Key
+  #       run: echo "YB_API_KEY=$(terraform output --raw api_key)" >> $GITHUB_ENV
+  #       working-directory: ./acctest/gcp
+  #     # run acceptance tests
+  #     - name: TF Acceptance Tests
+  #       timeout-minutes: 120
+  #       env:
+  #         TF_ACC: "1"
+
+  #       run: |
+  #         go test -v -cover -timeout 2h ./... -run "GCP"
+
+  #     # clean up platform instance
+  #     - name: Terraform Destroy
+  #       if: always()
+  #       run: terraform destroy -auto-approve
+  #       working-directory: ./acctest/gcp
