@@ -42,24 +42,10 @@ data "yba_onprem_nodes" "nodes" {
 
 Read-Only:
 
-- `details_json` (String)
 - `in_use` (Boolean)
 - `instance_name` (String)
 - `instance_type` (String)
-- `instance_type_code` (String)
 - `ip` (String)
-- `node_configs` (List of Object) (see [below for nested schema](#nestedobjatt--nodes--node_configs))
 - `node_name` (String)
-- `node_uuid` (String)
 - `region` (String)
-- `ssh_user` (String)
 - `zone` (String)
-- `zone_uuid` (String)
-
-<a id="nestedobjatt--nodes--node_configs"></a>
-### Nested Schema for `nodes.node_configs`
-
-Read-Only:
-
-- `type` (String)
-- `value` (String)

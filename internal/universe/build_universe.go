@@ -67,7 +67,9 @@ func buildClusters(clusters []interface{}) (res []client.Cluster) {
 		cluster := v.(map[string]interface{})
 		c := client.Cluster{
 			ClusterType: cluster["cluster_type"].(string),
-			UserIntent:  buildUserIntent(utils.MapFromSingletonList(cluster["user_intent"].([]interface{}))),
+			UserIntent: buildUserIntent(
+				utils.MapFromSingletonList(cluster["user_intent"].([]interface{})),
+			),
 		}
 		if len(cluster["cloud_list"].([]interface{})) > 0 {
 			c.PlacementInfo = &client.PlacementInfo{
@@ -96,7 +98,7 @@ func buildCloudList(clI interface{}) (res []client.PlacementCloud) {
 	return res
 }
 
-func buildRegionList(cl []interface{}) *[]client.PlacementRegion {
+func buildRegionList(cl []interface{}) []client.PlacementRegion {
 	var res []client.PlacementRegion
 	for _, v := range cl {
 		r := v.(map[string]interface{})
@@ -106,13 +108,13 @@ func buildRegionList(cl []interface{}) *[]client.PlacementRegion {
 		}
 		res = append(res, pr)
 	}
-	return &res
+	return res
 }
 
-func buildAzList(clI interface{}) *[]client.PlacementAZ {
+func buildAzList(clI interface{}) []client.PlacementAZ {
 	var res []client.PlacementAZ
 	if clI == nil {
-		return &res
+		return res
 	}
 	cl := clI.([]interface{})
 	for _, v := range cl {
@@ -127,7 +129,7 @@ func buildAzList(clI interface{}) *[]client.PlacementAZ {
 		}
 		res = append(res, paz)
 	}
-	return &res
+	return res
 }
 
 func buildUserIntent(ui map[string]interface{}) client.UserIntent {
@@ -149,7 +151,7 @@ func buildUserIntent(ui map[string]interface{}) client.UserIntent {
 		UniverseName:          utils.GetStringPointer(ui["universe_name"].(string)),
 		ProviderType:          utils.GetStringPointer(ui["provider_type"].(string)),
 		Provider:              utils.GetStringPointer(ui["provider"].(string)),
-		RegionList:            utils.StringSlice(ui["region_list"].([]interface{})),
+		RegionList:            *utils.StringSlice(ui["region_list"].([]interface{})),
 		NumNodes:              utils.GetInt32Pointer(int32(ui["num_nodes"].(int))),
 		ReplicationFactor:     utils.GetInt32Pointer(int32(ui["replication_factor"].(int))),
 		InstanceType:          utils.GetStringPointer(ui["instance_type"].(string)),
@@ -182,10 +184,10 @@ func buildDeviceInfo(di map[string]interface{}) *client.DeviceInfo {
 }
 
 func buildNodeDetailsRespArrayToNodeDetailsArray(
-	nodes *[]client.NodeDetailsResp,
-) *[]client.NodeDetails {
+	nodes []client.NodeDetailsResp,
+) []client.NodeDetails {
 	var nodesDetails []client.NodeDetails
-	for _, v := range *nodes {
+	for _, v := range nodes {
 		nodeDetail := client.NodeDetails{
 			AzUuid:                v.AzUuid,
 			CloudInfo:             v.CloudInfo,
@@ -218,5 +220,5 @@ func buildNodeDetailsRespArrayToNodeDetailsArray(
 		}
 		nodesDetails = append(nodesDetails, nodeDetail)
 	}
-	return &nodesDetails
+	return nodesDetails
 }

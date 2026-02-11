@@ -149,7 +149,7 @@ func dataSourceBackupsListRead(
 		req.Filter.DateRangeEnd = &endDate
 	}
 
-	r, response, err := c.BackupsApi.ListBackupsV2(ctx, cUUID).PageBackupsRequest(req).Execute()
+	r, response, err := c.BackupsAPI.ListBackupsV2(ctx, cUUID).PageBackupsRequest(req).Execute()
 	if err != nil {
 		errMessage := utils.ErrorFromHTTPResponse(response, err, utils.DataSourceEntity,
 			"Backup", "Read")

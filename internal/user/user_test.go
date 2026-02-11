@@ -76,7 +76,7 @@ func testAccCheckDestroyUser(s *terraform.State) error {
 		}
 
 		cUUID := acctest.APIClient.CustomerID
-		_, _, err := conn.UserManagementApi.GetUserDetails(context.Background(), cUUID,
+		_, _, err := conn.UserManagementAPI.GetUserDetails(context.Background(), cUUID,
 			r.Primary.ID).Execute()
 		if err == nil || acctest.IsResourceNotFoundError(err) {
 			return errors.New("User resource is not destroyed")
@@ -98,14 +98,14 @@ func testAccCheckUserExists(name string, user *client.UserWithFeatures) resource
 
 		conn := acctest.APIClient.YugawareClient
 		cUUID := acctest.APIClient.CustomerID
-		res, response, err := conn.UserManagementApi.GetUserDetails(context.Background(), cUUID,
+		res, response, err := conn.UserManagementAPI.GetUserDetails(context.Background(), cUUID,
 			r.Primary.ID).Execute()
 		if err != nil {
 			errMessage := utils.ErrorFromHTTPResponse(response, err, utils.TestEntity,
 				"User", "Read")
 			return errMessage
 		}
-		*user = res
+		*user = *res
 		return nil
 	}
 }

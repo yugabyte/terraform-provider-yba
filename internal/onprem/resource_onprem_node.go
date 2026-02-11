@@ -226,7 +226,7 @@ func findProviderByName(providers []client.Provider, name string) (*client.Provi
 
 func fetchProviderList(ctx context.Context, c *client.APIClient, cUUID string) (
 	[]client.Provider, error) {
-	r, response, err := c.CloudProvidersApi.GetListOfProviders(ctx, cUUID).Execute()
+	r, response, err := c.CloudProvidersAPI.GetListOfProviders(ctx, cUUID).Execute()
 	if err != nil {
 		errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
 			"On Prem Node Instance - Get Provider", "Read")
@@ -394,10 +394,8 @@ func resourceOnPremNodeRead(
 		return diag.FromErr(err)
 	}
 
-	err = d.Set("node_configs", flattenNodeConfig(details.GetNodeConfigs()))
-	if err != nil {
-		return diag.FromErr(err)
-	}
+	// Note: node_configs is no longer returned by the API in NodeInstanceData
+	// The field is kept in the schema for backwards compatibility but won't be populated
 
 	pUUID := d.Get("provider_uuid").(string)
 	pName := d.Get("provider_name").(string)

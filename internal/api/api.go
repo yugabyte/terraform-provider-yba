@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	client "github.com/yugabyte/platform-go-client"
@@ -38,6 +39,11 @@ type APIClient struct {
 
 // NewAPIClient creates a wrapper for public and non-public APIs
 func NewAPIClient(enableHTTPS bool, host, apiKey string) (*APIClient, error) {
+	// Normalize host - strip scheme if provided (we add it based on enableHTTPS)
+	host = strings.TrimPrefix(host, "https://")
+	host = strings.TrimPrefix(host, "http://")
+	host = strings.TrimSuffix(host, "/")
+
 	// create swagger go client
 	cfg := client.NewConfiguration()
 	cfg.Host = host
@@ -69,7 +75,7 @@ func NewAPIClient(enableHTTPS bool, host, apiKey string) (*APIClient, error) {
 
 	// authenticate if api token is provided
 	if apiKey != "" {
-		r, response, err := c.YugawareClient.SessionManagementApi.GetSessionInfo(
+		r, response, err := c.YugawareClient.SessionManagementAPI.GetSessionInfo(
 			context.Background()).Execute()
 		if err != nil {
 			errMessage := utils.ErrorFromHTTPResponse(response, err, "Provider Creation",
@@ -96,7 +102,9 @@ func (c VanillaClient) makeRequest(method string, url string, body io.Reader, ap
 	var req *http.Request
 	var err error
 	if c.EnableHTTPS {
-		http.DefaultTransport.(*http.Transport).TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+		http.DefaultTransport.(*http.Transport).TLSClientConfig = &tls.Config{
+			InsecureSkipVerify: true,
+		}
 		req, err = http.NewRequest(method, fmt.Sprintf("https://%s/%s", c.Host, url), body)
 		if err != nil {
 			return nil, err

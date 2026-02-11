@@ -90,7 +90,7 @@ func dataSourceNodeInstanceFilterRead(ctx context.Context, d *schema.ResourceDat
 	pUUID := d.Get("provider_id").(string)
 
 	// list all nodes in the provider
-	r, response, err := c.NodeInstancesApi.ListByProvider(ctx, cUUID, pUUID).Execute()
+	r, response, err := c.NodeInstancesAPI.ListByProvider(ctx, cUUID, pUUID).Execute()
 	if err != nil {
 		errMessage := utils.ErrorFromHTTPResponse(response, err, utils.DataSourceEntity,
 			"Filter Node Instances", "List Nodes")
@@ -167,6 +167,6 @@ func dataSourceNodeInstanceFilterRead(ctx context.Context, d *schema.ResourceDat
 	}
 
 	d.SetId(pUUID)
-	d.Set("nodes", flattenNodeInstances(r, nil))
+	d.Set("nodes", flattenNodeInstancesLegacy(r, nil))
 	return diags
 }

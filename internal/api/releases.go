@@ -69,7 +69,9 @@ func (vc *VanillaClient) ReleaseImport(ctx context.Context, cUUID string, versio
 
 	var req *http.Request
 	if vc.EnableHTTPS {
-		http.DefaultTransport.(*http.Transport).TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+		http.DefaultTransport.(*http.Transport).TLSClientConfig = &tls.Config{
+			InsecureSkipVerify: true,
+		}
 		req, err = http.NewRequest("POST", fmt.Sprintf("https://%s/api/v1/customers/%s/releases",
 			vc.Host, cUUID), reqBuf)
 	} else {

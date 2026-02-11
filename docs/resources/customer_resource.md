@@ -1,12 +1,15 @@
 ---
 page_title: "yba_customer_resource Resource - YugabyteDB Anywhere"
 description: |-
-  Customer Resource.
+  Customer Resource. Registers a new customer/user in YugabyteDB Anywhere.
+  ~> Security Note: The api_token and password are stored in the Terraform state file (marked as sensitive). Use a secure backend (e.g., S3 with encryption, Terraform Cloud) and restrict access to your state files.
 ---
 
 # yba_customer_resource (Resource)
 
-Customer Resource.
+Customer Resource. Registers a new customer/user in YugabyteDB Anywhere.
+
+~> **Security Note:** The `api_token` and `password` are stored in the Terraform state file (marked as sensitive). Use a secure backend (e.g., S3 with encryption, Terraform Cloud) and restrict access to your state files.
 
 The following credential is required as environment variable before creation:
 
@@ -36,17 +39,18 @@ resource "yba_customer_resource" "customer" {
 
 ### Required
 
-- `code` (String) Label for the user (i.e. admin).
 - `email` (String) Email for the user, which is used for login on the YugabyteDB Anywhere portal.
 - `name` (String) Name of the user.
+- `password` (String, Sensitive) Password for the user. Must meet YBA password requirements.
 
 ### Optional
 
-- `api_token` (String, Sensitive) API token for the customer.
+- `code` (String) Environment label for the installation. Allowed values: dev, demo, stage, prod. Defaults to 'dev'.
 - `timeouts` (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))
 
 ### Read-Only
 
+- `api_token` (String, Sensitive) API token for the customer. This is generated after registration and login. Store securely - it provides full access to YugabyteDB Anywhere.
 - `cuuid` (String) Customer UUID.
 - `id` (String) The ID of this resource.
 
@@ -57,6 +61,7 @@ Optional:
 
 - `create` (String)
 - `delete` (String)
+- `update` (String)
 
 ## Import
 

@@ -105,7 +105,7 @@ Required:
 - `provider` (String) Provider UUID.
 - `provider_type` (String) Cloud Provider type. Permitted values: gcp, aws, azu, onprem.
 - `region_list` (List of String) List of regions for node placement.
-- `replication_factor` (Number) Replicated factor for this universe.
+- `replication_factor` (Number) Replication factor for this universe.
 - `universe_name` (String) Universe name.
 - `yb_software_version` (String) YBDB version of the universe.
 

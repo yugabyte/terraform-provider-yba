@@ -92,7 +92,7 @@ func dataSourceProviderFilterRead(
 	if codes != nil && len(codes.([]interface{})) != 0 {
 		codeList := utils.StringSlice(codes.([]interface{}))
 		for _, code := range *codeList {
-			r, response, err := c.CloudProvidersApi.GetListOfProviders(
+			r, response, err := c.CloudProvidersAPI.GetListOfProviders(
 				ctx, cUUID).ProviderCode(code).Execute()
 			if err != nil {
 				errMessage := utils.ErrorFromHTTPResponse(response, err, utils.DataSourceEntity,
@@ -102,7 +102,7 @@ func dataSourceProviderFilterRead(
 			providerList = append(providerList, r...)
 		}
 	} else {
-		r, response, err := c.CloudProvidersApi.GetListOfProviders(ctx, cUUID).Execute()
+		r, response, err := c.CloudProvidersAPI.GetListOfProviders(ctx, cUUID).Execute()
 		if err != nil {
 			errMessage := utils.ErrorFromHTTPResponse(response, err, utils.DataSourceEntity,
 				"Provider Filter", "Read")

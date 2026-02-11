@@ -244,201 +244,247 @@ func getClusterByType(clusters []client.Cluster, clusterType string) (client.Clu
 
 func resourceUniverseDiff() schema.CustomizeDiffFunc {
 	return customdiff.All(
-		customdiff.ValidateChange("clusters", func(ctx context.Context, old, new, m interface{}) error {
-			// if not a new universe, prevent adding read replicas
-			newClusterSet := buildClusters(new.([]interface{}))
-			if len(old.([]interface{})) != 0 {
-				oldClusterSet := buildClusters(old.([]interface{}))
-				if len(oldClusterSet) < len(newClusterSet) {
-					return errors.New("Cannot add Read Replica to existing universe")
+		customdiff.ValidateChange(
+			"clusters",
+			func(ctx context.Context, old, new, m interface{}) error {
+				// if not a new universe, prevent adding read replicas
+				newClusterSet := buildClusters(new.([]interface{}))
+				if len(old.([]interface{})) != 0 {
+					oldClusterSet := buildClusters(old.([]interface{}))
+					if len(oldClusterSet) < len(newClusterSet) {
+						return errors.New("Cannot add Read Replica to existing universe")
+					}
 				}
-			}
-			return nil
-		}),
-		customdiff.ValidateChange("clusters", func(ctx context.Context, old, new, m interface{}) error {
-			// if not a new universe, prevent systemD disablement
-			newClusterSet := buildClusters(new.([]interface{}))
-			if len(old.([]interface{})) != 0 {
-				oldClusterSet := buildClusters(old.([]interface{}))
-				oldPrimaryCluster, isPresent := getClusterByType(oldClusterSet, "PRIMARY")
-				if isPresent {
-					newPrimaryCluster, isNewPresent := getClusterByType(newClusterSet, "PRIMARY")
-					if isNewPresent {
-						if oldPrimaryCluster.UserIntent.GetUseSystemd() == true &&
-							newPrimaryCluster.UserIntent.GetUseSystemd() == false {
-							return errors.New("Cannot disable Systemd")
+				return nil
+			},
+		),
+		customdiff.ValidateChange(
+			"clusters",
+			func(ctx context.Context, old, new, m interface{}) error {
+				// if not a new universe, prevent systemD disablement
+				newClusterSet := buildClusters(new.([]interface{}))
+				if len(old.([]interface{})) != 0 {
+					oldClusterSet := buildClusters(old.([]interface{}))
+					oldPrimaryCluster, isPresent := getClusterByType(oldClusterSet, "PRIMARY")
+					if isPresent {
+						newPrimaryCluster, isNewPresent := getClusterByType(
+							newClusterSet,
+							"PRIMARY",
+						)
+						if isNewPresent {
+							if oldPrimaryCluster.UserIntent.GetUseSystemd() == true &&
+								newPrimaryCluster.UserIntent.GetUseSystemd() == false {
+								return errors.New("Cannot disable Systemd")
+							}
 						}
 					}
 				}
-			}
-			return nil
-		}),
-		customdiff.ValidateChange("clusters", func(ctx context.Context, old, new, m interface{}) error {
-			// if not a new universe, prevent decrease in volume size in primary
-			newClusterSet := buildClusters(new.([]interface{}))
-			if len(old.([]interface{})) != 0 {
-				oldClusterSet := buildClusters(old.([]interface{}))
-				oldPrimaryCluster, isPresent := getClusterByType(oldClusterSet, "PRIMARY")
-				if isPresent {
-					newPrimaryCluster, isNewPresent := getClusterByType(newClusterSet, "PRIMARY")
-					if isNewPresent {
-						if oldPrimaryCluster.UserIntent.DeviceInfo.GetVolumeSize() >
-							newPrimaryCluster.UserIntent.DeviceInfo.GetVolumeSize() {
-							return errors.New("Cannot decrease Volume Size of nodes in " +
-								"Primary Cluster")
+				return nil
+			},
+		),
+		customdiff.ValidateChange(
+			"clusters",
+			func(ctx context.Context, old, new, m interface{}) error {
+				// if not a new universe, prevent decrease in volume size in primary
+				newClusterSet := buildClusters(new.([]interface{}))
+				if len(old.([]interface{})) != 0 {
+					oldClusterSet := buildClusters(old.([]interface{}))
+					oldPrimaryCluster, isPresent := getClusterByType(oldClusterSet, "PRIMARY")
+					if isPresent {
+						newPrimaryCluster, isNewPresent := getClusterByType(
+							newClusterSet,
+							"PRIMARY",
+						)
+						if isNewPresent {
+							if oldPrimaryCluster.UserIntent.DeviceInfo.GetVolumeSize() >
+								newPrimaryCluster.UserIntent.DeviceInfo.GetVolumeSize() {
+								return errors.New("Cannot decrease Volume Size of nodes in " +
+									"Primary Cluster")
+							}
 						}
 					}
 				}
-			}
-			return nil
-		}),
-		customdiff.ValidateChange("clusters", func(ctx context.Context, old, new, m interface{}) error {
-			// if not a new universe, prevent change in number of nodes if instance type hasn't
-			// change in Primary
-			newClusterSet := buildClusters(new.([]interface{}))
-			if len(old.([]interface{})) != 0 {
-				oldClusterSet := buildClusters(old.([]interface{}))
-				oldPrimaryCluster, isPresent := getClusterByType(oldClusterSet, "PRIMARY")
-				if isPresent {
-					newPrimaryCluster, isNewPresent := getClusterByType(newClusterSet, "PRIMARY")
-					if isNewPresent {
-						if (oldPrimaryCluster.UserIntent.GetInstanceType() ==
-							newPrimaryCluster.UserIntent.GetInstanceType()) &&
-							(oldPrimaryCluster.UserIntent.DeviceInfo.GetNumVolumes() !=
-								newPrimaryCluster.UserIntent.DeviceInfo.GetNumVolumes()) {
-							return errors.New("Cannot change number of volumes per node " +
-								"without change in instance type in Primary Cluster")
+				return nil
+			},
+		),
+		customdiff.ValidateChange(
+			"clusters",
+			func(ctx context.Context, old, new, m interface{}) error {
+				// if not a new universe, prevent change in number of nodes if instance type hasn't
+				// change in Primary
+				newClusterSet := buildClusters(new.([]interface{}))
+				if len(old.([]interface{})) != 0 {
+					oldClusterSet := buildClusters(old.([]interface{}))
+					oldPrimaryCluster, isPresent := getClusterByType(oldClusterSet, "PRIMARY")
+					if isPresent {
+						newPrimaryCluster, isNewPresent := getClusterByType(
+							newClusterSet,
+							"PRIMARY",
+						)
+						if isNewPresent {
+							if (oldPrimaryCluster.UserIntent.GetInstanceType() ==
+								newPrimaryCluster.UserIntent.GetInstanceType()) &&
+								(oldPrimaryCluster.UserIntent.DeviceInfo.GetNumVolumes() !=
+									newPrimaryCluster.UserIntent.DeviceInfo.GetNumVolumes()) {
+								return errors.New("Cannot change number of volumes per node " +
+									"without change in instance type in Primary Cluster")
+							}
 						}
 					}
 				}
-			}
-			return nil
-		}),
-		customdiff.ValidateChange("clusters", func(ctx context.Context, old, new, m interface{}) error {
-			// if not a new universe, prevent decrease in volume size in read replica
-			newClusterSet := buildClusters(new.([]interface{}))
-			if len(old.([]interface{})) != 0 {
-				oldClusterSet := buildClusters(old.([]interface{}))
-				oldPrimaryCluster, isPresent := getClusterByType(oldClusterSet, "ASYNC")
-				if isPresent {
-					newPrimaryCluster, isNewPresent := getClusterByType(newClusterSet, "ASYNC")
-					if isNewPresent {
-						if oldPrimaryCluster.UserIntent.DeviceInfo.GetVolumeSize() >
-							newPrimaryCluster.UserIntent.DeviceInfo.GetVolumeSize() {
-							return errors.New("Cannot decrease Volume Size of nodes in " +
-								"Read Replica Cluster")
+				return nil
+			},
+		),
+		customdiff.ValidateChange(
+			"clusters",
+			func(ctx context.Context, old, new, m interface{}) error {
+				// if not a new universe, prevent decrease in volume size in read replica
+				newClusterSet := buildClusters(new.([]interface{}))
+				if len(old.([]interface{})) != 0 {
+					oldClusterSet := buildClusters(old.([]interface{}))
+					oldPrimaryCluster, isPresent := getClusterByType(oldClusterSet, "ASYNC")
+					if isPresent {
+						newPrimaryCluster, isNewPresent := getClusterByType(newClusterSet, "ASYNC")
+						if isNewPresent {
+							if oldPrimaryCluster.UserIntent.DeviceInfo.GetVolumeSize() >
+								newPrimaryCluster.UserIntent.DeviceInfo.GetVolumeSize() {
+								return errors.New("Cannot decrease Volume Size of nodes in " +
+									"Read Replica Cluster")
+							}
 						}
 					}
 				}
-			}
-			return nil
-		}),
-		customdiff.ValidateChange("clusters", func(ctx context.Context, old, new, m interface{}) error {
-			// if not a new universe, prevent change in number of nodes if instance type hasn't
-			// change in Read Replica
-			newClusterSet := buildClusters(new.([]interface{}))
-			if len(old.([]interface{})) != 0 {
-				oldClusterSet := buildClusters(old.([]interface{}))
-				oldPrimaryCluster, isPresent := getClusterByType(oldClusterSet, "ASYNC")
-				if isPresent {
-					newPrimaryCluster, isNewPresent := getClusterByType(newClusterSet, "ASYNC")
-					if isNewPresent {
-						if (oldPrimaryCluster.UserIntent.GetInstanceType() ==
-							newPrimaryCluster.UserIntent.GetInstanceType()) &&
-							((oldPrimaryCluster.UserIntent.DeviceInfo.GetNumVolumes() !=
-								newPrimaryCluster.UserIntent.DeviceInfo.GetNumVolumes()) ||
-								(oldPrimaryCluster.UserIntent.DeviceInfo.GetVolumeSize() !=
-									newPrimaryCluster.UserIntent.DeviceInfo.GetVolumeSize())) {
-							return errors.New("Cannot change number of volumes or volume size " +
-								"per node without change in instance type in Read Replica Cluster")
+				return nil
+			},
+		),
+		customdiff.ValidateChange(
+			"clusters",
+			func(ctx context.Context, old, new, m interface{}) error {
+				// if not a new universe, prevent change in number of nodes if instance type hasn't
+				// change in Read Replica
+				newClusterSet := buildClusters(new.([]interface{}))
+				if len(old.([]interface{})) != 0 {
+					oldClusterSet := buildClusters(old.([]interface{}))
+					oldPrimaryCluster, isPresent := getClusterByType(oldClusterSet, "ASYNC")
+					if isPresent {
+						newPrimaryCluster, isNewPresent := getClusterByType(newClusterSet, "ASYNC")
+						if isNewPresent {
+							if (oldPrimaryCluster.UserIntent.GetInstanceType() ==
+								newPrimaryCluster.UserIntent.GetInstanceType()) &&
+								((oldPrimaryCluster.UserIntent.DeviceInfo.GetNumVolumes() !=
+									newPrimaryCluster.UserIntent.DeviceInfo.GetNumVolumes()) ||
+									(oldPrimaryCluster.UserIntent.DeviceInfo.GetVolumeSize() !=
+										newPrimaryCluster.UserIntent.DeviceInfo.GetVolumeSize())) {
+								return errors.New(
+									"Cannot change number of volumes or volume size " +
+										"per node without change in instance type in Read Replica Cluster",
+								)
+							}
 						}
 					}
 				}
-			}
-			return nil
-		}),
-		customdiff.ValidateChange("clusters", func(ctx context.Context, old, new, m interface{}) error {
-			// check if universe name of the clusters are the same
-			newClusterSet := buildClusters(new.([]interface{}))
-			newPrimary, isPresent := getClusterByType(newClusterSet, "PRIMARY")
-			newReadOnly, isRRPresnt := getClusterByType(newClusterSet, "ASYNC")
-			if isPresent && isRRPresnt {
-				if newPrimary.UserIntent.UniverseName == nil {
-					return errors.New("Universe name cannot be empty")
-				}
-				if newReadOnly.UserIntent.UniverseName == nil {
-					return errors.New("Universe name cannot be empty")
-				}
-				if newPrimary.UserIntent.GetUniverseName() !=
-					newReadOnly.UserIntent.GetUniverseName() {
-					return errors.New("Cannot have different universe names for Primary " +
-						"and Read Only clusters")
-				}
-			}
-			return nil
-		}),
-		customdiff.ValidateChange("clusters", func(ctx context.Context, old, new, m interface{}) error {
-			// check if software version of the clusters are the same
-			newClusterSet := buildClusters(new.([]interface{}))
-			newPrimary, isPresent := getClusterByType(newClusterSet, "PRIMARY")
-			newReadOnly, isRRPresnt := getClusterByType(newClusterSet, "ASYNC")
-			if len(old.([]interface{})) != 0 {
+				return nil
+			},
+		),
+		customdiff.ValidateChange(
+			"clusters",
+			func(ctx context.Context, old, new, m interface{}) error {
+				// check if universe name of the clusters are the same
+				newClusterSet := buildClusters(new.([]interface{}))
+				newPrimary, isPresent := getClusterByType(newClusterSet, "PRIMARY")
+				newReadOnly, isRRPresnt := getClusterByType(newClusterSet, "ASYNC")
 				if isPresent && isRRPresnt {
-					if newPrimary.UserIntent.GetYbSoftwareVersion() !=
-						newReadOnly.UserIntent.GetYbSoftwareVersion() {
-						return errors.New("Cannot have different software versions for Primary " +
+					if newPrimary.UserIntent.UniverseName == nil {
+						return errors.New("Universe name cannot be empty")
+					}
+					if newReadOnly.UserIntent.UniverseName == nil {
+						return errors.New("Universe name cannot be empty")
+					}
+					if newPrimary.UserIntent.GetUniverseName() !=
+						newReadOnly.UserIntent.GetUniverseName() {
+						return errors.New("Cannot have different universe names for Primary " +
 							"and Read Only clusters")
 					}
 				}
-			}
-			return nil
-		}),
-		customdiff.ValidateChange("clusters", func(ctx context.Context, old, new, m interface{}) error {
-			// check if systemD setting of the clusters are the same
-			newClusterSet := buildClusters(new.([]interface{}))
-			newPrimary, isPresent := getClusterByType(newClusterSet, "PRIMARY")
-			newReadOnly, isRRPresnt := getClusterByType(newClusterSet, "ASYNC")
-			if isPresent && isRRPresnt {
-				if newPrimary.UserIntent.GetUseSystemd() !=
-					newReadOnly.UserIntent.GetUseSystemd() {
-					return errors.New("Cannot have different systemD settings for Primary " +
-						"and Read Only clusters")
+				return nil
+			},
+		),
+		customdiff.ValidateChange(
+			"clusters",
+			func(ctx context.Context, old, new, m interface{}) error {
+				// check if software version of the clusters are the same
+				newClusterSet := buildClusters(new.([]interface{}))
+				newPrimary, isPresent := getClusterByType(newClusterSet, "PRIMARY")
+				newReadOnly, isRRPresnt := getClusterByType(newClusterSet, "ASYNC")
+				if len(old.([]interface{})) != 0 {
+					if isPresent && isRRPresnt {
+						if newPrimary.UserIntent.GetYbSoftwareVersion() !=
+							newReadOnly.UserIntent.GetYbSoftwareVersion() {
+							return errors.New(
+								"Cannot have different software versions for Primary " +
+									"and Read Only clusters",
+							)
+						}
+					}
 				}
-			}
-			return nil
-		}),
-		customdiff.ValidateChange("clusters", func(ctx context.Context, old, new, m interface{}) error {
-			// check if Gflags setting of the clusters are the same
-			newClusterSet := buildClusters(new.([]interface{}))
-			newPrimary, isPresent := getClusterByType(newClusterSet, "PRIMARY")
-			newReadOnly, isRRPresnt := getClusterByType(newClusterSet, "ASYNC")
-			if isPresent && isRRPresnt {
-				if !reflect.DeepEqual(newPrimary.UserIntent.GetMasterGFlags(),
-					newReadOnly.UserIntent.GetMasterGFlags()) ||
-					!reflect.DeepEqual(newPrimary.UserIntent.GetTserverGFlags(),
-						newReadOnly.UserIntent.GetTserverGFlags()) {
-					return errors.New("Cannot have different Gflags settings for Primary " +
-						"and Read Only clusters")
+				return nil
+			},
+		),
+		customdiff.ValidateChange(
+			"clusters",
+			func(ctx context.Context, old, new, m interface{}) error {
+				// check if systemD setting of the clusters are the same
+				newClusterSet := buildClusters(new.([]interface{}))
+				newPrimary, isPresent := getClusterByType(newClusterSet, "PRIMARY")
+				newReadOnly, isRRPresnt := getClusterByType(newClusterSet, "ASYNC")
+				if isPresent && isRRPresnt {
+					if newPrimary.UserIntent.GetUseSystemd() !=
+						newReadOnly.UserIntent.GetUseSystemd() {
+						return errors.New("Cannot have different systemD settings for Primary " +
+							"and Read Only clusters")
+					}
 				}
-			}
-			return nil
-		}),
-		customdiff.ValidateChange("clusters", func(ctx context.Context, old, new, m interface{}) error {
-			// check if TLS setting of the clusters are the same
-			newClusterSet := buildClusters(new.([]interface{}))
-			newPrimary, isPresent := getClusterByType(newClusterSet, "PRIMARY")
-			newReadOnly, isRRPresnt := getClusterByType(newClusterSet, "ASYNC")
-			if isPresent && isRRPresnt {
-				if newPrimary.UserIntent.GetEnableClientToNodeEncrypt() !=
-					newReadOnly.UserIntent.GetEnableClientToNodeEncrypt() ||
-					newPrimary.UserIntent.GetEnableNodeToNodeEncrypt() !=
-						newReadOnly.UserIntent.GetEnableNodeToNodeEncrypt() {
-					return errors.New("Cannot have different TLS settings for Primary " +
-						"and Read Only clusters")
+				return nil
+			},
+		),
+		customdiff.ValidateChange(
+			"clusters",
+			func(ctx context.Context, old, new, m interface{}) error {
+				// check if Gflags setting of the clusters are the same
+				newClusterSet := buildClusters(new.([]interface{}))
+				newPrimary, isPresent := getClusterByType(newClusterSet, "PRIMARY")
+				newReadOnly, isRRPresnt := getClusterByType(newClusterSet, "ASYNC")
+				if isPresent && isRRPresnt {
+					if !reflect.DeepEqual(newPrimary.UserIntent.GetMasterGFlags(),
+						newReadOnly.UserIntent.GetMasterGFlags()) ||
+						!reflect.DeepEqual(newPrimary.UserIntent.GetTserverGFlags(),
+							newReadOnly.UserIntent.GetTserverGFlags()) {
+						return errors.New("Cannot have different Gflags settings for Primary " +
+							"and Read Only clusters")
+					}
 				}
-			}
-			return nil
-		}),
+				return nil
+			},
+		),
+		customdiff.ValidateChange(
+			"clusters",
+			func(ctx context.Context, old, new, m interface{}) error {
+				// check if TLS setting of the clusters are the same
+				newClusterSet := buildClusters(new.([]interface{}))
+				newPrimary, isPresent := getClusterByType(newClusterSet, "PRIMARY")
+				newReadOnly, isRRPresnt := getClusterByType(newClusterSet, "ASYNC")
+				if isPresent && isRRPresnt {
+					if newPrimary.UserIntent.GetEnableClientToNodeEncrypt() !=
+						newReadOnly.UserIntent.GetEnableClientToNodeEncrypt() ||
+						newPrimary.UserIntent.GetEnableNodeToNodeEncrypt() !=
+							newReadOnly.UserIntent.GetEnableNodeToNodeEncrypt() {
+						return errors.New("Cannot have different TLS settings for Primary " +
+							"and Read Only clusters")
+					}
+				}
+				return nil
+			},
+		),
 		customdiff.ValidateValue("clusters", func(ctx context.Context, value,
 			meta interface{}) error {
 			// block adding instance tags to on prem nodes
@@ -514,7 +560,7 @@ func resourceUniverseCreate(
 	}
 
 	req := buildUniverse(d)
-	r, response, err := c.UniverseClusterMutationsApi.CreateAllClusters(ctx, cUUID).
+	r, response, err := c.UniverseClusterMutationsAPI.CreateAllClusters(ctx, cUUID).
 		UniverseConfigureTaskParams(req).Execute()
 	if err != nil {
 		errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
@@ -540,7 +586,7 @@ func resourceUniverseRead(
 	c := meta.(*api.APIClient).YugawareClient
 	cUUID := meta.(*api.APIClient).CustomerID
 
-	r, response, err := c.UniverseManagementApi.GetUniverse(ctx, cUUID, d.Id()).Execute()
+	r, response, err := c.UniverseManagementAPI.GetUniverse(ctx, cUUID, d.Id()).Execute()
 	if err != nil {
 		errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
 			"Universe", "Read")
@@ -637,7 +683,8 @@ func resourceUniverseUpdate(
 
 	if d.HasChange("clusters") {
 		clusters := d.Get("clusters").([]interface{})
-		updateUni, response, err := c.UniverseManagementApi.GetUniverse(ctx, cUUID, d.Id()).Execute()
+		updateUni, response, err := c.UniverseManagementAPI.GetUniverse(ctx, cUUID, d.Id()).
+			Execute()
 		if err != nil {
 			errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
 				"Universe", "Update - Fetch universe")
@@ -658,7 +705,7 @@ func resourceUniverseUpdate(
 					}
 				}
 
-				r, response, err := c.UniverseClusterMutationsApi.DeleteReadonlyCluster(ctx, cUUID,
+				r, response, err := c.UniverseClusterMutationsAPI.DeleteReadonlyCluster(ctx, cUUID,
 					d.Id(), clusterUUID).IsForceDelete(
 					d.Get("delete_options.0.force_delete").(bool)).Execute()
 				if err != nil {
@@ -691,21 +738,33 @@ func resourceUniverseUpdate(
 						Clusters:          updateUni.UniverseDetails.Clusters,
 						UpgradeOption:     "Rolling",
 					}
-					r, response, err := c.UniverseUpgradesManagementApi.UpgradeSoftware(
+					r, response, err := c.UniverseUpgradesManagementAPI.UpgradeSoftware(
 						ctx, cUUID, d.Id()).SoftwareUpgradeParams(req).Execute()
 					if err != nil {
-						errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
-							"Universe", "Update - Software")
+						errMessage := utils.ErrorFromHTTPResponse(
+							response,
+							err,
+							utils.ResourceEntity,
+							"Universe",
+							"Update - Software",
+						)
 						return diag.FromErr(errMessage)
 					}
 					tflog.Info(ctx, "UpgradeSoftware task is executing")
-					err = utils.WaitForTask(ctx, *r.TaskUUID, cUUID, c, d.Timeout(schema.TimeoutUpdate))
+					err = utils.WaitForTask(
+						ctx,
+						*r.TaskUUID,
+						cUUID,
+						c,
+						d.Timeout(schema.TimeoutUpdate),
+					)
 					if err != nil {
 						return diag.FromErr(err)
 					}
 				}
 
-				updateUni, response, err = c.UniverseManagementApi.GetUniverse(ctx, cUUID, d.Id()).Execute()
+				updateUni, response, err = c.UniverseManagementAPI.GetUniverse(ctx, cUUID, d.Id()).
+					Execute()
 				if err != nil {
 					errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
 						"Universe", "Update - Fetch universe")
@@ -725,11 +784,16 @@ func resourceUniverseUpdate(
 						Clusters:      updateUni.UniverseDetails.Clusters,
 						UpgradeOption: "Rolling",
 					}
-					r, response, err := c.UniverseUpgradesManagementApi.UpgradeGFlags(
+					r, response, err := c.UniverseUpgradesManagementAPI.UpgradeGFlags(
 						ctx, cUUID, d.Id()).GflagsUpgradeParams(req).Execute()
 					if err != nil {
-						errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
-							"Universe", "Update - GFlags")
+						errMessage := utils.ErrorFromHTTPResponse(
+							response,
+							err,
+							utils.ResourceEntity,
+							"Universe",
+							"Update - GFlags",
+						)
 						return diag.FromErr(errMessage)
 					}
 					tflog.Info(ctx, "UpgradeGFlags task is executing")
@@ -740,7 +804,7 @@ func resourceUniverseUpdate(
 					}
 				}
 
-				updateUni, response, err = c.UniverseManagementApi.GetUniverse(ctx, cUUID,
+				updateUni, response, err = c.UniverseManagementAPI.GetUniverse(ctx, cUUID,
 					d.Id()).Execute()
 				if err != nil {
 					errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
@@ -769,21 +833,33 @@ func resourceUniverseUpdate(
 						Clusters:                  updateUni.UniverseDetails.Clusters,
 						UpgradeOption:             "Non-Rolling",
 					}
-					r, response, err := c.UniverseUpgradesManagementApi.UpgradeTls(
+					r, response, err := c.UniverseUpgradesManagementAPI.UpgradeTls(
 						ctx, cUUID, d.Id()).TlsToggleParams(req).Execute()
 					if err != nil {
-						errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
-							"Universe", "Update - TLS Toggle")
+						errMessage := utils.ErrorFromHTTPResponse(
+							response,
+							err,
+							utils.ResourceEntity,
+							"Universe",
+							"Update - TLS Toggle",
+						)
 						return diag.FromErr(errMessage)
 					}
 					tflog.Info(ctx, "UpgradeTLS task is executing")
-					err = utils.WaitForTask(ctx, *r.TaskUUID, cUUID, c, d.Timeout(schema.TimeoutUpdate))
+					err = utils.WaitForTask(
+						ctx,
+						*r.TaskUUID,
+						cUUID,
+						c,
+						d.Timeout(schema.TimeoutUpdate),
+					)
 					if err != nil {
 						return diag.FromErr(err)
 					}
 				}
 
-				updateUni, response, err = c.UniverseManagementApi.GetUniverse(ctx, cUUID, d.Id()).Execute()
+				updateUni, response, err = c.UniverseManagementAPI.GetUniverse(ctx, cUUID, d.Id()).
+					Execute()
 				if err != nil {
 					errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
 						"Universe", "Update - Fetch universe")
@@ -799,15 +875,26 @@ func resourceUniverseUpdate(
 						Clusters:      updateUni.UniverseDetails.Clusters,
 						UpgradeOption: "Rolling",
 					}
-					r, response, err := c.UniverseUpgradesManagementApi.UpgradeSystemd(
+					r, response, err := c.UniverseUpgradesManagementAPI.UpgradeSystemd(
 						ctx, cUUID, d.Id()).SystemdUpgradeParams(req).Execute()
 					if err != nil {
-						errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
-							"Universe", "Update - Systemd")
+						errMessage := utils.ErrorFromHTTPResponse(
+							response,
+							err,
+							utils.ResourceEntity,
+							"Universe",
+							"Update - Systemd",
+						)
 						return diag.FromErr(errMessage)
 					}
 					tflog.Info(ctx, "UpgradeSystemd task is executing")
-					err = utils.WaitForTask(ctx, *r.TaskUUID, cUUID, c, d.Timeout(schema.TimeoutUpdate))
+					err = utils.WaitForTask(
+						ctx,
+						*r.TaskUUID,
+						cUUID,
+						c,
+						d.Timeout(schema.TimeoutUpdate),
+					)
 					if err != nil {
 						return diag.FromErr(err)
 					}
@@ -816,7 +903,8 @@ func resourceUniverseUpdate(
 					tflog.Error(ctx, "Cannot disable Systemd")
 				}
 
-				updateUni, response, err = c.UniverseManagementApi.GetUniverse(ctx, cUUID, d.Id()).Execute()
+				updateUni, response, err = c.UniverseManagementAPI.GetUniverse(ctx, cUUID, d.Id()).
+					Execute()
 				if err != nil {
 					errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
 						"Universe", "Update - Fetch universe")
@@ -832,25 +920,36 @@ func resourceUniverseUpdate(
 						newUserIntent.DeviceInfo.GetVolumeSize()) {
 					if oldUserIntent.DeviceInfo.GetVolumeSize() <
 						newUserIntent.DeviceInfo.GetVolumeSize() {
-						//Only volume size should be changed to do smart resize, other changes
-						//handled in UpgradeCluster
-						updateUni.UniverseDetails.Clusters[i].UserIntent.DeviceInfo.VolumeSize = (
-							newUserIntent.DeviceInfo.VolumeSize)
+						// Only volume size should be changed to do smart resize,
+						// other changes handled in UpgradeCluster
+						newVolSize := newUserIntent.DeviceInfo.VolumeSize
+						updateUni.UniverseDetails.Clusters[i].UserIntent.DeviceInfo.VolumeSize = newVolSize
 						req := client.ResizeNodeParams{
 							UpgradeOption: "Rolling",
 							Clusters:      updateUni.UniverseDetails.Clusters,
 							NodeDetailsSet: buildNodeDetailsRespArrayToNodeDetailsArray(
 								updateUni.UniverseDetails.NodeDetailsSet),
 						}
-						r, response, err := c.UniverseUpgradesManagementApi.ResizeNode(
+						r, response, err := c.UniverseUpgradesManagementAPI.ResizeNode(
 							ctx, cUUID, d.Id()).ResizeNodeParams(req).Execute()
 						if err != nil {
-							errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
-								"Universe", "Update - Resize Nodes")
+							errMessage := utils.ErrorFromHTTPResponse(
+								response,
+								err,
+								utils.ResourceEntity,
+								"Universe",
+								"Update - Resize Nodes",
+							)
 							return diag.FromErr(errMessage)
 						}
 						tflog.Info(ctx, "ResizeNode task is executing")
-						err = utils.WaitForTask(ctx, *r.TaskUUID, cUUID, c, d.Timeout(schema.TimeoutUpdate))
+						err = utils.WaitForTask(
+							ctx,
+							*r.TaskUUID,
+							cUUID,
+							c,
+							d.Timeout(schema.TimeoutUpdate),
+						)
 						if err != nil {
 							return diag.FromErr(err)
 						}
@@ -859,7 +958,8 @@ func resourceUniverseUpdate(
 					}
 				}
 
-				updateUni, response, err = c.UniverseManagementApi.GetUniverse(ctx, cUUID, d.Id()).Execute()
+				updateUni, response, err = c.UniverseManagementAPI.GetUniverse(ctx, cUUID, d.Id()).
+					Execute()
 				if err != nil {
 					errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
 						"Universe", "Update - Fetch universe")
@@ -869,8 +969,11 @@ func resourceUniverseUpdate(
 
 				// Num of nodes, Instance Type, Num of Volumes, Volume Size, User Tags changes
 				var editAllowed, editZoneAllowed bool
-				editAllowed, updateUni.UniverseDetails.Clusters[i].UserIntent = (
-					editUniverseParameters(ctx, oldUserIntent, newUserIntent))
+				editAllowed, updateUni.UniverseDetails.Clusters[i].UserIntent = editUniverseParameters(
+					ctx,
+					oldUserIntent,
+					newUserIntent,
+				)
 				if editAllowed || editZoneAllowed {
 					req := client.UniverseConfigureTaskParams{
 						UniverseUUID: utils.GetStringPointer(d.Id()),
@@ -879,15 +982,26 @@ func resourceUniverseUpdate(
 							updateUni.UniverseDetails.NodeDetailsSet),
 						CommunicationPorts: updateUni.UniverseDetails.CommunicationPorts,
 					}
-					r, response, err := c.UniverseClusterMutationsApi.UpdatePrimaryCluster(
+					r, response, err := c.UniverseClusterMutationsAPI.UpdatePrimaryCluster(
 						ctx, cUUID, d.Id()).UniverseConfigureTaskParams(req).Execute()
 					if err != nil {
-						errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity, "Universe",
-							"Update - Primary Cluster")
+						errMessage := utils.ErrorFromHTTPResponse(
+							response,
+							err,
+							utils.ResourceEntity,
+							"Universe",
+							"Update - Primary Cluster",
+						)
 						return diag.FromErr(errMessage)
 					}
 					tflog.Info(ctx, "UpdatePrimaryCluster task is executing")
-					err = utils.WaitForTask(ctx, *r.TaskUUID, cUUID, c, d.Timeout(schema.TimeoutUpdate))
+					err = utils.WaitForTask(
+						ctx,
+						*r.TaskUUID,
+						cUUID,
+						c,
+						d.Timeout(schema.TimeoutUpdate),
+					)
 					if err != nil {
 						return diag.FromErr(err)
 					}
@@ -896,7 +1010,7 @@ func resourceUniverseUpdate(
 			} else {
 
 				//Ignore Software, GFlags, Systemd, TLS Upgrade changes to Read-Only Cluster
-				updateUni, response, err := c.UniverseManagementApi.GetUniverse(ctx, cUUID, d.Id()).Execute()
+				updateUni, response, err := c.UniverseManagementAPI.GetUniverse(ctx, cUUID, d.Id()).Execute()
 				if err != nil {
 					errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
 						"Universe", "Update - Fetch universe")
@@ -925,8 +1039,8 @@ func resourceUniverseUpdate(
 
 				// Num of nodes, Instance Type, Num of Volumes, Volume Size User Tags changes
 				var editAllowed bool
-				editAllowed, updateUni.UniverseDetails.Clusters[i].UserIntent = (
-					editUniverseParameters(ctx, oldUserIntent, newUserIntent))
+				editAllowed, updateUni.UniverseDetails.Clusters[i].UserIntent = editUniverseParameters(
+					ctx, oldUserIntent, newUserIntent)
 				if editAllowed {
 					req := client.UniverseConfigureTaskParams{
 						UniverseUUID: utils.GetStringPointer(d.Id()),
@@ -935,7 +1049,7 @@ func resourceUniverseUpdate(
 							updateUni.UniverseDetails.NodeDetailsSet),
 						CommunicationPorts: updateUni.UniverseDetails.CommunicationPorts,
 					}
-					r, response, err := c.UniverseClusterMutationsApi.UpdateReadOnlyCluster(
+					r, response, err := c.UniverseClusterMutationsAPI.UpdateReadOnlyCluster(
 						ctx, cUUID, d.Id()).UniverseConfigureTaskParams(req).Execute()
 					if err != nil {
 						errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
@@ -965,7 +1079,7 @@ func resourceUniverseDelete(
 	c := meta.(*api.APIClient).YugawareClient
 	cUUID := meta.(*api.APIClient).CustomerID
 
-	r, response, err := c.UniverseManagementApi.DeleteUniverse(ctx, cUUID, d.Id()).
+	r, response, err := c.UniverseManagementAPI.DeleteUniverse(ctx, cUUID, d.Id()).
 		IsForceDelete(d.Get("delete_options.0.force_delete").(bool)).
 		IsDeleteBackups(d.Get("delete_options.0.delete_backups").(bool)).
 		IsDeleteAssociatedCerts(d.Get("delete_options.0.delete_certs").(bool)).

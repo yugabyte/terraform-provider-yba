@@ -71,14 +71,14 @@ func dataSourceReleaseVersionRead(
 	c := meta.(*api.APIClient).YugawareClient
 	cUUID := meta.(*api.APIClient).CustomerID
 
-	_, response, err := c.ReleaseManagementApi.Refresh(ctx, cUUID).Execute()
+	_, response, err := c.ReleaseManagementAPI.Refresh(ctx, cUUID).Execute()
 	if err != nil {
 		errMessage := utils.ErrorFromHTTPResponse(response, err, utils.DataSourceEntity,
 			"Release Version", "Read - Refresh")
 		return diag.FromErr(errMessage)
 	}
 
-	r, response, err := c.ReleaseManagementApi.GetListOfReleases(ctx, cUUID).IncludeMetadata(
+	r, response, err := c.ReleaseManagementAPI.GetListOfReleases(ctx, cUUID).IncludeMetadata(
 		true).Execute()
 	if err != nil {
 		errMessage := utils.ErrorFromHTTPResponse(response, err, utils.DataSourceEntity,
@@ -89,11 +89,7 @@ func dataSourceReleaseVersionRead(
 	versionsStable := make([]string, 0)
 	versionsPreview := make([]string, 0)
 	for v := range r {
-		isStable, err := utils.IsVersionStable(v)
-		if err != nil {
-			diag.FromErr(err)
-		}
-		if isStable {
+		if utils.IsVersionStable(v) {
 			versionsStable = append(versionsStable, v)
 		} else {
 			versionsPreview = append(versionsPreview, v)

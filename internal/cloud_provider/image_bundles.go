@@ -141,10 +141,12 @@ func buildImageBundleDetails(details []interface{}) *client.ImageBundleDetails {
 	res := client.ImageBundleDetails{
 		Arch:          utils.GetStringPointer(d["arch"].(string)),
 		GlobalYbImage: utils.GetStringPointer(d["global_yb_image"].(string)),
-		Regions:       buildImageBundleRegionOverrides(d["region_overrides"].(map[string]interface{})),
-		SshUser:       utils.GetStringPointer(d["ssh_user"].(string)),
-		SshPort:       utils.GetInt32Pointer(int32(d["ssh_port"].(int))),
-		UseIMDSv2:     utils.GetBoolPointer(d["use_imds_v2"].(bool)),
+		Regions: buildImageBundleRegionOverrides(
+			d["region_overrides"].(map[string]interface{}),
+		),
+		SshUser:   utils.GetStringPointer(d["ssh_user"].(string)),
+		SshPort:   utils.GetInt32Pointer(int32(d["ssh_port"].(int))),
+		UseIMDSv2: utils.GetBoolPointer(d["use_imds_v2"].(bool)),
 	}
 	return &res
 }

@@ -9,7 +9,7 @@ ARCH := $(if $(GOARCH),$(GOARCH),$(shell go env GOARCH))
 BINARY=terraform-provider-${NAME}
 export GOPRIVATE := github.com/yugabyte
 
-default: fmtTf documents testacc arclint
+default: fmtTf documents arclint
 
 # Lint test
 .PHONY: arclint
@@ -23,10 +23,16 @@ fmtTf:
 .PHONY: documents
 documents:
 	go run github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs generate --rendered-provider-name 'YugabyteDB Anywhere' --provider-name yba
-# Run acceptance tests
-.PHONY: testacc
-testacc:
-	TF_ACC=1 go test ./... -v $(TESTARGS) -timeout 120m
+
+# Run unit tests (no YBA or cloud credentials required)
+.PHONY: test
+test:
+	go test ./internal/provider/... -v -run "^Test[^Acc]" $(TESTARGS)
+
+# Run acceptance tests (requires YBA and cloud credentials - see CONTRIBUTING.md)
+.PHONY: testacc acctest
+testacc acctest:
+	TF_ACC=1 go test ./... -v -run "^TestAcc" $(TESTARGS) -timeout 120m
 
 .PHONY: updateclient
 updateclient:
@@ -36,6 +42,12 @@ updateclient:
 .PHONY: build
 build:
 	go build -ldflags="-X 'main.version=v${VERSION}'" -o ${BINARY}
+
+.PHONY: fmt
+fmt:
+	go clean -modcache
+	GOBIN=$(PWD)/bin go install github.com/segmentio/golines@latest
+	$(PWD)/bin/golines --max-len=100 -w ./internal
 
 #Install the provider localu useful for testing local changes
 .PHONY: install

@@ -144,11 +144,11 @@ func resourceRestoreCreate(
 		StorageConfigUUID:     utils.GetStringPointer(d.Get("storage_config_uuid").(string)),
 		Parallelism:           utils.GetInt32Pointer(int32(d.Get("parallelism").(int))),
 		CustomerUUID:          &cUUID,
-		BackupStorageInfoList: &backupStorageInfoList,
+		BackupStorageInfoList: backupStorageInfoList,
 	}
 
 	// V2 restore
-	r, response, err := c.BackupsApi.RestoreBackupV2(ctx, cUUID).Backup(req).Execute()
+	r, response, err := c.BackupsAPI.RestoreBackupV2(ctx, cUUID).Backup(req).Execute()
 	if err != nil {
 		errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
 			"Restore", "Create")
@@ -209,7 +209,7 @@ func resourceRestoreRead(
 	}
 	req.Filter.DateRangeEnd = &endDate
 
-	r, response, err := c.BackupsApi.ListBackupRestoresV2(ctx, cUUID).PageRestoresRequest(
+	r, response, err := c.BackupsAPI.ListBackupRestoresV2(ctx, cUUID).PageRestoresRequest(
 		req).Execute()
 	if err != nil {
 		errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,

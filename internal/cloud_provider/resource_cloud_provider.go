@@ -34,9 +34,21 @@ import (
 )
 
 // ResourceCloudProvider creates and maintains resource for cloud providers
+//
+// Deprecated: Use yba_aws_provider, yba_gcp_provider, or yba_azure_provider instead.
+// This resource will be removed in a future version.
 func ResourceCloudProvider() *schema.Resource {
 	return &schema.Resource{
-		Description: "Cloud Provider Resource.",
+		Description: "Cloud Provider Resource.\n\n" +
+			"~> **Deprecated:** This resource is deprecated and will be removed in a future version. " +
+			"Please use the cloud-specific provider resources instead:\n" +
+			"  - `yba_aws_provider` for AWS\n" +
+			"  - `yba_gcp_provider` for GCP\n" +
+			"  - `yba_azure_provider` for Azure",
+
+		DeprecationMessage: "yba_cloud_provider is deprecated. " +
+			"Use yba_aws_provider, yba_gcp_provider, or yba_azure_provider instead. " +
+			"This resource will be removed in a future version.",
 
 		CreateContext: resourceCloudProviderCreate,
 		ReadContext:   resourceCloudProviderRead,
@@ -331,7 +343,9 @@ func ResourceCloudProvider() *schema.Resource {
 							Optional:  true,
 							Sensitive: true,
 							DiffSuppressFunc: func(k, old, new string, d *schema.ResourceData) bool {
-								oldInterface, newInterface := d.GetChange("gcp_config_settings.0.credentials")
+								oldInterface, newInterface := d.GetChange(
+									"gcp_config_settings.0.credentials",
+								)
 								oldString := oldInterface.(string)
 								newString := newInterface.(string)
 								newString = strings.ReplaceAll(newString, "\n", "")
@@ -409,7 +423,11 @@ func resourceCloudProviderDiff() schema.CustomizeDiffFunc {
 					}
 					_, isPresentSubscriptionID := os.LookupEnv(utils.AzureSubscriptionIDEnv)
 					if !isPresentSubscriptionID {
-						errorString = fmt.Sprintf("%s%s ", errorString, utils.AzureSubscriptionIDEnv)
+						errorString = fmt.Sprintf(
+							"%s%s ",
+							errorString,
+							utils.AzureSubscriptionIDEnv,
+						)
 					}
 					_, isPresentTenantID := os.LookupEnv(utils.AzureTenantIDEnv)
 					if !isPresentTenantID {
@@ -483,7 +501,11 @@ func resourceCloudProviderDiff() schema.CustomizeDiffFunc {
 						}
 						_, isPresentSecretAccessKey := os.LookupEnv(utils.AWSSecretAccessKeyEnv)
 						if !isPresentSecretAccessKey {
-							errorString = fmt.Sprintf("%s%s ", errorString, utils.AWSSecretAccessKeyEnv)
+							errorString = fmt.Sprintf(
+								"%s%s ",
+								errorString,
+								utils.AWSSecretAccessKeyEnv,
+							)
 						}
 						if !(isPresentAccessKeyID && isPresentSecretAccessKey) {
 							errorString = fmt.Sprintf("%s%s", errorMessage, errorString)
@@ -776,7 +798,8 @@ func resourceCloudProviderCreate(
 			fmt.Errorf(
 				"Image bundle blocks are not supported below YugabyteDB Anywhere version %s, currently on %s",
 				utils.YBAAllowImageBundlesMinVersion,
-				imageBundleVersion))
+				imageBundleVersion,
+			))
 	}
 
 	var imageBundles []client.ImageBundle
@@ -793,7 +816,7 @@ func resourceCloudProviderCreate(
 	}
 	allAccessKeys = append(allAccessKeys, accessKey)
 	req := client.Provider{
-		AllAccessKeys: &allAccessKeys,
+		AllAccessKeys: allAccessKeys,
 		Code:          utils.GetStringPointer(d.Get("code").(string)),
 		DestVpcId:     utils.GetStringPointer(d.Get("dest_vpc_id").(string)),
 		HostVpcId:     utils.GetStringPointer(d.Get("host_vpc_id").(string)),
@@ -809,13 +832,13 @@ func resourceCloudProviderCreate(
 			AirGapInstall:   utils.GetBoolPointer(d.Get("air_gap_install").(bool)),
 			SshPort:         utils.GetInt32Pointer(int32(d.Get("ssh_port").(int))),
 			SshUser:         utils.GetStringPointer(d.Get("ssh_user").(string)),
-			NtpServers:      utils.StringSlice(d.Get("ntp_servers").([]interface{})),
+			NtpServers:      *utils.StringSlice(d.Get("ntp_servers").([]interface{})),
 			ShowSetUpChrony: utils.GetBoolPointer(d.Get("show_set_up_chrony").(bool)),
 			SetUpChrony:     utils.GetBoolPointer(d.Get("set_up_chrony").(bool)),
 			CloudInfo:       &cloudInfo,
 		},
 	}
-	r, response, err := c.CloudProvidersApi.CreateProviders(ctx, cUUID).CreateProviderRequest(
+	r, response, err := c.CloudProvidersAPI.CreateProviders(ctx, cUUID).CreateProviderRequest(
 		req).Execute()
 	if err != nil {
 		errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
@@ -854,7 +877,7 @@ func resourceCloudProviderRead(
 	c := meta.(*api.APIClient).YugawareClient
 	cUUID := meta.(*api.APIClient).CustomerID
 
-	r, response, err := c.CloudProvidersApi.GetListOfProviders(ctx, cUUID).Execute()
+	r, response, err := c.CloudProvidersAPI.GetListOfProviders(ctx, cUUID).Execute()
 	if err != nil {
 		errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
 			"Cloud Provider", "Read")
@@ -1076,7 +1099,7 @@ func resourceCloudProviderDelete(
 	cUUID := meta.(*api.APIClient).CustomerID
 
 	pUUID := d.Id()
-	r, response, err := c.CloudProvidersApi.Delete(ctx, cUUID, pUUID).Execute()
+	r, response, err := c.CloudProvidersAPI.Delete(ctx, cUUID, pUUID).Execute()
 
 	if err != nil {
 		errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,

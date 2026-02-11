@@ -126,7 +126,7 @@ func waitForStart(ctx context.Context, c *client.APIClient, timeout time.Duratio
 
 		Refresh: func() (result interface{}, state string, err error) {
 			tflog.Info(ctx, "Waiting for Application to start")
-			_, _, err = c.SessionManagementApi.AppVersion(ctx).Execute()
+			_, _, err = c.SessionManagementAPI.AppVersion(ctx).Execute()
 			if err != nil {
 				return "Waiting", "Waiting", nil
 			}

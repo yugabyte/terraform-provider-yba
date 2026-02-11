@@ -1,6 +1,8 @@
 module github.com/yugabyte/terraform-provider-yba
 
-go 1.18
+go 1.23
+
+toolchain go1.24.13
 
 require (
 	github.com/aws/aws-sdk-go v1.44.122
@@ -9,7 +11,7 @@ require (
 	github.com/hashicorp/terraform-plugin-docs v0.16.0
 	github.com/hashicorp/terraform-plugin-log v0.7.0
 	github.com/hashicorp/terraform-plugin-sdk/v2 v2.10.1
-	github.com/yugabyte/platform-go-client v0.0.0-20250108174345-2b77835c43dd
+	github.com/yugabyte/platform-go-client v0.0.0-20260107051432-4a58e3685ab4
 	golang.org/x/crypto v0.18.0
 	golang.org/x/exp v0.0.0-20230626212559-97b1e661b5df
 )
@@ -71,7 +73,6 @@ require (
 	github.com/zclconf/go-cty v1.13.2 // indirect
 	golang.org/x/mod v0.11.0 // indirect
 	golang.org/x/net v0.17.0 // indirect
-	golang.org/x/oauth2 v0.7.0 // indirect
 	golang.org/x/sys v0.16.0 // indirect
 	golang.org/x/text v0.14.0 // indirect
 	google.golang.org/appengine v1.6.7 // indirect

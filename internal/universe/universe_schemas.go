@@ -221,7 +221,7 @@ func userIntentSchema() *schema.Resource {
 			"replication_factor": {
 				Type:        schema.TypeInt,
 				Required:    true,
-				Description: "Replicated factor for this universe.",
+				Description: "Replication factor for this universe.",
 			},
 			"instance_type": {
 				Type:        schema.TypeString,

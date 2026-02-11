@@ -144,14 +144,17 @@ func WaitForTask(ctx context.Context, tUUID string, cUUID string, c *client.APIC
 		Timeout: timeout,
 
 		Refresh: func() (result interface{}, state string, err error) {
-			r, response, err := c.CustomerTasksApi.TaskStatus(ctx, cUUID, tUUID).Execute()
+			r, response, err := c.CustomerTasksAPI.TaskStatus(ctx, cUUID, tUUID).Execute()
 			if err != nil {
 				errMessage := ErrorFromHTTPResponse(response, err, "Task", "WaitForTask",
 					"Get Task Status")
 				return nil, "", errMessage
 			}
-			tflog.Info(ctx, fmt.Sprintf("Task \"%s\" completion percentage: %.0f%%", r["title"].(string),
-				r["percent"].(float64)))
+			tflog.Info(
+				ctx,
+				fmt.Sprintf("Task \"%s\" completion percentage: %.0f%%", r["title"].(string),
+					r["percent"].(float64)),
+			)
 
 			subtasksDetailsList := r["details"].(map[string]interface{})["taskDetails"].([]interface{})
 			var subtasksStatus string
@@ -175,7 +178,7 @@ func WaitForTask(ctx context.Context, tUUID string, cUUID string, c *client.APIC
 		}
 		var subtasksFailure string
 		if allowed {
-			r, response, errR := c.CustomerTasksApi.ListFailedSubtasks(ctx, cUUID, tUUID).Execute()
+			r, response, errR := c.CustomerTasksAPI.ListFailedSubtasks(ctx, cUUID, tUUID).Execute()
 			if errR != nil {
 				errMessage := ErrorFromHTTPResponse(response, errR, "Task", "ListFailedSubtasks",
 					"Get Failed Tasks")
@@ -207,26 +210,27 @@ type YBAMinimumVersion struct {
 }
 
 // CheckValidYBAVersion allows operation if version is higher than listed versions
+// Matches yba-cli implementation in internal/client/client.go
 func CheckValidYBAVersion(ctx context.Context, c *client.APIClient, versions YBAMinimumVersion) (
 	bool, string, error) {
 
-	r, response, err := c.SessionManagementApi.AppVersion(ctx).Execute()
+	r, response, err := c.SessionManagementAPI.AppVersion(ctx).Execute()
 	if err != nil {
 		errMessage := ErrorFromHTTPResponse(response, err, "Validation",
 			"YBA Version", "Get App Version")
 		return false, "", errMessage
 	}
 	currentVersion := r["version"]
+
+	// Check if current version is stable or preview
+	// If stable, check with stable release, else with preview release
 	var v string
-	isStable, err := IsVersionStable(currentVersion)
-	if err != nil {
-		return false, currentVersion, err
-	}
-	if isStable {
+	if IsVersionStable(currentVersion) {
 		v = versions.Stable
 	} else {
 		v = versions.Preview
 	}
+
 	check, err := CompareYbVersions(currentVersion, v)
 	if err != nil {
 		return false, "", err
@@ -244,12 +248,8 @@ func CheckValidYBAVersion(ctx context.Context, c *client.APIClient, versions YBA
 // resolved and need to be blocked on YugabyteDB Anywhere Terraform
 // provider
 func IsPreviewVersionAllowed(currentVersion, restrictedVersion string) (bool, error) {
-	isStable, err := IsVersionStable(currentVersion)
-	if err != nil {
-		return true, err
-	}
 	// Check only with preview builds, stable current versions return true
-	if isStable {
+	if IsVersionStable(currentVersion) {
 		return true, nil
 	}
 	compare, errCompare := CompareYbVersions(restrictedVersion, currentVersion)
@@ -263,16 +263,19 @@ func IsPreviewVersionAllowed(currentVersion, restrictedVersion string) (bool, er
 }
 
 // IsVersionStable checks if a given version string is on stable track or not.
-// Eg: 2024.1.0.0-b1/2.20.0.0-b1 for
-// stable and 2.23.0.0-b1 for preview.
-func IsVersionStable(version string) (bool, error) {
+// Eg: 2024.1.0.0-b1/2.20.0.0-b1 for stable and 2.23.0.0-b1 for preview.
+// Matches yba-cli implementation in cmd/util/util.go
+func IsVersionStable(version string) bool {
 	v := strings.Split(version, ".")
+	if len(v) < 2 {
+		return false
+	}
 	v1, err := strconv.Atoi(v[1])
 	if err != nil {
-		err = fmt.Errorf("Unable to parse YB version strings")
-		return false, err
+		return false
 	}
-	return (v1%2 == 0 || len(v[0]) == 4), nil
+	// Stable versions: even minor version OR 4-digit year prefix (2024.x.x.x)
+	return v1%2 == 0 || len(v[0]) == 4
 }
 
 // CompareYbVersions returns -1 if version1 < version2, 0 if version1 = version2,
@@ -487,14 +490,16 @@ func GetUniversesForProvider(ctx context.Context, c *client.APIClient, cUUID, pU
 	universeList := make([]client.UniverseResp, 0)
 	var err error
 	if universeName != "" {
-		r, response, err = c.UniverseManagementApi.ListUniverses(ctx, cUUID).Name(universeName).Execute()
+		r, response, err = c.UniverseManagementAPI.ListUniverses(ctx, cUUID).
+			Name(universeName).
+			Execute()
 		if err != nil {
 			errMessage := ErrorFromHTTPResponse(response, err, ResourceEntity,
 				"Universe", "Get List of Universes")
 			return nil, false, errMessage
 		}
 	} else {
-		r, response, err = c.UniverseManagementApi.ListUniverses(ctx, cUUID).Execute()
+		r, response, err = c.UniverseManagementAPI.ListUniverses(ctx, cUUID).Execute()
 		if err != nil {
 			errMessage := ErrorFromHTTPResponse(response, err, ResourceEntity,
 				"Universe", "Get List of Universes")
@@ -544,4 +549,31 @@ func ObfuscateString(s string, n int) string {
 	substring := s[n : len(s)-n]
 	replaced := strings.Replace(s, substring, strings.Repeat("*", len(substring)), 1)
 	return replaced
+}
+
+// CheckMinimumYBAVersion validates that the YBA version meets the minimum requirement
+// for the Terraform provider. Returns an error if the version is below the minimum.
+// Matches yba-cli's IsCLISupported pattern in internal/client/client.go
+func CheckMinimumYBAVersion(ctx context.Context, c *client.APIClient) error {
+	allowedVersions := YBAMinimumVersion{
+		Stable:  YBATerraformProviderMinStableVersion,
+		Preview: YBATerraformProviderMinPreviewVersion,
+	}
+
+	allowed, version, err := CheckValidYBAVersion(ctx, c, allowedVersions)
+	if err != nil {
+		return err
+	}
+
+	if !allowed {
+		return fmt.Errorf(
+			"YugabyteDB Anywhere Terraform provider is not supported for YugabyteDB Anywhere "+
+				"Host version %s. Please use a version greater than or equal to "+
+				"Stable: %s, Preview: %s",
+			version,
+			allowedVersions.Stable,
+			allowedVersions.Preview)
+	}
+
+	return nil
 }

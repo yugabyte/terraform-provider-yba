@@ -107,7 +107,7 @@ func testAccCheckDestroyCloudProvider(s *terraform.State) error {
 		// Function allows time to complete the operation before checking list of available providers
 		time.Sleep(60 * time.Second)
 		cUUID := acctest.APIClient.CustomerID
-		res, response, err := conn.CloudProvidersApi.GetListOfProviders(context.Background(),
+		res, response, err := conn.CloudProvidersAPI.GetListOfProviders(context.Background(),
 			cUUID).Execute()
 		if err != nil {
 			errMessage := utils.ErrorFromHTTPResponse(response, err, utils.TestEntity,
@@ -138,7 +138,7 @@ func testAccCheckCloudProviderExists(
 
 		conn := acctest.APIClient.YugawareClient
 		cUUID := acctest.APIClient.CustomerID
-		res, response, err := conn.CloudProvidersApi.GetListOfProviders(context.Background(),
+		res, response, err := conn.CloudProvidersAPI.GetListOfProviders(context.Background(),
 			cUUID).Execute()
 		if err != nil {
 			errMessage := utils.ErrorFromHTTPResponse(response, err, utils.TestEntity,
