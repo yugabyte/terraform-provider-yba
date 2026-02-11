@@ -26,39 +26,61 @@ import (
 )
 
 const (
-	// env variables/other constants for yugabyte provider
-	testHost       = "YB_HOST"
-	testAPIKey     = "YB_API_KEY"
 	ybProviderName = "yba"
 
-	// env variables for gcp provider
-	testGCPCredentials = "GOOGLE_APPLICATION_CREDENTIALS"
-	testGCPProject     = "GOOGLE_PROJECT"
-	testGCPRegion      = "GOOGLE_REGION"
-	testGCPZone        = "GOOGLE_ZONE"
+	// TF_VAR_* env variables for GCP - used by Terraform to populate variables
+	testGCPCredentials = "TF_VAR_GCP_CREDENTIALS"
+	testGCPProject     = "TF_VAR_GCP_PROJECT_ID"
+	testGCPVPCNetwork  = "TF_VAR_GCP_VPC_NETWORK"
 
-	// env variables for aws provider
-	testAWSAccessKey       = "AWS_ACCESS_KEY_ID"
-	testAWSSecretAccessKey = "AWS_SECRET_ACCESS_KEY"
+	// TF_VAR_* env variables for AWS - used by Terraform to populate variables
+	testAWSAccessKey       = "TF_VAR_AWS_ACCESS_KEY_ID"
+	testAWSSecretAccessKey = "TF_VAR_AWS_SECRET_ACCESS_KEY"
+	testAWSSGID            = "TF_VAR_AWS_SG_ID"
+	testAWSVPCID           = "TF_VAR_AWS_VPC_ID"
+	testAWSZoneSubnetID    = "TF_VAR_AWS_ZONE_SUBNET_ID"
+	testAWSZoneSubnetID2   = "TF_VAR_AWS_ZONE_SUBNET_ID_2"
+	testAWSAMIID           = "TF_VAR_AWS_AMI_ID"
 
-	// env variables for azure provider
-	testAzureSubscriptionID = "AZURE_SUBSCRIPTION_ID"
-	testAzureResourceGroup  = "AZURE_RG"
-	testAzureTenantID       = "AZURE_TENANT_ID"
-	testAzureClientID       = "AZURE_CLIENT_ID"
-	testAzureClientSecret   = "AZURE_CLIENT_SECRET"
+	// TF_VAR_* env variables for Azure - used by Terraform to populate variables
+	testAzureSubscriptionID = "TF_VAR_AZURE_SUBSCRIPTION_ID"
+	testAzureResourceGroup  = "TF_VAR_AZURE_RG"
+	testAzureTenantID       = "TF_VAR_AZURE_TENANT_ID"
+	testAzureClientID       = "TF_VAR_AZURE_CLIENT_ID"
+	testAzureClientSecret   = "TF_VAR_AZURE_CLIENT_SECRET"
+	testAzureVnetID         = "TF_VAR_AZURE_VNET_ID"
+	testAzureSubnetID       = "TF_VAR_AZURE_SUBNET_ID"
 )
 
 var (
-
 	// ProviderFactories maps schema.Provider to errors generated
 	ProviderFactories map[string]func() (*schema.Provider, error)
 	// APIClient variable
 	APIClient *api.APIClient
 )
 
+// getEnvMulti returns the first non-empty value from the given env var names
+func getEnvMulti(names ...string) string {
+	for _, name := range names {
+		if v := os.Getenv(name); v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+// TestHost returns YBA_HOST or YB_HOST
+func TestHost() string {
+	return getEnvMulti("YBA_HOST", "YB_HOST")
+}
+
+// TestAPIKey returns YBA_API_KEY or YB_API_KEY
+func TestAPIKey() string {
+	return getEnvMulti("YBA_API_KEY", "YB_API_KEY")
+}
+
 func init() {
-	c, err := api.NewAPIClient(true, os.Getenv(testHost), os.Getenv(testAPIKey))
+	c, err := api.NewAPIClient(true, TestHost(), TestAPIKey())
 	if err != nil {
 		panic(err)
 	}
@@ -68,103 +90,74 @@ func init() {
 	}
 }
 
-// TestAPIKey getter
-func TestAPIKey() string {
-	return os.Getenv(testAPIKey)
-}
-
-// TestGCPCredentials getter
-func TestGCPCredentials() string {
-	return os.Getenv(testGCPCredentials)
-}
-
-// TestAWSAccessKey getter
-func TestAWSAccessKey() string {
-	return os.Getenv(testAWSAccessKey)
-}
-
-// TestAWSSecretAccessKey getter
-func TestAWSSecretAccessKey() string {
-	return os.Getenv(testAWSSecretAccessKey)
-}
-
-// TestAzureClientID getter
-func TestAzureClientID() string {
-	return os.Getenv(testAzureClientID)
-}
-
-// TestAzureSubscriptionID getter
-func TestAzureSubscriptionID() string {
-	return os.Getenv(testAzureSubscriptionID)
-}
-
-// TestAzureResourceGroup getter
-func TestAzureResourceGroup() string {
-	return os.Getenv(testAzureResourceGroup)
-}
-
-// TestAzureTenantID getter
-func TestAzureTenantID() string {
-	return os.Getenv(testAzureTenantID)
-}
-
-// TestAzureClientSecret getter
-func TestAzureClientSecret() string {
-	return os.Getenv(testAzureClientSecret)
-}
-
-// TestAccPreCheckGCP Preflight checks for acceptance tests
+// TestAccPreCheckGCP Preflight checks for GCP acceptance tests
 func TestAccPreCheckGCP(t *testing.T) {
-	if v := os.Getenv(testGCPCredentials); v == "" {
-		t.Fatal(testGCPCredentials + " must be set for acceptance tests")
+	requiredVars := []string{
+		testGCPCredentials,
+		testGCPProject,
+		testGCPVPCNetwork,
 	}
-	if v := os.Getenv(testGCPProject); v == "" {
-		t.Fatal(testGCPProject + " must be set for acceptance tests")
-	}
-	if v := os.Getenv(testGCPRegion); v == "" {
-		t.Fatal(testGCPRegion + " must be set for acceptance tests")
-	}
-	if v := os.Getenv(testGCPZone); v == "" {
-		t.Fatal(testGCPZone + " must be set for acceptance tests")
+	for _, v := range requiredVars {
+		if os.Getenv(v) == "" {
+			t.Fatalf("%s must be set for GCP acceptance tests", v)
+		}
 	}
 }
 
-// TestAccPreCheckAWS Preflight checks for acceptance tests
+// TestAccPreCheckAWS Preflight checks for AWS acceptance tests
 func TestAccPreCheckAWS(t *testing.T) {
-	if v := os.Getenv(testAWSAccessKey); v == "" {
-		t.Fatal(testAWSAccessKey + " must be set for acceptance tests")
+	requiredVars := []string{
+		testAWSAccessKey,
+		testAWSSecretAccessKey,
+		testAWSSGID,
+		testAWSVPCID,
+		testAWSZoneSubnetID,
 	}
-	if v := os.Getenv(testAWSSecretAccessKey); v == "" {
-		t.Fatal(testAWSSecretAccessKey + " must be set for acceptance tests")
+	for _, v := range requiredVars {
+		if os.Getenv(v) == "" {
+			t.Fatalf("%s must be set for AWS acceptance tests", v)
+		}
 	}
 }
 
-// TestAccPreCheckAzure Preflight checks for acceptance tests
+// TestAccPreCheckAWSMultiZone Preflight checks for multi-zone AWS acceptance tests
+func TestAccPreCheckAWSMultiZone(t *testing.T) {
+	requiredVars := []string{
+		testAWSZoneSubnetID2,
+		testAWSAMIID,
+	}
+	for _, v := range requiredVars {
+		if os.Getenv(v) == "" {
+			t.Fatalf("%s must be set for multi-zone AWS acceptance tests", v)
+		}
+	}
+}
+
+// TestAccPreCheckAzure Preflight checks for Azure acceptance tests
 func TestAccPreCheckAzure(t *testing.T) {
-	if v := os.Getenv(testAzureClientID); v == "" {
-		t.Fatal(testAzureClientID + " must be set for acceptance tests")
+	requiredVars := []string{
+		testAzureSubscriptionID,
+		testAzureResourceGroup,
+		testAzureTenantID,
+		testAzureClientID,
+		testAzureClientSecret,
+		testAzureVnetID,
+		testAzureSubnetID,
 	}
-	if v := os.Getenv(testAzureSubscriptionID); v == "" {
-		t.Fatal(testAzureSubscriptionID + " must be set for acceptance tests")
-	}
-	if v := os.Getenv(testAzureResourceGroup); v == "" {
-		t.Fatal(testAzureResourceGroup + " must be set for acceptance tests")
-	}
-	if v := os.Getenv(testAzureTenantID); v == "" {
-		t.Fatal(testAzureTenantID + " must be set for acceptance tests")
-	}
-	if v := os.Getenv(testAzureClientSecret); v == "" {
-		t.Fatal(testAzureClientSecret + " must be set for acceptance tests")
+	for _, v := range requiredVars {
+		if os.Getenv(v) == "" {
+			t.Fatalf("%s must be set for Azure acceptance tests", v)
+		}
 	}
 }
 
-// TestAccPreCheck Preflight checks for acceptance tests
+// TestAccPreCheck Preflight checks for all acceptance tests (YBA connection)
 func TestAccPreCheck(t *testing.T) {
-	if v := os.Getenv(testHost); v == "" {
-		t.Fatal(testHost + " must be set for acceptance tests")
+	if TestHost() == "" {
+		t.Fatal("YBA_HOST or YB_HOST must be set for acceptance tests")
 	}
-	if v := os.Getenv(testAPIKey); v == "" {
-		t.Fatal(testAPIKey + " must be set for acceptance tests")
+	if TestAPIKey() == "" {
+		t.Fatal("YBA_API_KEY or YB_API_KEY must be set for acceptance tests")
 	}
 }
 

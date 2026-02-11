@@ -34,9 +34,17 @@ import (
 )
 
 // ResourceStorageConfig defines the schema to maintain the storage config resources
+// Deprecated: Use yba_s3_storage_config, yba_gcs_storage_config, yba_azure_storage_config,
+// or yba_nfs_storage_config instead.
 func ResourceStorageConfig() *schema.Resource {
 	return &schema.Resource{
-		Description: "Create Storage configurations.",
+		Description: "Create Storage configurations. " +
+			"**Deprecated**: Use `yba_s3_storage_config`, `yba_gcs_storage_config`, " +
+			"`yba_azure_storage_config`, or `yba_nfs_storage_config` instead.",
+
+		DeprecationMessage: "yba_storage_config_resource is deprecated. " +
+			"Use yba_s3_storage_config, yba_gcs_storage_config, yba_azure_storage_config, " +
+			"or yba_nfs_storage_config instead for cleaner, type-specific schemas.",
 
 		CreateContext: resourceStorageConfigCreate,
 		ReadContext:   resourceStorageConfigRead,
@@ -436,7 +444,7 @@ func resourceStorageConfigCreate(
 		Name:         d.Get("name").(string),
 		Type:         "STORAGE",
 	}
-	r, response, err := c.CustomerConfigurationApi.CreateCustomerConfig(ctx, cUUID).Config(
+	r, response, err := c.CustomerConfigurationAPI.CreateCustomerConfig(ctx, cUUID).Config(
 		req).Execute()
 	if err != nil {
 		errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
@@ -457,7 +465,7 @@ func resourceStorageConfigRead(
 	c := meta.(*api.APIClient).YugawareClient
 	cUUID := meta.(*api.APIClient).CustomerID
 
-	r, response, err := c.CustomerConfigurationApi.GetListOfCustomerConfig(ctx, cUUID).Execute()
+	r, response, err := c.CustomerConfigurationAPI.GetListOfCustomerConfig(ctx, cUUID).Execute()
 	if err != nil {
 		errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
 			"Storage Config", "Read")
@@ -576,7 +584,7 @@ func resourceStorageConfigUpdate(
 		Type:         "STORAGE",
 	}
 
-	_, response, err := c.CustomerConfigurationApi.EditCustomerConfig(ctx, cUUID, d.Id()).Config(
+	_, response, err := c.CustomerConfigurationAPI.EditCustomerConfig(ctx, cUUID, d.Id()).Config(
 		req).Execute()
 	if err != nil {
 		errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
@@ -596,7 +604,8 @@ func resourceStorageConfigDelete(
 	c := meta.(*api.APIClient).YugawareClient
 	cUUID := meta.(*api.APIClient).CustomerID
 
-	_, response, err := c.CustomerConfigurationApi.DeleteCustomerConfig(ctx, cUUID, d.Id()).Execute()
+	_, response, err := c.CustomerConfigurationAPI.DeleteCustomerConfig(ctx, cUUID, d.Id()).
+		Execute()
 	if err != nil {
 		errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
 			"Storage Config", "Delete")

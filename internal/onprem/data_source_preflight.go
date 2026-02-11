@@ -68,7 +68,7 @@ func dataSourcePreflightCheckRead(
 	if len(nodeList) == 0 {
 		// list all nodes in the provider
 		nodeList = make([]string, 0)
-		r, response, err := c.NodeInstancesApi.ListByProvider(ctx, cUUID, pUUID).Execute()
+		r, response, err := c.NodeInstancesAPI.ListByProvider(ctx, cUUID, pUUID).Execute()
 		if err != nil {
 			errMessage := utils.ErrorFromHTTPResponse(response, err, utils.DataSourceEntity,
 				"Preflight Check", "List Nodes")
@@ -80,7 +80,7 @@ func dataSourcePreflightCheckRead(
 		}
 	}
 	for _, nodeIP := range nodeList {
-		r, response, err := c.NodeInstancesApi.DetachedNodeAction(ctx, cUUID, pUUID, nodeIP).
+		r, response, err := c.NodeInstancesAPI.DetachedNodeAction(ctx, cUUID, pUUID, nodeIP).
 			NodeAction(
 				client.NodeActionFormData{
 					NodeAction: "PRECHECK_DETACHED",

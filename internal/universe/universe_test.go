@@ -126,7 +126,7 @@ func testAccCheckDestroyProviderAndUniverse(s *terraform.State) error {
 	for _, r := range s.RootModule().Resources {
 		if r.Type == "yba_universe" {
 			cUUID := acctest.APIClient.CustomerID
-			_, _, err := conn.UniverseManagementApi.GetUniverse(context.Background(), cUUID,
+			_, _, err := conn.UniverseManagementAPI.GetUniverse(context.Background(), cUUID,
 				r.Primary.ID).Execute()
 			if err == nil || acctest.IsResourceNotFoundError(err) {
 				return errors.New("Universe resource is not destroyed")
@@ -134,7 +134,7 @@ func testAccCheckDestroyProviderAndUniverse(s *terraform.State) error {
 		} else if r.Type == "yba_cloud_provider" {
 			time.Sleep(60 * time.Second)
 			cUUID := acctest.APIClient.CustomerID
-			res, response, err := conn.CloudProvidersApi.GetListOfProviders(context.Background(),
+			res, response, err := conn.CloudProvidersAPI.GetListOfProviders(context.Background(),
 				cUUID).Execute()
 			if err != nil {
 				errMessage := utils.ErrorFromHTTPResponse(response, err, utils.TestEntity,
@@ -164,14 +164,14 @@ func testAccCheckUniverseExists(name string, universe *client.UniverseResp) reso
 
 		conn := acctest.APIClient.YugawareClient
 		cUUID := acctest.APIClient.CustomerID
-		res, response, err := conn.UniverseManagementApi.GetUniverse(context.Background(), cUUID,
+		res, response, err := conn.UniverseManagementAPI.GetUniverse(context.Background(), cUUID,
 			r.Primary.ID).Execute()
 		if err != nil {
 			errMessage := utils.ErrorFromHTTPResponse(response, err, utils.TestEntity,
 				"Universe", "Read - Universe")
 			return errMessage
 		}
-		*universe = res
+		*universe = *res
 		return nil
 	}
 }

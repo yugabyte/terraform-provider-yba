@@ -50,7 +50,7 @@ func dataSourceProviderKeyRead(
 	c := meta.(*api.APIClient).YugawareClient
 	cUUID := meta.(*api.APIClient).CustomerID
 
-	r, response, err := c.AccessKeysApi.List(ctx, cUUID, d.Get("provider_id").(string)).Execute()
+	r, response, err := c.AccessKeysAPI.List(ctx, cUUID, d.Get("provider_id").(string)).Execute()
 	if err != nil {
 		errMessage := utils.ErrorFromHTTPResponse(response, err, utils.DataSourceEntity,
 			"Provider Key", "Read")

@@ -2,11 +2,20 @@
 page_title: "yba_cloud_provider Resource - YugabyteDB Anywhere"
 description: |-
   Cloud Provider Resource.
+  ~> Deprecated: This resource is deprecated and will be removed in a future version. Please use the cloud-specific provider resources instead:
+    - yba_aws_provider for AWS
+    - yba_gcp_provider for GCP
+    - yba_azure_provider for Azure
 ---
 
 # yba_cloud_provider (Resource)
 
 Cloud Provider Resource.
+
+~> **Deprecated:** This resource is deprecated and will be removed in a future version. Please use the cloud-specific provider resources instead:
+  - `yba_aws_provider` for AWS
+  - `yba_gcp_provider` for GCP
+  - `yba_azure_provider` for Azure
 
 The following credentials are required as environment variables (if fields are not set) to configure the corresponding Cloud Providers:
 

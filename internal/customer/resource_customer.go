@@ -19,12 +19,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/customdiff"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	client "github.com/yugabyte/platform-go-client"
 	"github.com/yugabyte/terraform-provider-yba/internal/api"
@@ -32,31 +30,37 @@ import (
 )
 
 // ResourceCustomer creates and maintains resource for customer
+// Follows yba-cli's register command pattern in cmd/auth/register.go
 func ResourceCustomer() *schema.Resource {
 	return &schema.Resource{
-		Description: "Customer Resource.",
+		Description: "Customer Resource. Registers a new customer/user in YugabyteDB Anywhere.\n\n" +
+			"~> **Security Note:** The `api_token` and `password` are stored in the Terraform " +
+			"state file (marked as sensitive). Use a secure backend (e.g., S3 with encryption, " +
+			"Terraform Cloud) and restrict access to your state files.",
 
 		CreateContext: resourceCustomerCreate,
 		ReadContext:   resourceCustomerRead,
+		UpdateContext: resourceCustomerUpdate,
 		DeleteContext: resourceCustomerDelete,
 
 		Importer: &schema.ResourceImporter{
 			StateContext: schema.ImportStatePassthroughContext,
 		},
 
-		CustomizeDiff: resourceCustomerDiff(),
-
 		Timeouts: &schema.ResourceTimeout{
 			Create: schema.DefaultTimeout(5 * time.Minute),
+			Update: schema.DefaultTimeout(5 * time.Minute),
 			Delete: schema.DefaultTimeout(5 * time.Minute),
 		},
 
 		Schema: map[string]*schema.Schema{
 			"code": {
-				Type:        schema.TypeString,
-				Required:    true,
-				ForceNew:    true,
-				Description: "Label for the user (i.e. admin).",
+				Type:     schema.TypeString,
+				Optional: true,
+				ForceNew: true,
+				Default:  "dev",
+				Description: "Environment label for the installation. " +
+					"Allowed values: dev, demo, stage, prod. Defaults to 'dev'.",
 			},
 			"email": {
 				Type:        schema.TypeString,
@@ -67,50 +71,29 @@ func ResourceCustomer() *schema.Resource {
 			"name": {
 				Type:        schema.TypeString,
 				Required:    true,
-				ForceNew:    true,
 				Description: "Name of the user.",
 			},
-			"api_token": {
+			"password": {
 				Type:        schema.TypeString,
-				Computed:    true,
-				Optional:    true,
+				Required:    true,
 				ForceNew:    true,
 				Sensitive:   true,
-				Description: "API token for the customer.",
+				Description: "Password for the user. Must meet YBA password requirements.",
+			},
+			"api_token": {
+				Type:      schema.TypeString,
+				Computed:  true,
+				Sensitive: true,
+				Description: "API token for the customer. This is generated after registration " +
+					"and login. Store securely - it provides full access to YugabyteDB Anywhere.",
 			},
 			"cuuid": {
 				Type:        schema.TypeString,
 				Computed:    true,
-				ForceNew:    true,
 				Description: "Customer UUID.",
 			},
 		},
 	}
-}
-
-// Validates if env variable is present only during create customer call
-func resourceCustomerDiff() schema.CustomizeDiffFunc {
-	return customdiff.All(customdiff.IfValueChange("email",
-		func(ctx context.Context, old, new, meta interface{}) bool {
-			return old.(string) == ""
-		},
-		func(ctx context.Context, d *schema.ResourceDiff, meta interface{}) error {
-			errorMessage := "Empty env variable: "
-			if _, present := os.LookupEnv("YB_CUSTOMER_PASSWORD"); !present {
-				return fmt.Errorf("%sYB_CUSTOMER_PASSWORD", errorMessage)
-			}
-			return nil
-		}),
-	)
-}
-
-// fetches password from the environment variable during create customer call
-func fetchCustomerPasswordFromEnv() (string, error) {
-	customerPassword, isPresent := os.LookupEnv("YB_CUSTOMER_PASSWORD")
-	if !isPresent {
-		return "", errors.New("YB_CUSTOMER_PASSWORD env variable not found")
-	}
-	return customerPassword, nil
 }
 
 func resourceCustomerCreate(
@@ -121,28 +104,47 @@ func resourceCustomerCreate(
 
 	c := meta.(*api.APIClient).YugawareClient
 
-	password, err := fetchCustomerPasswordFromEnv()
-	if err != nil {
-		return diag.FromErr(err)
-	}
+	email := d.Get("email").(string)
+	name := d.Get("name").(string)
+	code := d.Get("code").(string)
+	password := d.Get("password").(string)
 
+	// Step 1: Register customer (yba-cli: authAPI.RegisterCustomer())
+	tflog.Info(ctx, fmt.Sprintf("Registering customer with email: %s", email))
 	req := client.CustomerRegisterFormData{
-		Code:     d.Get("code").(string),
-		Email:    d.Get("email").(string),
-		Name:     d.Get("name").(string),
+		Code:     code,
+		Email:    email,
+		Name:     name,
 		Password: password,
 	}
-	r, response, err := c.SessionManagementApi.RegisterCustomer(ctx).CustomerRegisterFormData(
-		req).GenerateApiToken(true).Execute()
+	r, response, err := c.SessionManagementAPI.RegisterCustomer(ctx).CustomerRegisterFormData(
+		req).Execute()
 	if err != nil {
 		errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
-			"Customer", "Create")
+			"Customer", "Register")
 		return diag.FromErr(errMessage)
 	}
+	tflog.Debug(ctx, "Customer registration successful")
 
+	// Step 2: Login to get API token (yba-cli: authAPI.ApiLogin())
+	tflog.Info(ctx, "Logging in to retrieve API token")
+	loginReq := client.CustomerLoginFormData{
+		Email:    email,
+		Password: password,
+	}
+	loginResp, response, err := c.SessionManagementAPI.ApiLogin(ctx).CustomerLoginFormData(
+		loginReq).Execute()
+	if err != nil {
+		errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
+			"Customer", "Login")
+		return diag.FromErr(errMessage)
+	}
+	tflog.Debug(ctx, "Login successful, API token retrieved")
+
+	// Set the API token from login response
 	token := ""
-	if r.ApiToken != nil {
-		token = r.GetApiToken()
+	if loginResp.ApiToken != nil {
+		token = loginResp.GetApiToken()
 	}
 	if err = d.Set("api_token", token); err != nil {
 		return diag.FromErr(err)
@@ -152,6 +154,7 @@ func resourceCustomerCreate(
 	}
 
 	d.SetId(*r.CustomerUUID)
+	tflog.Info(ctx, fmt.Sprintf("Customer created with UUID: %s", *r.CustomerUUID))
 	return diags
 }
 
@@ -161,32 +164,77 @@ func resourceCustomerRead(
 	meta interface{}) diag.Diagnostics {
 	var diags diag.Diagnostics
 
+	// Use the stored API token if available, otherwise use provider's API key
+	// (yba-cli: authAPI.GetSessionInfo())
 	vc := meta.(*api.APIClient).VanillaClient
 	apiKey := meta.(*api.APIClient).APIKey
-	if d.Get("api_token").(string) != "" {
-		apiKey = d.Get("api_token").(string)
+	storedToken := d.Get("api_token").(string)
+	if storedToken != "" {
+		apiKey = storedToken
 	}
+
 	newAPI, err := api.NewAPIClient(vc.EnableHTTPS, vc.Host, apiKey)
 	if err != nil {
 		return diag.FromErr(err)
 	}
 	newClient := newAPI.YugawareClient
-	r, response, err := newClient.SessionManagementApi.GetSessionInfo(ctx).Execute()
 
+	// Get session info to verify the customer exists and token is valid
+	tflog.Debug(ctx, "Fetching session info to verify customer")
+	r, response, err := newClient.SessionManagementAPI.GetSessionInfo(ctx).Execute()
 	if err != nil {
 		errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
-			"Customer", "Read")
+			"Customer", "Read - GetSessionInfo")
 		return diag.FromErr(errMessage)
 	}
 
-	if err = d.Set("api_token", apiKey); err != nil {
-		return diag.FromErr(err)
+	// Verify customer UUID matches
+	if r.CustomerUUID == nil {
+		return diag.FromErr(errors.New("could not retrieve Customer UUID from session"))
 	}
+
 	if err = d.Set("cuuid", *r.CustomerUUID); err != nil {
 		return diag.FromErr(err)
 	}
+
+	// Keep the existing API token (don't overwrite with provider key)
+	if storedToken != "" {
+		if err = d.Set("api_token", storedToken); err != nil {
+			return diag.FromErr(err)
+		}
+	}
+
 	d.SetId(*r.CustomerUUID)
 	return diags
+}
+
+func resourceCustomerUpdate(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta interface{}) diag.Diagnostics {
+
+	c := meta.(*api.APIClient).YugawareClient
+	cUUID := d.Id()
+
+	if d.HasChange("name") {
+		newName := d.Get("name").(string)
+		tflog.Info(ctx, fmt.Sprintf("Updating customer name to: %s", newName))
+
+		req := client.CustomerAlertData{
+			Name: utils.GetStringPointer(newName),
+		}
+
+		_, response, err := c.CustomerManagementAPI.UpdateCustomer(ctx, cUUID).
+			Customer(req).Execute()
+		if err != nil {
+			errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
+				"Customer", "Update")
+			return diag.FromErr(errMessage)
+		}
+		tflog.Debug(ctx, "Customer name updated successfully")
+	}
+
+	return resourceCustomerRead(ctx, d, meta)
 }
 
 func resourceCustomerDelete(

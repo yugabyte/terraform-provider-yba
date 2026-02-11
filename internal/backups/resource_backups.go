@@ -237,7 +237,9 @@ func resourceBackupDiff() schema.CustomizeDiffFunc {
 						return errors.New("Cannot take incremental backups on existing schedules")
 					}
 					if oldIncrFreqInterface.(string) != "" && newIncrFreqInterface.(string) == "" {
-						return errors.New("Cannot disable incremental backups on existing schedules")
+						return errors.New(
+							"Cannot disable incremental backups on existing schedules",
+						)
 					}
 				}
 				return nil
@@ -280,7 +282,6 @@ func resourceBackupsCreate(
 		return diag.FromErr(err)
 	}
 
-	var r client.Schedule
 	if !allowed {
 
 		return diag.FromErr(fmt.Errorf("Scheduling backups below version %s (or on restricted"+
@@ -294,7 +295,7 @@ func resourceBackupsCreate(
 	keyspaceTableList := make([]client.KeyspaceTable, 0)
 	keyspaceTable := client.KeyspaceTable{
 		Keyspace:      utils.GetStringPointer(d.Get("keyspace").(string)),
-		TableUUIDList: utils.StringSlice(d.Get("table_uuid_list").([]interface{})),
+		TableUUIDList: *utils.StringSlice(d.Get("table_uuid_list").([]interface{})),
 	}
 	keyspaceTableList = append(keyspaceTableList, keyspaceTable)
 
@@ -342,16 +343,20 @@ func resourceBackupsCreate(
 	}
 
 	req := client.BackupRequestParams{
-		StorageConfigUUID:                  d.Get("storage_config_uuid").(string),
-		TimeBeforeDelete:                   utils.GetInt64Pointer(timeBeforeDelete),
-		ExpiryTimeUnit:                     utils.GetStringPointer(timeBeforeDeleteUnit),
-		Sse:                                utils.GetBoolPointer(d.Get("sse").(bool)),
-		Parallelism:                        utils.GetInt32Pointer(int32(d.Get("parallelism").(int))),
-		BackupType:                         utils.GetStringPointer(d.Get("backup_type").(string)),
-		CronExpression:                     utils.GetStringPointer(d.Get("cron_expression").(string)),
+		StorageConfigUUID: d.Get("storage_config_uuid").(string),
+		TimeBeforeDelete:  utils.GetInt64Pointer(timeBeforeDelete),
+		ExpiryTimeUnit:    utils.GetStringPointer(timeBeforeDeleteUnit),
+		Sse:               utils.GetBoolPointer(d.Get("sse").(bool)),
+		Parallelism: utils.GetInt32Pointer(
+			int32(d.Get("parallelism").(int)),
+		),
+		BackupType: utils.GetStringPointer(d.Get("backup_type").(string)),
+		CronExpression: utils.GetStringPointer(
+			d.Get("cron_expression").(string),
+		),
 		SchedulingFrequency:                utils.GetInt64Pointer(frequency),
 		FrequencyTimeUnit:                  utils.GetStringPointer(frequencyUnit),
-		KeyspaceTableList:                  &keyspaceTableList,
+		KeyspaceTableList:                  keyspaceTableList,
 		ScheduleName:                       utils.GetStringPointer(d.Get("schedule_name").(string)),
 		UniverseUUID:                       d.Get("universe_uuid").(string),
 		IncrementalBackupFrequency:         utils.GetInt64Pointer(incrementalFrequency),
@@ -363,7 +368,7 @@ func resourceBackupsCreate(
 		version))
 
 	var response *http.Response
-	r, response, err = c.BackupsApi.CreateBackupSchedule(ctx, cUUID).Backup(req).Execute()
+	r, response, err := c.BackupsAPI.CreateBackupSchedule(ctx, cUUID).Backup(req).Execute()
 	if err != nil {
 		errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
 			"Backups", "Create")
@@ -405,7 +410,7 @@ func resourceBackupsRead(
 				d.Get("universe_uuid"))),
 		},
 	}
-	r, response, err := c.ScheduleManagementApi.ListSchedulesV2(ctx, cUUID).
+	r, response, err := c.ScheduleManagementAPI.ListSchedulesV2(ctx, cUUID).
 		PageScheduleRequest(req).Execute()
 	if err != nil {
 		errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
@@ -483,7 +488,7 @@ func resourceBackupsUpdate(
 					return diag.Errorf("Frequency of backups cannot be less than 1 hour")
 				}
 			} else {
-				r, response, err := c.ScheduleManagementApi.GetSchedule(ctx, cUUID, d.Id()).Execute()
+				r, response, err := c.ScheduleManagementAPI.GetSchedule(ctx, cUUID, d.Id()).Execute()
 				if err != nil {
 					errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
 						"Backups", "Update - Fetch Backup Schedule")
@@ -506,7 +511,8 @@ func resourceBackupsUpdate(
 		if frequencyGiven && incrementalFrequencyGiven {
 			if incrementalFrequency > frequency {
 				return diag.Errorf(
-					"Frequency of incremental backups cannot be more than frequency of full backups")
+					"Frequency of incremental backups cannot be more than frequency of full backups",
+				)
 			}
 		} else if incrementalFrequencyGiven {
 			if incrementalFrequency > utils.ConvertUnitToMs(1, "DAYS") {
@@ -522,7 +528,7 @@ func resourceBackupsUpdate(
 			IncrementalBackupFrequency:         utils.GetInt64Pointer(incrementalFrequency),
 			IncrementalBackupFrequencyTimeUnit: utils.GetStringPointer(incrementalFrequencyUnit),
 		}
-		_, response, err := c.ScheduleManagementApi.EditBackupScheduleV2(ctx,
+		_, response, err := c.ScheduleManagementAPI.EditBackupScheduleV2(ctx,
 			cUUID, d.Id()).Body(req).Execute()
 		if err != nil {
 			errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
@@ -551,7 +557,7 @@ func resourceBackupsDelete(
 	}
 	if d.Get("delete_backup").(bool) {
 
-		backupsList, response, err := c.BackupsApi.ListOfBackups(ctx, cUUID,
+		backupsList, response, err := c.BackupsAPI.ListOfBackups(ctx, cUUID,
 			d.Get("universe_uuid").(string)).Execute()
 		if err != nil {
 			errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
@@ -575,7 +581,7 @@ func resourceBackupsDelete(
 			req = client.DeleteBackupParams{
 				DeleteBackupInfos: deleteBackupInfoList,
 			}
-			_, response, err = c.BackupsApi.DeleteBackupsV2(ctx, cUUID).DeleteBackup(req).Execute()
+			_, response, err = c.BackupsAPI.DeleteBackupsV2(ctx, cUUID).DeleteBackup(req).Execute()
 			if err != nil {
 				errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
 					"Backups", "Delete - Associated backups")
@@ -595,7 +601,7 @@ func resourceBackupsDelete(
 	tflog.Info(ctx, fmt.Sprintf("Current version %s, using V2 Delete Schedule Backup API",
 		version))
 
-	_, response, err := c.ScheduleManagementApi.DeleteScheduleV2(ctx, cUUID, d.Id()).Execute()
+	_, response, err := c.ScheduleManagementAPI.DeleteScheduleV2(ctx, cUUID, d.Id()).Execute()
 	if err != nil {
 		errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
 			"Backups", "Delete")

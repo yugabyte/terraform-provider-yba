@@ -104,10 +104,83 @@ terraform {
 
 ### Running and debugging tests
 
-Acceptance tests defined in the source code can be used to debug the newly added codebase using the command:
+#### Unit Tests
+
+Unit tests test the build/flatten functions and other logic without requiring a YBA instance. They run quickly and don't need any credentials:
 
 ```sh
-    make acctest
+# Run all unit tests
+go test ./internal/provider/... -v -run "^Test[^Acc]"
+
+# Run tests for a specific provider
+go test ./internal/provider/aws/... -v -run "^Test[^Acc]"
+go test ./internal/provider/gcp/... -v -run "^Test[^Acc]"
+go test ./internal/provider/azure/... -v -run "^Test[^Acc]"
+go test ./internal/provider/onprem/... -v -run "^Test[^Acc]"
+
+# Run tests for provider utilities
+go test ./internal/provider/providerutil/... -v
+```
+
+#### Acceptance Tests
+
+Acceptance tests create real resources in YBA and cloud providers. They require credentials and a running YBA instance.
+
+**Required environment variables for all tests:**
+
+```sh
+# YBA connection - accepts either YBA_* or YB_* (prefer YBA_*)
+# Host can be with or without scheme (https:// is used by default)
+export YBA_HOST=your-yba-host            # or https://your-yba-host
+export YBA_API_KEY=your-api-key
+```
+
+**AWS acceptance tests:**
+
+```sh
+export TF_VAR_AWS_ACCESS_KEY_ID=AKIA...
+export TF_VAR_AWS_SECRET_ACCESS_KEY=your-secret-key
+export TF_VAR_AWS_SG_ID=sg-xxxxx
+export TF_VAR_AWS_VPC_ID=vpc-xxxxx
+export TF_VAR_AWS_ZONE_SUBNET_ID=subnet-xxxxx
+
+go test ./internal/provider/aws/... -v -run "^TestAcc" -timeout 30m
+```
+
+**GCP acceptance tests:**
+
+```sh
+export TF_VAR_GCP_CREDENTIALS='{"type":"service_account","project_id":"...",...}'
+export TF_VAR_GCP_PROJECT_ID=my-gcp-project
+export TF_VAR_GCP_VPC_NETWORK=default
+
+go test ./internal/provider/gcp/... -v -run "^TestAcc" -timeout 30m
+```
+
+**Azure acceptance tests:**
+
+```sh
+export TF_VAR_AZURE_SUBSCRIPTION_ID=xxxxx-xxxxx-xxxxx
+export TF_VAR_AZURE_TENANT_ID=xxxxx-xxxxx-xxxxx
+export TF_VAR_AZURE_CLIENT_ID=xxxxx-xxxxx-xxxxx
+export TF_VAR_AZURE_CLIENT_SECRET=your-client-secret
+export TF_VAR_AZURE_RG=my-resource-group
+export TF_VAR_AZURE_VNET_ID=/subscriptions/.../virtualNetworks/my-vnet
+export TF_VAR_AZURE_SUBNET_ID=/subscriptions/.../subnets/my-subnet
+
+go test ./internal/provider/azure/... -v -run "^TestAcc" -timeout 30m
+```
+
+**OnPrem acceptance tests:**
+
+```sh
+go test ./internal/provider/onprem/... -v -run "^TestAcc" -timeout 30m
+```
+
+**Run all acceptance tests using make:**
+
+```sh
+make acctest
 ```
 
 ## Making changes
@@ -116,12 +189,13 @@ Everything the community does with the codebase -- fixing bugs, adding features,
 If you are going to work on a specific issue and it's your first contribution,
 please add a short comment to the issue, so other people know you're working on it.
 
-Before you make any changes, be sure to switch to the `main` branch and pull the latest commits on the `main` branch from the upstream repository. Also, it's probably good to run a build and verify all tests pass *before* you make any changes.
+Before you make any changes, be sure to switch to the `main` branch and pull the latest commits on the `main` branch from the upstream repository. Also, it's probably good to run a build and verify all unit tests pass *before* you make any changes.
 
 ```sh
     git checkout main
     git pull upstream main
-    make testacc
+    go build ./...
+    go test ./internal/provider/... -v -run "^Test[^Acc]"
 ```
 
 Once everything builds, create a *topic branch* named appropriately:

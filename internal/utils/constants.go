@@ -62,6 +62,16 @@ const (
 // Minimum YugabyteDB Anywhere versions to support operation
 const (
 
+	// YBATerraformProviderMinStableVersion specifies the minimum stable YBA version
+	// required to use the Terraform provider. This is a hard constraint
+	// enforced during provider configuration.
+	YBATerraformProviderMinStableVersion = "2024.2.0.0-b1"
+
+	// YBATerraformProviderMinPreviewVersion specifies the minimum preview YBA version
+	// required to use the Terraform provider. This is a hard constraint
+	// enforced during provider configuration.
+	YBATerraformProviderMinPreviewVersion = "2.23.1.0-b1"
+
 	// YBAAllowUniverseMinVersion specifies minimum version
 	// required to use Universe resource via YBA Terraform
 	YBAAllowUniverseMinVersion = "2.17.1.0-b371"

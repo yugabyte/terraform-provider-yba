@@ -215,13 +215,13 @@ func resourceReleasesRead(
 	c := meta.(*api.APIClient).YugawareClient
 	cUUID := meta.(*api.APIClient).CustomerID
 
-	_, response, err := c.ReleaseManagementApi.Refresh(ctx, cUUID).Execute()
+	_, response, err := c.ReleaseManagementAPI.Refresh(ctx, cUUID).Execute()
 	if err != nil {
 		errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
 			"Release", "Read - Refresh")
 		return diag.FromErr(errMessage)
 	}
-	r, response, err := c.ReleaseManagementApi.GetListOfReleases(ctx, cUUID).IncludeMetadata(
+	r, response, err := c.ReleaseManagementAPI.GetListOfReleases(ctx, cUUID).IncludeMetadata(
 		true).Execute()
 	if err != nil {
 		errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
@@ -297,7 +297,7 @@ func resourceReleasesDelete(
 	c := meta.(*api.APIClient).YugawareClient
 	cUUID := meta.(*api.APIClient).CustomerID
 
-	_, response, err := c.ReleaseManagementApi.DeleteRelease(ctx, cUUID, d.Id()).Execute()
+	_, response, err := c.ReleaseManagementAPI.DeleteRelease(ctx, cUUID, d.Id()).Execute()
 	if err != nil {
 		errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
 			"Release", "Delete")

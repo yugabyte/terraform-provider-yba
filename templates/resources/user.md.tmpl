@@ -8,4 +8,16 @@ description: |-
 
 {{ .Description | trimspace }}
 
+## Example Usage
+
+{{ tffile "examples/resources/yba_user/resource.tf" }}
+
 {{ .SchemaMarkdown | trimspace }}
+
+## Import
+
+User can be imported using `user uuid`:
+
+```sh
+terraform import yba_user.user <user-uuid>
+```

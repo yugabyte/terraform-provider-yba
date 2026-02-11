@@ -105,7 +105,7 @@ func dataSourceUniverseFilterRead(
 	var err error
 	var response *http.Response
 
-	r, response, err = c.UniverseManagementApi.ListUniverses(ctx, cUUID).Execute()
+	r, response, err = c.UniverseManagementAPI.ListUniverses(ctx, cUUID).Execute()
 	if err != nil {
 		errMessage := utils.ErrorFromHTTPResponse(response, err, utils.DataSourceEntity,
 			"Universe Filter", "Read")

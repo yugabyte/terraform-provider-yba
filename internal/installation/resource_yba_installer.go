@@ -350,8 +350,10 @@ func resourceYBAInstallerUpdate(
 		d.HasChange("tls_certificate_file") || d.HasChange("tls_key_file") {
 		applicationSettingsFile := d.Get("application_settings_file").(string)
 		if applicationSettingsFile == "" {
-			err := errors.New("Cannot reconfigure YBA Installer with empty application_settings_file " +
-				"file")
+			err := errors.New(
+				"Cannot reconfigure YBA Installer with empty application_settings_file " +
+					"file",
+			)
 			return diag.FromErr(err)
 		}
 		for key, remote := range reconfigurationYBAInstallerFiles {

@@ -1,12 +1,12 @@
 ---
 page_title: "yba_storage_config_resource Resource - YugabyteDB Anywhere"
 description: |-
-  Create Storage configurations.
+  Create Storage configurations. Deprecated: Use yba_s3_storage_config, yba_gcs_storage_config, yba_azure_storage_config, or yba_nfs_storage_config instead.
 ---
 
 # yba_storage_config_resource (Resource)
 
-Create Storage configurations.
+Create Storage configurations. **Deprecated**: Use `yba_s3_storage_config`, `yba_gcs_storage_config`, `yba_azure_storage_config`, or `yba_nfs_storage_config` instead.
 
 The following credentials are required as environment variables (if fields are not set) to configure the corresponding Backup storage configurations:
 

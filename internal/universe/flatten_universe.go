@@ -55,7 +55,7 @@ func flattenCloudList(cl []client.PlacementCloud) (res []interface{}) {
 		pc := map[string]interface{}{
 			"uuid":        c.Uuid,
 			"code":        c.Code,
-			"region_list": flattenRegionList(*c.RegionList),
+			"region_list": flattenRegionList(c.RegionList),
 		}
 		res = append(res, pc)
 	}
@@ -67,7 +67,7 @@ func flattenRegionList(cl []client.PlacementRegion) (res []interface{}) {
 		pr := map[string]interface{}{
 			"uuid":    r.Uuid,
 			"code":    r.Code,
-			"az_list": flattenAzList(*r.AzList),
+			"az_list": flattenAzList(r.AzList),
 		}
 		res = append(res, pr)
 	}

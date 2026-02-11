@@ -96,7 +96,7 @@ func resourceUserCreate(
 		ConfirmPassword: utils.GetStringPointer(d.Get("password").(string)),
 		Role:            utils.GetStringPointer(d.Get("role").(string)),
 	}
-	r, response, err := c.UserManagementApi.CreateUser(ctx, cUUID).User(req).Execute()
+	r, response, err := c.UserManagementAPI.CreateUser(ctx, cUUID).User(req).Execute()
 	if err != nil {
 		errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
 			"User", "Create")
@@ -116,7 +116,7 @@ func resourceUserRead(
 	c := meta.(*api.APIClient).YugawareClient
 	cUUID := meta.(*api.APIClient).CustomerID
 
-	r, response, err := c.UserManagementApi.GetUserDetails(ctx, cUUID, d.Id()).Execute()
+	r, response, err := c.UserManagementAPI.GetUserDetails(ctx, cUUID, d.Id()).Execute()
 	if err != nil {
 		errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
 			"User", "Read")
@@ -143,7 +143,7 @@ func resourceUserUpdate(
 	cUUID := meta.(*api.APIClient).CustomerID
 
 	if d.HasChange("role") {
-		_, response, err := c.UserManagementApi.UpdateUserRole(ctx, cUUID, d.Id()).Role(
+		_, response, err := c.UserManagementAPI.UpdateUserRole(ctx, cUUID, d.Id()).Role(
 			d.Get("role").(string)).Execute()
 		if err != nil {
 			errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
@@ -157,7 +157,7 @@ func resourceUserUpdate(
 			CurrentPassword: utils.GetStringPointer(oldPassword.(string)),
 			NewPassword:     utils.GetStringPointer(newPassword.(string)),
 		}
-		_, response, err := c.UserManagementApi.ResetUserPassword(ctx, cUUID).Users(
+		_, response, err := c.UserManagementAPI.ResetUserPassword(ctx, cUUID).Users(
 			req).Execute()
 		if err != nil {
 			errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
@@ -176,7 +176,7 @@ func resourceUserDelete(
 	c := meta.(*api.APIClient).YugawareClient
 	cUUID := meta.(*api.APIClient).CustomerID
 
-	_, response, err := c.UserManagementApi.DeleteUser(ctx, cUUID, d.Id()).Execute()
+	_, response, err := c.UserManagementAPI.DeleteUser(ctx, cUUID, d.Id()).Execute()
 	if err != nil {
 		errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
 			"User", "Delete")
