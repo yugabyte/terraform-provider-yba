@@ -83,8 +83,11 @@ func New() *schema.Provider {
 				Type:        schema.TypeString,
 				Optional:    true,
 				Description: "YugabyteDB Anywhere Customer API Token.",
-				// Accept either YBA_API_KEY or YB_API_KEY (prefer YBA_*)
-				DefaultFunc: schema.MultiEnvDefaultFunc([]string{"YBA_API_KEY", "YB_API_KEY"}, ""),
+				// Accept YBA_API_TOKEN, YBA_API_KEY, or YB_API_KEY (in order of preference)
+				DefaultFunc: schema.MultiEnvDefaultFunc(
+					[]string{"YBA_API_TOKEN", "YBA_API_KEY", "YB_API_KEY"},
+					"",
+				),
 			},
 		},
 		DataSourcesMap: map[string]*schema.Resource{
@@ -107,7 +110,6 @@ func New() *schema.Provider {
 			"yba_customer_resource": customer.ResourceCustomer(),
 			// Deprecated: use yba_s3/gcs/azure/nfs_storage_config instead
 			"yba_storage_config_resource": backups.ResourceStorageConfig(),
-			"yba_releases":                releases.ResourceReleases(),
 			"yba_restore":                 backups.ResourceRestore(),
 			"yba_onprem_provider":         onprem.ResourceOnPremProvider(),
 			"yba_onprem_node_instance":    onprem.ResourceOnPremNodeInstances(),

@@ -396,17 +396,25 @@ func deprecatedAccessKeysSchema() *schema.Schema {
 					MaxItems: 1,
 					Elem: &schema.Resource{
 						Schema: map[string]*schema.Schema{
-							"key_pair_name":             {Type: schema.TypeString, Optional: true, Computed: true},
+							"key_pair_name": {
+								Type:     schema.TypeString,
+								Optional: true,
+								Computed: true,
+							},
 							"ssh_private_key_file_path": {Type: schema.TypeString, Optional: true},
-							"ssh_private_key_content":   {Type: schema.TypeString, Optional: true, Sensitive: true},
-							"air_gap_install":           {Type: schema.TypeBool, Computed: true},
-							"install_node_exporter":     {Type: schema.TypeBool, Computed: true},
-							"node_exporter_port":        {Type: schema.TypeInt, Computed: true},
-							"node_exporter_user":        {Type: schema.TypeString, Computed: true},
-							"passwordless_sudo_access":  {Type: schema.TypeBool, Computed: true},
-							"skip_provisioning":         {Type: schema.TypeBool, Computed: true},
-							"ssh_port":                  {Type: schema.TypeInt, Computed: true},
-							"ssh_user":                  {Type: schema.TypeString, Computed: true},
+							"ssh_private_key_content": {
+								Type:      schema.TypeString,
+								Optional:  true,
+								Sensitive: true,
+							},
+							"air_gap_install":          {Type: schema.TypeBool, Computed: true},
+							"install_node_exporter":    {Type: schema.TypeBool, Computed: true},
+							"node_exporter_port":       {Type: schema.TypeInt, Computed: true},
+							"node_exporter_user":       {Type: schema.TypeString, Computed: true},
+							"passwordless_sudo_access": {Type: schema.TypeBool, Computed: true},
+							"skip_provisioning":        {Type: schema.TypeBool, Computed: true},
+							"ssh_port":                 {Type: schema.TypeInt, Computed: true},
+							"ssh_user":                 {Type: schema.TypeString, Computed: true},
 						},
 					},
 				},
@@ -429,22 +437,38 @@ func deprecatedDetailsSchema() *schema.Schema {
 		Description: "Deprecated: Provider details. Use flat fields instead.",
 		Elem: &schema.Resource{
 			Schema: map[string]*schema.Schema{
-				"air_gap_install":           {Type: schema.TypeBool, Optional: true, Computed: true},
-				"install_node_exporter":     {Type: schema.TypeBool, Optional: true, Computed: true},
-				"node_exporter_port":        {Type: schema.TypeInt, Optional: true, Computed: true},
-				"node_exporter_user":        {Type: schema.TypeString, Optional: true, Computed: true},
+				"air_gap_install":       {Type: schema.TypeBool, Optional: true, Computed: true},
+				"install_node_exporter": {Type: schema.TypeBool, Optional: true, Computed: true},
+				"node_exporter_port":    {Type: schema.TypeInt, Optional: true, Computed: true},
+				"node_exporter_user":    {Type: schema.TypeString, Optional: true, Computed: true},
 				"ntp_servers": {
-				Type:     schema.TypeList,
-				Elem:     &schema.Schema{Type: schema.TypeString},
-				Optional: true,
-				Computed: true,
-			},
-				"passwordless_sudo_access":  {Type: schema.TypeBool, Optional: true, Computed: true},
+					Type:     schema.TypeList,
+					Elem:     &schema.Schema{Type: schema.TypeString},
+					Optional: true,
+					Computed: true,
+				},
+				"passwordless_sudo_access": {
+					Type:     schema.TypeBool,
+					Optional: true,
+					Computed: true,
+				},
 				"provision_instance_script": {Type: schema.TypeString, Computed: true},
-				"skip_provisioning":         {Type: schema.TypeBool, Optional: true, Computed: true},
-				"ssh_port":                  {Type: schema.TypeInt, Optional: true, Computed: true},
-				"ssh_user":                  {Type: schema.TypeString, Optional: true, Computed: true},
-				"yb_home_dir":               {Type: schema.TypeString, Optional: true, Computed: true},
+				"skip_provisioning": {
+					Type:     schema.TypeBool,
+					Optional: true,
+					Computed: true,
+				},
+				"ssh_port": {Type: schema.TypeInt, Optional: true, Computed: true},
+				"ssh_user": {
+					Type:     schema.TypeString,
+					Optional: true,
+					Computed: true,
+				},
+				"yb_home_dir": {
+					Type:     schema.TypeString,
+					Optional: true,
+					Computed: true,
+				},
 			},
 		},
 	}
@@ -462,7 +486,8 @@ func buildAccessKeys(d *schema.ResourceData) []client.AccessKey {
 			accessKeysList := accessKeys.([]interface{})
 			if len(accessKeysList) > 0 {
 				accessKey := accessKeysList[0].(map[string]interface{})
-				if keyInfoList, ok := accessKey["key_info"].([]interface{}); ok && len(keyInfoList) > 0 {
+				if keyInfoList, ok := accessKey["key_info"].([]interface{}); ok &&
+					len(keyInfoList) > 0 {
 					keyInfo := keyInfoList[0].(map[string]interface{})
 					if kpn, ok := keyInfo["key_pair_name"].(string); ok && kpn != "" {
 						keyPairName = kpn
@@ -613,7 +638,8 @@ func createInstanceTypes(ctx context.Context, c *client.APIClient, cUUID, pUUID 
 
 func readInstanceTypes(ctx context.Context, c *client.APIClient, cUUID, pUUID string) (
 	[]client.InstanceTypeResp, error) {
-	instanceTypes, response, err := c.InstanceTypesAPI.ListOfInstanceType(ctx, cUUID, pUUID).Execute()
+	instanceTypes, response, err := c.InstanceTypesAPI.ListOfInstanceType(ctx, cUUID, pUUID).
+		Execute()
 	if err != nil {
 		errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
 			"Instance Type", "Read")
@@ -660,7 +686,8 @@ func updateInstanceTypes(ctx context.Context, c *client.APIClient, cUUID, pUUID 
 	for _, it := range existing {
 		typeCode := it.GetInstanceTypeCode()
 		tflog.Info(ctx, fmt.Sprintf("Removing instance type %s from provider %s", typeCode, pUUID))
-		_, response, err := c.InstanceTypesAPI.DeleteInstanceType(ctx, cUUID, pUUID, typeCode).Execute()
+		_, response, err := c.InstanceTypesAPI.DeleteInstanceType(ctx, cUUID, pUUID, typeCode).
+			Execute()
 		if err != nil {
 			errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
 				"Instance Type", "Delete")

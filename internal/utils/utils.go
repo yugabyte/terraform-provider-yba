@@ -430,14 +430,33 @@ func ErrorFromHTTPResponse(resp *http.Response, apiError error, entity, entityNa
 		return errorTag
 	}
 	response := *resp
+
+	// Handle authentication errors with clear messages
+	if response.StatusCode == http.StatusUnauthorized {
+		return fmt.Errorf("%s: %s, Operation: %s - authentication failed (HTTP 401): "+
+			"the API token is invalid, expired, or missing. "+
+			"Please verify your 'api_token' provider configuration or "+
+			"YBA_API_TOKEN/YBA_API_KEY/YB_API_KEY environment variable",
+			entity, entityName, operation)
+	}
+	if response.StatusCode == http.StatusForbidden {
+		return fmt.Errorf("%s: %s, Operation: %s - authorization failed (HTTP 403): "+
+			"the API token does not have permission for this operation",
+			entity, entityName, operation)
+	}
+
 	errorBlock := YbaStructuredError{}
 	body, err := io.ReadAll(response.Body)
 	if err != nil {
-		return fmt.Errorf("%w: %s", errorTag, "Error reading HTTP Response body")
+		return fmt.Errorf("%w: error reading HTTP response body", errorTag)
 	}
 	if err = json.Unmarshal(body, &errorBlock); err != nil {
-		return fmt.Errorf("%w: %s %s", errorTag,
-			"Failed unmarshalling HTTP Response body", err.Error())
+		// If JSON parsing fails, include the raw body in the error for context
+		bodyStr := strings.TrimSpace(string(body))
+		if bodyStr != "" {
+			return fmt.Errorf("%w: %s", errorTag, bodyStr)
+		}
+		return errorTag
 	}
 	errorString := ErrorFromResponseBody(errorBlock)
 	return fmt.Errorf("%w: %s", errorTag, errorString)
@@ -549,6 +568,72 @@ func ObfuscateString(s string, n int) string {
 	substring := s[n : len(s)-n]
 	replaced := strings.Replace(s, substring, strings.Repeat("*", len(substring)), 1)
 	return replaced
+}
+
+// FormatHTTPErrorBody reads and formats the HTTP response body for error messages
+func FormatHTTPErrorBody(resp *http.Response) string {
+	if resp == nil || resp.Body == nil {
+		return ""
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return ""
+	}
+	// Try to parse as structured error
+	errorBlock := YbaStructuredError{}
+	if err := json.Unmarshal(body, &errorBlock); err == nil && errorBlock.Error != nil {
+		return ErrorFromResponseBody(errorBlock)
+	}
+	// Return raw body if not structured
+	if len(body) > 0 {
+		return string(body)
+	}
+	return ""
+}
+
+// CheckHTTPAuthError checks for authentication errors in HTTP response
+// Returns a user-friendly error message for 401/403 errors
+func CheckHTTPAuthError(resp *http.Response) error {
+	if resp == nil {
+		return nil
+	}
+	switch resp.StatusCode {
+	case http.StatusUnauthorized:
+		return fmt.Errorf("authentication failed (HTTP 401): invalid credentials or API token")
+	case http.StatusForbidden:
+		return fmt.Errorf("authorization failed (HTTP 403): access denied")
+	}
+	return nil
+}
+
+// FormatHTTPError creates a formatted error from HTTP response
+func FormatHTTPError(resp *http.Response, operation string) error {
+	if resp == nil {
+		return fmt.Errorf("%s: no response received", operation)
+	}
+	bodyMsg := FormatHTTPErrorBody(resp)
+	if bodyMsg != "" {
+		return fmt.Errorf("%s failed (HTTP %d): %s", operation, resp.StatusCode, bodyMsg)
+	}
+	return fmt.Errorf("%s failed (HTTP %d): %s", operation, resp.StatusCode, resp.Status)
+}
+
+// CheckHTTPError checks for HTTP errors and returns appropriate error messages
+// It handles authentication errors specially and provides formatted error messages
+func CheckHTTPError(resp *http.Response, operation string) error {
+	if resp == nil {
+		return nil
+	}
+	// Check for success status codes (2xx)
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		return nil
+	}
+	// Check for auth errors first
+	if authErr := CheckHTTPAuthError(resp); authErr != nil {
+		return authErr
+	}
+	// Return formatted error for other status codes
+	return FormatHTTPError(resp, operation)
 }
 
 // CheckMinimumYBAVersion validates that the YBA version meets the minimum requirement

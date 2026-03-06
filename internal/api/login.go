@@ -19,8 +19,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
+
+	"github.com/yugabyte/terraform-provider-yba/internal/utils"
 )
 
 // LoginRequest to handle request body of REST API
@@ -50,14 +53,20 @@ func (vc *VanillaClient) Login(ctx context.Context, email string, password strin
 	if err != nil {
 		return nil, err
 	}
+	defer res.Body.Close()
+
+	// Check for HTTP errors (especially auth errors like 401/403)
+	if httpErr := utils.CheckHTTPError(res, "Login"); httpErr != nil {
+		return nil, httpErr
+	}
+
 	body, err := io.ReadAll(res.Body)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error reading login response: %w", err)
 	}
 	loginResp := LoginResponse{}
-	err = json.Unmarshal(body, &loginResp)
-	if err != nil {
-		return nil, err
+	if err = json.Unmarshal(body, &loginResp); err != nil {
+		return nil, fmt.Errorf("error parsing login response (status %d): %w", res.StatusCode, err)
 	}
 	return &loginResp, nil
 }

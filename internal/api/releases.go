@@ -87,21 +87,25 @@ func (vc *VanillaClient) ReleaseImport(ctx context.Context, cUUID string, versio
 
 	r, err := vc.Client.Do(req)
 	if err != nil {
-		err = fmt.Errorf("Error occured during Post call for Import Release %s", err.Error())
-		return false, err
+		return false, fmt.Errorf("error during POST call for Import Release: %w", err)
+	}
+	defer r.Body.Close()
+
+	// Check for HTTP errors
+	if httpErr := utils.CheckHTTPError(r, "Import Release"); httpErr != nil {
+		return false, httpErr
 	}
 
 	var body []byte
 	body, err = io.ReadAll(r.Body)
 	if err != nil {
-		err = fmt.Errorf("Error reading Import Release response body %s", err.Error())
-		return false, err
+		return false, fmt.Errorf("error reading Import Release response body: %w", err)
 	}
 
 	responseBody := utils.YbaStructuredError{}
 	if err = json.Unmarshal(body, &responseBody); err != nil {
-		return false, fmt.Errorf("%s %s",
-			"Failed unmarshalling Import Release Response body", err.Error())
+		return false, fmt.Errorf(
+			"error parsing Import Release response (status %d): %w", r.StatusCode, err)
 	}
 
 	if *responseBody.Success {
@@ -109,6 +113,6 @@ func (vc *VanillaClient) ReleaseImport(ctx context.Context, cUUID string, versio
 	}
 
 	errorMessage := utils.ErrorFromResponseBody(responseBody)
-	return false, fmt.Errorf("Error importing release: %s", errorMessage)
+	return false, fmt.Errorf("error importing release: %s", errorMessage)
 
 }
