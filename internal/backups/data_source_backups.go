@@ -17,7 +17,6 @@ package backups
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
@@ -66,9 +65,10 @@ func Lists() *schema.Resource {
 					"in RFC3339 format.",
 			},
 			"storage_location": {
-				Type:        schema.TypeString,
-				Computed:    true,
-				Description: "Storage location of the backup.",
+				Type:     schema.TypeString,
+				Computed: true,
+				Description: "Storage location of the first keyspace in the backup. " +
+					"For multi-keyspace YCQL backups, use keyspace_details to access all locations.",
 			},
 			"backup_type": {
 				Type:        schema.TypeString,
@@ -79,6 +79,40 @@ func Lists() *schema.Resource {
 				Type:        schema.TypeString,
 				Computed:    true,
 				Description: "UUID of the storage configuration used for backup.",
+			},
+			"keyspace_details": {
+				Type:     schema.TypeList,
+				Computed: true,
+				Description: "Per-keyspace/database details for the backup. " +
+					"For multi-keyspace YCQL backups each entry corresponds to one keyspace, " +
+					"each with its own storage location. For YSQL, typically one entry per database. " +
+					"Use this to build backup_storage_info blocks when restoring multi-keyspace backups.",
+				Elem: &schema.Resource{
+					Schema: map[string]*schema.Schema{
+						"storage_location": {
+							Type:        schema.TypeString,
+							Computed:    true,
+							Description: "Storage location for this keyspace/database backup.",
+						},
+						"keyspace": {
+							Type:        schema.TypeString,
+							Computed:    true,
+							Description: "Keyspace (YCQL) or database (YSQL) name.",
+						},
+						"backup_size_in_bytes": {
+							Type:        schema.TypeInt,
+							Computed:    true,
+							Description: "Size of this keyspace backup in bytes.",
+						},
+						"tables": {
+							Type:     schema.TypeList,
+							Computed: true,
+							Elem:     &schema.Schema{Type: schema.TypeString},
+							Description: "List of table names backed up in this keyspace. " +
+								"Empty for full keyspace backups.",
+						},
+					},
+				},
 			},
 		},
 	}
@@ -91,18 +125,7 @@ func dataSourceBackupsListRead(
 	var diags diag.Diagnostics
 	c := meta.(*api.APIClient).YugawareClient
 	cUUID := meta.(*api.APIClient).CustomerID
-	var err error
 
-	allowed, version, err := backupYBAVersionCheck(ctx, c)
-	if err != nil {
-		return diag.FromErr(err)
-	}
-
-	if !allowed {
-		return diag.FromErr(fmt.Errorf("Listing backups below version %s (or on restricted "+
-			"versions) is not supported, currently on %s", utils.YBAAllowBackupMinVersion,
-			version))
-	}
 	req := client.BackupPagedApiQuery{
 		Filter: client.BackupApiFilter{
 			UniverseNameList: *utils.StringSlice(utils.CreateSingletonList(d.Get(
@@ -168,8 +191,19 @@ func dataSourceBackupsListRead(
 		}
 		responseList := chosenBackup.GetCommonBackupInfo().ResponseList
 		if len(responseList) > 0 {
-			err = d.Set("storage_location", responseList[0].DefaultLocation)
-			if err != nil {
+			if err = d.Set("storage_location", responseList[0].DefaultLocation); err != nil {
+				return diag.FromErr(err)
+			}
+			keyspaceDetails := make([]map[string]interface{}, 0, len(responseList))
+			for _, entry := range responseList {
+				keyspaceDetails = append(keyspaceDetails, map[string]interface{}{
+					"storage_location":     entry.DefaultLocation,
+					"keyspace":             entry.Keyspace,
+					"backup_size_in_bytes": int(entry.BackupSizeInBytes),
+					"tables":               entry.TablesList,
+				})
+			}
+			if err = d.Set("keyspace_details", keyspaceDetails); err != nil {
 				return diag.FromErr(err)
 			}
 		}

@@ -11,7 +11,7 @@ require (
 	github.com/hashicorp/terraform-plugin-docs v0.16.0
 	github.com/hashicorp/terraform-plugin-log v0.7.0
 	github.com/hashicorp/terraform-plugin-sdk/v2 v2.10.1
-	github.com/yugabyte/platform-go-client v0.0.0-20260107051432-4a58e3685ab4
+	github.com/yugabyte/platform-go-client v0.0.0-20260313052809-c38a3fb4883f
 	golang.org/x/crypto v0.18.0
 	golang.org/x/exp v0.0.0-20230626212559-97b1e661b5df
 )
@@ -70,6 +70,7 @@ require (
 	github.com/vmihailenco/msgpack v4.0.4+incompatible // indirect
 	github.com/vmihailenco/msgpack/v4 v4.3.12 // indirect
 	github.com/vmihailenco/tagparser v0.1.2 // indirect
+	github.com/yugabyte/platform-go-client/v2 v2.0.0-20260313052809-c38a3fb4883f // indirect
 	github.com/zclconf/go-cty v1.13.2 // indirect
 	golang.org/x/mod v0.11.0 // indirect
 	golang.org/x/net v0.17.0 // indirect

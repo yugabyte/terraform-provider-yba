@@ -1,0 +1,25 @@
+---
+page_title: "{{.Name}} {{.Type}} - {{.RenderedProviderName}}"
+description: |-
+{{ .Description | plainmarkdown | trimspace | prefixlines "  " }}
+---
+
+# {{.Name}} ({{.Type}})
+
+{{ .Description | trimspace }}
+
+## Example Usage
+
+{{ tffile "examples/resources/yba_backup_schedule/resource.tf" }}
+
+For more details, see the [YugabyteDB Anywhere Schedule Data Backups](https://docs.yugabyte.com/preview/yugabyte-platform/back-up-restore-universes/schedule-data-backups/ysql/) documentation.
+
+{{ .SchemaMarkdown | trimspace }}
+
+## Import
+
+Backup schedules can be imported using `backup schedule uuid`:
+
+```sh
+terraform import yba_backup_schedule.example <backup-schedule-uuid>
+```

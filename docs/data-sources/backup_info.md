@@ -8,8 +8,6 @@ description: |-
 
 Retrieve list of backups.
 
-~> **Note:** The YugabyteDB Anywhere Terraform provider supports fetching backups in YugabyteDB Anywhere version 2.18.1 and later.
-
 ## Example Usage
 
 ```terraform
@@ -32,9 +30,16 @@ data "yba_backup_info" "backup" {
 
 - `backup_type` (String) Type of the backup fetched.
 - `id` (String) The ID of this resource.
+- `keyspace_details` (List of Object) Per-keyspace/database details for the backup. For multi-keyspace YCQL backups each entry corresponds to one keyspace, each with its own storage location. For YSQL, typically one entry per database. Use this to build backup_storage_info blocks when restoring multi-keyspace backups. (see [below for nested schema](#nestedatt--keyspace_details))
 - `storage_config_uuid` (String) UUID of the storage configuration used for backup.
-- `storage_location` (String) Storage location of the backup.
+- `storage_location` (String) Storage location of the first keyspace in the backup. For multi-keyspace YCQL backups, use keyspace_details to access all locations.
 
-## Restricted YugabyteDB Anywhere Versions
+<a id="nestedatt--keyspace_details"></a>
+### Nested Schema for `keyspace_details`
 
-- 2.19.0.0
+Read-Only:
+
+- `backup_size_in_bytes` (Number)
+- `keyspace` (String)
+- `storage_location` (String)
+- `tables` (List of String)

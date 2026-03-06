@@ -33,83 +33,225 @@ import (
 // ResourceRestore to trigger Restore Operation
 func ResourceRestore() *schema.Resource {
 	return &schema.Resource{
-		Description: "Restoring backups for universe. This resource does not " +
-			"track the remote state and is only provided as a convenience tool. It " +
-			"is recommended to remove this resource after running terraform apply.",
+		Description: "Restore backups for a universe. This resource triggers a restore operation " +
+			"and waits for completion. Since restores are one-time operations, this resource does not " +
+			"track remote state. It is recommended to remove this resource after running terraform apply.",
 
 		CreateContext: resourceRestoreCreate,
 		ReadContext:   resourceRestoreRead,
-		UpdateContext: resourceRestoreUpdate,
 		DeleteContext: resourceRestoreDelete,
 
 		Timeouts: &schema.ResourceTimeout{
-			Create: schema.DefaultTimeout(30 * time.Minute),
+			Create: schema.DefaultTimeout(60 * time.Minute),
 			Delete: schema.DefaultTimeout(10 * time.Minute),
 		},
 
-		CustomizeDiff: resourceRestoreDiff(),
+		CustomizeDiff: customdiff.All(
+			// Prevent accidental re-creation of completed restores
+			func(ctx context.Context, d *schema.ResourceDiff, meta interface{}) error {
+				// If resource already exists (has an ID) and any ForceNew field changes,
+				// block the operation to prevent accidental re-restore
+				if d.Id() == "" {
+					return nil
+				}
+				forceNewFields := []string{
+					"universe_uuid", "storage_config_uuid", "backup_storage_info",
+					"kms_config_uuid", "restore_to_point_in_time_millis",
+					"parallelism", "enable_verbose_logs", "alter_load_balancer",
+					"disable_checksum", "disable_multipart",
+				}
+				for _, field := range forceNewFields {
+					if d.HasChange(field) {
+						return fmt.Errorf(
+							"cannot modify a completed restore - this would trigger " +
+								"a new restore. To perform a new restore, first remove " +
+								"this resource from state with: terraform state rm <address>")
+					}
+				}
+				return nil
+			},
+		),
 
 		Schema: map[string]*schema.Schema{
+			// Required fields
 			"universe_uuid": {
 				Type:        schema.TypeString,
 				Required:    true,
 				ForceNew:    true,
-				Description: "The UUID of the target universe of restore.",
+				Description: "The UUID of the target universe to restore to.",
 			},
-			"keyspace": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				ForceNew:    true,
-				Description: "Target keyspace name.",
-			},
-			"storage_location": {
+			"storage_config_uuid": {
 				Type:        schema.TypeString,
 				Required:    true,
 				ForceNew:    true,
-				Description: "Storage Location of the backup to be restored.",
-			},
-			"sse": {
-				Type:        schema.TypeBool,
-				Optional:    true,
-				Default:     false,
-				Description: "Is SSE.",
-			},
-			"restore_type": {
-				Type:     schema.TypeString,
-				Required: true,
-				ForceNew: true,
-				ValidateDiagFunc: validation.ToDiagFunc(validation.StringInSlice(
-					[]string{"YQL_TABLE_TYPE", "REDIS_TABLE_TYPE", "PGSQL_TABLE_TYPE"}, false)),
-				Description: "Type of the restore. Permitted values: " +
-					"YQL_TABLE_TYPE, REDIS_TABLE_TYPE, PGSQL_TABLE_TYPE.",
+				Description: "UUID of the storage configuration where the backup is stored.",
 			},
 
+			// Backup storage info - supports multiple keyspaces
+			"backup_storage_info": {
+				Type:     schema.TypeList,
+				Required: true,
+				ForceNew: true,
+				MinItems: 1,
+				Description: "List of backup storage information for restoring. " +
+					"Each entry specifies a keyspace/database to restore.",
+				Elem: &schema.Resource{
+					Schema: map[string]*schema.Schema{
+						"storage_location": {
+							Type:        schema.TypeString,
+							Required:    true,
+							Description: "Storage location of the backup to restore.",
+						},
+						"keyspace": {
+							Type:     schema.TypeString,
+							Required: true,
+							Description: "Target keyspace/database name for the restore. " +
+								"Can differ from the original to restore into a different keyspace.",
+						},
+						"backup_type": {
+							Type:     schema.TypeString,
+							Required: true,
+							ValidateDiagFunc: validation.ToDiagFunc(validation.StringInSlice(
+								[]string{
+									"YQL_TABLE_TYPE",
+									"REDIS_TABLE_TYPE",
+									"PGSQL_TABLE_TYPE",
+								},
+								false,
+							)),
+							Description: "Type of the backup. Allowed values: " +
+								"YQL_TABLE_TYPE (YCQL), REDIS_TABLE_TYPE, PGSQL_TABLE_TYPE (YSQL).",
+						},
+						"sse": {
+							Type:        schema.TypeBool,
+							Optional:    true,
+							Default:     false,
+							Description: "Enable server-side encryption for S3 storage.",
+						},
+						"table_name_list": {
+							Type:     schema.TypeList,
+							Optional: true,
+							Elem:     &schema.Schema{Type: schema.TypeString},
+							Description: "List of specific table names to restore. " +
+								"Only applicable for YCQL (YQL_TABLE_TYPE) backups on YBC-enabled universes. " +
+								"Has no effect for YSQL - YSQL restores are always full-database.",
+						},
+						"selective_table_restore": {
+							Type:     schema.TypeBool,
+							Optional: true,
+							Default:  false,
+							Description: "Only restore the tables listed in table_name_list " +
+								"instead of all tables in the keyspace. " +
+								"Only supported for YCQL (YQL_TABLE_TYPE) backups on YBC-enabled universes. " +
+								"Setting this for YSQL will be rejected by the API.",
+						},
+						"old_owner": {
+							Type:     schema.TypeString,
+							Optional: true,
+							Default:  "postgres",
+							Description: "Current owner of the tables in the backup. " +
+								"Used with new_owner to transfer ownership. Default: postgres.",
+						},
+						"new_owner": {
+							Type:     schema.TypeString,
+							Optional: true,
+							Description: "New owner for the restored tables. " +
+								"If specified, ownership is transferred from old_owner to new_owner.",
+						},
+						"use_tablespaces": {
+							Type:     schema.TypeBool,
+							Optional: true,
+							Default:  false,
+							Description: "Restore tablespace information. " +
+								"Only applicable for YSQL backups.",
+						},
+						"use_roles": {
+							Type:     schema.TypeBool,
+							Optional: true,
+							Default:  false,
+							Description: "Restore global YSQL roles. " +
+								"Only applicable for YSQL backups.",
+						},
+						"ignore_errors": {
+							Type:     schema.TypeBool,
+							Optional: true,
+							Default:  false,
+							Description: "Ignore all restore errors. " +
+								"WARNING: This is a preview API that could change.",
+						},
+						"error_if_tablespaces_exists": {
+							Type:     schema.TypeBool,
+							Optional: true,
+							Default:  false,
+							Description: "Fail if tablespaces with the same names already exist. " +
+								"Only applicable with use_roles enabled. " +
+								"WARNING: This is a preview API that could change.",
+						},
+						"error_if_roles_exists": {
+							Type:     schema.TypeBool,
+							Optional: true,
+							Default:  false,
+							Description: "Fail if roles with the same names already exist. " +
+								"Only applicable with use_roles enabled. " +
+								"WARNING: This is a preview API that could change.",
+						},
+					},
+				},
+			},
+
+			// Optional top-level parameters
+			"kms_config_uuid": {
+				Type:     schema.TypeString,
+				Optional: true,
+				ForceNew: true,
+				Description: "UUID of the KMS configuration for encrypted backups. " +
+					"Required if the backup was encrypted at rest.",
+			},
 			"parallelism": {
 				Type:        schema.TypeInt,
 				Optional:    true,
-				Description: "Number of concurrent commands to run on nodes over SSH.",
+				ForceNew:    true,
+				Default:     8,
+				Description: "Number of concurrent commands to run on nodes over SSH. Default: 8.",
 			},
-			"storage_config_uuid": {
-				Type:     schema.TypeString,
-				Required: true,
+			"enable_verbose_logs": {
+				Type:        schema.TypeBool,
+				Optional:    true,
+				ForceNew:    true,
+				Default:     false,
+				Description: "Enable verbose logging during restore for debugging.",
+			},
+			"alter_load_balancer": {
+				Type:     schema.TypeBool,
+				Optional: true,
 				ForceNew: true,
-				Description: "UUID of the storage configuration to use. Can be retrieved" +
-					" from the storage config data source.",
+				Default:  true,
+				Description: "Alter load balancer state during restore. " +
+					"Set to false to keep load balancer running during restore. Default: true.",
+			},
+			"disable_checksum": {
+				Type:        schema.TypeBool,
+				Optional:    true,
+				ForceNew:    true,
+				Default:     false,
+				Description: "Disable checksum verification during restore.",
+			},
+			"disable_multipart": {
+				Type:        schema.TypeBool,
+				Optional:    true,
+				ForceNew:    true,
+				Default:     false,
+				Description: "Disable multipart upload/download for cloud storage.",
+			},
+			"restore_to_point_in_time_millis": {
+				Type:     schema.TypeInt,
+				Optional: true,
+				ForceNew: true,
+				Description: "Restore to a specific point in time (Unix timestamp in milliseconds). " +
+					"Used for Point-in-Time Recovery (PITR).",
 			},
 		},
 	}
-}
-
-func resourceRestoreDiff() schema.CustomizeDiffFunc {
-	return customdiff.All(
-		customdiff.ValidateValue("storage_location", func(ctx context.Context, value,
-			meta interface{}) error {
-			if value.(string) == "" {
-				return fmt.Errorf("Cannot have empty storage location for restores")
-			}
-			return nil
-		}),
-	)
 }
 
 func resourceRestoreCreate(
@@ -119,25 +261,52 @@ func resourceRestoreCreate(
 	c := meta.(*api.APIClient).YugawareClient
 	cUUID := meta.(*api.APIClient).CustomerID
 
-	allowed, version, err := backupYBAVersionCheck(ctx, c)
-	if err != nil {
-		return diag.FromErr(err)
-	}
-
-	if !allowed {
-		return diag.FromErr(fmt.Errorf("Restoring backups below version %s (or on restricted"+
-			" versions) is not supported, currently on %s", utils.YBAAllowBackupMinVersion,
-			version))
-	}
-	backupStorage := client.BackupStorageInfo{
-		StorageLocation: utils.GetStringPointer(d.Get("storage_location").(string)),
-		Keyspace:        utils.GetStringPointer(d.Get("keyspace").(string)),
-		Sse:             utils.GetBoolPointer(d.Get("sse").(bool)),
-		BackupType:      utils.GetStringPointer(d.Get("restore_type").(string)),
-	}
+	// Build backup storage info list
 	backupStorageInfoList := make([]client.BackupStorageInfo, 0)
-	backupStorageInfoList = append(backupStorageInfoList, backupStorage)
+	storageInfos := d.Get("backup_storage_info").([]interface{})
 
+	for _, si := range storageInfos {
+		info := si.(map[string]interface{})
+
+		backupStorageInfo := client.BackupStorageInfo{
+			StorageLocation:       utils.GetStringPointer(info["storage_location"].(string)),
+			BackupType:            utils.GetStringPointer(info["backup_type"].(string)),
+			Sse:                   utils.GetBoolPointer(info["sse"].(bool)),
+			SelectiveTableRestore: utils.GetBoolPointer(info["selective_table_restore"].(bool)),
+			UseTablespaces:        utils.GetBoolPointer(info["use_tablespaces"].(bool)),
+			UseRoles:              utils.GetBoolPointer(info["use_roles"].(bool)),
+			IgnoreErrors:          utils.GetBoolPointer(info["ignore_errors"].(bool)),
+			ErrorIfTablespacesExists: utils.GetBoolPointer(
+				info["error_if_tablespaces_exists"].(bool),
+			),
+			ErrorIfRolesExists: utils.GetBoolPointer(info["error_if_roles_exists"].(bool)),
+		}
+
+		backupStorageInfo.Keyspace = utils.GetStringPointer(info["keyspace"].(string))
+
+		// Optional old_owner
+		if oldOwner, ok := info["old_owner"].(string); ok && oldOwner != "" {
+			backupStorageInfo.OldOwner = utils.GetStringPointer(oldOwner)
+		}
+
+		// Optional new_owner
+		if newOwner, ok := info["new_owner"].(string); ok && newOwner != "" {
+			backupStorageInfo.NewOwner = utils.GetStringPointer(newOwner)
+		}
+
+		// Optional table_name_list
+		if tableNames, ok := info["table_name_list"].([]interface{}); ok && len(tableNames) > 0 {
+			tableNameList := make([]string, len(tableNames))
+			for i, t := range tableNames {
+				tableNameList[i] = t.(string)
+			}
+			backupStorageInfo.TableNameList = tableNameList
+		}
+
+		backupStorageInfoList = append(backupStorageInfoList, backupStorageInfo)
+	}
+
+	// Build restore request
 	req := client.RestoreBackupParams{
 		ActionType:            utils.GetStringPointer("RESTORE"),
 		UniverseUUID:          d.Get("universe_uuid").(string),
@@ -145,9 +314,24 @@ func resourceRestoreCreate(
 		Parallelism:           utils.GetInt32Pointer(int32(d.Get("parallelism").(int))),
 		CustomerUUID:          &cUUID,
 		BackupStorageInfoList: backupStorageInfoList,
+		EnableVerboseLogs:     utils.GetBoolPointer(d.Get("enable_verbose_logs").(bool)),
+		AlterLoadBalancer:     utils.GetBoolPointer(d.Get("alter_load_balancer").(bool)),
+		DisableChecksum:       utils.GetBoolPointer(d.Get("disable_checksum").(bool)),
+		DisableMultipart:      utils.GetBoolPointer(d.Get("disable_multipart").(bool)),
 	}
 
-	// V2 restore
+	// Optional KMS config
+	if kmsConfigUUID, ok := d.GetOk("kms_config_uuid"); ok {
+		req.KmsConfigUUID = utils.GetStringPointer(kmsConfigUUID.(string))
+	}
+
+	// Optional PITR timestamp
+	if pitrMillis, ok := d.GetOk("restore_to_point_in_time_millis"); ok {
+		millis := int64(pitrMillis.(int))
+		req.RestoreToPointInTimeMillis = &millis
+	}
+
+	// Execute restore
 	r, response, err := c.BackupsAPI.RestoreBackupV2(ctx, cUUID).Backup(req).Execute()
 	if err != nil {
 		errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
@@ -155,12 +339,15 @@ func resourceRestoreCreate(
 		return diag.FromErr(errMessage)
 	}
 
-	tflog.Debug(ctx, fmt.Sprintf("Waiting for restore %s to complete", d.Id()))
-	err = utils.WaitForTask(ctx, *r.TaskUUID, cUUID, c, d.Timeout(schema.TimeoutCreate))
+	taskUUID := *r.TaskUUID
+	tflog.Debug(ctx, fmt.Sprintf("Waiting for restore task %s to complete", taskUUID))
+	err = utils.WaitForTask(ctx, taskUUID, cUUID, c, d.Timeout(schema.TimeoutCreate))
 	if err != nil {
 		return diag.FromErr(err)
 	}
-	d.SetId(d.Get("keyspace").(string))
+
+	// Set ID using task UUID since restores don't have a persistent ID
+	d.SetId(taskUUID)
 	return resourceRestoreRead(ctx, d, meta)
 }
 
@@ -168,100 +355,23 @@ func resourceRestoreRead(
 	ctx context.Context,
 	d *schema.ResourceData,
 	meta interface{}) diag.Diagnostics {
-
-	// fetch restore from restore table
 	var diags diag.Diagnostics
-	c := meta.(*api.APIClient).YugawareClient
-	cUUID := meta.(*api.APIClient).CustomerID
-	allowed, version, err := backupYBAVersionCheck(ctx, c)
-	if err != nil {
-		return diag.FromErr(err)
+
+	// Restores are one-time operations and don't have persistent state to read.
+	// We just verify the resource exists in local state.
+	if d.Id() == "" {
+		return diag.Errorf("Restore resource has no ID")
 	}
 
-	if !allowed {
-		return diag.FromErr(fmt.Errorf("Reading backup restores below version %s (or on "+
-			"restricted versions) is not supported, currently on %s",
-			utils.YBAAllowBackupMinVersion, version))
-	}
-
-	req := client.RestorePagedApiQuery{
-		Filter: client.RestoreApiFilter{
-			States: *utils.StringSlice(utils.CreateSingletonList("Completed")),
-			UniverseUUIDList: *utils.StringSlice(utils.CreateSingletonList(
-				d.Get("universe_uuid"))),
-		},
-		SortBy:    "createTime",
-		Direction: "DESC",
-		Limit:     *utils.GetInt32Pointer(10),
-	}
-	var minTime = time.Unix(-2208988800, 0) // Jan 1, 1900
-	var maxTime = minTime.Add(1<<63 - 1)
-
-	startDate, err := time.Parse(time.RFC3339, minTime.Format(time.RFC3339))
-	if err != nil {
-		return diag.FromErr(err)
-	}
-	req.Filter.DateRangeStart = &startDate
-
-	endDate, err := time.Parse(time.RFC3339, maxTime.Format(time.RFC3339))
-	if err != nil {
-		return diag.FromErr(err)
-	}
-	req.Filter.DateRangeEnd = &endDate
-
-	r, response, err := c.BackupsAPI.ListBackupRestoresV2(ctx, cUUID).PageRestoresRequest(
-		req).Execute()
-	if err != nil {
-		// If the restore or universe was deleted outside of Terraform, remove from state
-		if utils.IsHTTPNotFound(response) || utils.IsHTTPBadRequestNotFound(response) {
-			tflog.Warn(
-				ctx,
-				fmt.Sprintf("Restore %s not found, removing from state: %v", d.Id(), err),
-			)
-			d.SetId("")
-			return diags
-		}
-		errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
-			"Restore", "Read")
-		return diag.FromErr(errMessage)
-	}
-
-	if len(r.Entities) > 0 {
-		chosenRestore := r.Entities[0]
-		keyspaceList := chosenRestore.GetRestoreKeyspaceList()
-		if len(keyspaceList) > 0 {
-			keyspace := keyspaceList[0]
-			if err = d.Set("storage_location", keyspace.GetStorageLocation()); err != nil {
-				return diag.FromErr(err)
-			}
-			if err = d.Set("keyspace", keyspace.GetTargetKeyspace()); err != nil {
-				return diag.FromErr(err)
-			}
-
-		}
-		if err = d.Set("universe_uuid", chosenRestore.UniverseUUID); err != nil {
-			return diag.FromErr(err)
-		}
-
-		return diags
-	}
-
-	d.SetId(d.Get("keyspace").(string))
 	return diags
-
-}
-
-func resourceRestoreUpdate(
-	ctx context.Context,
-	d *schema.ResourceData,
-	meta interface{}) diag.Diagnostics {
-	return diag.Diagnostics{}
 }
 
 func resourceRestoreDelete(
 	ctx context.Context,
 	d *schema.ResourceData,
 	meta interface{}) diag.Diagnostics {
+	// Restores cannot be "deleted" - they are completed operations.
+	// We just remove from Terraform state.
 	d.SetId("")
 	return nil
 }

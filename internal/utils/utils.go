@@ -465,24 +465,37 @@ func ErrorFromHTTPResponse(resp *http.Response, apiError error, entity, entityNa
 // ErrorFromResponseBody is a function to extract error interfaces into string
 func ErrorFromResponseBody(errorBlock YbaStructuredError) string {
 	var errorString string
+	// Check for nil error field to prevent nil pointer dereference
+	if errorBlock.Error == nil {
+		return "unknown error (no error field in response)"
+	}
 	if reflect.TypeOf(*errorBlock.Error) == reflect.TypeOf(errorString) {
 		return (*errorBlock.Error).(string)
 	}
 
-	errorMap := (*errorBlock.Error).(map[string]interface{})
+	errorMap, ok := (*errorBlock.Error).(map[string]interface{})
+	if !ok {
+		// Handle unexpected types by converting to string representation
+		return fmt.Sprintf("%v", *errorBlock.Error)
+	}
 	for k, v := range errorMap {
 		if k != "" {
 			errorString = fmt.Sprintf("Field: %s, Error:", k)
 		}
-		var checkType []interface{}
-		if reflect.TypeOf(v) == reflect.TypeOf(checkType) {
-			for _, s := range *StringSlice(v.([]interface{})) {
+		switch val := v.(type) {
+		case []interface{}:
+			for _, s := range *StringSlice(val) {
 				errorString = fmt.Sprintf("%s %s", errorString, s)
 			}
-		} else {
-			errorString = fmt.Sprintf("%s %s", errorString, v.(string))
+		case string:
+			errorString = fmt.Sprintf("%s %s", errorString, val)
+		case map[string]interface{}:
+			// Handle nested maps by converting to string representation
+			errorString = fmt.Sprintf("%s %v", errorString, val)
+		default:
+			// Handle any other types safely
+			errorString = fmt.Sprintf("%s %v", errorString, val)
 		}
-
 	}
 	return errorString
 }

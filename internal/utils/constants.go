@@ -76,10 +76,6 @@ const (
 	// required to use Universe resource via YBA Terraform
 	YBAAllowUniverseMinVersion = "2.17.1.0-b371"
 
-	// YBAAllowBackupMinVersion specifies minimum version
-	// required to use Scheduled Backup resource via YBA Terraform
-	YBAAllowBackupMinVersion = "2.18.1.0-b20"
-
 	// YBAAllowEditProviderMinVersion specifies minimum version
 	// required to Edit a Provider (onprem or cloud) resource
 	// via YBA Terraform
@@ -97,12 +93,6 @@ const (
 
 // YugabyteDB Anywhere versions >= the minimum listed versions for operations
 // that need to be restricted
-
-// YBARestrictBackupVersions are certain YugabyteDB Anywhere versions >= min
-// version for backups that would not support the operation
-func YBARestrictBackupVersions() []string {
-	return []string{"2.19.0.0"}
-}
 
 // YBARestrictFailedSubtasksVersions are certain YugabyteDB Anywhere versions >= min
 // version for of fetching failed subtask lists that would not support the operation

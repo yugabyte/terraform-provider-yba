@@ -9,8 +9,6 @@ description: |-
 
 You can schedule backups using the following definition after configuring a storage configuration resource (refer to *yba_storage_config_resource*).
 
-~> **Note:** The YugabyteDB Anywhere Terraform provider supports backup schedules in YugabyteDB Anywhere version 2.18.1 and later.
-
 ```terraform
 resource "yba_storage_config_resource" "storage" {
   name = "S3"
@@ -22,10 +20,10 @@ data "yba_storage_configs" "configs" {
   config_name = yba_storage_config_resource.storage.config_name
 }
 
-resource "yba_backups" "universe_backup_schedule" {
+resource "yba_backup_schedule" "universe_backup_schedule" {
 
   universe_uuid = "<universe-uuid>"
-  keyspace = "<keyspace-name>"
+  keyspaces = ["<keyspace-name>"]
   storage_config_uuid = data.yba_storage_configs.configs.id
   time_before_delete = "24h"
   sse = false

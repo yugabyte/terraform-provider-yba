@@ -1342,7 +1342,7 @@ func nodeInstancesCreate(ctx context.Context, c *client.APIClient, cUUID, pUUID 
 			nodeData.InstanceName = instanceName
 		}
 		if sshUser, ok := niMap["ssh_user"].(string); ok && sshUser != "" {
-			nodeData.SshUser = sshUser
+			nodeData.SshUser = &sshUser
 		}
 
 		nodesByZone[zoneKey] = append(nodesByZone[zoneKey], nodeData)

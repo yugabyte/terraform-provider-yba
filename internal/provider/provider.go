@@ -100,12 +100,15 @@ func New() *schema.Provider {
 			"yba_onprem_preflight": onprem.PreflightCheck(),
 			"yba_onprem_nodes":     onprem.NodeInstanceFilter(),
 			"yba_universe_filter":  universe.UniverseFilter(),
+			"yba_universe_schema":  universe.DataSourceUniverseSchema(),
 		},
 		ResourcesMap: map[string]*schema.Resource{
 			"yba_installer":         installation.ResourceYBAInstaller(),
 			"yba_cloud_provider":    cloud_provider.ResourceCloudProvider(),
 			"yba_universe":          universe.ResourceUniverse(),
-			"yba_backups":           backups.ResourceBackups(),
+			"yba_backup":            backups.ResourceBackup(),
+			"yba_backup_schedule":   backups.ResourceBackupSchedule(),
+			"yba_backups":           backups.ResourceBackupsDeprecated(),
 			"yba_user":              user.ResourceUser(),
 			"yba_customer_resource": customer.ResourceCustomer(),
 			// Deprecated: use yba_s3/gcs/azure/nfs_storage_config instead
