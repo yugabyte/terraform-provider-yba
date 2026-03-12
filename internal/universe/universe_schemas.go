@@ -138,8 +138,8 @@ func userIntentSchema() *schema.Resource {
 			"enable_ycql": {
 				Type:        schema.TypeBool,
 				Optional:    true,
-				Default:     false,
-				Description: "Enable YCQL. False by default.",
+				Default:     true,
+				Description: "Enable YCQL. True by default.",
 			},
 			"enable_ycql_auth": {
 				Type:        schema.TypeBool,

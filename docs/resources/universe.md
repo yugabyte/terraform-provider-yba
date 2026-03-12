@@ -119,7 +119,7 @@ Optional:
 - `enable_ipv6` (Boolean) Enable IPv6.
 - `enable_node_to_node_encrypt` (Boolean) Enable Encryption in Transit - Node to Node encryption. True by default.
 - `enable_volume_encryption` (Boolean) Enable Encryption At Rest. False by default.
-- `enable_ycql` (Boolean) Enable YCQL. False by default.
+- `enable_ycql` (Boolean) Enable YCQL. True by default.
 - `enable_ycql_auth` (Boolean) Enable YCQL authentication.
 - `enable_yedis` (Boolean) Enable YEDIS. False by default.
 - `enable_ysql` (Boolean) Enable YSQL. True by default.

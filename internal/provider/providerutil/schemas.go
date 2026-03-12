@@ -119,7 +119,7 @@ func ImageBundleSchema() *schema.Schema {
 							"use_imds_v2": {
 								Type:     schema.TypeBool,
 								Optional: true,
-								Default:  false,
+								Default:  true,
 								Description: "Use IMDS v2 for the image. " +
 									"Set to true if the image requires Instance Metadata Service v2.",
 							},
