@@ -22,7 +22,7 @@ Azure Cloud Provider Resource. Use this resource to create and manage Azure clou
 
 ### Optional
 
-- `air_gap_install` (Boolean) Flag indicating if YugabyteDB nodes are installed in an air-gapped environment, lacking access to the public internet for package downloads.
+- `air_gap_install` (Boolean) Flag indicating if YugabyteDB nodes are installed in an air-gapped environment, lacking access to the public internet for package downloads. Default is false.
 - `client_id` (String) Azure Client ID for service principal authentication.
 - `client_secret` (String, Sensitive) Azure Client Secret. Required with client_id. Stored in Terraform state - use an encrypted backend for security.
 - `hosted_zone_id` (String) Private DNS Zone for Azure.
@@ -114,7 +114,6 @@ Optional:
 - `global_yb_image` (String) Global YB image for the bundle.
 - `region_overrides` (Map of String) Region overrides for the bundle. Provide region code as the key and override image as the value.
 - `ssh_port` (Number) SSH port for the image. Default is 22.
-- `use_imds_v2` (Boolean) Use IMDS v2 for the image. Set to true if the image requires Instance Metadata Service v2.
 
 
 

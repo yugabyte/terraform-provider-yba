@@ -208,7 +208,6 @@ func TestBuildImageBundles(t *testing.T) {
 							"ssh_user":        "centos",
 							"ssh_port":        22,
 							"global_yb_image": "",
-							"use_imds_v2":     false,
 							"region_overrides": map[string]interface{}{
 								"us-west-2": "ami-12345",
 							},
@@ -241,7 +240,6 @@ func TestBuildImageBundlesValues(t *testing.T) {
 					"ssh_user":        "ec2-user",
 					"ssh_port":        22,
 					"global_yb_image": "ami-global",
-					"use_imds_v2":     true,
 					"region_overrides": map[string]interface{}{
 						"us-east-1": "ami-east",
 						"us-west-2": "ami-west",
@@ -276,9 +274,6 @@ func TestBuildImageBundlesValues(t *testing.T) {
 	}
 	if details.GetGlobalYbImage() != "ami-global" {
 		t.Errorf("expected global_yb_image 'ami-global', got '%s'", details.GetGlobalYbImage())
-	}
-	if !details.GetUseIMDSv2() {
-		t.Error("expected use_imds_v2 to be true")
 	}
 
 	regions := details.GetRegions()

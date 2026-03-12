@@ -22,7 +22,7 @@ GCP Cloud Provider Resource. Use this resource to create and manage GCP cloud pr
 
 ### Optional
 
-- `air_gap_install` (Boolean) Flag indicating if YugabyteDB nodes are installed in an air-gapped environment, lacking access to the public internet for package downloads.
+- `air_gap_install` (Boolean) Flag indicating if YugabyteDB nodes are installed in an air-gapped environment, lacking access to the public internet for package downloads. Default is false.
 - `create_vpc` (Boolean) Create a new VPC in GCP. If true, network must be specified as the new VPC name. Default is false.
 - `credentials` (String, Sensitive) Google Service Account credentials JSON content. Stored in Terraform state - use an encrypted backend for security.
 - `image_bundles` (Block List) Image bundles associated with cloud providers. Supported from YugabyteDB Anywhere version: 2.20.3.0-b68 (see [below for nested schema](#nestedblock--image_bundles))
@@ -106,7 +106,6 @@ Optional:
 - `global_yb_image` (String) Global YB image for the bundle.
 - `region_overrides` (Map of String) Region overrides for the bundle. Provide region code as the key and override image as the value.
 - `ssh_port` (Number) SSH port for the image. Default is 22.
-- `use_imds_v2` (Boolean) Use IMDS v2 for the image. Set to true if the image requires Instance Metadata Service v2.
 
 
 

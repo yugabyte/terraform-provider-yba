@@ -239,11 +239,11 @@ resource "yba_aws_provider" "test" {
   secret_access_key = var.AWS_SECRET_ACCESS_KEY
   ssh_keypair_name  = "test-key"
   regions {
-    name              = "us-west-2"
+    code              = "us-west-2"
     security_group_id = var.AWS_SG_ID
     vpc_id            = var.AWS_VPC_ID
     zones {
-      name   = "us-west-2a"
+      code   = "us-west-2a"
       subnet = var.AWS_ZONE_SUBNET_ID
     }
   }
@@ -282,11 +282,11 @@ resource "yba_aws_provider" "test" {
   use_iam_instance_profile = false
   ssh_keypair_name         = "test-keypair"
   regions {
-    name              = "us-west-2"
+    code              = "us-west-2"
     security_group_id = var.AWS_SG_ID
     vpc_id            = var.AWS_VPC_ID
     zones {
-      name   = "us-west-2a"
+      code   = "us-west-2a"
       subnet = var.AWS_ZONE_SUBNET_ID
     }
   }
@@ -314,11 +314,11 @@ resource "yba_aws_provider" "test" {
   use_iam_instance_profile = true
   ssh_keypair_name         = "test-keypair"
   regions {
-    name              = "us-west-2"
+    code              = "us-west-2"
     security_group_id = var.AWS_SG_ID
     vpc_id            = var.AWS_VPC_ID
     zones {
-      name   = "us-west-2a"
+      code   = "us-west-2a"
       subnet = var.AWS_ZONE_SUBNET_ID
     }
   }
@@ -361,11 +361,11 @@ resource "yba_aws_provider" "test" {
   secret_access_key = var.AWS_SECRET_ACCESS_KEY
   ssh_keypair_name  = "test-keypair"
   regions {
-    name              = "us-west-2"
+    code              = "us-west-2"
     security_group_id = var.AWS_SG_ID
     vpc_id            = var.AWS_VPC_ID
     zones {
-      name   = "us-west-2a"
+      code   = "us-west-2a"
       subnet = var.AWS_ZONE_SUBNET_ID
     }
   }
@@ -487,15 +487,15 @@ resource "yba_aws_provider" "test" {
   skip_keypair_validation = true
 
   regions {
-    name              = "us-west-2"
+    code              = "us-west-2"
     security_group_id = var.AWS_SG_ID
     vpc_id            = var.AWS_VPC_ID
     zones {
-      name   = "us-west-2a"
+      code   = "us-west-2a"
       subnet = var.AWS_ZONE_SUBNET_ID
     }
     zones {
-      name   = "us-west-2b"
+      code   = "us-west-2b"
       subnet = var.AWS_ZONE_SUBNET_ID_2
     }
   }

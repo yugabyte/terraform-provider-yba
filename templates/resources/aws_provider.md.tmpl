@@ -1,0 +1,38 @@
+---
+page_title: "{{.Name}} {{.Type}} - {{.RenderedProviderName}}"
+description: |-
+{{ .Description | plainmarkdown | trimspace | prefixlines "  " }}
+---
+
+# {{.Name}} ({{.Type}})
+
+{{ .Description | trimspace }}
+
+This resource provides a dedicated interface for AWS cloud providers with a simplified schema compared to the generic `yba_cloud_provider` resource.
+
+## Credentials
+
+AWS credentials can be provided in two ways:
+
+1. **Access Keys**: Set `access_key_id` and `secret_access_key` fields
+2. **IAM Instance Profile**: Set `use_iam_instance_profile = true` to use the IAM role attached to the YugabyteDB Anywhere host
+
+-> **Note:** When using IAM instance profile, ensure the YBA host has an IAM role with sufficient permissions for EC2, VPC, and other required AWS services.
+
+## Example Usage
+
+### Basic AWS Provider with Access Keys
+
+{{ tffile "examples/resources/yba_aws_provider/resource.tf" }}
+
+The details for configuration are available in the [YugabyteDB Anywhere Configure Cloud Provider Documentation](https://docs.yugabyte.com/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/aws/).
+
+{{ .SchemaMarkdown | trimspace }}
+
+## Import
+
+AWS Providers can be imported using the provider UUID:
+
+```sh
+terraform import yba_aws_provider.example <provider-uuid>
+```

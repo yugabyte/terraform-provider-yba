@@ -55,7 +55,6 @@ func flattenImageBundleDetails(details client.ImageBundleDetails) []map[string]i
 		"arch":             details.GetArch(),
 		"ssh_user":         details.GetSshUser(),
 		"ssh_port":         details.GetSshPort(),
-		"use_imds_v2":      details.GetUseIMDSv2(),
 		"global_yb_image":  details.GetGlobalYbImage(),
 		"region_overrides": flattenRegionOverrides(details.GetRegions()),
 	}

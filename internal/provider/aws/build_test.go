@@ -37,12 +37,12 @@ func TestBuildAWSRegions(t *testing.T) {
 			name: "single region with zones",
 			input: []interface{}{
 				map[string]interface{}{
-					"name":              "us-west-2",
+					"code":              "us-west-2",
 					"security_group_id": "sg-12345",
 					"vpc_id":            "vpc-12345",
 					"zones": []interface{}{
 						map[string]interface{}{
-							"name":             "us-west-2a",
+							"code":             "us-west-2a",
 							"subnet":           "subnet-a",
 							"secondary_subnet": "",
 						},
@@ -55,13 +55,13 @@ func TestBuildAWSRegions(t *testing.T) {
 			name: "multiple regions",
 			input: []interface{}{
 				map[string]interface{}{
-					"name":              "us-west-2",
+					"code":              "us-west-2",
 					"security_group_id": "sg-west",
 					"vpc_id":            "vpc-west",
 					"zones":             []interface{}{},
 				},
 				map[string]interface{}{
-					"name":              "us-east-1",
+					"code":              "us-east-1",
 					"security_group_id": "sg-east",
 					"vpc_id":            "vpc-east",
 					"zones":             []interface{}{},
@@ -84,17 +84,17 @@ func TestBuildAWSRegions(t *testing.T) {
 func TestBuildAWSRegionsValues(t *testing.T) {
 	input := []interface{}{
 		map[string]interface{}{
-			"name":              "us-west-2",
+			"code":              "us-west-2",
 			"security_group_id": "sg-test",
 			"vpc_id":            "vpc-test",
 			"zones": []interface{}{
 				map[string]interface{}{
-					"name":             "us-west-2a",
+					"code":             "us-west-2a",
 					"subnet":           "subnet-primary",
 					"secondary_subnet": "subnet-secondary",
 				},
 				map[string]interface{}{
-					"name":             "us-west-2b",
+					"code":             "us-west-2b",
 					"subnet":           "subnet-primary-b",
 					"secondary_subnet": "",
 				},
@@ -147,7 +147,7 @@ func TestBuildAWSZones(t *testing.T) {
 			name: "single zone",
 			input: []interface{}{
 				map[string]interface{}{
-					"name":             "us-west-2a",
+					"code":             "us-west-2a",
 					"subnet":           "subnet-123",
 					"secondary_subnet": "subnet-456",
 				},
@@ -158,17 +158,17 @@ func TestBuildAWSZones(t *testing.T) {
 			name: "multiple zones",
 			input: []interface{}{
 				map[string]interface{}{
-					"name":             "us-west-2a",
+					"code":             "us-west-2a",
 					"subnet":           "subnet-a",
 					"secondary_subnet": "",
 				},
 				map[string]interface{}{
-					"name":             "us-west-2b",
+					"code":             "us-west-2b",
 					"subnet":           "subnet-b",
 					"secondary_subnet": "",
 				},
 				map[string]interface{}{
-					"name":             "us-west-2c",
+					"code":             "us-west-2c",
 					"subnet":           "subnet-c",
 					"secondary_subnet": "",
 				},
@@ -190,7 +190,7 @@ func TestBuildAWSZones(t *testing.T) {
 func TestBuildAWSZonesValues(t *testing.T) {
 	input := []interface{}{
 		map[string]interface{}{
-			"name":             "us-west-2a",
+			"code":             "us-west-2a",
 			"subnet":           "subnet-primary",
 			"secondary_subnet": "subnet-secondary",
 		},
@@ -205,6 +205,7 @@ func TestBuildAWSZonesValues(t *testing.T) {
 	if zone.GetCode() != "us-west-2a" {
 		t.Errorf("expected code 'us-west-2a', got '%s'", zone.GetCode())
 	}
+	// Name is set to code value in the API request
 	if zone.Name != "us-west-2a" {
 		t.Errorf("expected name 'us-west-2a', got '%s'", zone.Name)
 	}
@@ -403,8 +404,9 @@ func TestBuildAWSImageBundlesValues(t *testing.T) {
 	if details.GetSshPort() != 22 {
 		t.Errorf("expected ssh_port 22, got %d", details.GetSshPort())
 	}
-	// Note: use_imds_v2 is NOT set by buildAWSImageBundles anymore
-	// YBA enforces IMDSv2=true for all AWS image bundles as a security requirement
+	if !details.GetUseIMDSv2() {
+		t.Error("expected use_imds_v2 to be true")
+	}
 	if details.GetGlobalYbImage() != "ami-global-123" {
 		t.Errorf("expected global_yb_image 'ami-global-123', got '%s'", details.GetGlobalYbImage())
 	}
@@ -422,6 +424,33 @@ func TestBuildAWSImageBundlesValues(t *testing.T) {
 	if usEast.GetYbImage() != "ami-east-123" {
 		t.Errorf("expected us-east-1 AMI 'ami-east-123', got '%s'",
 			usEast.GetYbImage())
+	}
+}
+
+func TestBuildAWSImageBundlesUseIMDSv2False(t *testing.T) {
+	input := []interface{}{
+		map[string]interface{}{
+			"name":           "bundle-no-imdsv2",
+			"use_as_default": false,
+			"details": []interface{}{
+				map[string]interface{}{
+					"arch":        "x86_64",
+					"ssh_user":    "centos",
+					"ssh_port":    22,
+					"use_imds_v2": false,
+				},
+			},
+		},
+	}
+
+	result := buildAWSImageBundles(input)
+	if len(result) != 1 {
+		t.Fatalf("expected 1 bundle, got %d", len(result))
+	}
+
+	details := result[0].GetDetails()
+	if details.GetUseIMDSv2() {
+		t.Error("expected use_imds_v2 to be false")
 	}
 }
 
@@ -520,4 +549,26 @@ func TestFlattenAWSImageBundlesNoRegionOverrides(t *testing.T) {
 	if _, ok := details["region_overrides"]; ok {
 		t.Error("expected region_overrides to not be set for empty overrides")
 	}
+}
+
+// Helper function to create a test image bundle
+func createTestImageBundle(
+	uuid, name, arch string,
+	useAsDefault bool,
+	bundleType string,
+) client.ImageBundle {
+	bundle := client.ImageBundle{
+		Uuid:         utils.GetStringPointer(uuid),
+		Name:         utils.GetStringPointer(name),
+		UseAsDefault: utils.GetBoolPointer(useAsDefault),
+		Details: &client.ImageBundleDetails{
+			Arch:    utils.GetStringPointer(arch),
+			SshUser: utils.GetStringPointer("ec2-user"),
+			SshPort: utils.GetInt32Pointer(22),
+		},
+		Metadata: &client.Metadata{
+			Type: bundleType,
+		},
+	}
+	return bundle
 }

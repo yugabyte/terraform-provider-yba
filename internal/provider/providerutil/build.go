@@ -90,9 +90,6 @@ func buildImageBundleDetails(details []interface{}) *client.ImageBundleDetails {
 	}
 
 	// Handle optional fields safely
-	if v, ok := d["use_imds_v2"].(bool); ok {
-		result.SetUseIMDSv2(v)
-	}
 	if v, ok := d["global_yb_image"].(string); ok && v != "" {
 		result.SetGlobalYbImage(v)
 	}

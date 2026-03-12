@@ -36,13 +36,15 @@ func CommonProviderSchema() map[string]*schema.Schema {
 		"air_gap_install": {
 			Type:     schema.TypeBool,
 			Optional: true,
-			Default:  false,
+			Computed: true,
 			Description: "Flag indicating if YugabyteDB nodes are installed in an air-gapped " +
-				"environment, lacking access to the public internet for package downloads.",
+				"environment, lacking access to the public internet for package downloads. " +
+				"Default is false.",
 		},
 		"ntp_servers": {
 			Type:     schema.TypeList,
 			Optional: true,
+			Computed: true,
 			Elem: &schema.Schema{
 				Type: schema.TypeString,
 			},
@@ -51,7 +53,7 @@ func CommonProviderSchema() map[string]*schema.Schema {
 		"set_up_chrony": {
 			Type:     schema.TypeBool,
 			Optional: true,
-			Default:  false,
+			Computed: true,
 			Description: "Set up NTP chrony service. When true with empty ntp_servers, " +
 				"uses cloud provider's NTP server (e.g., AWS Time Sync). " +
 				"When true with ntp_servers specified, uses custom NTP servers. " +
@@ -115,13 +117,6 @@ func ImageBundleSchema() *schema.Schema {
 								Optional:    true,
 								Default:     22,
 								Description: "SSH port for the image. Default is 22.",
-							},
-							"use_imds_v2": {
-								Type:     schema.TypeBool,
-								Optional: true,
-								Default:  true,
-								Description: "Use IMDS v2 for the image. " +
-									"Set to true if the image requires Instance Metadata Service v2.",
 							},
 							"global_yb_image": {
 								Type:        schema.TypeString,
