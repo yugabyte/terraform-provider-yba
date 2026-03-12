@@ -274,6 +274,7 @@ func resourceGCPProviderCreate(
 		ImageBundles:  imageBundles,
 		Details: &client.ProviderDetails{
 			AirGapInstall: utils.GetBoolPointer(d.Get("air_gap_install").(bool)),
+			SetUpChrony:   utils.GetBoolPointer(d.Get("set_up_chrony").(bool)),
 			NtpServers:    providerutil.GetNTPServers(d.Get("ntp_servers")),
 			CloudInfo: &client.CloudInfo{
 				Gcp: gcpCloudInfo,
@@ -447,9 +448,10 @@ func resourceGCPProviderUpdate(
 	}
 
 	// Update provider details if changed (mirrors yba-cli update logic)
-	if d.HasChange("air_gap_install") || d.HasChange("ntp_servers") {
+	if d.HasChange("air_gap_install") || d.HasChange("ntp_servers") || d.HasChange("set_up_chrony") {
 		details := providerReq.GetDetails()
 		details.SetAirGapInstall(d.Get("air_gap_install").(bool))
+		details.SetSetUpChrony(d.Get("set_up_chrony").(bool))
 		details.SetNtpServers(providerutil.GetNTPServers(d.Get("ntp_servers")))
 		providerReq.SetDetails(details)
 	}

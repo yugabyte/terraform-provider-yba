@@ -50,10 +50,13 @@ func CommonProviderSchema() map[string]*schema.Schema {
 		},
 		"set_up_chrony": {
 			Type:     schema.TypeBool,
-			Computed: true,
-			Description: "Set up NTP chrony service. Read-only, " +
-				"automatically managed by YBA based on NTP server configuration.",
-			Deprecated: "Managed automatically by YBA. Will be removed in a future version.",
+			Optional: true,
+			Default:  false,
+			Description: "Set up NTP chrony service. When true with empty ntp_servers, " +
+				"uses cloud provider's NTP server (e.g., AWS Time Sync). " +
+				"When true with ntp_servers specified, uses custom NTP servers. " +
+				"When false, assumes NTP is pre-configured in the machine image. " +
+				"Default is false.",
 		},
 		"access_key_code": {
 			Type:        schema.TypeString,

@@ -160,10 +160,13 @@ func onpremProviderSchema() map[string]*schema.Schema {
 			Description: "List of NTP servers. Can be provided as separate values.",
 		},
 		"set_up_chrony": {
-			Type:        schema.TypeBool,
-			Computed:    true,
-			Description: "Set up NTP chrony service. Read-only, automatically managed by YBA.",
-			Deprecated:  "Managed automatically by YBA. Will be removed in a future version.",
+			Type:     schema.TypeBool,
+			Optional: true,
+			Default:  false,
+			Description: "Set up NTP chrony service. When true, chrony will be configured " +
+				"with the specified ntp_servers. For on-premises providers, ntp_servers must " +
+				"be provided when set_up_chrony is true. When false, assumes NTP is " +
+				"pre-configured in the machine image. Default is false.",
 		},
 		"show_set_up_chrony": {
 			Type:     schema.TypeBool,
@@ -951,6 +954,7 @@ func resourceOnPremProviderCreate(
 		Regions:       regions,
 		Details: &client.ProviderDetails{
 			AirGapInstall:          utils.GetBoolPointer(airGapInstall),
+			SetUpChrony:            utils.GetBoolPointer(d.Get("set_up_chrony").(bool)),
 			NtpServers:             ntpServers,
 			SkipProvisioning:       utils.GetBoolPointer(skipProvisioning),
 			PasswordlessSudoAccess: utils.GetBoolPointer(passwordlessSudo),
@@ -1149,7 +1153,7 @@ func resourceOnPremProviderUpdate(
 		d.HasChange("passwordless_sudo_access") || d.HasChange("air_gap_install") ||
 		d.HasChange("install_node_exporter") || d.HasChange("node_exporter_user") ||
 		d.HasChange("node_exporter_port") || d.HasChange("ntp_servers") ||
-		d.HasChange("provision_instance_script") ||
+		d.HasChange("set_up_chrony") || d.HasChange("provision_instance_script") ||
 		d.HasChange("yb_home_dir") || d.HasChange("use_clockbound") {
 
 		details := providerReq.GetDetails()
@@ -1162,6 +1166,7 @@ func resourceOnPremProviderUpdate(
 		details.SetInstallNodeExporter(d.Get("install_node_exporter").(bool))
 		details.SetNodeExporterUser(d.Get("node_exporter_user").(string))
 		details.SetNodeExporterPort(int32(d.Get("node_exporter_port").(int)))
+		details.SetSetUpChrony(d.Get("set_up_chrony").(bool))
 		details.SetNtpServers(providerutil.GetNTPServers(d.Get("ntp_servers")))
 
 		cloudInfo := details.GetCloudInfo()

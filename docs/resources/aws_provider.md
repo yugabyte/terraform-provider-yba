@@ -28,6 +28,7 @@ AWS Cloud Provider Resource. Use this resource to create and manage AWS cloud pr
 - `image_bundles` (Block List) Image bundles associated with AWS provider. Supported from YugabyteDB Anywhere version: 2.20.3.0-b68 (see [below for nested schema](#nestedblock--image_bundles))
 - `ntp_servers` (List of String) List of NTP servers for time synchronization.
 - `secret_access_key` (String, Sensitive) AWS Secret Access Key. Required with access_key_id. Stored in Terraform state - use an encrypted backend for security.
+- `set_up_chrony` (Boolean) Set up NTP chrony service. When true with empty ntp_servers, uses cloud provider's NTP server (e.g., AWS Time Sync). When true with ntp_servers specified, uses custom NTP servers. When false, assumes NTP is pre-configured in the machine image. Default is false.
 - `skip_keypair_validation` (Boolean) Skip SSH keypair validation and upload to AWS. Default is false.
 - `ssh_keypair_name` (String) Custom SSH key pair name to access YugabyteDB nodes. If not provided, YugabyteDB Anywhere will generate key pairs.
 - `ssh_private_key_content` (String, Sensitive) SSH private key content to access YugabyteDB nodes.
@@ -42,7 +43,6 @@ AWS Cloud Provider Resource. Use this resource to create and manage AWS cloud pr
 - `host_vpc_region` (String) AWS Host VPC Region. Read-only, populated by YBA.
 - `hosted_zone_name` (String) Hosted Zone Name corresponding to Amazon Route53. Read-only.
 - `id` (String) The ID of this resource.
-- `set_up_chrony` (Boolean, Deprecated) Set up NTP chrony service. Read-only, automatically managed by YBA based on NTP server configuration.
 - `version` (Number) Provider version. Read-only, incremented on each update.
 - `vpc_type` (String) VPC type: EXISTING or NEW. Read-only.
 

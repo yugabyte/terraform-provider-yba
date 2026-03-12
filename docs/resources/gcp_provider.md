@@ -29,6 +29,7 @@ GCP Cloud Provider Resource. Use this resource to create and manage GCP cloud pr
 - `network` (String) VPC network name in GCP.
 - `ntp_servers` (List of String) List of NTP servers for time synchronization.
 - `project_id` (String) GCP project ID that hosts universe nodes.
+- `set_up_chrony` (Boolean) Set up NTP chrony service. When true with empty ntp_servers, uses cloud provider's NTP server (e.g., AWS Time Sync). When true with ntp_servers specified, uses custom NTP servers. When false, assumes NTP is pre-configured in the machine image. Default is false.
 - `shared_vpc_project_id` (String) Shared VPC project ID. Use this to connect resources from multiple GCP projects to a common VPC.
 - `ssh_keypair_name` (String) Custom SSH key pair name to access YugabyteDB nodes. If not provided, YugabyteDB Anywhere will generate key pairs.
 - `ssh_private_key_content` (String, Sensitive) SSH private key content to access YugabyteDB nodes.
@@ -43,7 +44,6 @@ GCP Cloud Provider Resource. Use this resource to create and manage GCP cloud pr
 - `enable_node_agent` (Boolean) Flag indicating if node agent is enabled for this provider. Read-only.
 - `host_vpc_id` (String) GCP Host VPC ID. Read-only, populated by YBA.
 - `id` (String) The ID of this resource.
-- `set_up_chrony` (Boolean, Deprecated) Set up NTP chrony service. Read-only, automatically managed by YBA based on NTP server configuration.
 - `version` (Number) Provider version. Read-only, incremented on each update.
 - `vpc_type` (String) VPC type: EXISTING or NEW. Read-only.
 
