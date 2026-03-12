@@ -17,8 +17,10 @@ package user
 
 import (
 	"context"
+	"fmt"
 	"time"
 
+	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	client "github.com/yugabyte/platform-go-client"
@@ -118,6 +120,13 @@ func resourceUserRead(
 
 	r, response, err := c.UserManagementAPI.GetUserDetails(ctx, cUUID, d.Id()).Execute()
 	if err != nil {
+		// If the user was deleted outside of Terraform, remove it from state
+		// so that Terraform can recreate it on the next apply.
+		if utils.IsHTTPNotFound(response) || utils.IsHTTPBadRequestNotFound(response) {
+			tflog.Warn(ctx, fmt.Sprintf("User %s not found, removing from state: %v", d.Id(), err))
+			d.SetId("")
+			return diags
+		}
 		errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
 			"User", "Read")
 		return diag.FromErr(errMessage)

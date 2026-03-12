@@ -21,6 +21,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/customdiff"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
@@ -221,7 +222,7 @@ func findProviderByName(providers []client.Provider, name string) (*client.Provi
 			return &p, nil
 		}
 	}
-	return nil, fmt.Errorf("Unable to find provider %s", name)
+	return nil, utils.ResourceNotFoundError("provider", name)
 }
 
 func fetchProviderList(ctx context.Context, c *client.APIClient, cUUID string) (
@@ -333,8 +334,18 @@ func resourceOnPremNodeRead(
 	cUUID := meta.(*api.APIClient).CustomerID
 	nUUID := d.Id()
 
-	node, err := nodeInstanceGet(ctx, c, cUUID, nUUID)
+	node, response, err := nodeInstanceGet(ctx, c, cUUID, nUUID)
 	if err != nil {
+		// If the node was deleted outside of Terraform, remove it from state
+		// so that Terraform can recreate it on the next apply.
+		if utils.IsHTTPNotFound(response) || utils.IsHTTPBadRequestNotFound(response) {
+			tflog.Warn(
+				ctx,
+				fmt.Sprintf("OnPrem Node %s not found, removing from state: %v", nUUID, err),
+			)
+			d.SetId("")
+			return diags
+		}
 		return diag.FromErr(err)
 	}
 	details := node.GetDetails()
@@ -437,8 +448,21 @@ func resourceOnPremNodeDelete(
 	nUUID := d.Id()
 	ip := d.Get("ip").(string)
 
-	node, err := nodeInstanceGet(ctx, c, cUUID, nUUID)
+	node, response, err := nodeInstanceGet(ctx, c, cUUID, nUUID)
 	if err != nil {
+		// If the node was already deleted outside of Terraform, consider delete successful
+		if utils.IsHTTPNotFound(response) || utils.IsHTTPBadRequestNotFound(response) {
+			tflog.Warn(
+				ctx,
+				fmt.Sprintf(
+					"OnPrem Node %s not found, considering delete successful: %v",
+					nUUID,
+					err,
+				),
+			)
+			d.SetId("")
+			return diags
+		}
 		return diag.FromErr(err)
 	}
 	inUse := node.GetInUse()

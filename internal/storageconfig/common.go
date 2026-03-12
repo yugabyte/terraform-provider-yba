@@ -37,7 +37,7 @@ func findStorageConfig(configs []client.CustomerConfigUI, uuid string, configTyp
 			return &c, nil
 		}
 	}
-	return nil, fmt.Errorf("could not find storage config with id %s", uuid)
+	return nil, utils.ResourceNotFoundError("storage config", uuid)
 }
 
 // resourceStorageConfigDelete is the common delete function for all storage configs

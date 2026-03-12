@@ -98,7 +98,6 @@ Read-Only:
 
 Required:
 
-- `access_key_code` (String) Access Key code of provider.
 - `device_info` (Block List, Min: 1, Max: 1) Configuration values associated with the machines used for this universe. (see [below for nested schema](#nestedblock--clusters--user_intent--device_info))
 - `instance_type` (String) Instance type of universe nodes.
 - `num_nodes` (Number) Number of nodes for this universe.
@@ -111,6 +110,7 @@ Required:
 
 Optional:
 
+- `access_key_code` (String) Access Key code of provider. Not required for providers using node agents (YNP-provisioned providers).
 - `assign_public_ip` (Boolean) Assign Public IP to universe nodes. True by default.
 - `assign_static_ip` (Boolean) Flag indicating whether a static IP should be assigned.
 - `aws_arn_string` (String) IP ARN String.

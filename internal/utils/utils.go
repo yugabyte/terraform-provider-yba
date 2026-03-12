@@ -487,6 +487,49 @@ func ErrorFromResponseBody(errorBlock YbaStructuredError) string {
 	return errorString
 }
 
+// IsHTTPNotFound checks if the HTTP response indicates a 404 Not Found error.
+// This is used by Read functions to detect when a resource has been deleted
+// outside of Terraform, allowing the resource to be removed from state.
+func IsHTTPNotFound(resp *http.Response) bool {
+	return resp != nil && resp.StatusCode == http.StatusNotFound
+}
+
+// IsHTTPBadRequestNotFound checks if the HTTP response is a 400 Bad Request
+// with a "Cannot find" error message. YBA sometimes returns 400 instead of 404
+// for resources that don't exist.
+func IsHTTPBadRequestNotFound(resp *http.Response) bool {
+	if resp == nil || resp.StatusCode != http.StatusBadRequest {
+		return false
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return false
+	}
+	bodyStr := string(body)
+	return strings.Contains(bodyStr, "Cannot find")
+}
+
+// ErrResourceNotFound is a sentinel error returned when a resource cannot be found.
+// This error is used to signal that a resource has been deleted outside of Terraform.
+// Wrap this error when returning "not found" errors from find/lookup functions.
+var ErrResourceNotFound = fmt.Errorf("resource not found")
+
+// ResourceNotFoundError creates a new error wrapping ErrResourceNotFound with context.
+// Use this when a resource cannot be found by its identifier.
+func ResourceNotFoundError(resourceType, identifier string) error {
+	return fmt.Errorf("%w: %s %s", ErrResourceNotFound, resourceType, identifier)
+}
+
+// IsResourceNotFoundError checks if an error indicates a resource was not found.
+// This is used by Read functions to detect when a resource has been deleted
+// outside of Terraform, allowing the resource to be removed from state.
+func IsResourceNotFoundError(err error) bool {
+	if err == nil {
+		return false
+	}
+	return errors.Is(err, ErrResourceNotFound)
+}
+
 // FileExist checks if file in the given path exists
 func FileExist(filePath string) error {
 	_, error := os.Stat(filePath)

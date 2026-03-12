@@ -212,6 +212,15 @@ func resourceRestoreRead(
 	r, response, err := c.BackupsAPI.ListBackupRestoresV2(ctx, cUUID).PageRestoresRequest(
 		req).Execute()
 	if err != nil {
+		// If the restore or universe was deleted outside of Terraform, remove from state
+		if utils.IsHTTPNotFound(response) || utils.IsHTTPBadRequestNotFound(response) {
+			tflog.Warn(
+				ctx,
+				fmt.Sprintf("Restore %s not found, removing from state: %v", d.Id(), err),
+			)
+			d.SetId("")
+			return diags
+		}
 		errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
 			"Restore", "Read")
 		return diag.FromErr(errMessage)

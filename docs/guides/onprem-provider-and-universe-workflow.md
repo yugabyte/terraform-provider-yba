@@ -11,6 +11,8 @@ Using the YugabyteDB Anywhere Terraform provider, you can can configure [on-prem
 
 ~> **Note:** **Instance types** and **node instances** (marked as Optional parameters) can be added to the resource definition during provider configuration, or can be introduced after the provider has been created. These parameters are required for universe creation. For a complete list of Required and Optional parameters, see the *yba_onprem_provider* resource.
 
+~> **Note:** For providers using node agents (YNP-provisioned providers), the `access_key_code` parameter is not required in the universe configuration, as these providers do not use SSH keys.
+
 The following example workflow configures an on-premises provider and creates a universe with replication factor of 3, the YSQL API enabled, and TLS enabled using default certificates.
 
 ```terraform

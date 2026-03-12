@@ -17,8 +17,10 @@ package storageconfig
 
 import (
 	"context"
+	"fmt"
 	"time"
 
+	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	client "github.com/yugabyte/platform-go-client"
@@ -182,8 +184,23 @@ func resourceNFSStorageConfigRead(
 
 	config, err := findStorageConfig(r, d.Id(), "NFS")
 	if err != nil {
-		d.SetId("")
-		return nil
+		// Check if the error is specifically due to the storage config not being found
+		if utils.IsResourceNotFoundError(err) {
+			// If the storage config was deleted outside of Terraform, remove it from state
+			// so that Terraform can recreate it on the next apply.
+			tflog.Warn(
+				ctx,
+				fmt.Sprintf(
+					"NFS Storage Config %s not found, removing from state: %v",
+					d.Id(),
+					err,
+				),
+			)
+			d.SetId("")
+			return nil
+		}
+		// For other errors, return them as diagnostics
+		return diag.FromErr(err)
 	}
 
 	if err = d.Set("name", config.ConfigName); err != nil {

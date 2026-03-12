@@ -588,6 +588,17 @@ func resourceUniverseRead(
 
 	r, response, err := c.UniverseManagementAPI.GetUniverse(ctx, cUUID, d.Id()).Execute()
 	if err != nil {
+		// If the universe was deleted outside of Terraform, remove it from state
+		// so that Terraform can recreate it on the next apply.
+		// YBA returns 400 Bad Request with "Cannot find" for deleted universes.
+		if utils.IsHTTPNotFound(response) || utils.IsHTTPBadRequestNotFound(response) {
+			tflog.Warn(
+				ctx,
+				fmt.Sprintf("Universe %s not found, removing from state: %v", d.Id(), err),
+			)
+			d.SetId("")
+			return diags
+		}
 		errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
 			"Universe", "Read")
 		return diag.FromErr(errMessage)

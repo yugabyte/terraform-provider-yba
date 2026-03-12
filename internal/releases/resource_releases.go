@@ -204,7 +204,7 @@ func findReleases(ctx context.Context, releases map[string]map[string]interface{
 			return r, nil
 		}
 	}
-	return nil, fmt.Errorf("Could not find release %s", version)
+	return nil, utils.ResourceNotFoundError("release", version)
 }
 
 func resourceReleasesRead(
@@ -232,6 +232,18 @@ func resourceReleasesRead(
 	var p map[string]interface{}
 	p, err = findReleases(ctx, r, d.Id())
 	if err != nil {
+		// Check if the error is specifically due to the release not being found
+		if utils.IsResourceNotFoundError(err) {
+			// If the release was deleted outside of Terraform, remove it from state
+			// so that Terraform can recreate it on the next apply.
+			tflog.Warn(
+				ctx,
+				fmt.Sprintf("Release %s not found, removing from state: %v", d.Id(), err),
+			)
+			d.SetId("")
+			return diags
+		}
+		// For other errors, return them as diagnostics
 		return diag.FromErr(err)
 	}
 

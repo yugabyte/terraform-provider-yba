@@ -324,9 +324,10 @@ func userIntentSchema() *schema.Resource {
 				Description: "YBDB version of the universe.",
 			},
 			"access_key_code": {
-				Type:        schema.TypeString,
-				Required:    true,
-				Description: "Access Key code of provider.",
+				Type:     schema.TypeString,
+				Optional: true,
+				Description: "Access Key code of provider. Not required for providers " +
+					"using node agents (YNP-provisioned providers).",
 			},
 			"tserver_gflags": {
 				Type:        schema.TypeMap,

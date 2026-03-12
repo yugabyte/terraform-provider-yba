@@ -183,6 +183,16 @@ func resourceCustomerRead(
 	tflog.Debug(ctx, "Fetching session info to verify customer")
 	r, response, err := newClient.SessionManagementAPI.GetSessionInfo(ctx).Execute()
 	if err != nil {
+		// If the customer was deleted outside of Terraform, remove it from state
+		// so that Terraform can recreate it on the next apply.
+		if utils.IsHTTPNotFound(response) || utils.IsHTTPBadRequestNotFound(response) {
+			tflog.Warn(
+				ctx,
+				fmt.Sprintf("Customer %s not found, removing from state: %v", d.Id(), err),
+			)
+			d.SetId("")
+			return diags
+		}
 		errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
 			"Customer", "Read - GetSessionInfo")
 		return diag.FromErr(errMessage)

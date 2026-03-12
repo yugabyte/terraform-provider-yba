@@ -20,6 +20,7 @@ package onprem
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-log/tflog"
@@ -1022,6 +1023,16 @@ func resourceOnPremProviderRead(
 
 	p, err := providerutil.GetProvider(ctx, c, cUUID, pUUID)
 	if err != nil {
+		// If the provider was deleted outside of Terraform, remove it from state
+		// so that Terraform can recreate it on the next apply.
+		if providerutil.IsProviderNotFoundError(err) {
+			tflog.Warn(
+				ctx,
+				fmt.Sprintf("OnPrem Provider %s not found, removing from state: %v", pUUID, err),
+			)
+			d.SetId("")
+			return diags
+		}
 		return diag.FromErr(err)
 	}
 
@@ -1270,7 +1281,7 @@ func findProvider(providers []client.Provider, uuid string) (*client.Provider, e
 			return &p, nil
 		}
 	}
-	return nil, fmt.Errorf("could not find provider %s", uuid)
+	return nil, utils.ResourceNotFoundError("provider", uuid)
 }
 
 // nodeInstancesRead reads all node instances for a given provider.
@@ -1374,14 +1385,14 @@ func nodeInstancesCreate(ctx context.Context, c *client.APIClient, cUUID, pUUID 
 
 // nodeInstanceGet retrieves a single node instance by UUID.
 func nodeInstanceGet(ctx context.Context, c *client.APIClient, cUUID, nUUID string) (
-	*client.NodeInstance, error) {
+	*client.NodeInstance, *http.Response, error) {
 	node, response, err := c.NodeInstancesAPI.GetNodeInstance(ctx, cUUID, nUUID).Execute()
 	if err != nil {
 		errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
 			"Node Instance", "Get")
-		return nil, errMessage
+		return nil, response, errMessage
 	}
-	return node, nil
+	return node, response, nil
 }
 
 // nodeInstanceDelete deletes a node instance by IP address.

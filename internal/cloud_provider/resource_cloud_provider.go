@@ -864,7 +864,7 @@ func findProvider(providers []client.Provider, uuid string) (*client.Provider, e
 			return &p, nil
 		}
 	}
-	return nil, fmt.Errorf("could not find provider %s", uuid)
+	return nil, utils.ResourceNotFoundError("cloud provider", uuid)
 }
 
 func resourceCloudProviderRead(
@@ -886,6 +886,18 @@ func resourceCloudProviderRead(
 
 	p, err := findProvider(r, d.Id())
 	if err != nil {
+		// Check if the error is specifically due to the provider not being found
+		if utils.IsResourceNotFoundError(err) {
+			// If the provider was deleted outside of Terraform, remove it from state
+			// so that Terraform can recreate it on the next apply.
+			tflog.Warn(
+				ctx,
+				fmt.Sprintf("Cloud Provider %s not found, removing from state: %v", d.Id(), err),
+			)
+			d.SetId("")
+			return diags
+		}
+		// For other errors, return them as diagnostics
 		return diag.FromErr(err)
 	}
 

@@ -69,14 +69,22 @@ func WaitForProviderTask(
 	return nil
 }
 
-// FindProvider finds a provider by UUID from a list of providers
+// FindProvider finds a provider by UUID from a list of providers.
+// Returns utils.ErrResourceNotFound if the provider is not in the list.
 func FindProvider(providers []client.Provider, uuid string) (*client.Provider, error) {
 	for _, p := range providers {
 		if *p.Uuid == uuid {
 			return &p, nil
 		}
 	}
-	return nil, fmt.Errorf("could not find provider %s", uuid)
+	return nil, utils.ResourceNotFoundError("provider", uuid)
+}
+
+// IsProviderNotFoundError checks if an error indicates a provider was not found.
+// This is used by Read functions to detect when a provider has been deleted
+// outside of Terraform, allowing the resource to be removed from state.
+func IsProviderNotFoundError(err error) bool {
+	return utils.IsResourceNotFoundError(err)
 }
 
 // GetProvider fetches the current state of a provider

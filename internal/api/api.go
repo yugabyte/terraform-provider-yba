@@ -35,6 +35,7 @@ type APIClient struct {
 	YugawareClient *client.APIClient
 	APIKey         string
 	CustomerID     string
+	UserID         string // UUID of the logged-in user (API token holder)
 }
 
 // NewAPIClient creates a wrapper for public and non-public APIs
@@ -86,6 +87,10 @@ func NewAPIClient(enableHTTPS bool, host, apiKey string) (*APIClient, error) {
 			return nil, errors.New("could not retrieve customer id")
 		}
 		c.CustomerID = *r.CustomerUUID
+		// Store the logged-in user's UUID for password change validation
+		if r.HasUserUUID() {
+			c.UserID = *r.UserUUID
+		}
 	}
 	return c, nil
 }

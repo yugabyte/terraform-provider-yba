@@ -420,6 +420,18 @@ func resourceBackupsRead(
 	tflog.Info(ctx, fmt.Sprintf("Current version %s, using V2 Read Schedule Backup API", version))
 	b, err = findBackup(r.Entities, d.Id())
 	if err != nil {
+		// Check if the error is specifically due to the backup schedule not being found
+		if utils.IsResourceNotFoundError(err) {
+			// If the backup schedule was deleted outside of Terraform, remove it from state
+			// so that Terraform can recreate it on the next apply.
+			tflog.Warn(
+				ctx,
+				fmt.Sprintf("Backup Schedule %s not found, removing from state: %v", d.Id(), err),
+			)
+			d.SetId("")
+			return diags
+		}
+		// For other errors, return them as diagnostics
 		return diag.FromErr(err)
 	}
 
@@ -441,7 +453,7 @@ func findBackup(backups []client.Schedule, sUUID string) (client.Schedule, error
 			return b, nil
 		}
 	}
-	return client.Schedule{}, fmt.Errorf("Can't find backup schedule %s", sUUID)
+	return client.Schedule{}, utils.ResourceNotFoundError("backup schedule", sUUID)
 }
 
 func resourceBackupsUpdate(

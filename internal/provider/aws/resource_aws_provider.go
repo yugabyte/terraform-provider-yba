@@ -21,6 +21,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	client "github.com/yugabyte/platform-go-client"
@@ -392,6 +393,16 @@ func resourceAWSProviderRead(
 
 	p, err := providerutil.GetProvider(ctx, c, cUUID, d.Id())
 	if err != nil {
+		// If the provider was deleted outside of Terraform, remove it from state
+		// so that Terraform can recreate it on the next apply.
+		if providerutil.IsProviderNotFoundError(err) {
+			tflog.Warn(
+				ctx,
+				fmt.Sprintf("AWS Provider %s not found, removing from state: %v", d.Id(), err),
+			)
+			d.SetId("")
+			return diags
+		}
 		return diag.FromErr(err)
 	}
 
@@ -512,7 +523,8 @@ func resourceAWSProviderUpdate(
 	}
 
 	// Update provider details if changed
-	if d.HasChange("air_gap_install") || d.HasChange("ntp_servers") || d.HasChange("set_up_chrony") {
+	if d.HasChange("air_gap_install") || d.HasChange("ntp_servers") ||
+		d.HasChange("set_up_chrony") {
 		details := providerReq.GetDetails()
 		details.SetAirGapInstall(d.Get("air_gap_install").(bool))
 		details.SetSetUpChrony(d.Get("set_up_chrony").(bool))
