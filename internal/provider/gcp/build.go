@@ -90,10 +90,17 @@ func buildGCPCloudInfo(d *schema.ResourceData) (*client.GCPCloudInfo, error) {
 	return gcpCloudInfo, nil
 }
 
-// buildGCPAccessKeys builds access keys for GCP provider
+// buildGCPAccessKeys builds access keys for GCP provider.
+// Returns nil when both ssh_keypair_name and ssh_private_key_content are empty,
+// which causes allAccessKeys to be omitted from the request and lets YBA generate
+// a managed keypair - matching UI behavior for the YBA-managed mode.
 func buildGCPAccessKeys(d *schema.ResourceData) []client.AccessKey {
 	keyPairName := d.Get("ssh_keypair_name").(string)
 	sshContent := d.Get("ssh_private_key_content").(string)
+
+	if keyPairName == "" && sshContent == "" {
+		return nil
+	}
 
 	return []client.AccessKey{
 		{

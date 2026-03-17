@@ -112,20 +112,42 @@ func awsProviderSchema() map[string]*schema.Schema {
 		Type:     schema.TypeString,
 		Optional: true,
 		Description: "Custom SSH key pair name to access YugabyteDB nodes. " +
-			"If not provided, YugabyteDB Anywhere will generate key pairs.",
+			"Must be set together with ssh_private_key_content (self-managed mode). " +
+			"If both ssh_keypair_name and ssh_private_key_content are omitted, " +
+			"YugabyteDB Anywhere generates and manages the key pair (YBA-managed mode). " +
+			"YBA versions keys on every update: if a key with this name already exists " +
+			"it appends a timestamp (e.g. 'my-key-2026-03-18-10-01-29'). " +
+			"Use access_key_code to read the actual versioned name that was stored.",
 	}
 	s["ssh_private_key_content"] = &schema.Schema{
 		Type:         schema.TypeString,
 		Optional:     true,
 		Sensitive:    true,
 		RequiredWith: []string{"ssh_keypair_name"},
-		Description:  "SSH private key content to access YugabyteDB nodes.",
+		Description: "SSH private key content to access YugabyteDB nodes. " +
+			"Must be set together with ssh_keypair_name (self-managed mode). " +
+			"If both fields are omitted, YugabyteDB Anywhere generates and manages " +
+			"the key pair (YBA-managed mode).",
+	}
+	s["skip_ssh_keypair_validation"] = &schema.Schema{
+		Type:          schema.TypeBool,
+		Optional:      true,
+		Computed:      true,
+		ConflictsWith: []string{"skip_keypair_validation"},
+		Description: "Skip SSH keypair validation and upload to AWS. " +
+			"Only applies in self-managed mode (when ssh_keypair_name and " +
+			"ssh_private_key_content are set). Use when the keypair already exists " +
+			"in your AWS account and you do not want to grant YBA describe/create " +
+			"keypair permissions. Default is false.",
 	}
 	s["skip_keypair_validation"] = &schema.Schema{
-		Type:        schema.TypeBool,
-		Optional:    true,
-		Computed:    true,
-		Description: "Skip SSH keypair validation and upload to AWS. Default is false.",
+		Type:          schema.TypeBool,
+		Optional:      true,
+		Computed:      true,
+		ConflictsWith: []string{"skip_ssh_keypair_validation"},
+		Deprecated: "Use skip_ssh_keypair_validation instead. " +
+			"This field will be removed in a future version.",
+		Description: "Deprecated: Use skip_ssh_keypair_validation instead.",
 	}
 
 	// Common read-only fields
@@ -464,8 +486,7 @@ func resourceAWSProviderRead(
 
 	// Note: We intentionally do NOT read these input-only fields from the API:
 	// - access_key_id, secret_access_key: Sensitive, returned masked
-	// - ssh_keypair_name: YBA generates a name that differs from user input
-	// - ssh_private_key_content: Sensitive
+	// - ssh_private_key_content: Sensitive, not returned by the API
 	// These fields are "write-only" - we preserve what's in the config/state
 
 	// Set regions
@@ -483,10 +504,15 @@ func resourceAWSProviderRead(
 		return diag.FromErr(err)
 	}
 
-	// Set access key code (read-only)
-	accessKeys := p.GetAllAccessKeys()
-	if len(accessKeys) > 0 {
-		keyInfo := accessKeys[0].GetKeyInfo()
+	// Set access_key_code from the API response (read-only).
+	// ssh_keypair_name and ssh_private_key_content are intentionally NOT read back:
+	// - YBA versions keys on every update by appending a timestamp to the name
+	//   (e.g. "my-key" -> "my-key-2026-03-18-10-01-29"), so reading back the stored
+	//   name would cause a perpetual diff against the user's base name in config.
+	// - ssh_private_key_content is sensitive and not returned by the API.
+	// Use access_key_code to see the actual versioned name YBA assigned.
+	if latest := providerutil.LatestAccessKey(p.GetAllAccessKeys()); latest != nil {
+		keyInfo := latest.GetKeyInfo()
 		if err = d.Set("access_key_code", keyInfo.GetKeyPairName()); err != nil {
 			return diag.FromErr(err)
 		}
@@ -581,8 +607,10 @@ func resourceAWSProviderUpdate(
 	}
 
 	// Update SSH keys if changed
+	// Per YBA API: To create/update a self-managed key, send an AccessKey WITHOUT IdKey
+	// and WITH sshPrivateKeyContent. If IdKey is present, YBA treats it as no-op.
 	if d.HasChange("ssh_keypair_name") || d.HasChange("ssh_private_key_content") ||
-		d.HasChange("skip_keypair_validation") {
+		d.HasChange("skip_ssh_keypair_validation") || d.HasChange("skip_keypair_validation") {
 		providerReq.SetAllAccessKeys(buildAWSAccessKeys(d))
 	}
 

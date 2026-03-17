@@ -51,12 +51,22 @@ func buildAWSCloudInfo(d *schema.ResourceData) (*client.AWSCloudInfo, error) {
 	return awsCloudInfo, nil
 }
 
-// buildAWSAccessKeys builds access keys for AWS provider
-// Mirrors yba-cli access key construction
+// buildAWSAccessKeys builds access keys for AWS provider.
+// Returns nil when both ssh_keypair_name and ssh_private_key_content are empty,
+// which causes allAccessKeys to be omitted from the request and lets YBA generate
+// a managed keypair - matching UI behavior for the YBA-managed mode.
 func buildAWSAccessKeys(d *schema.ResourceData) []client.AccessKey {
 	keyPairName := d.Get("ssh_keypair_name").(string)
 	sshContent := d.Get("ssh_private_key_content").(string)
-	skipValidation := d.Get("skip_keypair_validation").(bool)
+	// Support both the current name and the deprecated alias.
+	skipValidation := d.Get("skip_ssh_keypair_validation").(bool)
+	if !skipValidation {
+		skipValidation = d.Get("skip_keypair_validation").(bool)
+	}
+
+	if keyPairName == "" && sshContent == "" {
+		return nil
+	}
 
 	return []client.AccessKey{
 		{

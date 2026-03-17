@@ -32,8 +32,8 @@ Azure Cloud Provider Resource. Use this resource to create and manage Azure clou
 - `ntp_servers` (List of String) List of NTP servers for time synchronization.
 - `resource_group` (String) Azure Resource Group. Required with client_id.
 - `set_up_chrony` (Boolean) Set up NTP chrony service. When true with empty ntp_servers, uses cloud provider's NTP server (e.g., AWS Time Sync). When true with ntp_servers specified, uses custom NTP servers. When false, assumes NTP is pre-configured in the machine image. Default is false.
-- `ssh_keypair_name` (String) Custom SSH key pair name to access YugabyteDB nodes. If not provided, YugabyteDB Anywhere will generate key pairs.
-- `ssh_private_key_content` (String, Sensitive) SSH private key content to access YugabyteDB nodes.
+- `ssh_keypair_name` (String) Custom SSH key pair name to access YugabyteDB nodes. Must be set together with ssh_private_key_content (self-managed mode). If both ssh_keypair_name and ssh_private_key_content are omitted, YugabyteDB Anywhere generates and manages the key pair (YBA-managed mode). YBA versions keys on every update: if a key with this name already exists it appends a timestamp (e.g. 'my-key-2026-03-18-10-01-29'). Use access_key_code to read the actual versioned name that was stored.
+- `ssh_private_key_content` (String, Sensitive) SSH private key content to access YugabyteDB nodes. Must be set together with ssh_keypair_name (self-managed mode). If both fields are omitted, YugabyteDB Anywhere generates and manages the key pair (YBA-managed mode).
 - `subscription_id` (String) Azure Subscription ID. Required with client_id.
 - `tenant_id` (String) Azure Tenant ID. Required with client_id.
 - `timeouts` (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))

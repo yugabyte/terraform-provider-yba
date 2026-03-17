@@ -92,16 +92,24 @@ func onpremProviderSchema() map[string]*schema.Schema {
 			Description: "SSH port. Default is 22.",
 		},
 		"ssh_keypair_name": {
-			Type:        schema.TypeString,
-			Optional:    true,
-			Description: "SSH key pair name to access YugabyteDB nodes.",
+			Type:     schema.TypeString,
+			Optional: true,
+			Description: "SSH key pair name to access YugabyteDB nodes. " +
+				"Must be set together with ssh_private_key_content. " +
+				"Required when skip_provisioning is false. " +
+				"YBA versions keys on every update: if a key with this name already exists " +
+				"it appends a timestamp (e.g. 'my-key-2026-03-18-10-01-29'). " +
+				"Use access_key_code to read the actual versioned name that was stored.",
 		},
 		"ssh_private_key_content": {
 			Type:         schema.TypeString,
 			Optional:     true,
 			Sensitive:    true,
 			RequiredWith: []string{"ssh_keypair_name"},
-			Description:  "SSH private key content to access YugabyteDB nodes.",
+			Description: "SSH private key content to access YugabyteDB nodes. " +
+				"Must be set together with ssh_keypair_name. " +
+				"Required when skip_provisioning is false. " +
+				"Not read back from the API (the API does not return key content).",
 		},
 
 		// Provisioning settings (yba-cli flags)
@@ -480,6 +488,10 @@ func deprecatedDetailsSchema() *schema.Schema {
 
 // buildAccessKeys builds access keys for OnPrem provider.
 // It first checks the new flat fields, and falls back to the deprecated access_keys block.
+// Returns nil when both ssh_keypair_name and ssh_private_key_content are empty (and no
+// deprecated fallback is found), which causes allAccessKeys to be omitted from the request.
+// OnPrem is always self-managed (no YBA-generated keypair option), so nil is appropriate
+// when skip_provisioning=true and no key is needed.
 func buildAccessKeys(d *schema.ResourceData) []client.AccessKey {
 	keyPairName := d.Get("ssh_keypair_name").(string)
 	sshContent := d.Get("ssh_private_key_content").(string)
@@ -502,6 +514,10 @@ func buildAccessKeys(d *schema.ResourceData) []client.AccessKey {
 				}
 			}
 		}
+	}
+
+	if keyPairName == "" && sshContent == "" {
+		return nil
 	}
 
 	return []client.AccessKey{
@@ -1115,9 +1131,15 @@ func resourceOnPremProviderRead(
 		}
 	}
 
-	accessKeys := p.GetAllAccessKeys()
-	if len(accessKeys) > 0 {
-		keyInfo := accessKeys[0].GetKeyInfo()
+	// Set access_key_code from the API response (read-only).
+	// ssh_keypair_name and ssh_private_key_content are intentionally NOT read back:
+	// - YBA versions keys on every update by appending a timestamp to the name
+	//   (e.g. "my-key" -> "my-key-2026-03-18-10-01-29"), so reading back the stored
+	//   name would cause a perpetual diff against the user's base name in config.
+	// - ssh_private_key_content is sensitive and not returned by the API.
+	// Use access_key_code to see the actual versioned name YBA assigned.
+	if latest := providerutil.LatestAccessKey(p.GetAllAccessKeys()); latest != nil {
+		keyInfo := latest.GetKeyInfo()
 		if err = d.Set("access_key_code", keyInfo.GetKeyPairName()); err != nil {
 			return diag.FromErr(err)
 		}
@@ -1187,6 +1209,13 @@ func resourceOnPremProviderUpdate(
 		cloudInfo.SetOnprem(onpremInfo)
 		details.SetCloudInfo(cloudInfo)
 		providerReq.SetDetails(details)
+	}
+
+	// Update SSH keys if changed.
+	// Per YBA API: send an AccessKey WITHOUT IdKey and WITH sshPrivateKeyContent to
+	// create/replace a key. If IdKey is present, YBA treats it as no-op.
+	if d.HasChange("ssh_keypair_name") || d.HasChange("ssh_private_key_content") {
+		providerReq.SetAllAccessKeys(buildAccessKeys(d))
 	}
 
 	r, response, err := c.CloudProvidersAPI.EditProvider(ctx, cUUID, pUUID).

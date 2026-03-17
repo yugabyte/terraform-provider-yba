@@ -122,14 +122,22 @@ func gcpProviderSchema() map[string]*schema.Schema {
 		Type:     schema.TypeString,
 		Optional: true,
 		Description: "Custom SSH key pair name to access YugabyteDB nodes. " +
-			"If not provided, YugabyteDB Anywhere will generate key pairs.",
+			"Must be set together with ssh_private_key_content (self-managed mode). " +
+			"If both ssh_keypair_name and ssh_private_key_content are omitted, " +
+			"YugabyteDB Anywhere generates and manages the key pair (YBA-managed mode). " +
+			"YBA versions keys on every update: if a key with this name already exists " +
+			"it appends a timestamp (e.g. 'my-key-2026-03-18-10-01-29'). " +
+			"Use access_key_code to read the actual versioned name that was stored.",
 	}
 	s["ssh_private_key_content"] = &schema.Schema{
 		Type:         schema.TypeString,
 		Optional:     true,
 		Sensitive:    true,
 		RequiredWith: []string{"ssh_keypair_name"},
-		Description:  "SSH private key content to access YugabyteDB nodes.",
+		Description: "SSH private key content to access YugabyteDB nodes. " +
+			"Must be set together with ssh_keypair_name (self-managed mode). " +
+			"If both fields are omitted, YugabyteDB Anywhere generates and manages " +
+			"the key pair (YBA-managed mode).",
 	}
 
 	// Common read-only fields
@@ -417,10 +425,15 @@ func resourceGCPProviderRead(
 		return diag.FromErr(err)
 	}
 
-	// Set access key code (read-only)
-	accessKeys := p.GetAllAccessKeys()
-	if len(accessKeys) > 0 {
-		keyInfo := accessKeys[0].GetKeyInfo()
+	// Set access_key_code from the API response (read-only).
+	// ssh_keypair_name and ssh_private_key_content are intentionally NOT read back:
+	// - YBA versions keys on every update by appending a timestamp to the name
+	//   (e.g. "my-key" -> "my-key-2026-03-18-10-01-29"), so reading back the stored
+	//   name would cause a perpetual diff against the user's base name in config.
+	// - ssh_private_key_content is sensitive and not returned by the API.
+	// Use access_key_code to see the actual versioned name YBA assigned.
+	if latest := providerutil.LatestAccessKey(p.GetAllAccessKeys()); latest != nil {
+		keyInfo := latest.GetKeyInfo()
 		if err = d.Set("access_key_code", keyInfo.GetKeyPairName()); err != nil {
 			return diag.FromErr(err)
 		}
@@ -560,6 +573,13 @@ func resourceGCPProviderUpdate(
 			providerReq.SetImageBundles(providerutil.BuildImageBundles(v.([]interface{})))
 		}
 		// If image_bundles is empty/removed, we don't clear them - YBA manages defaults
+	}
+
+	// Update SSH keys if changed
+	// Per YBA API: To create/update a self-managed key, send an AccessKey WITHOUT IdKey
+	// and WITH sshPrivateKeyContent. If IdKey is present, YBA treats it as no-op.
+	if d.HasChange("ssh_keypair_name") || d.HasChange("ssh_private_key_content") {
+		providerReq.SetAllAccessKeys(buildGCPAccessKeys(d))
 	}
 
 	r, response, err := c.CloudProvidersAPI.EditProvider(ctx, cUUID, d.Id()).

@@ -52,10 +52,17 @@ func buildAzureCloudInfo(d *schema.ResourceData) (*client.AzureCloudInfo, error)
 	return azureCloudInfo, nil
 }
 
-// buildAzureAccessKeys builds access keys for Azure provider
+// buildAzureAccessKeys builds access keys for Azure provider.
+// Returns nil when both ssh_keypair_name and ssh_private_key_content are empty,
+// which causes allAccessKeys to be omitted from the request and lets YBA generate
+// a managed keypair - matching UI behavior for the YBA-managed mode.
 func buildAzureAccessKeys(d *schema.ResourceData) []client.AccessKey {
 	keyPairName := d.Get("ssh_keypair_name").(string)
 	sshContent := d.Get("ssh_private_key_content").(string)
+
+	if keyPairName == "" && sshContent == "" {
+		return nil
+	}
 
 	return []client.AccessKey{
 		{

@@ -54,6 +54,7 @@ func validateNoDuplicateRegionsOrZones(
 			"name", "air_gap_install", "ntp_servers", "set_up_chrony",
 			"access_key_id", "secret_access_key", "use_iam_instance_profile",
 			"hosted_zone_id", "ssh_keypair_name", "ssh_private_key_content",
+			"skip_ssh_keypair_validation",
 			"skip_keypair_validation",
 		}
 		for _, field := range simpleFields {

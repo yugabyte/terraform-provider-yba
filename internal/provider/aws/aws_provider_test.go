@@ -484,7 +484,7 @@ resource "yba_aws_provider" "test" {
   name                    = "%s"
   access_key_id           = var.AWS_ACCESS_KEY_ID
   secret_access_key       = var.AWS_SECRET_ACCESS_KEY
-  skip_keypair_validation = true
+  skip_ssh_keypair_validation = true
 
   regions {
     code              = "us-west-2"

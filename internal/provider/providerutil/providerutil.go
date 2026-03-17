@@ -127,3 +127,24 @@ func GetAPIClient(meta interface{}) (*client.APIClient, string) {
 	apiClient := meta.(*api.APIClient)
 	return apiClient.YugawareClient, apiClient.CustomerID
 }
+
+// LatestAccessKey returns the most recently created access key from the list.
+// YBA never deletes old access keys on rotation - it appends new ones - and
+// allAccessKeys has no server-side ordering guarantee. We select by max
+// CreationDate to match what YBA's own getLatestKey() does
+// (ORDER BY creation_date DESC LIMIT 1).
+func LatestAccessKey(keys []client.AccessKey) *client.AccessKey {
+	if len(keys) == 0 {
+		return nil
+	}
+	latest := &keys[0]
+	for i := 1; i < len(keys); i++ {
+		if keys[i].HasCreationDate() {
+			if !latest.HasCreationDate() ||
+				keys[i].GetCreationDate().After(latest.GetCreationDate()) {
+				latest = &keys[i]
+			}
+		}
+	}
+	return latest
+}

@@ -93,9 +93,9 @@ To manually provision the nodes to be used in universe creation, set *details.sk
 - `provision_instance_script` (String) Custom provisioning script path for node instances. Used during universe creation if skip_provisioning is false.
 - `set_up_chrony` (Boolean) Set up NTP chrony service. When true, chrony will be configured with the specified ntp_servers. For on-premises providers, ntp_servers must be provided when set_up_chrony is true. When false, assumes NTP is pre-configured in the machine image. Default is false.
 - `skip_provisioning` (Boolean) Set to true if YugabyteDB nodes have been prepared manually. Set to false to provision during universe creation. Default is false.
-- `ssh_keypair_name` (String) SSH key pair name to access YugabyteDB nodes.
+- `ssh_keypair_name` (String) SSH key pair name to access YugabyteDB nodes. Must be set together with ssh_private_key_content. Required when skip_provisioning is false. YBA versions keys on every update: if a key with this name already exists it appends a timestamp (e.g. 'my-key-2026-03-18-10-01-29'). Use access_key_code to read the actual versioned name that was stored.
 - `ssh_port` (Number) SSH port. Default is 22.
-- `ssh_private_key_content` (String, Sensitive) SSH private key content to access YugabyteDB nodes.
+- `ssh_private_key_content` (String, Sensitive) SSH private key content to access YugabyteDB nodes. Must be set together with ssh_keypair_name. Required when skip_provisioning is false. Not read back from the API (the API does not return key content).
 - `ssh_user` (String) SSH User to access YugabyteDB nodes. Required when skip_provisioning is false.
 - `timeouts` (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))
 - `use_clockbound` (Boolean) Use ClockBound for clock synchronization. Requires ClockBound to be set up on the nodes. Default is false.
