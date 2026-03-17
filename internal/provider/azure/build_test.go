@@ -37,12 +37,12 @@ func TestBuildAzureRegions(t *testing.T) {
 			name: "single region with zones",
 			input: []interface{}{
 				map[string]interface{}{
-					"name":              "eastus",
+					"code":              "eastus",
 					"vnet":              "my-vnet",
 					"security_group_id": "my-nsg",
 					"zones": []interface{}{
 						map[string]interface{}{
-							"name":             "eastus-1",
+							"code":             "eastus-1",
 							"subnet":           "my-subnet",
 							"secondary_subnet": "",
 						},
@@ -55,13 +55,13 @@ func TestBuildAzureRegions(t *testing.T) {
 			name: "multiple regions",
 			input: []interface{}{
 				map[string]interface{}{
-					"name":              "eastus",
+					"code":              "eastus",
 					"vnet":              "vnet-east",
 					"security_group_id": "nsg-east",
 					"zones":             []interface{}{},
 				},
 				map[string]interface{}{
-					"name":              "westus2",
+					"code":              "westus2",
 					"vnet":              "vnet-west",
 					"security_group_id": "nsg-west",
 					"zones":             []interface{}{},
@@ -87,17 +87,17 @@ func TestBuildAzureRegionsValues(t *testing.T) {
 
 	input := []interface{}{
 		map[string]interface{}{
-			"name":              "westus2",
+			"code":              "westus2",
 			"vnet":              testVnet,
 			"security_group_id": testSG,
 			"zones": []interface{}{
 				map[string]interface{}{
-					"name":             "westus2-1",
+					"code":             "westus2-1",
 					"subnet":           "subnet-primary",
 					"secondary_subnet": "subnet-secondary",
 				},
 				map[string]interface{}{
-					"name":             "westus2-2",
+					"code":             "westus2-2",
 					"subnet":           "subnet-primary-2",
 					"secondary_subnet": "",
 				},
@@ -118,7 +118,6 @@ func TestBuildAzureRegionsValues(t *testing.T) {
 		t.Errorf("expected name 'westus2', got '%s'", region.GetName())
 	}
 
-	// Check Azure cloud info
 	details := region.GetDetails()
 	cloudInfo := details.GetCloudInfo()
 	azureInfo := cloudInfo.GetAzu()
@@ -129,7 +128,6 @@ func TestBuildAzureRegionsValues(t *testing.T) {
 		t.Errorf("expected security_group_id, got '%s'", azureInfo.GetSecurityGroupId())
 	}
 
-	// Check zones
 	if len(region.Zones) != 2 {
 		t.Errorf("expected 2 zones, got %d", len(region.Zones))
 	}
@@ -150,7 +148,7 @@ func TestBuildAzureZones(t *testing.T) {
 			name: "single zone",
 			input: []interface{}{
 				map[string]interface{}{
-					"name":             "eastus-1",
+					"code":             "eastus-1",
 					"subnet":           "my-subnet",
 					"secondary_subnet": "",
 				},
@@ -161,17 +159,17 @@ func TestBuildAzureZones(t *testing.T) {
 			name: "multiple zones",
 			input: []interface{}{
 				map[string]interface{}{
-					"name":             "eastus-1",
+					"code":             "eastus-1",
 					"subnet":           "subnet-1",
 					"secondary_subnet": "",
 				},
 				map[string]interface{}{
-					"name":             "eastus-2",
+					"code":             "eastus-2",
 					"subnet":           "subnet-2",
 					"secondary_subnet": "",
 				},
 				map[string]interface{}{
-					"name":             "eastus-3",
+					"code":             "eastus-3",
 					"subnet":           "subnet-3",
 					"secondary_subnet": "",
 				},
@@ -196,7 +194,7 @@ func TestBuildAzureZonesValues(t *testing.T) {
 
 	input := []interface{}{
 		map[string]interface{}{
-			"name":             "westus2-1",
+			"code":             "westus2-1",
 			"subnet":           testSubnet,
 			"secondary_subnet": testSecondarySubnet,
 		},
@@ -227,7 +225,7 @@ func TestFlattenAzureRegions(t *testing.T) {
 		{
 			Uuid: utils.GetStringPointer("region-uuid-1"),
 			Code: utils.GetStringPointer("westus2"),
-			Name: utils.GetStringPointer("West US 2"),
+			Name: utils.GetStringPointer("westus2"),
 			Details: &client.RegionDetails{
 				CloudInfo: &client.RegionCloudInfo{
 					Azu: &client.AzureRegionCloudInfo{
@@ -259,6 +257,9 @@ func TestFlattenAzureRegions(t *testing.T) {
 	}
 	if region["code"] != "westus2" {
 		t.Errorf("expected code 'westus2', got '%v'", region["code"])
+	}
+	if region["name"] != "westus2" {
+		t.Errorf("expected name 'westus2', got '%v'", region["name"])
 	}
 	if region["vnet"] != "my-vnet" {
 		t.Errorf("expected vnet 'my-vnet', got '%v'", region["vnet"])
@@ -302,6 +303,9 @@ func TestFlattenAzureZones(t *testing.T) {
 	if zone1["code"] != "westus2-1" {
 		t.Errorf("expected code 'westus2-1', got '%v'", zone1["code"])
 	}
+	if zone1["name"] != "westus2-1" {
+		t.Errorf("expected name 'westus2-1' (mirrors code), got '%v'", zone1["name"])
+	}
 	if zone1["subnet"] != "subnet-primary" {
 		t.Errorf("expected subnet 'subnet-primary', got '%v'", zone1["subnet"])
 	}
@@ -312,8 +316,7 @@ func TestFlattenAzureZones(t *testing.T) {
 }
 
 func TestFlattenAzureZonesEmpty(t *testing.T) {
-	input := []client.AvailabilityZone{}
-	result := flattenAzureZones(input)
+	result := flattenAzureZones([]client.AvailabilityZone{})
 	if len(result) != 0 {
 		t.Errorf("expected 0 zones, got %d", len(result))
 	}
@@ -326,7 +329,6 @@ func TestFlattenAzureZonesNoSecondarySubnet(t *testing.T) {
 			Code:   utils.GetStringPointer("eastus-1"),
 			Name:   "eastus-1",
 			Subnet: utils.GetStringPointer("subnet-only"),
-			// SecondarySubnet not set
 		},
 	}
 
@@ -335,8 +337,7 @@ func TestFlattenAzureZonesNoSecondarySubnet(t *testing.T) {
 		t.Fatalf("expected 1 zone, got %d", len(result))
 	}
 
-	zone := result[0]
-	if zone["secondary_subnet"] != "" {
-		t.Errorf("expected empty secondary_subnet, got '%v'", zone["secondary_subnet"])
+	if result[0]["secondary_subnet"] != "" {
+		t.Errorf("expected empty secondary_subnet, got '%v'", result[0]["secondary_subnet"])
 	}
 }

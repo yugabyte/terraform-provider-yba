@@ -81,14 +81,14 @@ func buildAzureRegions(regions []interface{}) []client.Region {
 
 	for _, r := range regions {
 		regionMap := r.(map[string]interface{})
-		regionName := regionMap["name"].(string)
+		regionCode := regionMap["code"].(string)
 
 		// Build zones for this region
 		zones := buildAzureZones(regionMap["zones"].([]interface{}))
 
 		region := client.Region{
-			Code:  utils.GetStringPointer(regionName),
-			Name:  utils.GetStringPointer(regionName),
+			Code:  utils.GetStringPointer(regionCode),
+			Name:  utils.GetStringPointer(regionCode),
 			Zones: zones,
 			Details: &client.RegionDetails{
 				CloudInfo: &client.RegionCloudInfo{
@@ -113,15 +113,164 @@ func buildAzureZones(zones []interface{}) []client.AvailabilityZone {
 
 	for _, z := range zones {
 		zoneMap := z.(map[string]interface{})
-		zoneName := zoneMap["name"].(string)
+		zoneCode := zoneMap["code"].(string)
 
 		zone := client.AvailabilityZone{
-			Code:            utils.GetStringPointer(zoneName),
-			Name:            zoneName,
+			Code:            utils.GetStringPointer(zoneCode),
+			Name:            zoneCode,
 			Subnet:          utils.GetStringPointer(zoneMap["subnet"].(string)),
 			SecondarySubnet: utils.GetStringPointer(zoneMap["secondary_subnet"].(string)),
 		}
 		result = append(result, zone)
+	}
+
+	return result
+}
+
+// mergeZoneUUIDs merges state UUIDs into config zones and deactivates removed ones,
+// preserving subnet so the Azure validator never receives an empty subnet ID.
+func mergeZoneUUIDs(
+	oldZones []interface{},
+	newZones []interface{},
+) []client.AvailabilityZone {
+	oldByCode := make(map[string]map[string]interface{})
+	for _, z := range oldZones {
+		if zoneMap, ok := z.(map[string]interface{}); ok {
+			if code, _ := zoneMap["code"].(string); code != "" {
+				oldByCode[code] = zoneMap
+			}
+		}
+	}
+
+	newZoneCodes := make(map[string]bool)
+	result := make([]client.AvailabilityZone, 0, len(newZones))
+
+	for _, nz := range newZones {
+		newMap, ok := nz.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		zoneCode, _ := newMap["code"].(string)
+		newZoneCodes[zoneCode] = true
+
+		zone := client.AvailabilityZone{
+			Code:            utils.GetStringPointer(zoneCode),
+			Name:            zoneCode,
+			Subnet:          utils.GetStringPointer(newMap["subnet"].(string)),
+			SecondarySubnet: utils.GetStringPointer(newMap["secondary_subnet"].(string)),
+		}
+		if old, exists := oldByCode[zoneCode]; exists {
+			if uuid, _ := old["uuid"].(string); uuid != "" {
+				zone.Uuid = utils.GetStringPointer(uuid)
+			}
+		}
+		result = append(result, zone)
+	}
+
+	// Deactivate removed zones; subnet preserved for the Azure validator.
+	for code, oldZone := range oldByCode {
+		if !newZoneCodes[code] {
+			uuid, _ := oldZone["uuid"].(string)
+			subnet, _ := oldZone["subnet"].(string)
+			secondary, _ := oldZone["secondary_subnet"].(string)
+			zone := client.AvailabilityZone{
+				Code:            utils.GetStringPointer(code),
+				Name:            code,
+				Active:          utils.GetBoolPointer(false),
+				Subnet:          utils.GetStringPointer(subnet),
+				SecondarySubnet: utils.GetStringPointer(secondary),
+			}
+			if uuid != "" {
+				zone.Uuid = utils.GetStringPointer(uuid)
+			}
+			result = append(result, zone)
+		}
+	}
+
+	return result
+}
+
+// mergeRegionUUIDs merges state UUIDs into config regions, deactivates removed regions
+// with zones/subnets preserved, and deactivates removed zones within active regions.
+func mergeRegionUUIDs(
+	oldRegions []interface{},
+	newRegions []interface{},
+) []client.Region {
+	oldByCode := make(map[string]map[string]interface{})
+	for _, r := range oldRegions {
+		if regionMap, ok := r.(map[string]interface{}); ok {
+			if code, _ := regionMap["code"].(string); code != "" {
+				oldByCode[code] = regionMap
+			}
+		}
+	}
+
+	newRegionCodes := make(map[string]bool)
+	result := make([]client.Region, 0, len(newRegions))
+
+	for _, nr := range newRegions {
+		newMap, ok := nr.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		regionCode, _ := newMap["code"].(string)
+		newRegionCodes[regionCode] = true
+
+		var oldZones []interface{}
+		if old, exists := oldByCode[regionCode]; exists {
+			oldZones, _ = old["zones"].([]interface{})
+		}
+		newZonesRaw, _ := newMap["zones"].([]interface{})
+
+		region := client.Region{
+			Code:  utils.GetStringPointer(regionCode),
+			Name:  utils.GetStringPointer(regionCode),
+			Zones: mergeZoneUUIDs(oldZones, newZonesRaw),
+			Details: &client.RegionDetails{
+				CloudInfo: &client.RegionCloudInfo{
+					Azu: &client.AzureRegionCloudInfo{
+						Vnet: utils.GetStringPointer(newMap["vnet"].(string)),
+						SecurityGroupId: utils.GetStringPointer(
+							newMap["security_group_id"].(string),
+						),
+					},
+				},
+			},
+		}
+		if old, exists := oldByCode[regionCode]; exists {
+			if uuid, _ := old["uuid"].(string); uuid != "" {
+				region.Uuid = utils.GetStringPointer(uuid)
+			}
+		}
+		result = append(result, region)
+	}
+
+	// Deactivate removed regions; zones with subnets preserved for the Azure validator.
+	for code, oldRegion := range oldByCode {
+		if !newRegionCodes[code] {
+			uuid, _ := oldRegion["uuid"].(string)
+			oldZonesRaw, _ := oldRegion["zones"].([]interface{})
+			region := client.Region{
+				Code:   utils.GetStringPointer(code),
+				Name:   utils.GetStringPointer(code),
+				Active: utils.GetBoolPointer(false),
+				Zones:  mergeZoneUUIDs(oldZonesRaw, oldZonesRaw), // preserve all zones as-is
+				Details: &client.RegionDetails{
+					CloudInfo: &client.RegionCloudInfo{
+						Azu: &client.AzureRegionCloudInfo{
+							Vnet: utils.GetStringPointer(oldRegion["vnet"].(string)),
+							SecurityGroupId: utils.GetStringPointer(
+								oldRegion["security_group_id"].(string),
+							),
+						},
+					},
+				},
+			}
+			if uuid != "" {
+				region.Uuid = utils.GetStringPointer(uuid)
+			}
+			result = append(result, region)
+		}
 	}
 
 	return result
@@ -160,7 +309,7 @@ func flattenAzureZones(zones []client.AvailabilityZone) []map[string]interface{}
 		z := map[string]interface{}{
 			"uuid":             zone.GetUuid(),
 			"code":             zone.GetCode(),
-			"name":             zone.GetName(),
+			"name":             zone.GetCode(), // name is Computed and mirrors code
 			"subnet":           zone.GetSubnet(),
 			"secondary_subnet": zone.GetSecondarySubnet(),
 		}

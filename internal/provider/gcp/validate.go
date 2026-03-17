@@ -13,7 +13,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package aws
+package gcp
 
 import (
 	"context"
@@ -25,27 +25,22 @@ import (
 
 // regionData holds user-provided region fields for comparison
 type regionData struct {
-	vpcID           string
-	securityGroupID string
-	zones           map[string]zoneData
+	sharedSubnet     string
+	instanceTemplate string
 }
 
-// zoneData holds user-provided zone fields for comparison
-type zoneData struct {
-	subnet          string
-	secondarySubnet string
-}
-
-// validateNoDuplicateRegionsOrZones is the CustomizeDiff function for AWS providers.
-func validateNoDuplicateRegionsOrZones(
+// validateNoDuplicateRegions is the CustomizeDiff function for GCP providers.
+// GCP zones are auto-discovered by YBA, so no zone duplicate validation is needed.
+func validateNoDuplicateRegions(
 	ctx context.Context,
 	d *schema.ResourceDiff,
 	meta interface{},
 ) error {
 	if err := providerutil.MarkVersionComputedIfChanged(ctx, d,
 		[]string{
-			"access_key_id", "secret_access_key", "use_iam_instance_profile",
-			"hosted_zone_id", "skip_ssh_keypair_validation",
+			"credentials", "use_host_credentials", "project_id",
+			"shared_vpc_project_id", "network", "use_host_vpc", "create_vpc",
+			"yb_firewall_tags",
 		},
 		regionsContentChanged,
 	); err != nil {
@@ -75,45 +70,6 @@ func validateNoDuplicateRegionsOrZones(
 			)
 		}
 		regionCodes[regionCode] = true
-
-		zonesList, _ := regionMap["zones"].([]interface{})
-
-		zoneCodes := make(map[string]bool)
-		for _, z := range zonesList {
-			zoneMap := z.(map[string]interface{})
-			zoneCode := zoneMap["code"].(string)
-
-			if zoneCodes[zoneCode] {
-				return fmt.Errorf(
-					"duplicate zone code %q found in region %q: "+
-						"each zone within a region must have a unique code",
-					zoneCode, regionCode,
-				)
-			}
-			zoneCodes[zoneCode] = true
-		}
-	}
-
-	if ybaBundles, ok := d.Get("yba_managed_image_bundles").([]interface{}); ok {
-		seenArch := make(map[string]bool)
-		for _, b := range ybaBundles {
-			bundleMap, ok := b.(map[string]interface{})
-			if !ok {
-				continue
-			}
-			arch, _ := bundleMap["arch"].(string)
-			if arch == "" {
-				continue
-			}
-			if seenArch[arch] {
-				return fmt.Errorf(
-					"duplicate architecture %q in yba_managed_image_bundles: "+
-						"each architecture must appear at most once",
-					arch,
-				)
-			}
-			seenArch[arch] = true
-		}
 	}
 
 	if err := providerutil.ValidateImageBundles(d); err != nil {
@@ -137,22 +93,9 @@ func regionsContentChanged(oldRaw, newRaw interface{}) bool {
 		if !exists {
 			return true
 		}
-		if oldRegion.vpcID != newRegion.vpcID ||
-			oldRegion.securityGroupID != newRegion.securityGroupID {
+		if oldRegion.sharedSubnet != newRegion.sharedSubnet ||
+			oldRegion.instanceTemplate != newRegion.instanceTemplate {
 			return true
-		}
-		if len(oldRegion.zones) != len(newRegion.zones) {
-			return true
-		}
-		for zoneCode, oldZone := range oldRegion.zones {
-			newZone, exists := newRegion.zones[zoneCode]
-			if !exists {
-				return true
-			}
-			if oldZone.subnet != newZone.subnet ||
-				oldZone.secondarySubnet != newZone.secondarySubnet {
-				return true
-			}
 		}
 	}
 
@@ -176,26 +119,8 @@ func extractRegionData(regionsRaw interface{}) map[string]regionData {
 		}
 
 		rd := regionData{
-			vpcID:           providerutil.GetString(regionMap, "vpc_id"),
-			securityGroupID: providerutil.GetString(regionMap, "security_group_id"),
-			zones:           make(map[string]zoneData),
-		}
-
-		zones, _ := regionMap["zones"].([]interface{})
-
-		for _, z := range zones {
-			zoneMap, ok := z.(map[string]interface{})
-			if !ok {
-				continue
-			}
-			zoneCode, _ := zoneMap["code"].(string)
-			if zoneCode == "" {
-				continue
-			}
-			rd.zones[zoneCode] = zoneData{
-				subnet:          providerutil.GetString(zoneMap, "subnet"),
-				secondarySubnet: providerutil.GetString(zoneMap, "secondary_subnet"),
-			}
+			sharedSubnet:     providerutil.GetString(regionMap, "shared_subnet"),
+			instanceTemplate: providerutil.GetString(regionMap, "instance_template"),
 		}
 
 		result[regionCode] = rd
@@ -204,8 +129,8 @@ func extractRegionData(regionsRaw interface{}) map[string]regionData {
 	return result
 }
 
-// suppressIfAWSRegionsPureReorder suppresses positional diffs when regions are only reordered.
-func suppressIfAWSRegionsPureReorder(k, old, new string, d *schema.ResourceData) bool {
+// suppressIfGCPRegionsPureReorder suppresses positional diffs when regions are only reordered.
+func suppressIfGCPRegionsPureReorder(k, old, new string, d *schema.ResourceData) bool {
 	if old == new {
 		return true
 	}

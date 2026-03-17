@@ -1,0 +1,51 @@
+---
+page_title: "{{.Name}} {{.Type}} - {{.RenderedProviderName}}"
+description: |-
+{{ .Description | plainmarkdown | trimspace | prefixlines "  " }}
+---
+
+# {{.Name}} ({{.Type}})
+
+{{ .Description | trimspace }}
+
+This resource provides a dedicated interface for Azure cloud providers with a simplified schema compared to the generic `yba_cloud_provider` resource.
+
+## Credentials
+
+Azure credentials are provided via a service principal:
+
+- `client_id` — Application (client) ID of the service principal
+- `client_secret` — Client secret value
+- `tenant_id` — Directory (tenant) ID
+- `subscription_id` — Azure subscription ID
+- `resource_group` — Resource group for provider resources
+
+-> **Note:** The service principal must have Contributor access to the subscription or resource group where YugabyteDB nodes will be deployed.
+
+## Example Usage
+
+### Basic Azure Provider
+
+{{ tffile "examples/resources/yba_azure_provider/resource.tf" }}
+
+The details for configuration are available in the [YugabyteDB Anywhere Configure Cloud Provider Documentation](https://docs.yugabyte.com/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/azure/).
+
+{{ .SchemaMarkdown | trimspace }}
+
+## Import
+
+Azure Providers can be imported using the provider UUID:
+
+```sh
+terraform import yba_azure_provider.example <provider-uuid>
+```
+
+## Known Issues
+
+### Zone ordering diff
+
+YugabyteDB Anywhere may return availability zones in a different order from the one specified in your configuration. Because `zones` is a `TypeList` (order-sensitive), Terraform can produce a cosmetic plan diff that looks like zones are being swapped or removed even when no real change is intended. **This diff is cosmetic.** The underlying zone configuration is unchanged; only the positional order differs. Applying will not modify any infrastructure. To avoid seeing this diff repeatedly, define your `zones` blocks in the same order that YBA returns them — check the `terraform show` output after the first successful apply and reorder your config to match.
+
+### Plan-time warnings for new image bundle attributes
+
+When adding a new `image_bundles` block, Terraform may emit warnings of the form `was null, but now cty.StringVal(...)` for computed sub-fields such as `uuid`, `metadata_type`, and `ssh_port`. These are cosmetic warnings caused by a limitation in the legacy Terraform Plugin SDK's handling of nested computed attributes inside `TypeList` blocks. They do not affect apply behaviour and can be safely ignored.

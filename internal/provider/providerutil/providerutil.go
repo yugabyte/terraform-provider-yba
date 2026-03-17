@@ -113,15 +113,6 @@ func ProviderYBAVersionCheck(ctx context.Context, c *client.APIClient) (bool, st
 	return utils.CheckValidYBAVersion(ctx, c, allowedVersions)
 }
 
-// ImageBundlesYBAVersionCheck checks if YBA version supports image bundles
-func ImageBundlesYBAVersionCheck(ctx context.Context, c *client.APIClient) (bool, string, error) {
-	allowedVersions := utils.YBAMinimumVersion{
-		Stable:  utils.YBAAllowImageBundlesMinVersion,
-		Preview: utils.YBAAllowImageBundlesMinVersion,
-	}
-	return utils.CheckValidYBAVersion(ctx, c, allowedVersions)
-}
-
 // GetAPIClient extracts the API client from Terraform meta interface
 func GetAPIClient(meta interface{}) (*client.APIClient, string) {
 	apiClient := meta.(*api.APIClient)

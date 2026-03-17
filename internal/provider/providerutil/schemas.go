@@ -17,7 +17,7 @@ package providerutil
 
 import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	"github.com/yugabyte/terraform-provider-yba/internal/utils"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 )
 
 // CommonProviderSchema returns schema fields common to all cloud providers
@@ -72,8 +72,8 @@ func CommonProviderSchema() map[string]*schema.Schema {
 // Matches yba-cli image bundle structure
 func ImageBundleSchema() *schema.Schema {
 	return &schema.Schema{
-		Description: "Image bundles associated with cloud providers. " +
-			"Supported from YugabyteDB Anywhere version: " + utils.YBAAllowImageBundlesMinVersion,
+		Description: "Custom image bundles for the provider. " +
+			"At least one image_bundles or yba_managed_image_bundles block must be specified.",
 		Type:     schema.TypeList,
 		Optional: true,
 		Computed: true,
@@ -115,12 +115,13 @@ func ImageBundleSchema() *schema.Schema {
 							"ssh_port": {
 								Type:        schema.TypeInt,
 								Optional:    true,
-								Default:     22,
+								Computed:    true,
 								Description: "SSH port for the image. Default is 22.",
 							},
 							"global_yb_image": {
 								Type:        schema.TypeString,
 								Optional:    true,
+								Computed:    true,
 								Description: "Global YB image for the bundle.",
 							},
 							"region_overrides": {
@@ -133,6 +134,96 @@ func ImageBundleSchema() *schema.Schema {
 						},
 					},
 					Description: "Image bundle details including architecture and SSH configuration.",
+				},
+			},
+		},
+	}
+}
+
+// YBADefaultImageBundleSchema returns schema for YBA managed image bundles for AWS.
+// AWS supports both x86_64 and aarch64 architectures (up to two entries).
+// At least one of image_bundles or yba_managed_image_bundles must be specified.
+// Omitting this block entirely removes Terraform's tracking of YBA-managed bundles
+// and causes any previously tracked ones to be removed from the provider on the
+// next apply.
+func YBADefaultImageBundleSchema() *schema.Schema {
+	return &schema.Schema{
+		Description: "YBA managed image bundles for the provider. " +
+			"At least one image_bundles or yba_managed_image_bundles block must be specified. " +
+			"AWS supports up to two entries: one for x86_64 and one for aarch64. " +
+			"Omit this block to stop managing YBA default images via Terraform " +
+			"(any previously tracked bundles will be removed from the provider on the next apply).",
+		Type:     schema.TypeList,
+		Optional: true,
+		MaxItems: 2,
+		Elem: &schema.Resource{
+			Schema: map[string]*schema.Schema{
+				"uuid": {
+					Type:        schema.TypeString,
+					Computed:    true,
+					Description: "Image bundle UUID.",
+				},
+				"name": {
+					Type:        schema.TypeString,
+					Computed:    true,
+					Description: "Image bundle name assigned by YBA.",
+				},
+				"arch": {
+					Type:         schema.TypeString,
+					Required:     true,
+					Description:  "Image bundle architecture. Allowed values: x86_64, aarch64.",
+					ValidateFunc: validation.StringInSlice([]string{"x86_64", "aarch64"}, false),
+				},
+				"use_as_default": {
+					Type:     schema.TypeBool,
+					Optional: true,
+					Default:  false,
+					Description: "Flag indicating if the image bundle should be " +
+						"used as default for this architecture.",
+				},
+			},
+		},
+	}
+}
+
+// YBADefaultImageBundleSchemaX86Only returns schema for YBA managed image bundles
+// for GCP and Azure. Only x86_64 is supported. At least one of image_bundles or
+// yba_managed_image_bundles must be specified. Omitting removes previously tracked
+// YBA-managed bundles from the provider on the next apply.
+func YBADefaultImageBundleSchemaX86Only() *schema.Schema {
+	return &schema.Schema{
+		Description: "YBA managed image bundles for the provider. " +
+			"At least one image_bundles or yba_managed_image_bundles block must be specified. " +
+			"Only x86_64 architecture is supported. " +
+			"Omit this block to stop managing YBA default images via Terraform " +
+			"(any previously tracked bundles will be removed from the provider on the next apply).",
+		Type:     schema.TypeList,
+		Optional: true,
+		MaxItems: 1,
+		Elem: &schema.Resource{
+			Schema: map[string]*schema.Schema{
+				"uuid": {
+					Type:        schema.TypeString,
+					Computed:    true,
+					Description: "Image bundle UUID.",
+				},
+				"name": {
+					Type:        schema.TypeString,
+					Computed:    true,
+					Description: "Image bundle name assigned by YBA.",
+				},
+				"arch": {
+					Type:         schema.TypeString,
+					Required:     true,
+					Description:  "Image bundle architecture. Only x86_64 is supported for this cloud provider.",
+					ValidateFunc: validation.StringInSlice([]string{"x86_64"}, false),
+				},
+				"use_as_default": {
+					Type:     schema.TypeBool,
+					Optional: true,
+					Default:  false,
+					Description: "Flag indicating if the image bundle should be " +
+						"used as default.",
 				},
 			},
 		},

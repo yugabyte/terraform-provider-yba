@@ -61,7 +61,7 @@ func BuildZones(zones []interface{}) []client.AvailabilityZone {
 	return result
 }
 
-// BuildImageBundles builds image bundles from schema
+// BuildImageBundles builds custom image bundles from schema
 // Mirrors yba-cli buildAWSImageBundles pattern
 func BuildImageBundles(bundles []interface{}) []client.ImageBundle {
 	result := make([]client.ImageBundle, 0)
@@ -77,24 +77,86 @@ func BuildImageBundles(bundles []interface{}) []client.ImageBundle {
 	return result
 }
 
+// BuildYBADefaultImageBundles builds YBA default image bundles from schema.
+// Used during provider create. The name is taken from state if populated (Computed);
+// on first create it falls back to a generated placeholder since YBA assigns the real name.
+func BuildYBADefaultImageBundles(bundles []interface{}, providerType string) []client.ImageBundle {
+	result := make([]client.ImageBundle, 0)
+	for _, b := range bundles {
+		bundle := b.(map[string]interface{})
+		arch := bundle["arch"].(string)
+
+		// Use the actual name from state when available (populated after first read).
+		// On initial create the Computed name is empty, so generate a placeholder.
+		name, _ := bundle["name"].(string)
+		if name == "" {
+			name = "YBA-Managed-"
+			if arch == "x86_64" {
+				name += "x86"
+			} else if arch == "aarch64" {
+				name += "aarch"
+			} else {
+				name += arch
+			}
+		}
+
+		// Regions must be a non-null map; validateAMI calls getRegions().get(...) and NPEs on null.
+		emptyRegions := make(map[string]client.BundleInfo)
+		ib := client.ImageBundle{
+			Name:         utils.GetStringPointer(name),
+			UseAsDefault: utils.GetBoolPointer(bundle["use_as_default"].(bool)),
+			Details: &client.ImageBundleDetails{
+				Arch:    utils.GetStringPointer(arch),
+				SshPort: utils.GetInt32Pointer(22),
+				Regions: &emptyRegions,
+			},
+		}
+
+		if uuid, ok := bundle["uuid"].(string); ok && uuid != "" {
+			ib.Uuid = utils.GetStringPointer(uuid)
+		}
+
+		if providerType == "aws" {
+			ib.Details.UseIMDSv2 = utils.GetBoolPointer(true)
+		}
+
+		result = append(result, ib)
+	}
+	return result
+}
+
 func buildImageBundleDetails(details []interface{}) *client.ImageBundleDetails {
 	if len(details) == 0 {
 		return nil
 	}
 
 	d := details[0].(map[string]interface{})
+
+	// Port 0 is never valid; GetInt32Pointer(0) returns nil which omits the field.
+	sshPort := int32(d["ssh_port"].(int))
+	if sshPort == 0 {
+		sshPort = 22
+	}
+
 	result := &client.ImageBundleDetails{
 		Arch:    utils.GetStringPointer(d["arch"].(string)),
 		SshUser: utils.GetStringPointer(d["ssh_user"].(string)),
-		SshPort: utils.GetInt32Pointer(int32(d["ssh_port"].(int))),
+		SshPort: utils.GetInt32Pointer(sshPort),
 	}
 
-	// Handle optional fields safely
 	if v, ok := d["global_yb_image"].(string); ok && v != "" {
 		result.SetGlobalYbImage(v)
 	}
+	// Regions must be non-null; validateAMI calls getRegions().get(...) and NPEs on null.
+	emptyRegions := make(map[string]client.BundleInfo)
+	result.Regions = &emptyRegions
 	if v, ok := d["region_overrides"].(map[string]interface{}); ok && len(v) > 0 {
-		result.SetRegions(buildRegionOverrides(v))
+		overrides := buildRegionOverrides(v)
+		result.Regions = &overrides
+	}
+	// use_imds_v2 is present in the AWS schema; absent for GCP/Azure so this is a no-op there.
+	if v, ok := d["use_imds_v2"].(bool); ok {
+		result.UseIMDSv2 = utils.GetBoolPointer(v)
 	}
 
 	return result

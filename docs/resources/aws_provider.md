@@ -195,16 +195,16 @@ The details for configuration are available in the [YugabyteDB Anywhere Configur
 - `access_key_id` (String, Sensitive) AWS Access Key ID. Required for non-IAM role based providers. Stored in Terraform state - use an encrypted backend for security.
 - `air_gap_install` (Boolean) Flag indicating if YugabyteDB nodes are installed in an air-gapped environment, lacking access to the public internet for package downloads. Default is false.
 - `hosted_zone_id` (String) Hosted Zone ID corresponding to Amazon Route53.
-- `image_bundles` (Block List) Image bundles associated with AWS provider. Supported from YugabyteDB Anywhere version: 2.20.3.0-b68 (see [below for nested schema](#nestedblock--image_bundles))
+- `image_bundles` (Block List) Custom image bundles for the AWS provider. At least one image_bundles or yba_managed_image_bundles block must be specified. (see [below for nested schema](#nestedblock--image_bundles))
 - `ntp_servers` (List of String) List of NTP servers for time synchronization.
 - `secret_access_key` (String, Sensitive) AWS Secret Access Key. Required with access_key_id. Stored in Terraform state - use an encrypted backend for security.
 - `set_up_chrony` (Boolean) Set up NTP chrony service. When true with empty ntp_servers, uses cloud provider's NTP server (e.g., AWS Time Sync). When true with ntp_servers specified, uses custom NTP servers. When false, assumes NTP is pre-configured in the machine image. Default is false.
-- `skip_keypair_validation` (Boolean, Deprecated) Deprecated: Use skip_ssh_keypair_validation instead.
 - `skip_ssh_keypair_validation` (Boolean) Skip SSH keypair validation and upload to AWS. Only applies in self-managed mode (when ssh_keypair_name and ssh_private_key_content are set). Use when the keypair already exists in your AWS account and you do not want to grant YBA describe/create keypair permissions. Default is false.
 - `ssh_keypair_name` (String) Custom SSH key pair name to access YugabyteDB nodes. Must be set together with ssh_private_key_content (self-managed mode). If both ssh_keypair_name and ssh_private_key_content are omitted, YugabyteDB Anywhere generates and manages the key pair (YBA-managed mode). YBA versions keys on every update: if a key with this name already exists it appends a timestamp (e.g. 'my-key-2026-03-18-10-01-29'). Use access_key_code to read the actual versioned name that was stored.
 - `ssh_private_key_content` (String, Sensitive) SSH private key content to access YugabyteDB nodes. Must be set together with ssh_keypair_name (self-managed mode). If both fields are omitted, YugabyteDB Anywhere generates and manages the key pair (YBA-managed mode).
 - `timeouts` (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))
 - `use_iam_instance_profile` (Boolean) Use IAM Role from the YugabyteDB Anywhere host. Provider creation will fail on insufficient permissions. Default is false.
+- `yba_managed_image_bundles` (Block List, Max: 2) YBA managed image bundles for the provider. At least one image_bundles or yba_managed_image_bundles block must be specified. AWS supports up to two entries: one for x86_64 and one for aarch64. Omit this block to stop managing YBA default images via Terraform (any previously tracked bundles will be removed from the provider on the next apply). (see [below for nested schema](#nestedblock--yba_managed_image_bundles))
 
 ### Read-Only
 
@@ -284,7 +284,7 @@ Optional:
 - `global_yb_image` (String) Global YB image for the bundle.
 - `region_overrides` (Map of String) Per-region AMI overrides for AWS. Provide region code as the key and AMI ID as the value. Required: one override per region in the provider.
 - `ssh_port` (Number) SSH port for the image. Default is 22.
-- `use_imds_v2` (Boolean) Use IMDS v2 for the image. Default is true.
+- `use_imds_v2` (Boolean) Use IMDS v2 for the image. Default is true. Set to false to allow IMDSv1 (not recommended). Note: Terraform may show a cosmetic plan-time warning for this field when omitted from config - this is a known legacy SDK limitation and does not affect behaviour.
 
 
 
@@ -297,6 +297,23 @@ Optional:
 - `delete` (String)
 - `update` (String)
 
+
+<a id="nestedblock--yba_managed_image_bundles"></a>
+### Nested Schema for `yba_managed_image_bundles`
+
+Required:
+
+- `arch` (String) Image bundle architecture. Allowed values: x86_64, aarch64.
+
+Optional:
+
+- `use_as_default` (Boolean) Flag indicating if the image bundle should be used as default for this architecture.
+
+Read-Only:
+
+- `name` (String) Image bundle name assigned by YBA.
+- `uuid` (String) Image bundle UUID.
+
 ## Import
 
 AWS Providers can be imported using the provider UUID:
@@ -304,3 +321,26 @@ AWS Providers can be imported using the provider UUID:
 ```sh
 terraform import yba_aws_provider.example <provider-uuid>
 ```
+
+## Known Issues
+
+### Zone ordering diff
+
+YugabyteDB Anywhere may return availability zones in a different order from the one specified in your configuration. Because `zones` is a `TypeList` (order-sensitive), Terraform can produce a cosmetic plan diff that looks like zones are being swapped or removed even when no real change is intended:
+
+```
+~ zones {
+    ~ code   = "us-west-2c" -> "us-west-2b"
+      subnet = ...
+  }
+- zones {
+    - code   = "us-west-2b" -> null
+    ...
+  }
+```
+
+**This diff is cosmetic.** The underlying zone configuration is unchanged; only the positional order differs. Applying will not modify any infrastructure. To avoid seeing this diff repeatedly, define your `zones` blocks in the same order that YBA returns them — check the `terraform show` output after the first successful apply and reorder your config to match.
+
+### Plan-time warnings for new image bundle attributes
+
+When adding a new `image_bundles` block, Terraform may emit warnings of the form `was null, but now cty.StringVal(...)` for computed sub-fields such as `uuid`, `metadata_type`, `ssh_port`, and `global_yb_image`. These are cosmetic warnings caused by a limitation in the legacy Terraform Plugin SDK's handling of nested computed attributes inside `TypeList` blocks. They do not affect apply behaviour and can be safely ignored.

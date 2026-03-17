@@ -233,10 +233,10 @@ func ResourceBackup() *schema.Resource {
 							Description: "Keyspace (YCQL) or database (YSQL) name.",
 						},
 						"backup_type": {
-							Type:        schema.TypeString,
-							Computed:    true,
+							Type:     schema.TypeString,
+							Computed: true,
 							Description: "Backup type for this entry: " +
-							"YQL_TABLE_TYPE, PGSQL_TABLE_TYPE, or REDIS_TABLE_TYPE.",
+								"YQL_TABLE_TYPE, PGSQL_TABLE_TYPE, or REDIS_TABLE_TYPE.",
 						},
 						"backup_size_in_bytes": {
 							Type:        schema.TypeInt,

@@ -13,7 +13,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package aws
+package azure
 
 import (
 	"context"
@@ -23,29 +23,17 @@ import (
 	"github.com/yugabyte/terraform-provider-yba/internal/provider/providerutil"
 )
 
-// regionData holds user-provided region fields for comparison
-type regionData struct {
-	vpcID           string
-	securityGroupID string
-	zones           map[string]zoneData
-}
-
-// zoneData holds user-provided zone fields for comparison
-type zoneData struct {
-	subnet          string
-	secondarySubnet string
-}
-
-// validateNoDuplicateRegionsOrZones is the CustomizeDiff function for AWS providers.
-func validateNoDuplicateRegionsOrZones(
+// validateAzureProvider is the CustomizeDiff function for Azure providers.
+func validateAzureProvider(
 	ctx context.Context,
 	d *schema.ResourceDiff,
 	meta interface{},
 ) error {
 	if err := providerutil.MarkVersionComputedIfChanged(ctx, d,
 		[]string{
-			"access_key_id", "secret_access_key", "use_iam_instance_profile",
-			"hosted_zone_id", "skip_ssh_keypair_validation",
+			"client_id", "client_secret", "subscription_id", "tenant_id",
+			"resource_group", "hosted_zone_id", "network_subscription_id",
+			"network_resource_group",
 		},
 		regionsContentChanged,
 	); err != nil {
@@ -66,7 +54,13 @@ func validateNoDuplicateRegionsOrZones(
 
 	for _, r := range regionsRaw {
 		regionMap := r.(map[string]interface{})
-		regionCode := regionMap["code"].(string)
+		regionCode := providerutil.GetString(regionMap, "code")
+		if regionCode == "" {
+			regionCode = providerutil.GetString(regionMap, "name")
+		}
+		if regionCode == "" {
+			continue
+		}
 
 		if regionCodes[regionCode] {
 			return fmt.Errorf(
@@ -77,12 +71,16 @@ func validateNoDuplicateRegionsOrZones(
 		regionCodes[regionCode] = true
 
 		zonesList, _ := regionMap["zones"].([]interface{})
-
 		zoneCodes := make(map[string]bool)
 		for _, z := range zonesList {
 			zoneMap := z.(map[string]interface{})
-			zoneCode := zoneMap["code"].(string)
-
+			zoneCode := providerutil.GetString(zoneMap, "code")
+			if zoneCode == "" {
+				zoneCode = providerutil.GetString(zoneMap, "name")
+			}
+			if zoneCode == "" {
+				continue
+			}
 			if zoneCodes[zoneCode] {
 				return fmt.Errorf(
 					"duplicate zone code %q found in region %q: "+
@@ -94,33 +92,26 @@ func validateNoDuplicateRegionsOrZones(
 		}
 	}
 
-	if ybaBundles, ok := d.Get("yba_managed_image_bundles").([]interface{}); ok {
-		seenArch := make(map[string]bool)
-		for _, b := range ybaBundles {
-			bundleMap, ok := b.(map[string]interface{})
-			if !ok {
-				continue
-			}
-			arch, _ := bundleMap["arch"].(string)
-			if arch == "" {
-				continue
-			}
-			if seenArch[arch] {
-				return fmt.Errorf(
-					"duplicate architecture %q in yba_managed_image_bundles: "+
-						"each architecture must appear at most once",
-					arch,
-				)
-			}
-			seenArch[arch] = true
-		}
-	}
-
 	if err := providerutil.ValidateImageBundles(d); err != nil {
 		return err
 	}
 
 	return nil
+}
+
+// regionData holds user-provided region fields for comparison
+type regionData struct {
+	vnet                 string
+	securityGroupID      string
+	resourceGroup        string
+	networkResourceGroup string
+	zones                map[string]zoneData
+}
+
+// zoneData holds user-provided zone fields for comparison
+type zoneData struct {
+	subnet          string
+	secondarySubnet string
 }
 
 // regionsContentChanged reports whether two region lists differ in content (ignoring order).
@@ -137,8 +128,10 @@ func regionsContentChanged(oldRaw, newRaw interface{}) bool {
 		if !exists {
 			return true
 		}
-		if oldRegion.vpcID != newRegion.vpcID ||
-			oldRegion.securityGroupID != newRegion.securityGroupID {
+		if oldRegion.vnet != newRegion.vnet ||
+			oldRegion.securityGroupID != newRegion.securityGroupID ||
+			oldRegion.resourceGroup != newRegion.resourceGroup ||
+			oldRegion.networkResourceGroup != newRegion.networkResourceGroup {
 			return true
 		}
 		if len(oldRegion.zones) != len(newRegion.zones) {
@@ -159,12 +152,11 @@ func regionsContentChanged(oldRaw, newRaw interface{}) bool {
 	return false
 }
 
-// extractRegionData extracts user-provided fields from regions for comparison.
+// extractRegionData extracts user-provided fields from Azure regions for comparison.
 func extractRegionData(regionsRaw interface{}) map[string]regionData {
 	result := make(map[string]regionData)
 
 	regions, _ := regionsRaw.([]interface{})
-
 	for _, r := range regions {
 		regionMap, ok := r.(map[string]interface{})
 		if !ok {
@@ -172,23 +164,30 @@ func extractRegionData(regionsRaw interface{}) map[string]regionData {
 		}
 		regionCode, _ := regionMap["code"].(string)
 		if regionCode == "" {
+			regionCode, _ = regionMap["name"].(string)
+		}
+		if regionCode == "" {
 			continue
 		}
 
 		rd := regionData{
-			vpcID:           providerutil.GetString(regionMap, "vpc_id"),
-			securityGroupID: providerutil.GetString(regionMap, "security_group_id"),
-			zones:           make(map[string]zoneData),
+			vnet:                 providerutil.GetString(regionMap, "vnet"),
+			securityGroupID:      providerutil.GetString(regionMap, "security_group_id"),
+			resourceGroup:        providerutil.GetString(regionMap, "resource_group"),
+			networkResourceGroup: providerutil.GetString(regionMap, "network_resource_group"),
+			zones:                make(map[string]zoneData),
 		}
 
 		zones, _ := regionMap["zones"].([]interface{})
-
 		for _, z := range zones {
 			zoneMap, ok := z.(map[string]interface{})
 			if !ok {
 				continue
 			}
 			zoneCode, _ := zoneMap["code"].(string)
+			if zoneCode == "" {
+				zoneCode, _ = zoneMap["name"].(string)
+			}
 			if zoneCode == "" {
 				continue
 			}
@@ -204,8 +203,8 @@ func extractRegionData(regionsRaw interface{}) map[string]regionData {
 	return result
 }
 
-// suppressIfAWSRegionsPureReorder suppresses positional diffs when regions are only reordered.
-func suppressIfAWSRegionsPureReorder(k, old, new string, d *schema.ResourceData) bool {
+// suppressIfAzureRegionsPureReorder suppresses positional diffs when regions are only reordered.
+func suppressIfAzureRegionsPureReorder(k, old, new string, d *schema.ResourceData) bool {
 	if old == new {
 		return true
 	}

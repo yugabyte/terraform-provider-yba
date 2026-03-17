@@ -1,0 +1,56 @@
+---
+page_title: "{{.Name}} {{.Type}} - {{.RenderedProviderName}}"
+description: |-
+{{ .Description | plainmarkdown | trimspace | prefixlines "  " }}
+---
+
+# {{.Name}} ({{.Type}})
+
+{{ .Description | trimspace }}
+
+This resource provides a dedicated interface for GCP cloud providers with a simplified schema compared to the generic `yba_cloud_provider` resource.
+
+## Credentials
+
+GCP credentials can be provided in two ways:
+
+1. **Service Account Credentials**: Set the `credentials` field with the JSON content of your service account key file
+2. **Host Credentials**: Set `use_host_credentials = true` to use the credentials from the YugabyteDB Anywhere host (e.g., GCE metadata service)
+
+-> **Note:** When using host credentials, ensure the YBA host has a service account with sufficient permissions for Compute Engine, VPC, and other required GCP services.
+
+## VPC Configuration
+
+GCP VPC can be configured in three ways:
+
+1. **Existing VPC**: Set `network` to an existing VPC name (default behavior)
+2. **Create New VPC**: Set `create_vpc = true` and `network` to the desired new VPC name
+3. **Host VPC**: Set `use_host_vpc = true` to use the VPC from the YBA host
+
+## Example Usage
+
+### Basic GCP Provider with Credentials
+
+{{ tffile "examples/resources/yba_gcp_provider/resource.tf" }}
+
+The details for configuration are available in the [YugabyteDB Anywhere Configure Cloud Provider Documentation](https://docs.yugabyte.com/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/gcp/).
+
+{{ .SchemaMarkdown | trimspace }}
+
+## Import
+
+GCP Providers can be imported using the provider UUID:
+
+```sh
+terraform import yba_gcp_provider.example <provider-uuid>
+```
+
+## Known Issues
+
+### Zone ordering diff
+
+YugabyteDB Anywhere may return availability zones in a different order from the one specified in your configuration. Because `zones` is a `TypeList` (order-sensitive), Terraform can produce a cosmetic plan diff that looks like zones are being swapped or removed even when no real change is intended. **This diff is cosmetic.** The underlying zone configuration is unchanged; only the positional order differs. Applying will not modify any infrastructure. To avoid seeing this diff repeatedly, define your `zones` blocks in the same order that YBA returns them — check the `terraform show` output after the first successful apply and reorder your config to match.
+
+### Plan-time warnings for new image bundle attributes
+
+When adding a new `image_bundles` block, Terraform may emit warnings of the form `was null, but now cty.StringVal(...)` for computed sub-fields such as `uuid`, `metadata_type`, and `ssh_port`. These are cosmetic warnings caused by a limitation in the legacy Terraform Plugin SDK's handling of nested computed attributes inside `TypeList` blocks. They do not affect apply behaviour and can be safely ignored.

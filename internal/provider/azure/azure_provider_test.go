@@ -247,10 +247,10 @@ resource "yba_azure_provider" "test" {
   client_secret   = var.AZURE_CLIENT_SECRET
   resource_group  = var.AZURE_RG
   regions {
-    name = "westus2"
+    code = "westus2"
     vnet = var.AZURE_VNET_ID
     zones {
-      name   = "westus2-1"
+      code   = "westus2-1"
       subnet = var.AZURE_SUBNET_ID
     }
   }
@@ -299,10 +299,10 @@ resource "yba_azure_provider" "test" {
   resource_group   = var.AZURE_RG
   ssh_keypair_name = "test-keypair"
   regions {
-    name = "westus2"
+    code = "westus2"
     vnet = var.AZURE_VNET_ID
     zones {
-      name   = "westus2-1"
+      code   = "westus2-1"
       subnet = var.AZURE_SUBNET_ID
     }
   }
@@ -363,10 +363,10 @@ resource "yba_azure_provider" "test" {
   network_resource_group  = var.AZURE_NETWORK_RG
   ssh_keypair_name        = "test-keypair"
   regions {
-    name = "westus2"
+    code = "westus2"
     vnet = var.AZURE_VNET_ID
     zones {
-      name   = "westus2-1"
+      code   = "westus2-1"
       subnet = var.AZURE_SUBNET_ID
     }
   }
@@ -423,18 +423,18 @@ resource "yba_azure_provider" "test" {
   resource_group   = var.AZURE_RG
   ssh_keypair_name = "test-keypair"
   regions {
-    name = "westus2"
+    code = "westus2"
     vnet = var.AZURE_VNET_ID
     zones {
-      name   = "westus2-1"
+      code   = "westus2-1"
       subnet = var.AZURE_SUBNET_ID_1
     }
     zones {
-      name   = "westus2-2"
+      code   = "westus2-2"
       subnet = var.AZURE_SUBNET_ID_2
     }
     zones {
-      name   = "westus2-3"
+      code   = "westus2-3"
       subnet = var.AZURE_SUBNET_ID_3
     }
   }

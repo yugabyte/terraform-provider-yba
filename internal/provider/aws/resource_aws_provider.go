@@ -130,24 +130,14 @@ func awsProviderSchema() map[string]*schema.Schema {
 			"the key pair (YBA-managed mode).",
 	}
 	s["skip_ssh_keypair_validation"] = &schema.Schema{
-		Type:          schema.TypeBool,
-		Optional:      true,
-		Computed:      true,
-		ConflictsWith: []string{"skip_keypair_validation"},
+		Type:     schema.TypeBool,
+		Optional: true,
+		Computed: true,
 		Description: "Skip SSH keypair validation and upload to AWS. " +
 			"Only applies in self-managed mode (when ssh_keypair_name and " +
 			"ssh_private_key_content are set). Use when the keypair already exists " +
 			"in your AWS account and you do not want to grant YBA describe/create " +
 			"keypair permissions. Default is false.",
-	}
-	s["skip_keypair_validation"] = &schema.Schema{
-		Type:          schema.TypeBool,
-		Optional:      true,
-		Computed:      true,
-		ConflictsWith: []string{"skip_ssh_keypair_validation"},
-		Deprecated: "Use skip_ssh_keypair_validation instead. " +
-			"This field will be removed in a future version.",
-		Description: "Deprecated: Use skip_ssh_keypair_validation instead.",
 	}
 
 	// Common read-only fields
@@ -163,14 +153,16 @@ func awsProviderSchema() map[string]*schema.Schema {
 	// Image bundles (yba-cli: --image-bundle, --image-bundle-region-override)
 	s["image_bundles"] = awsImageBundleSchema()
 
+	s["yba_managed_image_bundles"] = providerutil.YBADefaultImageBundleSchema()
+
 	return s
 }
 
 // awsImageBundleSchema returns AWS-specific image bundle schema with region overrides
 func awsImageBundleSchema() *schema.Schema {
 	return &schema.Schema{
-		Description: "Image bundles associated with AWS provider. " +
-			"Supported from YugabyteDB Anywhere version: " + utils.YBAAllowImageBundlesMinVersion,
+		Description: "Custom image bundles for the AWS provider. " +
+			"At least one image_bundles or yba_managed_image_bundles block must be specified.",
 		Type:     schema.TypeList,
 		Optional: true,
 		Computed: true,
@@ -217,18 +209,23 @@ func awsImageBundleSchema() *schema.Schema {
 							"ssh_port": {
 								Type:        schema.TypeInt,
 								Optional:    true,
-								Default:     22,
+								Computed:    true,
 								Description: "SSH port for the image. Default is 22.",
 							},
 							"use_imds_v2": {
-								Type:        schema.TypeBool,
-								Optional:    true,
-								Default:     true,
-								Description: "Use IMDS v2 for the image. Default is true.",
+								Type:     schema.TypeBool,
+								Optional: true,
+								Default:  true,
+								Description: "Use IMDS v2 for the image. Default is true. " +
+									"Set to false to allow IMDSv1 (not recommended). " +
+									"Note: Terraform may show a cosmetic plan-time warning for this field " +
+									"when omitted from config - this is a known legacy SDK limitation " +
+									"and does not affect behaviour.",
 							},
 							"global_yb_image": {
 								Type:        schema.TypeString,
 								Optional:    true,
+								Computed:    true,
 								Description: "Global YB image for the bundle.",
 							},
 							"region_overrides": {
@@ -251,7 +248,7 @@ func awsImageBundleSchema() *schema.Schema {
 
 // awsRegionsSchema returns the schema for AWS regions.
 // NOTE: Using TypeList instead of TypeSet for simpler change detection.
-// Order changes show in plan but don't trigger version updates (hasRegionCodesChanged).
+// Order changes show in plan but don't trigger version updates.
 func awsRegionsSchema() *schema.Schema {
 	return &schema.Schema{
 		Type:        schema.TypeList,
@@ -265,9 +262,10 @@ func awsRegionsSchema() *schema.Schema {
 					Description: "Region UUID.",
 				},
 				"code": {
-					Type:        schema.TypeString,
-					Required:    true,
-					Description: "AWS region code (e.g., us-west-2, us-east-1).",
+					Type:             schema.TypeString,
+					Required:         true,
+					DiffSuppressFunc: suppressIfAWSRegionsPureReorder,
+					Description:      "AWS region code (e.g., us-west-2, us-east-1).",
 				},
 				"name": {
 					Type:        schema.TypeString,
@@ -275,14 +273,16 @@ func awsRegionsSchema() *schema.Schema {
 					Description: "AWS region name. Read-only.",
 				},
 				"vpc_id": {
-					Type:        schema.TypeString,
-					Optional:    true,
-					Description: "VPC ID for this region.",
+					Type:             schema.TypeString,
+					Optional:         true,
+					DiffSuppressFunc: suppressIfAWSRegionsPureReorder,
+					Description:      "VPC ID for this region.",
 				},
 				"security_group_id": {
-					Type:        schema.TypeString,
-					Optional:    true,
-					Description: "Security group ID for this region.",
+					Type:             schema.TypeString,
+					Optional:         true,
+					DiffSuppressFunc: suppressIfAWSRegionsPureReorder,
+					Description:      "Security group ID for this region.",
 				},
 				"zones": awsZonesSchema(),
 			},
@@ -305,9 +305,10 @@ func awsZonesSchema() *schema.Schema {
 					Description: "Zone UUID.",
 				},
 				"code": {
-					Type:        schema.TypeString,
-					Required:    true,
-					Description: "AWS availability zone code (e.g., us-west-2a, us-east-1b).",
+					Type:             schema.TypeString,
+					Required:         true,
+					DiffSuppressFunc: suppressIfAWSRegionsPureReorder,
+					Description:      "AWS availability zone code (e.g., us-west-2a, us-east-1b).",
 				},
 				"name": {
 					Type:        schema.TypeString,
@@ -315,15 +316,17 @@ func awsZonesSchema() *schema.Schema {
 					Description: "AWS availability zone name. Read-only.",
 				},
 				"subnet": {
-					Type:        schema.TypeString,
-					Required:    true,
-					Description: "Subnet ID for this zone.",
+					Type:             schema.TypeString,
+					Required:         true,
+					DiffSuppressFunc: suppressIfAWSRegionsPureReorder,
+					Description:      "Subnet ID for this zone.",
 				},
 				"secondary_subnet": {
-					Type:        schema.TypeString,
-					Optional:    true,
-					Computed:    true,
-					Description: "Secondary subnet ID for this zone.",
+					Type:             schema.TypeString,
+					Optional:         true,
+					Computed:         true,
+					DiffSuppressFunc: suppressIfAWSRegionsPureReorder,
+					Description:      "Secondary subnet ID for this zone.",
 				},
 			},
 		},
@@ -336,17 +339,6 @@ func resourceAWSProviderCreate(
 	meta interface{},
 ) diag.Diagnostics {
 	c, cUUID := providerutil.GetAPIClient(meta)
-
-	// Version check (yba-cli: authAPI.NewProviderYBAVersionCheck())
-	allowed, version, err := providerutil.ProviderYBAVersionCheck(ctx, c)
-	if err != nil {
-		return diag.FromErr(err)
-	}
-	if !allowed {
-		return diag.FromErr(fmt.Errorf(
-			"creating AWS providers is not supported below version %s, currently on %s",
-			utils.YBAAllowEditProviderMinVersion, version))
-	}
 
 	providerName := d.Get("name").(string)
 
@@ -365,9 +357,26 @@ func resourceAWSProviderCreate(
 
 	// Build image bundles with AWS-specific region overrides - TypeList returns []interface{}
 	var imageBundles []client.ImageBundle
-	if v, ok := d.Get("image_bundles").([]interface{}); ok && len(v) > 0 {
-		imageBundles = buildAWSImageBundles(v)
+	if v := d.Get("image_bundles"); v != nil && len(v.([]interface{})) > 0 {
+		imageBundles = append(imageBundles, providerutil.BuildImageBundles(v.([]interface{}))...)
 	}
+	if v := d.Get("yba_managed_image_bundles"); v != nil && len(v.([]interface{})) > 0 {
+		imageBundles = append(
+			imageBundles,
+			providerutil.BuildYBADefaultImageBundles(v.([]interface{}), "aws")...)
+	}
+	imageBundles = providerutil.EnsureImageBundleDefaults(imageBundles)
+
+	// verifyImageBundleDetails requires an entry per region in every bundle's regions map.
+	regionCodes := make([]string, 0, len(regionsRaw))
+	for _, r := range regionsRaw {
+		if regionMap, ok := r.(map[string]interface{}); ok {
+			if code, ok := regionMap["code"].(string); ok && code != "" {
+				regionCodes = append(regionCodes, code)
+			}
+		}
+	}
+	imageBundles = ensureAWSRegionEntries(imageBundles, regionCodes)
 
 	// Build provider request (mirrors yba-cli requestBody construction)
 	req := client.Provider{
@@ -490,17 +499,30 @@ func resourceAWSProviderRead(
 	// These fields are "write-only" - we preserve what's in the config/state
 
 	// Set regions
-	// NOTE: TypeList is order-sensitive. If user reorders regions/zones in config,
-	// Terraform will show a positional diff. However:
-	// - hasRegionCodesChanged() returns false for order-only changes
-	// - Version won't be incremented
-	// - Apply will merge by code and result in no actual API change
-	if err = d.Set("regions", flattenAWSRegions(p.GetRegions())); err != nil {
+	// Align regions with state/config to preserve order and prevent unexpected diff warnings
+	stateRegions, _ := d.Get("regions").([]interface{})
+	alignedRegions := providerutil.AlignRegions(flattenAWSRegions(p.GetRegions()), stateRegions)
+	if err = d.Set("regions", alignedRegions); err != nil {
 		return diag.FromErr(err)
 	}
 
 	// Set image bundles
-	if err = d.Set("image_bundles", flattenAWSImageBundles(p.GetImageBundles())); err != nil {
+	stateBundles, _ := d.Get("image_bundles").([]interface{})
+	stateYBAManagedBundles, _ := d.Get("yba_managed_image_bundles").([]interface{})
+
+	flattenedBundles := flattenAWSImageBundles(p.GetImageBundles())
+	alignedBundles := providerutil.AlignImageBundles(flattenedBundles, stateBundles)
+	if err = d.Set("image_bundles", alignedBundles); err != nil {
+		return diag.FromErr(err)
+	}
+
+	// Always read from API so re-added bundles are picked up even when state was empty.
+	flattenedYBAManagedBundles := providerutil.FlattenYBADefaultImageBundles(p.GetImageBundles())
+	alignedYBAManagedBundles := providerutil.AlignYBADefaultImageBundles(
+		flattenedYBAManagedBundles,
+		stateYBAManagedBundles,
+	)
+	if err = d.Set("yba_managed_image_bundles", alignedYBAManagedBundles); err != nil {
 		return diag.FromErr(err)
 	}
 
@@ -527,17 +549,6 @@ func resourceAWSProviderUpdate(
 	meta interface{},
 ) diag.Diagnostics {
 	c, cUUID := providerutil.GetAPIClient(meta)
-
-	// Version check
-	allowed, version, err := providerutil.ProviderYBAVersionCheck(ctx, c)
-	if err != nil {
-		return diag.FromErr(err)
-	}
-	if !allowed {
-		return diag.FromErr(fmt.Errorf(
-			"editing AWS providers is not supported below version %s, currently on %s",
-			utils.YBAAllowEditProviderMinVersion, version))
-	}
 
 	// Fetch current provider state
 	p, err := providerutil.GetProvider(ctx, c, cUUID, d.Id())
@@ -573,21 +584,21 @@ func resourceAWSProviderUpdate(
 		providerReq.SetDetails(details)
 	}
 
-	// Update AWS cloud info if credentials or hosted zone changed
-	// IMPORTANT: We update individual fields on the existing cloud info,
-	// NOT replace the entire object, to preserve read-only fields
-	if d.HasChange("access_key_id") || d.HasChange("secret_access_key") ||
-		d.HasChange("use_iam_instance_profile") || d.HasChange("hosted_zone_id") {
+	// Always patch cloud info to clear the deprecated provider-level useIMDSv2
+	// (Java default = true forces all bundles to true via a backwards-compat block).
+	{
 		details := providerReq.GetDetails()
 		cloudInfo := details.GetCloudInfo()
 		awsInfo := cloudInfo.GetAws()
 
-		// Update credentials
+		// Disable the deprecated provider-level IMDSv2 override.
+		awsInfo.SetUseIMDSv2(false)
+
+		// Update credentials if changed
 		if d.HasChange("access_key_id") || d.HasChange("secret_access_key") ||
 			d.HasChange("use_iam_instance_profile") {
 			isIAM := d.Get("use_iam_instance_profile").(bool)
 			if isIAM {
-				// Clear credentials when using IAM
 				awsInfo.SetAwsAccessKeyID("")
 				awsInfo.SetAwsAccessKeySecret("")
 			} else {
@@ -596,7 +607,7 @@ func resourceAWSProviderUpdate(
 			}
 		}
 
-		// Update hosted zone
+		// Update hosted zone if changed
 		if d.HasChange("hosted_zone_id") {
 			awsInfo.SetAwsHostedZoneId(d.Get("hosted_zone_id").(string))
 		}
@@ -610,21 +621,27 @@ func resourceAWSProviderUpdate(
 	// Per YBA API: To create/update a self-managed key, send an AccessKey WITHOUT IdKey
 	// and WITH sshPrivateKeyContent. If IdKey is present, YBA treats it as no-op.
 	if d.HasChange("ssh_keypair_name") || d.HasChange("ssh_private_key_content") ||
-		d.HasChange("skip_ssh_keypair_validation") || d.HasChange("skip_keypair_validation") {
+		d.HasChange("skip_ssh_keypair_validation") {
 		providerReq.SetAllAccessKeys(buildAWSAccessKeys(d))
 	}
 
-	// Always process image bundles - d.HasChange may return false when user
-	// removes the entire image_bundles block (Optional+Computed behavior)
-	//
-	// IMPORTANT: Use d.GetChange for old value (state) but d.Get for new value.
-	// d.GetChange returns (state, configured_value), but for Optional+Computed fields,
-	// "configured_value" falls back to state when user removes the block.
-	// d.Get returns the PLANNED value which correctly reflects user's intent.
-	oldBundlesRaw, _ := d.GetChange("image_bundles")
-	newBundlesRaw := d.Get("image_bundles")
-	resultBundles := mergeImageBundlesForUpdate(oldBundlesRaw, newBundlesRaw)
-	providerReq.SetImageBundles(resultBundles)
+	oldBundlesRaw, newBundlesRaw := d.GetChange("image_bundles")
+	ybaConfigRaw, _ := d.Get("yba_managed_image_bundles").([]interface{})
+	updatedBundles := providerutil.PrepareImageBundlesForUpdate(
+		p.GetImageBundles(), oldBundlesRaw, newBundlesRaw,
+		ybaConfigRaw, d.HasChange("yba_managed_image_bundles"),
+	)
+	// Ensure per-region entries exist in every bundle (required by verifyImageBundleDetails).
+	updateRegionsRaw, _ := d.Get("regions").([]interface{})
+	updateRegionCodes := make([]string, 0, len(updateRegionsRaw))
+	for _, r := range updateRegionsRaw {
+		if regionMap, ok := r.(map[string]interface{}); ok {
+			if code, ok := regionMap["code"].(string); ok && code != "" {
+				updateRegionCodes = append(updateRegionCodes, code)
+			}
+		}
+	}
+	providerReq.SetImageBundles(ensureAWSRegionEntries(updatedBundles, updateRegionCodes))
 
 	// Execute update (yba-cli: authAPI.EditProvider())
 	r, response, err := c.CloudProvidersAPI.EditProvider(ctx, cUUID, d.Id()).

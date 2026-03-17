@@ -36,3 +36,26 @@ AWS Providers can be imported using the provider UUID:
 ```sh
 terraform import yba_aws_provider.example <provider-uuid>
 ```
+
+## Known Issues
+
+### Zone ordering diff
+
+YugabyteDB Anywhere may return availability zones in a different order from the one specified in your configuration. Because `zones` is a `TypeList` (order-sensitive), Terraform can produce a cosmetic plan diff that looks like zones are being swapped or removed even when no real change is intended:
+
+```
+~ zones {
+    ~ code   = "us-west-2c" -> "us-west-2b"
+      subnet = ...
+  }
+- zones {
+    - code   = "us-west-2b" -> null
+    ...
+  }
+```
+
+**This diff is cosmetic.** The underlying zone configuration is unchanged; only the positional order differs. Applying will not modify any infrastructure. To avoid seeing this diff repeatedly, define your `zones` blocks in the same order that YBA returns them — check the `terraform show` output after the first successful apply and reorder your config to match.
+
+### Plan-time warnings for new image bundle attributes
+
+When adding a new `image_bundles` block, Terraform may emit warnings of the form `was null, but now cty.StringVal(...)` for computed sub-fields such as `uuid`, `metadata_type`, `ssh_port`, and `global_yb_image`. These are cosmetic warnings caused by a limitation in the legacy Terraform Plugin SDK's handling of nested computed attributes inside `TypeList` blocks. They do not affect apply behaviour and can be safely ignored.

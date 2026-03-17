@@ -20,6 +20,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	client "github.com/yugabyte/platform-go-client"
+	"github.com/yugabyte/terraform-provider-yba/internal/provider/providerutil"
 	"github.com/yugabyte/terraform-provider-yba/internal/utils"
 )
 
@@ -119,15 +120,15 @@ func buildGCPRegions(regions []interface{}) []client.Region {
 
 	for _, r := range regions {
 		regionMap := r.(map[string]interface{})
-		regionName := regionMap["name"].(string)
+		regionCode := regionMap["code"].(string)
 
 		// Build zone with shared_subnet - YBA will auto-discover zone names
 		// This mirrors yba-cli behavior: buildGCPZones(region["shared-subnet"])
 		zones := buildGCPZones(regionMap)
 
 		region := client.Region{
-			Code:  utils.GetStringPointer(regionName),
-			Name:  utils.GetStringPointer(regionName),
+			Code:  utils.GetStringPointer(regionCode),
+			Name:  utils.GetStringPointer(regionCode),
 			Zones: zones,
 			Details: &client.RegionDetails{
 				CloudInfo: &client.RegionCloudInfo{
@@ -139,6 +140,11 @@ func buildGCPRegions(regions []interface{}) []client.Region {
 		// Set GCP-specific region fields
 		if v, ok := regionMap["instance_template"]; ok && v.(string) != "" {
 			region.Details.CloudInfo.Gcp.SetInstanceTemplate(v.(string))
+		}
+
+		// Include UUID for existing regions (needed for updates)
+		if uuid, ok := regionMap["uuid"].(string); ok && uuid != "" {
+			region.Uuid = utils.GetStringPointer(uuid)
 		}
 
 		result = append(result, region)
@@ -181,7 +187,7 @@ func flattenGCPRegions(regions []client.Region) []map[string]interface{} {
 		r := map[string]interface{}{
 			"uuid":          region.GetUuid(),
 			"code":          region.GetCode(),
-			"name":          region.GetCode(),
+			"name":          region.GetName(),
 			"shared_subnet": sharedSubnet,
 			"zones":         flattenGCPZones(zones),
 		}
@@ -213,4 +219,150 @@ func flattenGCPZones(zones []client.AvailabilityZone) []map[string]interface{} {
 	}
 
 	return result
+}
+
+// ImageBundleType constants - re-exported from providerutil for local use
+const (
+	ImageBundleTypeYBAActive = providerutil.ImageBundleTypeYBAActive
+)
+
+// mergeRegionUUIDs merges UUIDs from old state into new config regions.
+// Works with TypeList ([]interface{}).
+// For existing GCP regions, actual zones from state are reused (with updated subnet)
+// to avoid sending placeholder zones with null codes, which the backend rejects as
+// "Duplicate AZ code null". Only newly added regions use a placeholder zone so that
+// YBA can auto-discover zones for them.
+func mergeRegionUUIDs(
+	oldRegions []interface{},
+	newRegions []interface{},
+) []client.Region {
+	// Build a map of old regions by code to get UUIDs
+	oldByCode := make(map[string]map[string]interface{})
+	for _, r := range oldRegions {
+		regionMap := r.(map[string]interface{})
+		code := regionMap["code"].(string)
+		oldByCode[code] = regionMap
+	}
+
+	// Track which old regions are still in config
+	newRegionCodes := make(map[string]bool)
+
+	result := make([]client.Region, 0, len(newRegions))
+
+	for _, nr := range newRegions {
+		newMap := nr.(map[string]interface{})
+		regionCode := newMap["code"].(string)
+		newRegionCodes[regionCode] = true
+
+		var zones []client.AvailabilityZone
+		if oldRegion, exists := oldByCode[regionCode]; exists {
+			// Existing region: reuse actual zones from state so the backend receives
+			// proper zone codes/UUIDs rather than a null-code placeholder.
+			zones = buildGCPZonesFromState(oldRegion, newMap)
+		} else {
+			// New region: send placeholder zone so YBA auto-discovers zones.
+			zones = buildGCPZones(newMap)
+		}
+
+		// Build the region
+		region := client.Region{
+			Code:  utils.GetStringPointer(regionCode),
+			Name:  utils.GetStringPointer(regionCode),
+			Zones: zones,
+			Details: &client.RegionDetails{
+				CloudInfo: &client.RegionCloudInfo{
+					Gcp: &client.GCPRegionCloudInfo{},
+				},
+			},
+		}
+
+		// Set GCP-specific region fields
+		if v, ok := newMap["instance_template"]; ok && v.(string) != "" {
+			region.Details.CloudInfo.Gcp.SetInstanceTemplate(v.(string))
+		}
+
+		// If this region exists in old state, copy UUID
+		if oldRegion, exists := oldByCode[regionCode]; exists {
+			if uuid, ok := oldRegion["uuid"].(string); ok && uuid != "" {
+				region.Uuid = utils.GetStringPointer(uuid)
+			}
+		}
+
+		result = append(result, region)
+	}
+
+	// Handle removed regions - mark them as inactive (like yba-cli does).
+	// We must include the existing zones from state so the GCP backend validator can
+	// access zone subnet data (region.getZones().get(0)) without a NullPointerException.
+	for code, oldRegion := range oldByCode {
+		if !newRegionCodes[code] {
+			uuid, _ := oldRegion["uuid"].(string)
+			region := client.Region{
+				Code:   utils.GetStringPointer(code),
+				Name:   utils.GetStringPointer(code),
+				Active: utils.GetBoolPointer(false),
+				Zones:  buildGCPZonesFromState(oldRegion, oldRegion),
+				Details: &client.RegionDetails{
+					CloudInfo: &client.RegionCloudInfo{
+						Gcp: &client.GCPRegionCloudInfo{},
+					},
+				},
+			}
+			if uuid != "" {
+				region.Uuid = utils.GetStringPointer(uuid)
+			}
+			result = append(result, region)
+		}
+	}
+
+	return result
+}
+
+// buildGCPZonesFromState constructs zones for an existing region using the actual zone
+// data stored in Terraform state (real codes, names, and UUIDs from GCP auto-discovery),
+// while applying the subnet from the new config. Falls back to a placeholder zone when
+// state has no zones (e.g. immediately after import before a refresh).
+func buildGCPZonesFromState(
+	oldRegion map[string]interface{},
+	newRegion map[string]interface{},
+) []client.AvailabilityZone {
+	newSubnet := ""
+	if v, ok := newRegion["shared_subnet"]; ok && v != nil {
+		newSubnet = v.(string)
+	}
+
+	oldZonesRaw, ok := oldRegion["zones"]
+	if !ok || oldZonesRaw == nil {
+		return buildGCPZones(newRegion)
+	}
+	oldZones, ok := oldZonesRaw.([]interface{})
+	if !ok || len(oldZones) == 0 {
+		return buildGCPZones(newRegion)
+	}
+
+	zones := make([]client.AvailabilityZone, 0, len(oldZones))
+	for _, z := range oldZones {
+		zoneMap, ok := z.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		zone := client.AvailabilityZone{
+			Subnet: utils.GetStringPointer(newSubnet),
+		}
+		if uuid, ok := zoneMap["uuid"].(string); ok && uuid != "" {
+			zone.Uuid = utils.GetStringPointer(uuid)
+		}
+		if code, ok := zoneMap["code"].(string); ok && code != "" {
+			zone.Code = utils.GetStringPointer(code)
+		}
+		if name, ok := zoneMap["name"].(string); ok && name != "" {
+			zone.Name = name
+		}
+		zones = append(zones, zone)
+	}
+
+	if len(zones) == 0 {
+		return buildGCPZones(newRegion)
+	}
+	return zones
 }

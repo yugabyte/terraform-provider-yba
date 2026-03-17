@@ -62,7 +62,8 @@ func ResourceOnPremProvider() *schema.Resource {
 			},
 		},
 
-		Schema: onpremProviderSchema(),
+		Schema:        onpremProviderSchema(),
+		CustomizeDiff: validateOnPremProvider,
 	}
 }
 
@@ -240,26 +241,29 @@ func onpremRegionsSchema() *schema.Schema {
 					Description: "Region UUID.",
 				},
 				"code": {
-					Type:        schema.TypeString,
-					Computed:    true,
-					Description: "Region code.",
+					Type:             schema.TypeString,
+					Required:         true,
+					DiffSuppressFunc: suppressIfOnpremRegionsPureReorder,
+					Description:      "Region code.",
 				},
 				"name": {
 					Type:        schema.TypeString,
-					Required:    true,
+					Computed:    true,
 					Description: "Region name.",
 				},
 				"latitude": {
-					Type:        schema.TypeFloat,
-					Optional:    true,
-					Default:     0.0,
-					Description: "Latitude of the region. Default is 0.0.",
+					Type:             schema.TypeFloat,
+					Optional:         true,
+					Default:          0.0,
+					DiffSuppressFunc: suppressIfOnpremRegionsPureReorder,
+					Description:      "Latitude of the region. Default is 0.0.",
 				},
 				"longitude": {
-					Type:        schema.TypeFloat,
-					Optional:    true,
-					Default:     0.0,
-					Description: "Longitude of the region. Default is 0.0.",
+					Type:             schema.TypeFloat,
+					Optional:         true,
+					Default:          0.0,
+					DiffSuppressFunc: suppressIfOnpremRegionsPureReorder,
+					Description:      "Longitude of the region. Default is 0.0.",
 				},
 				"zones": onpremZonesSchema(),
 			},
@@ -280,13 +284,14 @@ func onpremZonesSchema() *schema.Schema {
 					Description: "Zone UUID.",
 				},
 				"code": {
-					Type:        schema.TypeString,
-					Computed:    true,
-					Description: "Zone code.",
+					Type:             schema.TypeString,
+					Required:         true,
+					DiffSuppressFunc: suppressIfOnpremRegionsPureReorder,
+					Description:      "Zone code.",
 				},
 				"name": {
 					Type:        schema.TypeString,
-					Required:    true,
+					Computed:    true,
 					Description: "Zone name.",
 				},
 			},
@@ -536,14 +541,14 @@ func buildRegions(regions []interface{}) []client.Region {
 
 	for _, r := range regions {
 		regionMap := r.(map[string]interface{})
-		regionName := regionMap["name"].(string)
+		regionCode := regionMap["code"].(string)
 		latitude := regionMap["latitude"].(float64)
 		longitude := regionMap["longitude"].(float64)
 		zones := buildZones(regionMap["zones"].([]interface{}))
 
 		region := client.Region{
-			Code:      utils.GetStringPointer(regionName),
-			Name:      utils.GetStringPointer(regionName),
+			Code:      utils.GetStringPointer(regionCode),
+			Name:      utils.GetStringPointer(regionCode),
 			Latitude:  utils.GetFloat64Pointer(latitude),
 			Longitude: utils.GetFloat64Pointer(longitude),
 			Zones:     zones,
@@ -560,11 +565,11 @@ func buildZones(zones []interface{}) []client.AvailabilityZone {
 
 	for _, z := range zones {
 		zoneMap := z.(map[string]interface{})
-		zoneName := zoneMap["name"].(string)
+		zoneCode := zoneMap["code"].(string)
 
 		zone := client.AvailabilityZone{
-			Code: utils.GetStringPointer(zoneName),
-			Name: zoneName,
+			Code: utils.GetStringPointer(zoneCode),
+			Name: zoneCode,
 		}
 		result = append(result, zone)
 	}
@@ -599,7 +604,7 @@ func flattenZones(zones []client.AvailabilityZone) []map[string]interface{} {
 		z := map[string]interface{}{
 			"uuid": zone.GetUuid(),
 			"code": zone.GetCode(),
-			"name": zone.GetName(),
+			"name": zone.GetCode(), // name is Computed and mirrors code for onprem zones
 		}
 		result = append(result, z)
 	}
@@ -1109,7 +1114,9 @@ func resourceOnPremProviderRead(
 		return diag.FromErr(err)
 	}
 
-	if err = d.Set("regions", flattenRegions(p.GetRegions())); err != nil {
+	stateRegions, _ := d.Get("regions").([]interface{})
+	alignedRegions := providerutil.AlignRegions(flattenRegions(p.GetRegions()), stateRegions)
+	if err = d.Set("regions", alignedRegions); err != nil {
 		return diag.FromErr(err)
 	}
 

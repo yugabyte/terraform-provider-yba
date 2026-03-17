@@ -39,11 +39,37 @@ func FlattenZones(zones []client.AvailabilityZone) []map[string]interface{} {
 func FlattenImageBundles(bundles []client.ImageBundle) []map[string]interface{} {
 	result := make([]map[string]interface{}, 0)
 	for _, bundle := range bundles {
+		metadata := bundle.GetMetadata()
+		if metadata.GetType() == "YBA_ACTIVE" {
+			continue // Skip YBA managed bundles
+		}
+
 		b := map[string]interface{}{
 			"uuid":           bundle.GetUuid(),
 			"name":           bundle.GetName(),
 			"use_as_default": bundle.GetUseAsDefault(),
 			"details":        flattenImageBundleDetails(bundle.GetDetails()),
+		}
+		result = append(result, b)
+	}
+	return result
+}
+
+// FlattenYBADefaultImageBundles converts YBA managed API image bundles to schema format
+func FlattenYBADefaultImageBundles(bundles []client.ImageBundle) []map[string]interface{} {
+	result := make([]map[string]interface{}, 0)
+	for _, bundle := range bundles {
+		metadata := bundle.GetMetadata()
+		if metadata.GetType() != "YBA_ACTIVE" {
+			continue // Skip custom bundles
+		}
+
+		details := bundle.GetDetails()
+		b := map[string]interface{}{
+			"uuid":           bundle.GetUuid(),
+			"name":           bundle.GetName(),
+			"arch":           details.GetArch(),
+			"use_as_default": bundle.GetUseAsDefault(),
 		}
 		result = append(result, b)
 	}
@@ -91,4 +117,173 @@ func FlattenProviderDetails(details client.ProviderDetails) map[string]interface
 		"ntp_servers":     details.GetNtpServers(),
 		"set_up_chrony":   details.GetSetUpChrony(),
 	}
+}
+
+// AlignRegions aligns the order of the API regions to match the order in the configuration/state.
+func AlignRegions(
+	apiRegions []map[string]interface{},
+	stateRegions []interface{},
+) []map[string]interface{} {
+	if len(stateRegions) == 0 {
+		return apiRegions
+	}
+
+	apiMap := make(map[string]map[string]interface{})
+	for _, r := range apiRegions {
+		code, _ := r["code"].(string)
+		apiMap[code] = r
+	}
+
+	result := make([]map[string]interface{}, 0, len(apiRegions))
+
+	for _, sr := range stateRegions {
+		stateMap, ok := sr.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		code, _ := stateMap["code"].(string)
+
+		if apiRegion, exists := apiMap[code]; exists {
+			// Align zones
+			if stateZonesIf, ok := stateMap["zones"].([]interface{}); ok {
+				if apiZonesIf, ok := apiRegion["zones"].([]map[string]interface{}); ok {
+					apiRegion["zones"] = AlignZones(apiZonesIf, stateZonesIf)
+				}
+			}
+
+			result = append(result, apiRegion)
+			delete(apiMap, code)
+		}
+	}
+
+	// Append any remaining (new/unmatched) regions
+	for _, r := range apiRegions {
+		code, _ := r["code"].(string)
+		if _, exists := apiMap[code]; exists {
+			result = append(result, r)
+		}
+	}
+
+	return result
+}
+
+// AlignZones aligns the order of zones to match the configuration/state.
+func AlignZones(
+	apiZones []map[string]interface{},
+	stateZones []interface{},
+) []map[string]interface{} {
+	if len(stateZones) == 0 {
+		return apiZones
+	}
+
+	apiMap := make(map[string]map[string]interface{})
+	for _, z := range apiZones {
+		code, _ := z["code"].(string)
+		apiMap[code] = z
+	}
+
+	result := make([]map[string]interface{}, 0, len(apiZones))
+
+	for _, sz := range stateZones {
+		stateMap, ok := sz.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		code, _ := stateMap["code"].(string)
+		if apiZone, exists := apiMap[code]; exists {
+			result = append(result, apiZone)
+			delete(apiMap, code)
+		}
+	}
+
+	// Append any remaining (new/unmatched) zones
+	for _, z := range apiZones {
+		code, _ := z["code"].(string)
+		if _, exists := apiMap[code]; exists {
+			result = append(result, z)
+		}
+	}
+
+	return result
+}
+
+// AlignImageBundles aligns the order of image bundles to match the configuration/state.
+func AlignImageBundles(
+	apiBundles []map[string]interface{},
+	stateBundles []interface{},
+) []map[string]interface{} {
+	if len(stateBundles) == 0 {
+		return apiBundles
+	}
+
+	apiMap := make(map[string]map[string]interface{})
+	for _, b := range apiBundles {
+		name, _ := b["name"].(string)
+		apiMap[name] = b
+	}
+
+	result := make([]map[string]interface{}, 0, len(apiBundles))
+
+	for _, sb := range stateBundles {
+		stateMap, ok := sb.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		name, _ := stateMap["name"].(string)
+		if apiBundle, exists := apiMap[name]; exists {
+			result = append(result, apiBundle)
+			delete(apiMap, name)
+		}
+	}
+
+	// Append any remaining (new/unmatched) bundles
+	for _, b := range apiBundles {
+		name, _ := b["name"].(string)
+		if _, exists := apiMap[name]; exists {
+			result = append(result, b)
+		}
+	}
+
+	return result
+}
+
+// AlignYBADefaultImageBundles aligns the order of YBA managed image bundles
+// to match the configuration/state.
+func AlignYBADefaultImageBundles(
+	apiBundles []map[string]interface{},
+	stateBundles []interface{},
+) []map[string]interface{} {
+	if len(stateBundles) == 0 {
+		return apiBundles
+	}
+
+	apiMap := make(map[string]map[string]interface{})
+	for _, b := range apiBundles {
+		arch, _ := b["arch"].(string)
+		apiMap[arch] = b
+	}
+
+	result := make([]map[string]interface{}, 0, len(apiBundles))
+
+	for _, sb := range stateBundles {
+		stateMap, ok := sb.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		arch, _ := stateMap["arch"].(string)
+		if apiBundle, exists := apiMap[arch]; exists {
+			result = append(result, apiBundle)
+			delete(apiMap, arch)
+		}
+	}
+
+	// Append any remaining (new/unmatched) bundles
+	for _, b := range apiBundles {
+		arch, _ := b["arch"].(string)
+		if _, exists := apiMap[arch]; exists {
+			result = append(result, b)
+		}
+	}
+
+	return result
 }

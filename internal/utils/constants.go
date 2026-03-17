@@ -81,9 +81,8 @@ const (
 	// via YBA Terraform
 	YBAAllowEditProviderMinVersion = "2.18.0.0-b65"
 
-	// YBAAllowImageBundlesMinVersion specifies minimum version
-	// required to specify image bundles (onprem or cloud) resource
-	// via YBA Terraform
+	// YBAAllowImageBundlesMinVersion is kept for backwards compatibility
+	// with the legacy cloud_provider resource
 	YBAAllowImageBundlesMinVersion = "2.20.3.0-b68"
 
 	// YBAAllowFailureSubTaskListMinVersion specifies minimum version

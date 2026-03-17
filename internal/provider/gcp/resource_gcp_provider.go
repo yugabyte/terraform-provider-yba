@@ -47,7 +47,8 @@ func ResourceGCPProvider() *schema.Resource {
 
 		Timeouts: providerutil.DefaultTimeouts,
 
-		Schema: gcpProviderSchema(),
+		Schema:        gcpProviderSchema(),
+		CustomizeDiff: validateNoDuplicateRegions,
 	}
 }
 
@@ -66,43 +67,47 @@ func gcpProviderSchema() map[string]*schema.Schema {
 	s["use_host_credentials"] = &schema.Schema{
 		Type:     schema.TypeBool,
 		Optional: true,
-		Default:  false,
+		Computed: true,
 		Description: "Use credentials from the YugabyteDB Anywhere host. " +
 			"Default is false.",
 	}
 	s["project_id"] = &schema.Schema{
 		Type:        schema.TypeString,
 		Optional:    true,
+		Computed:    true,
 		Description: "GCP project ID that hosts universe nodes.",
 	}
 	s["shared_vpc_project_id"] = &schema.Schema{
 		Type:     schema.TypeString,
 		Optional: true,
+		Computed: true,
 		Description: "Shared VPC project ID. Use this to connect resources " +
 			"from multiple GCP projects to a common VPC.",
 	}
 	s["network"] = &schema.Schema{
 		Type:        schema.TypeString,
 		Optional:    true,
+		Computed:    true,
 		Description: "VPC network name in GCP.",
 	}
 	s["use_host_vpc"] = &schema.Schema{
 		Type:     schema.TypeBool,
 		Optional: true,
-		Default:  false,
+		Computed: true,
 		Description: "Use VPC from the YugabyteDB Anywhere host. " +
 			"If false, network must be specified. Default is false.",
 	}
 	s["create_vpc"] = &schema.Schema{
 		Type:     schema.TypeBool,
 		Optional: true,
-		Default:  false,
+		Computed: true,
 		Description: "Create a new VPC in GCP. " +
 			"If true, network must be specified as the new VPC name. Default is false.",
 	}
 	s["yb_firewall_tags"] = &schema.Schema{
 		Type:        schema.TypeString,
 		Optional:    true,
+		Computed:    true,
 		Description: "Tags for firewall rules in GCP.",
 	}
 	// Read-only GCP fields
@@ -153,9 +158,14 @@ func gcpProviderSchema() map[string]*schema.Schema {
 	// Image bundles
 	s["image_bundles"] = providerutil.ImageBundleSchema()
 
+	s["yba_managed_image_bundles"] = providerutil.YBADefaultImageBundleSchemaX86Only()
+
 	return s
 }
 
+// gcpRegionsSchema returns the schema for GCP regions.
+// NOTE: Using TypeList instead of TypeSet for simpler change detection.
+// Order changes show in plan but don't trigger version updates.
 func gcpRegionsSchema() *schema.Schema {
 	return &schema.Schema{
 		Type:        schema.TypeList,
@@ -169,25 +179,30 @@ func gcpRegionsSchema() *schema.Schema {
 					Description: "Region UUID.",
 				},
 				"code": {
-					Type:        schema.TypeString,
-					Computed:    true,
-					Description: "Region code.",
+					Type:             schema.TypeString,
+					Required:         true,
+					DiffSuppressFunc: suppressIfGCPRegionsPureReorder,
+					Description:      "GCP region code (e.g., us-west1, us-east1).",
 				},
 				"name": {
 					Type:        schema.TypeString,
-					Required:    true,
-					Description: "GCP region name (e.g., us-west1).",
+					Computed:    true,
+					Description: "GCP region name. Read-only.",
 				},
 				"shared_subnet": {
-					Type:     schema.TypeString,
-					Optional: true,
+					Type:             schema.TypeString,
+					Optional:         true,
+					Computed:         true,
+					DiffSuppressFunc: suppressIfGCPRegionsPureReorder,
 					Description: "Shared subnet for all zones in this region. " +
 						"YBA will auto-discover zones and apply this subnet to each.",
 				},
 				"instance_template": {
-					Type:        schema.TypeString,
-					Optional:    true,
-					Description: "Instance template for this region.",
+					Type:             schema.TypeString,
+					Optional:         true,
+					Computed:         true,
+					DiffSuppressFunc: suppressIfGCPRegionsPureReorder,
+					Description:      "Instance template for this region.",
 				},
 				"zones": gcpZonesSchema(),
 			},
@@ -234,17 +249,6 @@ func resourceGCPProviderCreate(
 ) diag.Diagnostics {
 	c, cUUID := providerutil.GetAPIClient(meta)
 
-	// Version check
-	allowed, version, err := providerutil.ProviderYBAVersionCheck(ctx, c)
-	if err != nil {
-		return diag.FromErr(err)
-	}
-	if !allowed {
-		return diag.FromErr(fmt.Errorf(
-			"creating GCP providers is not supported below version %s, currently on %s",
-			utils.YBAAllowEditProviderMinVersion, version))
-	}
-
 	providerName := d.Get("name").(string)
 
 	// Build GCP cloud info
@@ -256,23 +260,21 @@ func resourceGCPProviderCreate(
 	// Build access keys
 	accessKeys := buildGCPAccessKeys(d)
 
-	// Build regions
-	regions := buildGCPRegions(d.Get("regions").([]interface{}))
+	// Build regions (TypeList returns []interface{})
+	regionsRaw, _ := d.Get("regions").([]interface{})
+	regions := buildGCPRegions(regionsRaw)
 
-	// Build image bundles
+	// Build image bundles (TypeList returns []interface{})
 	var imageBundles []client.ImageBundle
 	if v := d.Get("image_bundles"); v != nil && len(v.([]interface{})) > 0 {
-		imageBundleAllowed, _, err := providerutil.ImageBundlesYBAVersionCheck(ctx, c)
-		if err != nil {
-			return diag.FromErr(err)
-		}
-		if !imageBundleAllowed {
-			return diag.FromErr(fmt.Errorf(
-				"image bundles are not supported below version %s",
-				utils.YBAAllowImageBundlesMinVersion))
-		}
-		imageBundles = providerutil.BuildImageBundles(v.([]interface{}))
+		imageBundles = append(imageBundles, providerutil.BuildImageBundles(v.([]interface{}))...)
 	}
+	if v := d.Get("yba_managed_image_bundles"); v != nil && len(v.([]interface{})) > 0 {
+		imageBundles = append(
+			imageBundles,
+			providerutil.BuildYBADefaultImageBundles(v.([]interface{}), "gcp")...)
+	}
+	imageBundles = providerutil.EnsureImageBundleDefaults(imageBundles)
 
 	// Build provider request
 	req := client.Provider{
@@ -415,13 +417,29 @@ func resourceGCPProviderRead(
 	}
 
 	// Set regions - includes all zones from API (YBA may auto-discover additional zones)
-	if err = d.Set("regions", flattenGCPRegions(p.GetRegions())); err != nil {
+	// Align regions with state/config to preserve order and prevent unexpected diff warnings
+	stateRegions, _ := d.Get("regions").([]interface{})
+	alignedRegions := providerutil.AlignRegions(flattenGCPRegions(p.GetRegions()), stateRegions)
+	if err = d.Set("regions", alignedRegions); err != nil {
 		return diag.FromErr(err)
 	}
 
 	// Set image bundles
-	imageBundles := providerutil.FlattenImageBundles(p.GetImageBundles())
-	if err = d.Set("image_bundles", imageBundles); err != nil {
+	stateBundles, _ := d.Get("image_bundles").([]interface{})
+	stateYBAManagedBundles, _ := d.Get("yba_managed_image_bundles").([]interface{})
+
+	flattenedBundles := providerutil.FlattenImageBundles(p.GetImageBundles())
+	alignedBundles := providerutil.AlignImageBundles(flattenedBundles, stateBundles)
+	if err = d.Set("image_bundles", alignedBundles); err != nil {
+		return diag.FromErr(err)
+	}
+
+	flattenedYBAManagedBundles := providerutil.FlattenYBADefaultImageBundles(p.GetImageBundles())
+	alignedYBAManagedBundles := providerutil.AlignYBADefaultImageBundles(
+		flattenedYBAManagedBundles,
+		stateYBAManagedBundles,
+	)
+	if err = d.Set("yba_managed_image_bundles", alignedYBAManagedBundles); err != nil {
 		return diag.FromErr(err)
 	}
 
@@ -448,16 +466,6 @@ func resourceGCPProviderUpdate(
 	meta interface{},
 ) diag.Diagnostics {
 	c, cUUID := providerutil.GetAPIClient(meta)
-
-	allowed, version, err := providerutil.ProviderYBAVersionCheck(ctx, c)
-	if err != nil {
-		return diag.FromErr(err)
-	}
-	if !allowed {
-		return diag.FromErr(fmt.Errorf(
-			"editing GCP providers is not supported below version %s, currently on %s",
-			utils.YBAAllowEditProviderMinVersion, version))
-	}
 
 	p, err := providerutil.GetProvider(ctx, c, cUUID, d.Id())
 	if err != nil {
@@ -552,28 +560,25 @@ func resourceGCPProviderUpdate(
 		providerReq.SetDetails(details)
 	}
 
-	if d.HasChange("regions") {
-		providerReq.SetRegions(buildGCPRegions(d.Get("regions").([]interface{})))
-	}
+	// Use d.GetChange to get old state (with UUIDs) and new config
+	// Merge UUIDs from old_state into new_config
+	// TypeList returns []interface{} directly
+	oldRegionsRaw, newRegionsRaw := d.GetChange("regions")
+	oldRegions, _ := oldRegionsRaw.([]interface{})
+	newRegions, _ := newRegionsRaw.([]interface{})
+	mergedRegions := mergeRegionUUIDs(oldRegions, newRegions)
 
-	// Update image bundles if changed and provided
-	// Note: We only update if bundles are explicitly provided. Removing image_bundles
-	// from config doesn't delete existing bundles (YBA auto-generates defaults).
-	if d.HasChange("image_bundles") {
-		if v := d.Get("image_bundles"); v != nil && len(v.([]interface{})) > 0 {
-			imageBundleAllowed, _, err := providerutil.ImageBundlesYBAVersionCheck(ctx, c)
-			if err != nil {
-				return diag.FromErr(err)
-			}
-			if !imageBundleAllowed {
-				return diag.FromErr(fmt.Errorf(
-					"image bundles are not supported below version %s",
-					utils.YBAAllowImageBundlesMinVersion))
-			}
-			providerReq.SetImageBundles(providerutil.BuildImageBundles(v.([]interface{})))
-		}
-		// If image_bundles is empty/removed, we don't clear them - YBA manages defaults
-	}
+	providerReq.SetRegions(mergedRegions)
+
+	oldBundlesRaw, newBundlesRaw := d.GetChange("image_bundles")
+	ybaConfigRaw, _ := d.Get("yba_managed_image_bundles").([]interface{})
+	providerReq.SetImageBundles(providerutil.PrepareImageBundlesForUpdate(
+		p.GetImageBundles(),
+		oldBundlesRaw,
+		newBundlesRaw,
+		ybaConfigRaw,
+		d.HasChange("yba_managed_image_bundles"),
+	))
 
 	// Update SSH keys if changed
 	// Per YBA API: To create/update a self-managed key, send an AccessKey WITHOUT IdKey

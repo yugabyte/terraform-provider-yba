@@ -47,7 +47,8 @@ func ResourceAzureProvider() *schema.Resource {
 
 		Timeouts: providerutil.DefaultTimeouts,
 
-		Schema: azureProviderSchema(),
+		Schema:        azureProviderSchema(),
+		CustomizeDiff: validateAzureProvider,
 	}
 }
 
@@ -147,6 +148,8 @@ func azureProviderSchema() map[string]*schema.Schema {
 	// Image bundles
 	s["image_bundles"] = providerutil.ImageBundleSchema()
 
+	s["yba_managed_image_bundles"] = providerutil.YBADefaultImageBundleSchemaX86Only()
+
 	return s
 }
 
@@ -163,34 +166,39 @@ func azureRegionsSchema() *schema.Schema {
 					Description: "Region UUID.",
 				},
 				"code": {
-					Type:        schema.TypeString,
-					Computed:    true,
-					Description: "Region code.",
+					Type:             schema.TypeString,
+					Required:         true,
+					DiffSuppressFunc: suppressIfAzureRegionsPureReorder,
+					Description:      "Azure region code (e.g., westus2).",
 				},
 				"name": {
 					Type:        schema.TypeString,
-					Required:    true,
-					Description: "Azure region name (e.g., westus2).",
+					Computed:    true,
+					Description: "Azure region name.",
 				},
 				"vnet": {
-					Type:        schema.TypeString,
-					Optional:    true,
-					Description: "Virtual network name for this region.",
+					Type:             schema.TypeString,
+					Optional:         true,
+					DiffSuppressFunc: suppressIfAzureRegionsPureReorder,
+					Description:      "Virtual network name for this region.",
 				},
 				"security_group_id": {
-					Type:        schema.TypeString,
-					Optional:    true,
-					Description: "Network security group ID for this region.",
+					Type:             schema.TypeString,
+					Optional:         true,
+					DiffSuppressFunc: suppressIfAzureRegionsPureReorder,
+					Description:      "Network security group ID for this region.",
 				},
 				"resource_group": {
-					Type:        schema.TypeString,
-					Optional:    true,
-					Description: "Resource group for this region.",
+					Type:             schema.TypeString,
+					Optional:         true,
+					DiffSuppressFunc: suppressIfAzureRegionsPureReorder,
+					Description:      "Resource group for this region.",
 				},
 				"network_resource_group": {
-					Type:        schema.TypeString,
-					Optional:    true,
-					Description: "Network resource group for this region.",
+					Type:             schema.TypeString,
+					Optional:         true,
+					DiffSuppressFunc: suppressIfAzureRegionsPureReorder,
+					Description:      "Network resource group for this region.",
 				},
 				"zones": azureZonesSchema(),
 			},
@@ -211,24 +219,27 @@ func azureZonesSchema() *schema.Schema {
 					Description: "Zone UUID.",
 				},
 				"code": {
-					Type:        schema.TypeString,
-					Computed:    true,
-					Description: "Zone code.",
+					Type:             schema.TypeString,
+					Required:         true,
+					DiffSuppressFunc: suppressIfAzureRegionsPureReorder,
+					Description:      "Azure availability zone code.",
 				},
 				"name": {
 					Type:        schema.TypeString,
-					Required:    true,
+					Computed:    true,
 					Description: "Azure availability zone name.",
 				},
 				"subnet": {
-					Type:        schema.TypeString,
-					Required:    true,
-					Description: "Subnet for this zone.",
+					Type:             schema.TypeString,
+					Required:         true,
+					DiffSuppressFunc: suppressIfAzureRegionsPureReorder,
+					Description:      "Subnet for this zone.",
 				},
 				"secondary_subnet": {
-					Type:        schema.TypeString,
-					Optional:    true,
-					Description: "Secondary subnet for this zone.",
+					Type:             schema.TypeString,
+					Optional:         true,
+					DiffSuppressFunc: suppressIfAzureRegionsPureReorder,
+					Description:      "Secondary subnet for this zone.",
 				},
 			},
 		},
@@ -241,17 +252,6 @@ func resourceAzureProviderCreate(
 	meta interface{},
 ) diag.Diagnostics {
 	c, cUUID := providerutil.GetAPIClient(meta)
-
-	// Version check
-	allowed, version, err := providerutil.ProviderYBAVersionCheck(ctx, c)
-	if err != nil {
-		return diag.FromErr(err)
-	}
-	if !allowed {
-		return diag.FromErr(fmt.Errorf(
-			"creating Azure providers is not supported below version %s, currently on %s",
-			utils.YBAAllowEditProviderMinVersion, version))
-	}
 
 	providerName := d.Get("name").(string)
 
@@ -270,17 +270,14 @@ func resourceAzureProviderCreate(
 	// Build image bundles
 	var imageBundles []client.ImageBundle
 	if v := d.Get("image_bundles"); v != nil && len(v.([]interface{})) > 0 {
-		imageBundleAllowed, _, err := providerutil.ImageBundlesYBAVersionCheck(ctx, c)
-		if err != nil {
-			return diag.FromErr(err)
-		}
-		if !imageBundleAllowed {
-			return diag.FromErr(fmt.Errorf(
-				"image bundles are not supported below version %s",
-				utils.YBAAllowImageBundlesMinVersion))
-		}
-		imageBundles = providerutil.BuildImageBundles(v.([]interface{}))
+		imageBundles = append(imageBundles, providerutil.BuildImageBundles(v.([]interface{}))...)
 	}
+	if v := d.Get("yba_managed_image_bundles"); v != nil && len(v.([]interface{})) > 0 {
+		imageBundles = append(
+			imageBundles,
+			providerutil.BuildYBADefaultImageBundles(v.([]interface{}), "azure")...)
+	}
+	imageBundles = providerutil.EnsureImageBundleDefaults(imageBundles)
 
 	// Build provider request
 	req := client.Provider{
@@ -399,13 +396,28 @@ func resourceAzureProviderRead(
 	}
 
 	// Set regions
-	if err = d.Set("regions", flattenAzureRegions(p.GetRegions())); err != nil {
+	stateRegions, _ := d.Get("regions").([]interface{})
+	alignedRegions := providerutil.AlignRegions(flattenAzureRegions(p.GetRegions()), stateRegions)
+	if err = d.Set("regions", alignedRegions); err != nil {
 		return diag.FromErr(err)
 	}
 
 	// Set image bundles
-	imageBundles := providerutil.FlattenImageBundles(p.GetImageBundles())
-	if err = d.Set("image_bundles", imageBundles); err != nil {
+	stateBundles, _ := d.Get("image_bundles").([]interface{})
+	stateYBAManagedBundles, _ := d.Get("yba_managed_image_bundles").([]interface{})
+
+	flattenedBundles := providerutil.FlattenImageBundles(p.GetImageBundles())
+	alignedBundles := providerutil.AlignImageBundles(flattenedBundles, stateBundles)
+	if err = d.Set("image_bundles", alignedBundles); err != nil {
+		return diag.FromErr(err)
+	}
+
+	flattenedYBAManagedBundles := providerutil.FlattenYBADefaultImageBundles(p.GetImageBundles())
+	alignedYBAManagedBundles := providerutil.AlignYBADefaultImageBundles(
+		flattenedYBAManagedBundles,
+		stateYBAManagedBundles,
+	)
+	if err = d.Set("yba_managed_image_bundles", alignedYBAManagedBundles); err != nil {
 		return diag.FromErr(err)
 	}
 
@@ -432,16 +444,6 @@ func resourceAzureProviderUpdate(
 	meta interface{},
 ) diag.Diagnostics {
 	c, cUUID := providerutil.GetAPIClient(meta)
-
-	allowed, version, err := providerutil.ProviderYBAVersionCheck(ctx, c)
-	if err != nil {
-		return diag.FromErr(err)
-	}
-	if !allowed {
-		return diag.FromErr(fmt.Errorf(
-			"editing Azure providers is not supported below version %s, currently on %s",
-			utils.YBAAllowEditProviderMinVersion, version))
-	}
 
 	p, err := providerutil.GetProvider(ctx, c, cUUID, d.Id())
 	if err != nil {
@@ -507,28 +509,21 @@ func resourceAzureProviderUpdate(
 		providerReq.SetDetails(details)
 	}
 
-	if d.HasChange("regions") {
-		providerReq.SetRegions(buildAzureRegions(d.Get("regions").([]interface{})))
-	}
+	// Always merge (mirrors AWS/GCP): preserves UUIDs, deactivates removed regions/zones.
+	oldRegionsRaw, newRegionsRaw := d.GetChange("regions")
+	oldRegions, _ := oldRegionsRaw.([]interface{})
+	newRegions, _ := newRegionsRaw.([]interface{})
+	providerReq.SetRegions(mergeRegionUUIDs(oldRegions, newRegions))
 
-	// Update image bundles if changed and provided
-	// Note: We only update if bundles are explicitly provided. Removing image_bundles
-	// from config doesn't delete existing bundles (YBA auto-generates defaults).
-	if d.HasChange("image_bundles") {
-		if v := d.Get("image_bundles"); v != nil && len(v.([]interface{})) > 0 {
-			imageBundleAllowed, _, err := providerutil.ImageBundlesYBAVersionCheck(ctx, c)
-			if err != nil {
-				return diag.FromErr(err)
-			}
-			if !imageBundleAllowed {
-				return diag.FromErr(fmt.Errorf(
-					"image bundles are not supported below version %s",
-					utils.YBAAllowImageBundlesMinVersion))
-			}
-			providerReq.SetImageBundles(providerutil.BuildImageBundles(v.([]interface{})))
-		}
-		// If image_bundles is empty/removed, we don't clear them - YBA manages defaults
-	}
+	oldBundlesRaw, newBundlesRaw := d.GetChange("image_bundles")
+	ybaConfigRaw, _ := d.Get("yba_managed_image_bundles").([]interface{})
+	providerReq.SetImageBundles(providerutil.PrepareImageBundlesForUpdate(
+		p.GetImageBundles(),
+		oldBundlesRaw,
+		newBundlesRaw,
+		ybaConfigRaw,
+		d.HasChange("yba_managed_image_bundles"),
+	))
 
 	// Update SSH keys if changed
 	// Per YBA API: To create/update a self-managed key, send an AccessKey WITHOUT IdKey

@@ -20,13 +20,18 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	client "github.com/yugabyte/platform-go-client"
+	"github.com/yugabyte/terraform-provider-yba/internal/provider/providerutil"
 	"github.com/yugabyte/terraform-provider-yba/internal/utils"
 )
 
 // buildAWSCloudInfo builds AWS cloud info from schema
 // Mirrors yba-cli: awsCloudInfo construction in create_provider.go
 func buildAWSCloudInfo(d *schema.ResourceData) (*client.AWSCloudInfo, error) {
-	awsCloudInfo := &client.AWSCloudInfo{}
+	// Disable the deprecated provider-level IMDSv2 flag (Java default = true).
+	// CloudImageBundleSetup backwards-compat forces all bundles to true when set.
+	awsCloudInfo := &client.AWSCloudInfo{
+		UseIMDSv2: utils.GetBoolPointer(false),
+	}
 
 	isIAM := d.Get("use_iam_instance_profile").(bool)
 
@@ -58,11 +63,7 @@ func buildAWSCloudInfo(d *schema.ResourceData) (*client.AWSCloudInfo, error) {
 func buildAWSAccessKeys(d *schema.ResourceData) []client.AccessKey {
 	keyPairName := d.Get("ssh_keypair_name").(string)
 	sshContent := d.Get("ssh_private_key_content").(string)
-	// Support both the current name and the deprecated alias.
 	skipValidation := d.Get("skip_ssh_keypair_validation").(bool)
-	if !skipValidation {
-		skipValidation = d.Get("skip_keypair_validation").(bool)
-	}
 
 	if keyPairName == "" && sshContent == "" {
 		return nil
@@ -235,18 +236,27 @@ func buildAWSImageBundles(imageBundles []interface{}) []client.ImageBundle {
 		result = append(result, bundle)
 	}
 
-	return result
+	return providerutil.EnsureImageBundleDefaults(result)
 }
 
-// flattenAWSImageBundles converts AWS image bundles with region overrides to schema format
+// flattenAWSImageBundles converts AWS custom image bundles to schema format.
+// YBA-managed bundles (YBA_ACTIVE, YBA_DEPRECATED) are excluded; they are
+// tracked separately via the yba_managed_image_bundles field, consistent with
+// the GCP/Azure design.
 func flattenAWSImageBundles(imageBundles []client.ImageBundle) []map[string]interface{} {
 	result := make([]map[string]interface{}, 0)
 
 	for _, ib := range imageBundles {
 		metadata := ib.GetMetadata()
+		metaType := metadata.GetType()
+		if metaType == ImageBundleTypeYBAActive ||
+			metaType == providerutil.ImageBundleTypeYBADeprecated {
+			continue
+		}
+
 		bundle := map[string]interface{}{
 			"uuid":           ib.GetUuid(),
-			"metadata_type":  metadata.GetType(),
+			"metadata_type":  metaType,
 			"name":           ib.GetName(),
 			"use_as_default": ib.GetUseAsDefault(),
 		}
@@ -260,7 +270,6 @@ func flattenAWSImageBundles(imageBundles []client.ImageBundle) []map[string]inte
 			"global_yb_image": details.GetGlobalYbImage(),
 		}
 
-		// AWS-specific: Region overrides
 		regionOverrides := details.GetRegions()
 		if len(regionOverrides) > 0 {
 			overridesMap := make(map[string]interface{})
@@ -277,12 +286,35 @@ func flattenAWSImageBundles(imageBundles []client.ImageBundle) []map[string]inte
 	return result
 }
 
-// ImageBundleType constants matching YBA's ImageBundleType enum
+// ImageBundleType constants - re-exported from providerutil for local use
 const (
-	ImageBundleTypeYBAActive     = "YBA_ACTIVE"
-	ImageBundleTypeYBADeprecated = "YBA_DEPRECATED"
-	ImageBundleTypeCustom        = "CUSTOM"
+	ImageBundleTypeYBAActive = providerutil.ImageBundleTypeYBAActive
 )
+
+// ensureAWSRegionEntries populates each bundle's regions map with an empty BundleInfo{}
+// for any provider region that is missing. verifyImageBundleDetails requires all regions
+// to be present; ybImage=null signals YBA to auto-fetch the default AMI (YBA_ACTIVE).
+func ensureAWSRegionEntries(
+	bundles []client.ImageBundle,
+	regionCodes []string,
+) []client.ImageBundle {
+	for i := range bundles {
+		if bundles[i].Details == nil {
+			continue
+		}
+		if bundles[i].Details.Regions == nil {
+			empty := make(map[string]client.BundleInfo)
+			bundles[i].Details.Regions = &empty
+		}
+		regions := *bundles[i].Details.Regions
+		for _, code := range regionCodes {
+			if _, exists := regions[code]; !exists {
+				regions[code] = client.BundleInfo{}
+			}
+		}
+	}
+	return bundles
+}
 
 // mergeRegionUUIDs merges UUIDs from old state into new config regions.
 // Works with TypeList ([]interface{}).
@@ -344,14 +376,29 @@ func mergeRegionUUIDs(
 		result = append(result, region)
 	}
 
-	// Handle removed regions - mark them as inactive (like yba-cli does)
+	// Deactivate removed regions; preserve VPC/SG details and zones from state
+	// so AWSProviderValidator does not fail on missing fields.
 	for code, oldRegion := range oldByCode {
 		if !newRegionCodes[code] {
 			uuid, _ := oldRegion["uuid"].(string)
+			oldZones, _ := oldRegion["zones"].([]interface{})
 			region := client.Region{
 				Code:   utils.GetStringPointer(code),
 				Name:   utils.GetStringPointer(code),
 				Active: utils.GetBoolPointer(false),
+				Zones:  mergeZoneUUIDs(oldZones, oldZones), // preserve all zones as-is
+				Details: &client.RegionDetails{
+					CloudInfo: &client.RegionCloudInfo{
+						Aws: &client.AWSRegionCloudInfo{
+							SecurityGroupId: utils.GetStringPointer(
+								providerutil.GetString(oldRegion, "security_group_id"),
+							),
+							Vnet: utils.GetStringPointer(
+								providerutil.GetString(oldRegion, "vpc_id"),
+							),
+						},
+					},
+				},
 			}
 			if uuid != "" {
 				region.Uuid = utils.GetStringPointer(uuid)
@@ -404,14 +451,19 @@ func mergeZoneUUIDs(
 		result = append(result, zone)
 	}
 
-	// Handle removed zones - mark them as inactive (like yba-cli does)
+	// Deactivate removed zones; preserve subnet so validateSubnets does not
+	// receive an empty ID (it validates inactive zones too).
 	for code, oldZone := range oldByCode {
 		if !newZoneCodes[code] {
 			uuid, _ := oldZone["uuid"].(string)
+			subnet, _ := oldZone["subnet"].(string)
+			secondarySubnet, _ := oldZone["secondary_subnet"].(string)
 			zone := client.AvailabilityZone{
-				Code:   utils.GetStringPointer(code),
-				Name:   code,
-				Active: utils.GetBoolPointer(false),
+				Code:            utils.GetStringPointer(code),
+				Name:            code,
+				Active:          utils.GetBoolPointer(false),
+				Subnet:          utils.GetStringPointer(subnet),
+				SecondarySubnet: utils.GetStringPointer(secondarySubnet),
 			}
 			if uuid != "" {
 				zone.Uuid = utils.GetStringPointer(uuid)
@@ -421,276 +473,4 @@ func mergeZoneUUIDs(
 	}
 
 	return result
-}
-
-// mergeImageBundlesForUpdate merges old state bundles with new config bundles.
-// It preserves YBA-managed bundles, handles default conflicts, and copies UUIDs.
-func mergeImageBundlesForUpdate(oldBundlesRaw, newBundlesRaw interface{}) []client.ImageBundle {
-	// Get old bundles from state (TypeList returns []interface{} directly)
-	oldBundlesList, _ := oldBundlesRaw.([]interface{})
-	newBundlesList, _ := newBundlesRaw.([]interface{})
-
-	// Build maps from state data for quick lookup
-	oldByName := make(map[string]map[string]interface{})
-	for _, b := range oldBundlesList {
-		if bundleMap, ok := b.(map[string]interface{}); ok {
-			if name, _ := bundleMap["name"].(string); name != "" {
-				oldByName[name] = bundleMap
-			}
-		}
-	}
-
-	// Detect if user removed bundles from config:
-	// Due to Optional+Computed, when user removes bundles, Terraform fills newBundles
-	// with identical copies from state. Detect this by checking if all user bundles
-	// in new are identical to old (same UUID = copied from state, not user-provided).
-	userBundlesRemoved := detectUserBundleRemoval(oldBundlesList, newBundlesList)
-
-	// Collect YBA-managed bundle names (to skip them in new bundles loop)
-	ybaManagedNames := make(map[string]bool)
-	for _, b := range oldBundlesList {
-		bundleMap, ok := b.(map[string]interface{})
-		if !ok {
-			continue
-		}
-		metadataType, _ := bundleMap["metadata_type"].(string)
-		if metadataType == ImageBundleTypeYBAActive {
-			if name, _ := bundleMap["name"].(string); name != "" {
-				ybaManagedNames[name] = true
-			}
-		}
-	}
-
-	// Check if user is adding a bundle with use_as_default=true
-	// If so, we'll need to unmark the YBA bundle's default
-	userHasDefault := false
-	for _, b := range newBundlesList {
-		bundleMap, ok := b.(map[string]interface{})
-		if !ok {
-			continue
-		}
-		name, _ := bundleMap["name"].(string)
-		// Skip YBA bundles and empty names
-		if name == "" || ybaManagedNames[name] {
-			continue
-		}
-		if useAsDefault, _ := bundleMap["use_as_default"].(bool); useAsDefault {
-			userHasDefault = true
-			break
-		}
-	}
-
-	// Build the final bundles list
-	var resultBundles []client.ImageBundle
-
-	// First, add YBA-managed bundles from state (always preserve)
-	// If user has a default, unmark YBA bundle's default to avoid conflict
-	for _, b := range oldBundlesList {
-		bundleMap, ok := b.(map[string]interface{})
-		if !ok {
-			continue
-		}
-		metadataType, _ := bundleMap["metadata_type"].(string)
-		if metadataType == ImageBundleTypeYBAActive {
-			bundle := buildImageBundleFromState(bundleMap)
-			// Handle default conflict: unmark YBA bundle if user has a default
-			if userHasDefault && bundle.GetUseAsDefault() {
-				bundle.SetUseAsDefault(false)
-			}
-			resultBundles = append(resultBundles, bundle)
-		}
-	}
-
-	// If user bundles were removed, skip processing user bundles from new value
-	// (they are just copies from state due to Optional+Computed behavior)
-	if userBundlesRemoved {
-		return resultBundles
-	}
-
-	// Process user bundles from new value
-	for _, b := range newBundlesList {
-		bundleMap, ok := b.(map[string]interface{})
-		if !ok {
-			continue
-		}
-		name, _ := bundleMap["name"].(string)
-		if name == "" {
-			continue // Skip corrupted entries
-		}
-
-		// Skip YBA-managed bundles - they're already added from old state
-		if ybaManagedNames[name] {
-			continue
-		}
-
-		useAsDefault, _ := bundleMap["use_as_default"].(bool)
-
-		// Get details
-		var arch, sshUser, globalYbImage string
-		var sshPort int
-		var regionOverrides map[string]interface{}
-
-		if details, ok := bundleMap["details"].([]interface{}); ok && len(details) > 0 {
-			if det, ok := details[0].(map[string]interface{}); ok {
-				arch, _ = det["arch"].(string)
-				sshUser, _ = det["ssh_user"].(string)
-				sshPort, _ = det["ssh_port"].(int)
-				globalYbImage, _ = det["global_yb_image"].(string)
-				regionOverrides, _ = det["region_overrides"].(map[string]interface{})
-			}
-		}
-
-		// If arch is empty, data might be corrupted - skip
-		if arch == "" {
-			continue
-		}
-
-		// Build the bundle
-		bundle := client.ImageBundle{
-			Name:         utils.GetStringPointer(name),
-			UseAsDefault: utils.GetBoolPointer(useAsDefault),
-			Details: &client.ImageBundleDetails{
-				Arch:          utils.GetStringPointer(arch),
-				SshUser:       utils.GetStringPointer(sshUser),
-				SshPort:       utils.GetInt32Pointer(int32(sshPort)),
-				UseIMDSv2:     utils.GetBoolPointer(true),
-				GlobalYbImage: utils.GetStringPointer(globalYbImage),
-			},
-		}
-
-		// Add region overrides if present
-		if len(regionOverrides) > 0 {
-			overridesMap := make(map[string]client.BundleInfo)
-			for region, ami := range regionOverrides {
-				overridesMap[region] = client.BundleInfo{
-					YbImage: utils.GetStringPointer(ami.(string)),
-				}
-			}
-			bundle.Details.Regions = &overridesMap
-		}
-
-		// Copy UUID from the bundle (TypeList preserves UUID when editing in-place)
-		// This handles renames: user changes name but UUID is preserved at same position
-		if uuid, _ := bundleMap["uuid"].(string); uuid != "" {
-			bundle.Uuid = utils.GetStringPointer(uuid)
-		} else if oldBundle, exists := oldByName[name]; exists {
-			// Fallback: look up by name for newly added bundles that match existing names
-			if uuid, _ := oldBundle["uuid"].(string); uuid != "" {
-				bundle.Uuid = utils.GetStringPointer(uuid)
-			}
-		}
-
-		resultBundles = append(resultBundles, bundle)
-	}
-
-	return resultBundles
-}
-
-// detectUserBundleRemoval checks if user removed bundles from config.
-// Due to Optional+Computed behavior, when user removes image_bundles block,
-// Terraform fills newBundles with copies from state. Detect this by checking
-// if all CUSTOM bundles in new have matching UUIDs AND names in old.
-// If names differ, it's an EDIT (not removal) even if UUID matches.
-func detectUserBundleRemoval(oldBundles, newBundles []interface{}) bool {
-	// Build map of old CUSTOM bundles: uuid -> name
-	oldCustomBundles := make(map[string]string) // uuid -> name
-	var oldCustomCount int
-	for _, b := range oldBundles {
-		bundleMap, ok := b.(map[string]interface{})
-		if !ok {
-			continue
-		}
-		metadataType, _ := bundleMap["metadata_type"].(string)
-		if metadataType != ImageBundleTypeYBAActive {
-			oldCustomCount++
-			uuid, _ := bundleMap["uuid"].(string)
-			name, _ := bundleMap["name"].(string)
-			if uuid != "" {
-				oldCustomBundles[uuid] = name
-			}
-		}
-	}
-
-	// If no CUSTOM bundles in old, can't detect removal this way
-	if oldCustomCount == 0 {
-		return false
-	}
-
-	// Count new CUSTOM bundles and check if they all match old (same UUID AND name)
-	var newCustomCount int
-	allMatchOld := true
-	for _, b := range newBundles {
-		bundleMap, ok := b.(map[string]interface{})
-		if !ok {
-			continue
-		}
-		metadataType, _ := bundleMap["metadata_type"].(string)
-		if metadataType != ImageBundleTypeYBAActive {
-			newCustomCount++
-			uuid, _ := bundleMap["uuid"].(string)
-			name, _ := bundleMap["name"].(string)
-			// Check if UUID exists in old AND name matches
-			// If name differs, it's an edit (user changed the name), not a removal
-			if oldName, exists := oldCustomBundles[uuid]; !exists || oldName != name {
-				allMatchOld = false
-			}
-		}
-	}
-
-	// If same count and all new CUSTOM bundles match old (UUID + name),
-	// user likely removed bundles from config and Terraform copied from state
-	if newCustomCount == oldCustomCount && allMatchOld {
-		return true
-	}
-
-	return false
-}
-
-// buildImageBundleFromState converts state data to client.ImageBundle
-func buildImageBundleFromState(bundleMap map[string]interface{}) client.ImageBundle {
-	name, _ := bundleMap["name"].(string)
-	useAsDefault, _ := bundleMap["use_as_default"].(bool)
-	uuid, _ := bundleMap["uuid"].(string)
-
-	bundle := client.ImageBundle{
-		Name:         utils.GetStringPointer(name),
-		UseAsDefault: utils.GetBoolPointer(useAsDefault),
-	}
-
-	if uuid != "" {
-		bundle.Uuid = utils.GetStringPointer(uuid)
-	}
-
-	// Get details
-	if details, ok := bundleMap["details"].([]interface{}); ok && len(details) > 0 {
-		if det, ok := details[0].(map[string]interface{}); ok {
-			arch, _ := det["arch"].(string)
-			sshUser, _ := det["ssh_user"].(string)
-			sshPort, _ := det["ssh_port"].(int)
-			globalYbImage, _ := det["global_yb_image"].(string)
-			useIMDSv2, _ := det["use_imds_v2"].(bool)
-
-			bundle.Details = &client.ImageBundleDetails{
-				Arch:          utils.GetStringPointer(arch),
-				SshUser:       utils.GetStringPointer(sshUser),
-				SshPort:       utils.GetInt32Pointer(int32(sshPort)),
-				UseIMDSv2:     utils.GetBoolPointer(useIMDSv2),
-				GlobalYbImage: utils.GetStringPointer(globalYbImage),
-			}
-
-			// Add region overrides if present
-			if regionOverrides, ok := det["region_overrides"].(map[string]interface{}); ok &&
-				len(regionOverrides) > 0 {
-				overridesMap := make(map[string]client.BundleInfo)
-				for region, ami := range regionOverrides {
-					overridesMap[region] = client.BundleInfo{
-						YbImage: utils.GetStringPointer(ami.(string)),
-					}
-				}
-				bundle.Details.Regions = &overridesMap
-			}
-		}
-	}
-
-	return bundle
 }

@@ -251,7 +251,7 @@ resource "yba_gcp_provider" "test" {
   project_id  = var.GCP_PROJECT_ID
   network     = var.GCP_VPC_NETWORK
   regions {
-    name = "us-west1"
+    code = "us-west1"
     shared_subnet = "default"
   }
   air_gap_install = false
@@ -282,7 +282,7 @@ resource "yba_gcp_provider" "test" {
   network              = var.GCP_VPC_NETWORK
   ssh_keypair_name     = "test-keypair"
   regions {
-    name          = "us-west1"
+    code          = "us-west1"
     shared_subnet = "default"
   }
   air_gap_install = false
@@ -307,7 +307,7 @@ resource "yba_gcp_provider" "test" {
   network              = var.GCP_VPC_NETWORK
   ssh_keypair_name     = "test-keypair"
   regions {
-    name = "us-west1"
+    code = "us-west1"
     shared_subnet = "default"
   }
   air_gap_install = false
@@ -343,7 +343,7 @@ resource "yba_gcp_provider" "test" {
   network               = var.GCP_VPC_NETWORK
   ssh_keypair_name      = "test-keypair"
   regions {
-    name = "us-west1"
+    code = "us-west1"
     shared_subnet = "default"
   }
   air_gap_install = false
@@ -374,7 +374,7 @@ resource "yba_gcp_provider" "test" {
   yb_firewall_tags = "yb-db-node"
   ssh_keypair_name = "test-keypair"
   regions {
-    name = "us-west1"
+    code = "us-west1"
     shared_subnet = "default"
   }
   air_gap_install = false

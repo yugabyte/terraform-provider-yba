@@ -37,11 +37,11 @@ func TestBuildGCPRegions(t *testing.T) {
 			name: "single region with zones",
 			input: []interface{}{
 				map[string]interface{}{
-					"name":              "us-west1",
+					"code":              "us-west1",
 					"instance_template": "",
 					"zones": []interface{}{
 						map[string]interface{}{
-							"name":   "us-west1-a",
+							"code":   "us-west1-a",
 							"subnet": "default",
 						},
 					},
@@ -53,12 +53,12 @@ func TestBuildGCPRegions(t *testing.T) {
 			name: "multiple regions",
 			input: []interface{}{
 				map[string]interface{}{
-					"name":              "us-west1",
+					"code":              "us-west1",
 					"instance_template": "",
 					"zones":             []interface{}{},
 				},
 				map[string]interface{}{
-					"name":              "us-east1",
+					"code":              "us-east1",
 					"instance_template": "projects/my-project/global/instanceTemplates/my-template",
 					"zones":             []interface{}{},
 				},
@@ -80,15 +80,15 @@ func TestBuildGCPRegions(t *testing.T) {
 func TestBuildGCPRegionsValues(t *testing.T) {
 	input := []interface{}{
 		map[string]interface{}{
-			"name":              "us-west1",
+			"code":              "us-west1",
 			"instance_template": "projects/my-project/global/instanceTemplates/my-template",
 			"zones": []interface{}{
 				map[string]interface{}{
-					"name":   "us-west1-a",
+					"code":   "us-west1-a",
 					"subnet": "subnet-west-a",
 				},
 				map[string]interface{}{
-					"name":   "us-west1-b",
+					"code":   "us-west1-b",
 					"subnet": "subnet-west-b",
 				},
 			},
@@ -132,7 +132,7 @@ func TestBuildGCPZones(t *testing.T) {
 		{
 			name: "region with shared_subnet",
 			input: map[string]interface{}{
-				"name":          "us-west1",
+				"code":          "us-west1",
 				"shared_subnet": "default",
 			},
 			expected: 1, // buildGCPZones creates a single zone entry for YBA to expand
@@ -140,7 +140,7 @@ func TestBuildGCPZones(t *testing.T) {
 		{
 			name: "region without shared_subnet",
 			input: map[string]interface{}{
-				"name": "us-west1",
+				"code": "us-west1",
 			},
 			expected: 1, // Still creates a zone entry
 		},
@@ -158,7 +158,7 @@ func TestBuildGCPZones(t *testing.T) {
 
 func TestBuildGCPZonesValues(t *testing.T) {
 	input := map[string]interface{}{
-		"name":          "us-west1",
+		"code":          "us-west1",
 		"shared_subnet": "projects/my-project/regions/us-west1/subnetworks/my-subnet",
 	}
 
@@ -265,11 +265,11 @@ func TestBuildGCPRegionsWithInstanceTemplate(t *testing.T) {
 	// Test that instance template is properly set
 	input := []interface{}{
 		map[string]interface{}{
-			"name":              "europe-west1",
+			"code":              "europe-west1",
 			"instance_template": "projects/test-project/global/instanceTemplates/test-template",
 			"zones": []interface{}{
 				map[string]interface{}{
-					"name":   "europe-west1-b",
+					"code":   "europe-west1-b",
 					"subnet": "default",
 				},
 			},

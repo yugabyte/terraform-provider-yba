@@ -86,7 +86,7 @@ Optional:
 - `old_owner` (String) Current owner of the tables in the backup. Used with new_owner to transfer ownership. Default: postgres.
 - `selective_table_restore` (Boolean) Only restore the tables listed in table_name_list instead of all tables in the keyspace. Only supported for YCQL (YQL_TABLE_TYPE) backups on YBC-enabled universes. Setting this for YSQL will be rejected by the API.
 - `sse` (Boolean) Enable server-side encryption for S3 storage.
-- `table_name_list` (List of String) List of specific table names to restore. Only applicable for YCQL (YQL_TABLE_TYPE) backups on YBC-enabled universes. Has no effect for YSQL — YSQL restores are always full-database.
+- `table_name_list` (List of String) List of specific table names to restore. Only applicable for YCQL (YQL_TABLE_TYPE) backups on YBC-enabled universes. Has no effect for YSQL - YSQL restores are always full-database.
 - `use_roles` (Boolean) Restore global YSQL roles. Only applicable for YSQL backups.
 - `use_tablespaces` (Boolean) Restore tablespace information. Only applicable for YSQL backups.
 
