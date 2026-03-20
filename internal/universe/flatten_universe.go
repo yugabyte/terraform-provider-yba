@@ -16,6 +16,7 @@
 package universe
 
 import (
+	"time"
 	client "github.com/yugabyte/platform-go-client"
 	"github.com/yugabyte/terraform-provider-yba/internal/utils"
 )
@@ -144,6 +145,11 @@ func flattenDeviceInfo(di *client.DeviceInfo) []interface{} {
 
 func flattenNodeDetailsSet(nsd []client.NodeDetailsResp) (res []interface{}) {
 	for _, n := range nsd {
+		var lastVolTime string
+        if n.LastVolumeUpdateTime != nil {
+            // .Format(time.RFC3339) creates a standard ISO-8601 string
+            lastVolTime = n.LastVolumeUpdateTime.Format(time.RFC3339)
+        }
 		i := map[string]interface{}{
 			"az_uuid":                     n.AzUuid,
 			"cloud_info":                  flattenCloudInfo(n.CloudInfo),
@@ -156,7 +162,7 @@ func flattenNodeDetailsSet(nsd []client.NodeDetailsResp) (res []interface{}) {
 			"is_yql_server":               n.IsYqlServer,
 			"is_ysql_server":              n.IsYsqlServer,
 			"kubernetes_overrides":        n.KubernetesOverrides,
-			"last_volume_update_time":     n.LastVolumeUpdateTime,
+			"last_volume_update_time":     lastVolTime,
 			"machine_image":               n.MachineImage,
 			"master_http_port":            n.MasterHttpPort,
 			"master_rpc_port":             n.MasterRpcPort,
