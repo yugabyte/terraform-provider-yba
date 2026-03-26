@@ -57,36 +57,48 @@ func azureProviderSchema() map[string]*schema.Schema {
 	s := providerutil.CommonProviderSchema()
 
 	// Add Azure-specific fields following yba-cli azu create flags
+	s["use_managed_identity"] = &schema.Schema{
+		Type:          schema.TypeBool,
+		Optional:      true,
+		Default:       false,
+		ConflictsWith: []string{"client_secret"},
+		Description: "Use Managed Identity from the YugabyteDB Anywhere host instance. " +
+			"When true, client_secret must not be set. client_id, subscription_id, " +
+			"tenant_id, and resource_group may still be provided: client_id is used as " +
+			"the managed identity client ID for user-assigned identities, and the " +
+			"remaining fields identify the Azure subscription and resource group. " +
+			"Default is false.",
+	}
 	s["client_id"] = &schema.Schema{
-		Type:        schema.TypeString,
-		Optional:    true,
-		Description: "Azure Client ID for service principal authentication.",
+		Type:     schema.TypeString,
+		Required: true,
+		Description: "Azure Client ID. Used as the service principal app ID when " +
+			"client_secret is set, or as the user-assigned managed identity client ID " +
+			"when use_managed_identity is true.",
 	}
 	s["client_secret"] = &schema.Schema{
-		Type:         schema.TypeString,
-		Optional:     true,
-		Sensitive:    true,
-		RequiredWith: []string{"client_id"},
-		Description: "Azure Client Secret. Required with client_id. " +
+		Type:          schema.TypeString,
+		Optional:      true,
+		Sensitive:     true,
+		ConflictsWith: []string{"use_managed_identity"},
+		Description: "Azure Client Secret for service principal authentication. " +
+			"Cannot be set with use_managed_identity. " +
 			"Stored in Terraform state - use an encrypted backend for security.",
 	}
 	s["subscription_id"] = &schema.Schema{
-		Type:         schema.TypeString,
-		Optional:     true,
-		RequiredWith: []string{"client_id"},
-		Description:  "Azure Subscription ID. Required with client_id.",
+		Type:        schema.TypeString,
+		Required:    true,
+		Description: "Azure Subscription ID.",
 	}
 	s["tenant_id"] = &schema.Schema{
-		Type:         schema.TypeString,
-		Optional:     true,
-		RequiredWith: []string{"client_id"},
-		Description:  "Azure Tenant ID. Required with client_id.",
+		Type:        schema.TypeString,
+		Required:    true,
+		Description: "Azure Tenant ID.",
 	}
 	s["resource_group"] = &schema.Schema{
-		Type:         schema.TypeString,
-		Optional:     true,
-		RequiredWith: []string{"client_id"},
-		Description:  "Azure Resource Group. Required with client_id.",
+		Type:        schema.TypeString,
+		Required:    true,
+		Description: "Azure Resource Group.",
 	}
 	s["hosted_zone_id"] = &schema.Schema{
 		Type:        schema.TypeString,
@@ -467,21 +479,19 @@ func resourceAzureProviderUpdate(
 		providerReq.SetDetails(details)
 	}
 
-	// Update Azure cloud info if credentials or network settings changed
-	if d.HasChange("client_id") || d.HasChange("client_secret") ||
-		d.HasChange("tenant_id") || d.HasChange("subscription_id") ||
-		d.HasChange("resource_group") || d.HasChange("hosted_zone_id") ||
-		d.HasChange("network_subscription_id") || d.HasChange("network_resource_group") {
+	// Update Azure cloud info if credentials, managed identity, or network settings changed
+	if d.HasChange("use_managed_identity") || d.HasChange("client_id") ||
+		d.HasChange("client_secret") || d.HasChange("tenant_id") ||
+		d.HasChange("subscription_id") || d.HasChange("resource_group") ||
+		d.HasChange("hosted_zone_id") || d.HasChange("network_subscription_id") ||
+		d.HasChange("network_resource_group") {
 		details := providerReq.GetDetails()
 		cloudInfo := details.GetCloudInfo()
 		azuInfo := cloudInfo.GetAzu()
 
-		// Update credentials
+		// Update identity and placement fields when changed (used in both auth modes)
 		if d.HasChange("client_id") {
 			azuInfo.SetAzuClientId(d.Get("client_id").(string))
-		}
-		if d.HasChange("client_secret") {
-			azuInfo.SetAzuClientSecret(d.Get("client_secret").(string))
 		}
 		if d.HasChange("tenant_id") {
 			azuInfo.SetAzuTenantId(d.Get("tenant_id").(string))
@@ -493,7 +503,18 @@ func resourceAzureProviderUpdate(
 			azuInfo.SetAzuRG(d.Get("resource_group").(string))
 		}
 
-		// Update network settings
+		// client_secret is the sole auth differentiator: clear it when switching to
+		// managed identity, set it when switching to service principal
+		useManagedIdentity := d.Get("use_managed_identity").(bool)
+		if d.HasChange("use_managed_identity") || d.HasChange("client_secret") {
+			if useManagedIdentity {
+				azuInfo.SetAzuClientSecret("")
+			} else {
+				azuInfo.SetAzuClientSecret(d.Get("client_secret").(string))
+			}
+		}
+
+		// Update network/DNS settings
 		if d.HasChange("hosted_zone_id") {
 			azuInfo.SetAzuHostedZoneId(d.Get("hosted_zone_id").(string))
 		}

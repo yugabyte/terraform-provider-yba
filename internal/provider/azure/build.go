@@ -21,17 +21,24 @@ import (
 	"github.com/yugabyte/terraform-provider-yba/internal/utils"
 )
 
-// buildAzureCloudInfo builds Azure cloud info from schema
-// Mirrors yba-cli: azCloudInfo construction in create_provider.go
+// buildAzureCloudInfo builds Azure cloud info from schema.
+//
+// Authentication mode is determined solely by client_secret:
+//   - client_secret set     -> ClientSecretCredential (service principal)
+//   - client_secret not set -> DefaultAzureCredential (managed identity / env vars)
+//
+// client_id, subscription_id, tenant_id, and resource_group are sent in both
+// modes when provided: client_id doubles as the user-assigned managed identity
+// client ID, and the remaining fields identify the Azure subscription/RG.
 func buildAzureCloudInfo(d *schema.ResourceData) (*client.AzureCloudInfo, error) {
 	azureCloudInfo := &client.AzureCloudInfo{}
 
-	// Set hosted zone ID if provided
+	useManagedIdentity := d.Get("use_managed_identity").(bool)
+
+	// Set optional network/DNS fields
 	if v, ok := d.GetOk("hosted_zone_id"); ok {
 		azureCloudInfo.SetAzuHostedZoneId(v.(string))
 	}
-
-	// Set network subscription/resource group if provided
 	if v, ok := d.GetOk("network_subscription_id"); ok {
 		azureCloudInfo.SetAzuNetworkSubscriptionId(v.(string))
 	}
@@ -39,14 +46,17 @@ func buildAzureCloudInfo(d *schema.ResourceData) (*client.AzureCloudInfo, error)
 		azureCloudInfo.SetAzuNetworkRG(v.(string))
 	}
 
-	// Get credentials from schema - all are required when client_id is provided
-	clientID := d.Get("client_id").(string)
-	if clientID != "" {
-		azureCloudInfo.SetAzuClientId(clientID)
+	// Required in both auth modes: client_id, subscription_id, tenant_id, resource_group.
+	// The schema enforces their presence so no extra validation is needed here.
+	azureCloudInfo.SetAzuClientId(d.Get("client_id").(string))
+	azureCloudInfo.SetAzuSubscriptionId(d.Get("subscription_id").(string))
+	azureCloudInfo.SetAzuTenantId(d.Get("tenant_id").(string))
+	azureCloudInfo.SetAzuRG(d.Get("resource_group").(string))
+
+	// client_secret is the sole auth differentiator:
+	// present = service principal, absent = managed identity
+	if !useManagedIdentity {
 		azureCloudInfo.SetAzuClientSecret(d.Get("client_secret").(string))
-		azureCloudInfo.SetAzuSubscriptionId(d.Get("subscription_id").(string))
-		azureCloudInfo.SetAzuTenantId(d.Get("tenant_id").(string))
-		azureCloudInfo.SetAzuRG(d.Get("resource_group").(string))
 	}
 
 	return azureCloudInfo, nil

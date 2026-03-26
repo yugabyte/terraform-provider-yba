@@ -58,16 +58,18 @@ func gcpProviderSchema() map[string]*schema.Schema {
 
 	// Add GCP-specific fields following yba-cli gcp create flags
 	s["credentials"] = &schema.Schema{
-		Type:      schema.TypeString,
-		Optional:  true,
-		Sensitive: true,
+		Type:          schema.TypeString,
+		Optional:      true,
+		Sensitive:     true,
+		ConflictsWith: []string{"use_host_credentials"},
 		Description: "Google Service Account credentials JSON content. " +
 			"Stored in Terraform state - use an encrypted backend for security.",
 	}
 	s["use_host_credentials"] = &schema.Schema{
-		Type:     schema.TypeBool,
-		Optional: true,
-		Computed: true,
+		Type:          schema.TypeBool,
+		Optional:      true,
+		ConflictsWith: []string{"credentials"},
+		Computed:      true,
 		Description: "Use credentials from the YugabyteDB Anywhere host. " +
 			"Default is false.",
 	}

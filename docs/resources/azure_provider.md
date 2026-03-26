@@ -208,26 +208,27 @@ The details for configuration are available in the [YugabyteDB Anywhere Configur
 
 ### Required
 
+- `client_id` (String) Azure Client ID. Used as the service principal app ID when client_secret is set, or as the user-assigned managed identity client ID when use_managed_identity is true.
 - `name` (String) Name of the provider.
 - `regions` (Block List, Min: 1) Azure regions associated with the provider. (see [below for nested schema](#nestedblock--regions))
+- `resource_group` (String) Azure Resource Group.
+- `subscription_id` (String) Azure Subscription ID.
+- `tenant_id` (String) Azure Tenant ID.
 
 ### Optional
 
 - `air_gap_install` (Boolean) Flag indicating if YugabyteDB nodes are installed in an air-gapped environment, lacking access to the public internet for package downloads. Default is false.
-- `client_id` (String) Azure Client ID for service principal authentication.
-- `client_secret` (String, Sensitive) Azure Client Secret. Required with client_id. Stored in Terraform state - use an encrypted backend for security.
+- `client_secret` (String, Sensitive) Azure Client Secret for service principal authentication. Cannot be set with use_managed_identity. Stored in Terraform state - use an encrypted backend for security.
 - `hosted_zone_id` (String) Private DNS Zone for Azure.
 - `image_bundles` (Block List) Custom image bundles for the provider. At least one image_bundles or yba_managed_image_bundles block must be specified. (see [below for nested schema](#nestedblock--image_bundles))
 - `network_resource_group` (String) Azure Network Resource Group. All network resources and NIC resources of VMs will be created in this group.
 - `network_subscription_id` (String) Azure Network Subscription ID. All network resources and NIC resources of VMs will be created in this subscription.
 - `ntp_servers` (List of String) List of NTP servers for time synchronization.
-- `resource_group` (String) Azure Resource Group. Required with client_id.
 - `set_up_chrony` (Boolean) Set up NTP chrony service. When true with empty ntp_servers, uses cloud provider's NTP server (e.g., AWS Time Sync). When true with ntp_servers specified, uses custom NTP servers. When false, assumes NTP is pre-configured in the machine image. Default is false.
 - `ssh_keypair_name` (String) Custom SSH key pair name to access YugabyteDB nodes. Must be set together with ssh_private_key_content (self-managed mode). If both ssh_keypair_name and ssh_private_key_content are omitted, YugabyteDB Anywhere generates and manages the key pair (YBA-managed mode). YBA versions keys on every update: if a key with this name already exists it appends a timestamp (e.g. 'my-key-2026-03-18-10-01-29'). Use access_key_code to read the actual versioned name that was stored.
 - `ssh_private_key_content` (String, Sensitive) SSH private key content to access YugabyteDB nodes. Must be set together with ssh_keypair_name (self-managed mode). If both fields are omitted, YugabyteDB Anywhere generates and manages the key pair (YBA-managed mode).
-- `subscription_id` (String) Azure Subscription ID. Required with client_id.
-- `tenant_id` (String) Azure Tenant ID. Required with client_id.
 - `timeouts` (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))
+- `use_managed_identity` (Boolean) Use Managed Identity from the YugabyteDB Anywhere host instance. When true, client_secret must not be set. client_id, subscription_id, tenant_id, and resource_group may still be provided: client_id is used as the managed identity client ID for user-assigned identities, and the remaining fields identify the Azure subscription and resource group. Default is false.
 - `yba_managed_image_bundles` (Block List, Max: 1) YBA managed image bundles for the provider. At least one image_bundles or yba_managed_image_bundles block must be specified. Only x86_64 architecture is supported. Omit this block to stop managing YBA default images via Terraform (any previously tracked bundles will be removed from the provider on the next apply). (see [below for nested schema](#nestedblock--yba_managed_image_bundles))
 
 ### Read-Only

@@ -58,24 +58,27 @@ func awsProviderSchema() map[string]*schema.Schema {
 
 	// Add AWS-specific fields following yba-cli aws create flags
 	s["access_key_id"] = &schema.Schema{
-		Type:      schema.TypeString,
-		Optional:  true,
-		Sensitive: true,
+		Type:          schema.TypeString,
+		Optional:      true,
+		Sensitive:     true,
+		ConflictsWith: []string{"use_iam_instance_profile"},
 		Description: "AWS Access Key ID. Required for non-IAM role based providers. " +
 			"Stored in Terraform state - use an encrypted backend for security.",
 	}
 	s["secret_access_key"] = &schema.Schema{
-		Type:         schema.TypeString,
-		Optional:     true,
-		Sensitive:    true,
-		RequiredWith: []string{"access_key_id"},
+		Type:          schema.TypeString,
+		Optional:      true,
+		Sensitive:     true,
+		RequiredWith:  []string{"access_key_id"},
+		ConflictsWith: []string{"use_iam_instance_profile"},
 		Description: "AWS Secret Access Key. Required with access_key_id. " +
 			"Stored in Terraform state - use an encrypted backend for security.",
 	}
 	s["use_iam_instance_profile"] = &schema.Schema{
-		Type:     schema.TypeBool,
-		Optional: true,
-		Computed: true,
+		Type:          schema.TypeBool,
+		Optional:      true,
+		Computed:      true,
+		ConflictsWith: []string{"access_key_id", "secret_access_key"},
 		Description: "Use IAM Role from the YugabyteDB Anywhere host. " +
 			"Provider creation will fail on insufficient permissions. Default is false.",
 	}
