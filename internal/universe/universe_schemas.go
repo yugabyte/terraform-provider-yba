@@ -319,9 +319,14 @@ func userIntentSchema() *schema.Resource {
 				Description: "Enable Encryption At Rest. False by default.",
 			},
 			"yb_software_version": {
-				Type:        schema.TypeString,
-				Required:    true,
-				Description: "YBDB version of the universe.",
+				Type:     schema.TypeString,
+				Required: true,
+				Description: "YBDB version of the universe. Changing this field triggers a " +
+					"DB version upgrade (UpgradeDBVersion). By default the upgrade pauses " +
+					"at PreFinalize state for a monitoring phase; set " +
+					"db_version_upgrade_options.finalize = true to commit automatically " +
+					"after the upgrade task completes. " +
+					"See db_version_upgrade_options for full rollback/finalize controls.",
 			},
 			"access_key_code": {
 				Type:     schema.TypeString,

@@ -69,11 +69,14 @@ The following operations are supported in the Edit universe workflow:
 - `arch` (String) The architecture of the universe nodes. Allowed values are x86_64 and aarch64.
 - `client_root_ca` (String) The UUID of the clientRootCA to be used to generate client certificates and facilitate TLS communication between server and client.
 - `communication_ports` (Block List, Max: 1) Communication ports. (see [below for nested schema](#nestedblock--communication_ports))
+- `db_version_upgrade_options` (Block List, Max: 1) Options controlling the DB version upgrade path (UpgradeDBVersion). By default finalize = false pauses the upgrade in PreFinalize state for a monitoring phase; flip to true and re-apply to commit, or set rollback_upgrade = true to revert to the previous DB version. (see [below for nested schema](#nestedblock--db_version_upgrade_options))
 - `delete_options` (Block List, Max: 1) (see [below for nested schema](#nestedblock--delete_options))
+- `node_restart_settings` (Block List, Max: 1) Controls how node restarts are performed during upgrade operations (DB version, GFlags, Systemd, Finalize, Rollback). When omitted, YugabyteDB Anywhere platform defaults apply: Rolling strategy with 180000 ms (3 minutes) sleep after each master and TServer restart. (see [below for nested schema](#nestedblock--node_restart_settings))
 - `timeouts` (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))
 
 ### Read-Only
 
+- `db_version_upgrade_state` (String) Current DB version upgrade state reported by YugabyteDB Anywhere. Possible values: Ready, Upgrading, UpgradeFailed, PreFinalize, Finalizing, FinalizeFailed, RollingBack, RollbackFailed.
 - `id` (String) The ID of this resource.
 - `node_details_set` (List of Object) (see [below for nested schema](#nestedatt--node_details_set))
 
@@ -106,7 +109,7 @@ Required:
 - `region_list` (List of String) List of regions for node placement.
 - `replication_factor` (Number) Replication factor for this universe.
 - `universe_name` (String) Universe name.
-- `yb_software_version` (String) YBDB version of the universe.
+- `yb_software_version` (String) YBDB version of the universe. Changing this field triggers a DB version upgrade (UpgradeDBVersion). By default the upgrade pauses at PreFinalize state for a monitoring phase; set db_version_upgrade_options.finalize = true to commit automatically after the upgrade task completes. See db_version_upgrade_options for full rollback/finalize controls.
 
 Optional:
 
@@ -209,6 +212,16 @@ Optional:
 - `ysql_server_rpc_port` (Number)
 
 
+<a id="nestedblock--db_version_upgrade_options"></a>
+### Nested Schema for `db_version_upgrade_options`
+
+Optional:
+
+- `finalize` (Boolean) Whether to finalize the DB version upgrade. When false (default), the upgrade pauses at PreFinalize state for a monitoring phase; set to true and re-apply to commit when ready. When true, FinalizeUpgrade is called automatically after the upgrade task completes.
+- `rollback_upgrade` (Boolean) Set to true to roll back a pending DB version upgrade when db_version_upgrade_state is PreFinalize. Mutually exclusive with finalize = true. After rollback the universe returns to Ready state running the previous DB version. The provider automatically resets this field to false in state after a successful rollback.
+- `upgrade_system_catalog` (Boolean) Whether to upgrade the YSQL system catalog during the finalize step. Defaults to true.
+
+
 <a id="nestedblock--delete_options"></a>
 ### Nested Schema for `delete_options`
 
@@ -217,6 +230,16 @@ Optional:
 - `delete_backups` (Boolean) Flag indicating whether the backups should be deleted with the universe. False by default.
 - `delete_certs` (Boolean) Flag indicating whether the certificates should be deleted with the universe. False by default.
 - `force_delete` (Boolean) Force delete universe with errors. False by default.
+
+
+<a id="nestedblock--node_restart_settings"></a>
+### Nested Schema for `node_restart_settings`
+
+Optional:
+
+- `sleep_after_master_restart_millis` (Number) Milliseconds to sleep after each master node restart. Defaults to 180000 (3 minutes), matching the YugabyteDB Anywhere platform default.
+- `sleep_after_tserver_restart_millis` (Number) Milliseconds to sleep after each TServer node restart. Defaults to 180000 (3 minutes), matching the YugabyteDB Anywhere platform default.
+- `upgrade_option` (String) Node restart strategy applied to all upgrade operations. Allowed values: Rolling, Non-Rolling, Non-Restart. Defaults to Rolling (YugabyteDB Anywhere platform default). TLS toggle always uses Non-Rolling; ResizeNode and VMImageUpgrade always use Rolling, regardless of this setting.
 
 
 <a id="nestedblock--timeouts"></a>

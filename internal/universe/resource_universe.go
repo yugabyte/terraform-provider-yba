@@ -218,20 +218,97 @@ func ResourceUniverse() *schema.Resource {
 				Computed: true,
 				Elem:     nodeDetailsSetSchema(),
 			},
+			"db_version_upgrade_options": {
+				Type:     schema.TypeList,
+				Optional: true,
+				MaxItems: 1,
+				Description: "Options controlling the DB version upgrade path (UpgradeDBVersion). " +
+					"By default finalize = false pauses the upgrade in PreFinalize state for a " +
+					"monitoring phase; flip to true and re-apply to commit, or set " +
+					"rollback_upgrade = true to revert to the previous DB version.",
+				Elem: &schema.Resource{
+					Schema: map[string]*schema.Schema{
+						"upgrade_system_catalog": {
+							Type:     schema.TypeBool,
+							Optional: true,
+							Default:  true,
+							Description: "Whether to upgrade the YSQL system catalog during " +
+								"the finalize step. Defaults to true.",
+						},
+						"finalize": {
+							Type:     schema.TypeBool,
+							Optional: true,
+							Default:  false,
+							Description: "Whether to finalize the DB version upgrade. When false " +
+								"(default), the upgrade pauses at PreFinalize state for a monitoring " +
+								"phase; set to true and re-apply to commit when ready. When true, " +
+								"FinalizeUpgrade is called automatically after the upgrade task " +
+								"completes.",
+						},
+						"rollback_upgrade": {
+							Type:     schema.TypeBool,
+							Optional: true,
+							Default:  false,
+							Description: "Set to true to roll back a pending DB version upgrade " +
+								"when db_version_upgrade_state is PreFinalize. Mutually exclusive " +
+								"with finalize = true. After rollback the universe returns to Ready " +
+								"state running the previous DB version. The provider automatically " +
+								"resets this field to false in state after a successful rollback.",
+						},
+					},
+				},
+			},
+			"node_restart_settings": {
+				Type:     schema.TypeList,
+				Optional: true,
+				MaxItems: 1,
+				Description: "Controls how node restarts are performed during upgrade operations " +
+					"(DB version, GFlags, Systemd, Finalize, Rollback). When omitted, " +
+					"YugabyteDB Anywhere platform defaults apply: Rolling strategy with " +
+					"180000 ms (3 minutes) sleep after each master and TServer restart.",
+				Elem: &schema.Resource{
+					Schema: map[string]*schema.Schema{
+						"upgrade_option": {
+							Type:     schema.TypeString,
+							Optional: true,
+							Default:  "Rolling",
+							ValidateDiagFunc: validation.ToDiagFunc(
+								validation.StringInSlice(
+									[]string{"Rolling", "Non-Rolling", "Non-Restart"}, false)),
+							Description: "Node restart strategy applied to all upgrade operations. " +
+								"Allowed values: Rolling, Non-Rolling, Non-Restart. Defaults to " +
+								"Rolling (YugabyteDB Anywhere platform default). TLS toggle always " +
+								"uses Non-Rolling; ResizeNode and VMImageUpgrade always use Rolling, " +
+								"regardless of this setting.",
+						},
+						"sleep_after_master_restart_millis": {
+							Type:     schema.TypeInt,
+							Optional: true,
+							Default:  180000,
+							Description: "Milliseconds to sleep after each master node restart. " +
+								"Defaults to 180000 (3 minutes), matching the YugabyteDB Anywhere " +
+								"platform default.",
+						},
+						"sleep_after_tserver_restart_millis": {
+							Type:     schema.TypeInt,
+							Optional: true,
+							Default:  180000,
+							Description: "Milliseconds to sleep after each TServer node restart. " +
+								"Defaults to 180000 (3 minutes), matching the YugabyteDB Anywhere " +
+								"platform default.",
+						},
+					},
+				},
+			},
+			"db_version_upgrade_state": {
+				Type:     schema.TypeString,
+				Computed: true,
+				Description: "Current DB version upgrade state reported by YugabyteDB Anywhere. " +
+					"Possible values: Ready, Upgrading, UpgradeFailed, PreFinalize, Finalizing, " +
+					"FinalizeFailed, RollingBack, RollbackFailed.",
+			},
 		},
 	}
-}
-
-func universeYBAVersionCheck(ctx context.Context, c *client.APIClient) (bool, string, error) {
-	allowedVersions := utils.YBAMinimumVersion{
-		Stable:  utils.YBAAllowUniverseMinVersion,
-		Preview: utils.YBAAllowUniverseMinVersion,
-	}
-	allowed, version, err := utils.CheckValidYBAVersion(ctx, c, allowedVersions)
-	if err != nil {
-		return false, "", err
-	}
-	return allowed, version, err
 }
 
 func getClusterByType(clusters []client.Cluster, clusterType string) (client.Cluster, bool) {
@@ -598,6 +675,23 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 			}
 			return nil
 		}),
+		customdiff.ValidateChange(
+			"db_version_upgrade_options",
+			func(ctx context.Context, old, new, m interface{}) error {
+				newOpts := new.([]interface{})
+				if len(newOpts) == 0 {
+					return nil
+				}
+				opt := newOpts[0].(map[string]interface{})
+				if opt["rollback_upgrade"].(bool) && opt["finalize"].(bool) {
+					return errors.New(
+						"rollback_upgrade and finalize are mutually exclusive: " +
+							"set finalize = false when using rollback_upgrade = true, " +
+							"and set rollback_upgrade = false when using finalize = true")
+				}
+				return nil
+			},
+		),
 	)
 }
 func resourceUniverseCreate(
@@ -606,19 +700,6 @@ func resourceUniverseCreate(
 	meta interface{}) diag.Diagnostics {
 	c := meta.(*api.APIClient).YugawareClient
 	cUUID := meta.(*api.APIClient).CustomerID
-
-	allowed, version, err := universeYBAVersionCheck(ctx, c)
-	if err != nil {
-		return diag.FromErr(err)
-	}
-
-	if !allowed {
-
-		return diag.FromErr(fmt.Errorf("Creating universes below version %s (or on restricted"+
-			" versions) is not supported, currently on %s", utils.YBAAllowUniverseMinVersion,
-			version))
-
-	}
 
 	req := buildUniverse(d)
 	r, response, err := c.UniverseClusterMutationsAPI.CreateAllClusters(ctx, cUUID).
@@ -631,7 +712,7 @@ func resourceUniverseCreate(
 
 	d.SetId(*r.ResourceUUID)
 	tflog.Debug(ctx, fmt.Sprintf("Waiting for universe %s to be active", d.Id()))
-	err = utils.WaitForTask(ctx, *r.TaskUUID, cUUID, c, d.Timeout(schema.TimeoutCreate))
+	err = utils.WaitForTask(ctx, r.GetTaskUUID(), cUUID, c, d.Timeout(schema.TimeoutCreate))
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -683,6 +764,9 @@ func resourceUniverseRead(
 	if err != nil {
 		return diag.FromErr(err)
 	}
+	if err = d.Set("db_version_upgrade_state", u.GetSoftwareUpgradeState()); err != nil {
+		return diag.FromErr(err)
+	}
 	return diags
 }
 
@@ -731,6 +815,35 @@ func editUniverseParameters(ctx context.Context, oldUserIntent client.UserIntent
 
 }
 
+func runFinalizeUpgrade(
+	ctx context.Context,
+	c *client.APIClient,
+	cUUID string,
+	uniUUID string,
+	clusters []client.Cluster,
+	upgradeOption string,
+	upgradeSystemCatalog bool,
+	sleepAfterMasterMs int32,
+	sleepAfterTServerMs int32,
+	timeout time.Duration,
+) error {
+	finalizeReq := client.FinalizeUpgradeParams{
+		Clusters:                       clusters,
+		UpgradeOption:                  upgradeOption,
+		UpgradeSystemCatalog:           upgradeSystemCatalog,
+		SleepAfterMasterRestartMillis:  sleepAfterMasterMs,
+		SleepAfterTServerRestartMillis: sleepAfterTServerMs,
+	}
+	r, response, err := c.UniverseUpgradesManagementAPI.FinalizeUpgrade(
+		ctx, cUUID, uniUUID).FinalizeUpgradeParams(finalizeReq).Execute()
+	if err != nil {
+		return utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
+			"Universe", "Update - Finalize Upgrade")
+	}
+	tflog.Info(ctx, "FinalizeUpgrade task is executing")
+	return utils.WaitForTask(ctx, r.GetTaskUUID(), cUUID, c, timeout)
+}
+
 func resourceUniverseUpdate(
 	ctx context.Context,
 	d *schema.ResourceData,
@@ -740,17 +853,113 @@ func resourceUniverseUpdate(
 	c := meta.(*api.APIClient).YugawareClient
 	cUUID := meta.(*api.APIClient).CustomerID
 
-	allowed, version, err := universeYBAVersionCheck(ctx, c)
-	if err != nil {
-		return diag.FromErr(err)
+	// Read node_restart_settings once with explicit fallbacks. When the block is absent,
+	// d.Get returns zero values ("" / 0) rather than the schema defaults, so we apply the
+	// YBA platform defaults here: Rolling strategy, 180000 ms sleep (3 minutes).
+	upgradeOption := d.Get("node_restart_settings.0.upgrade_option").(string)
+	if upgradeOption == "" {
+		upgradeOption = "Rolling"
+	}
+	sleepAfterMasterMs := int32(
+		d.Get("node_restart_settings.0.sleep_after_master_restart_millis").(int),
+	)
+	if sleepAfterMasterMs == 0 {
+		sleepAfterMasterMs = 180000
+	}
+	sleepAfterTServerMs := int32(
+		d.Get("node_restart_settings.0.sleep_after_tserver_restart_millis").(int),
+	)
+	if sleepAfterTServerMs == 0 {
+		sleepAfterTServerMs = 180000
 	}
 
-	if !allowed {
+	// Rollback is a universe-level operation (not per-cluster): the YBA handler reads
+	// prevYBSoftwareConfig from universe-wide details to determine the version to revert to,
+	// and rolls back all clusters simultaneously. It must run before the cluster-change loop
+	// so that a rollback + other cluster edits in the same apply are both processed.
+	if d.HasChange("db_version_upgrade_options") &&
+		d.Get("db_version_upgrade_options.0.rollback_upgrade").(bool) {
+		currentUni, response, err := c.UniverseManagementAPI.GetUniverse(ctx, cUUID, d.Id()).
+			Execute()
+		if err != nil {
+			errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
+				"Universe", "Update - Fetch for rollback")
+			return diag.FromErr(errMessage)
+		}
+		upgradeState := currentUni.UniverseDetails.GetSoftwareUpgradeState()
+		if upgradeState != "PreFinalize" {
+			tflog.Warn(ctx, fmt.Sprintf(
+				"rollback_upgrade is true but universe db_version_upgrade_state is %q "+
+					"(not PreFinalize); skipping rollback. Reset rollback_upgrade = false "+
+					"in your configuration.", upgradeState))
+		} else {
+			rollbackReq := client.RollbackUpgradeParams{
+				Clusters:                       currentUni.UniverseDetails.Clusters,
+				UpgradeOption:                  upgradeOption,
+				SleepAfterMasterRestartMillis:  sleepAfterMasterMs,
+				SleepAfterTServerRestartMillis: sleepAfterTServerMs,
+			}
+			r, response, err := c.UniverseUpgradesManagementAPI.RollbackUpgrade(
+				ctx, cUUID, d.Id()).RollbackUpgradeParams(rollbackReq).Execute()
+			if err != nil {
+				errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
+					"Universe", "Update - Rollback Upgrade")
+				return diag.FromErr(errMessage)
+			}
+			tflog.Info(ctx, "RollbackUpgrade task is executing")
+			err = utils.WaitForTask(ctx, r.GetTaskUUID(), cUUID, c, d.Timeout(schema.TimeoutUpdate))
+			if err != nil {
+				return diag.FromErr(err)
+			}
+			// Reset rollback_upgrade to false in state after a successful rollback.
+			// This intentionally creates a plan diff (state=false vs config=true) on the
+			// next run, which signals to the user that they must set rollback_upgrade = false
+			// in their configuration to reach a steady state. Without this reset, state
+			// would stay true and no diff would appear, leaving a stale value in state that
+			// silently re-triggers the rollback logic on every apply until the user changes
+			// their config anyway.
+			if opts, ok := d.GetOk("db_version_upgrade_options"); ok {
+				optList := opts.([]interface{})
+				if len(optList) > 0 && optList[0] != nil {
+					opt := optList[0].(map[string]interface{})
+					opt["rollback_upgrade"] = false
+					if err := d.Set("db_version_upgrade_options", optList); err != nil {
+						return diag.FromErr(err)
+					}
+				}
+			}
+		}
+	}
 
-		return diag.FromErr(fmt.Errorf("Editing universes below version %s (or on restricted"+
-			" versions) is not supported, currently on %s", utils.YBAAllowUniverseMinVersion,
-			version))
-
+	// Explicit finalize after a monitoring phase: triggered when finalize flips from
+	// false to true while the universe is already in PreFinalize state. This lets the user
+	// commit the upgrade simply by setting finalize = true and re-applying.
+	if d.HasChange("db_version_upgrade_options") &&
+		d.Get("db_version_upgrade_options.0.finalize").(bool) {
+		oldOpts, _ := d.GetChange("db_version_upgrade_options")
+		oldAutoFinalize := false
+		if opts := oldOpts.([]interface{}); len(opts) > 0 && opts[0] != nil {
+			oldAutoFinalize = opts[0].(map[string]interface{})["finalize"].(bool)
+		}
+		if !oldAutoFinalize {
+			currentUni, response, err := c.UniverseManagementAPI.GetUniverse(ctx, cUUID, d.Id()).
+				Execute()
+			if err != nil {
+				errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
+					"Universe", "Update - Fetch for finalize")
+				return diag.FromErr(errMessage)
+			}
+			if currentUni.UniverseDetails.GetSoftwareUpgradeState() == "PreFinalize" {
+				upgradeSystemCatalog := d.Get("db_version_upgrade_options.0.upgrade_system_catalog").(bool)
+				if err := runFinalizeUpgrade(ctx, c, cUUID, d.Id(),
+					currentUni.UniverseDetails.Clusters,
+					upgradeOption, upgradeSystemCatalog,
+					sleepAfterMasterMs, sleepAfterTServerMs,
+					d.Timeout(schema.TimeoutUpdate)); err != nil {
+					return diag.FromErr(err)
+				}
+			}
+		}
 	}
 
 	if d.HasChange("clusters") {
@@ -788,6 +997,7 @@ func resourceUniverseUpdate(
 		if len(imageBundleUpgrades) > 0 && hasScaleOut {
 			if diagErr := performVMImageUpgrade(
 				ctx, c, cUUID, d, updateUni, imageBundleUpgrades,
+				sleepAfterMasterMs, sleepAfterTServerMs,
 			); diagErr != nil {
 				return diagErr
 			}
@@ -826,7 +1036,7 @@ func resourceUniverseUpdate(
 					return diag.FromErr(errMessage)
 				}
 				tflog.Info(ctx, "DeleteReadOnlyCluster task is executing")
-				err = utils.WaitForTask(ctx, *r.TaskUUID, cUUID, c, d.Timeout(schema.TimeoutUpdate))
+				err = utils.WaitForTask(ctx, r.GetTaskUUID(), cUUID, c, d.Timeout(schema.TimeoutUpdate))
 				if err != nil {
 					return diag.FromErr(err)
 				}
@@ -842,36 +1052,66 @@ func resourceUniverseUpdate(
 			newUserIntent := newUni.Clusters[i].UserIntent
 			if cluster["cluster_type"] == "PRIMARY" {
 
-				//Software Upgrade
+				// Software Upgrade
 				if oldUserIntent.GetYbSoftwareVersion() != newUserIntent.GetYbSoftwareVersion() {
 					updateUni.UniverseDetails.Clusters[i].UserIntent = newUserIntent
+
+					upgradeSystemCatalog := d.Get("db_version_upgrade_options.0.upgrade_system_catalog").(bool)
+					finalize := d.Get("db_version_upgrade_options.0.finalize").(bool)
+
 					req := client.SoftwareUpgradeParams{
-						YbSoftwareVersion: newUserIntent.GetYbSoftwareVersion(),
-						Clusters:          updateUni.UniverseDetails.Clusters,
-						UpgradeOption:     "Rolling",
+						YbSoftwareVersion:              newUserIntent.GetYbSoftwareVersion(),
+						Clusters:                       updateUni.UniverseDetails.Clusters,
+						UpgradeOption:                  upgradeOption,
+						UpgradeSystemCatalog:           upgradeSystemCatalog,
+						SleepAfterMasterRestartMillis:  sleepAfterMasterMs,
+						SleepAfterTServerRestartMillis: sleepAfterTServerMs,
 					}
-					r, response, err := c.UniverseUpgradesManagementAPI.UpgradeSoftware(
+
+					r, response, err := c.UniverseUpgradesManagementAPI.UpgradeDBVersion(
 						ctx, cUUID, d.Id()).SoftwareUpgradeParams(req).Execute()
 					if err != nil {
 						errMessage := utils.ErrorFromHTTPResponse(
-							response,
-							err,
-							utils.ResourceEntity,
-							"Universe",
-							"Update - Software",
+							response, err, utils.ResourceEntity,
+							"Universe", "Update - DB Version Upgrade",
 						)
 						return diag.FromErr(errMessage)
 					}
-					tflog.Info(ctx, "UpgradeSoftware task is executing")
+
+					tflog.Info(ctx, "DB version upgrade task is executing")
 					err = utils.WaitForTask(
-						ctx,
-						*r.TaskUUID,
-						cUUID,
-						c,
-						d.Timeout(schema.TimeoutUpdate),
+						ctx, r.GetTaskUUID(), cUUID, c, d.Timeout(schema.TimeoutUpdate),
 					)
 					if err != nil {
 						return diag.FromErr(err)
+					}
+
+					// Finalize after upgrade if configured
+					if finalize {
+						updateUni, response, err = c.UniverseManagementAPI.GetUniverse(
+							ctx, cUUID, d.Id()).Execute()
+						if err != nil {
+							errMessage := utils.ErrorFromHTTPResponse(
+								response, err, utils.ResourceEntity,
+								"Universe", "Update - Fetch post-upgrade state",
+							)
+							return diag.FromErr(errMessage)
+						}
+						upgradeState := updateUni.UniverseDetails.GetSoftwareUpgradeState()
+						if upgradeState == "PreFinalize" {
+							tflog.Info(ctx, "Universe is in PreFinalize state, finalizing upgrade")
+							if err := runFinalizeUpgrade(ctx, c, cUUID, d.Id(),
+								updateUni.UniverseDetails.Clusters,
+								upgradeOption, upgradeSystemCatalog,
+								sleepAfterMasterMs, sleepAfterTServerMs,
+								d.Timeout(schema.TimeoutUpdate)); err != nil {
+								return diag.FromErr(err)
+							}
+						} else {
+							tflog.Info(ctx, fmt.Sprintf(
+								"Universe db_version_upgrade_state is %q, skipping finalize",
+								upgradeState))
+						}
 					}
 				}
 
@@ -894,7 +1134,13 @@ func resourceUniverseUpdate(
 						MasterGFlags:  newUserIntent.GetMasterGFlags(),
 						TserverGFlags: newUserIntent.GetTserverGFlags(),
 						Clusters:      updateUni.UniverseDetails.Clusters,
-						UpgradeOption: "Rolling",
+						UpgradeOption: upgradeOption,
+						SleepAfterMasterRestartMillis: int32(
+							sleepAfterMasterMs,
+						),
+						SleepAfterTServerRestartMillis: int32(
+							sleepAfterTServerMs,
+						),
 					}
 					r, response, err := c.UniverseUpgradesManagementAPI.UpgradeGFlags(
 						ctx, cUUID, d.Id()).GflagsUpgradeParams(req).Execute()
@@ -909,7 +1155,7 @@ func resourceUniverseUpdate(
 						return diag.FromErr(errMessage)
 					}
 					tflog.Info(ctx, "UpgradeGFlags task is executing")
-					err = utils.WaitForTask(ctx, *r.TaskUUID, cUUID, c,
+					err = utils.WaitForTask(ctx, r.GetTaskUUID(), cUUID, c,
 						d.Timeout(schema.TimeoutUpdate))
 					if err != nil {
 						return diag.FromErr(err)
@@ -944,6 +1190,12 @@ func resourceUniverseUpdate(
 						EnableNodeToNodeEncrypt:   newUserIntent.GetEnableNodeToNodeEncrypt(),
 						Clusters:                  updateUni.UniverseDetails.Clusters,
 						UpgradeOption:             "Non-Rolling",
+						SleepAfterMasterRestartMillis: int32(
+							sleepAfterMasterMs,
+						),
+						SleepAfterTServerRestartMillis: int32(
+							sleepAfterTServerMs,
+						),
 					}
 					r, response, err := c.UniverseUpgradesManagementAPI.UpgradeTls(
 						ctx, cUUID, d.Id()).TlsToggleParams(req).Execute()
@@ -960,7 +1212,7 @@ func resourceUniverseUpdate(
 					tflog.Info(ctx, "UpgradeTLS task is executing")
 					err = utils.WaitForTask(
 						ctx,
-						*r.TaskUUID,
+						r.GetTaskUUID(),
 						cUUID,
 						c,
 						d.Timeout(schema.TimeoutUpdate),
@@ -985,7 +1237,13 @@ func resourceUniverseUpdate(
 					updateUni.UniverseDetails.Clusters[i].UserIntent = newUserIntent
 					req := client.SystemdUpgradeParams{
 						Clusters:      updateUni.UniverseDetails.Clusters,
-						UpgradeOption: "Rolling",
+						UpgradeOption: upgradeOption,
+						SleepAfterMasterRestartMillis: int32(
+							sleepAfterMasterMs,
+						),
+						SleepAfterTServerRestartMillis: int32(
+							sleepAfterTServerMs,
+						),
 					}
 					r, response, err := c.UniverseUpgradesManagementAPI.UpgradeSystemd(
 						ctx, cUUID, d.Id()).SystemdUpgradeParams(req).Execute()
@@ -1002,7 +1260,7 @@ func resourceUniverseUpdate(
 					tflog.Info(ctx, "UpgradeSystemd task is executing")
 					err = utils.WaitForTask(
 						ctx,
-						*r.TaskUUID,
+						r.GetTaskUUID(),
 						cUUID,
 						c,
 						d.Timeout(schema.TimeoutUpdate),
@@ -1040,7 +1298,14 @@ func resourceUniverseUpdate(
 							UpgradeOption: "Rolling",
 							Clusters:      updateUni.UniverseDetails.Clusters,
 							NodeDetailsSet: buildNodeDetailsRespArrayToNodeDetailsArray(
-								updateUni.UniverseDetails.NodeDetailsSet),
+								updateUni.UniverseDetails.NodeDetailsSet,
+							),
+							SleepAfterMasterRestartMillis: int32(
+								sleepAfterMasterMs,
+							),
+							SleepAfterTServerRestartMillis: int32(
+								sleepAfterTServerMs,
+							),
 						}
 						r, response, err := c.UniverseUpgradesManagementAPI.ResizeNode(
 							ctx, cUUID, d.Id()).ResizeNodeParams(req).Execute()
@@ -1057,7 +1322,7 @@ func resourceUniverseUpdate(
 						tflog.Info(ctx, "ResizeNode task is executing")
 						err = utils.WaitForTask(
 							ctx,
-							*r.TaskUUID,
+							r.GetTaskUUID(),
 							cUUID,
 							c,
 							d.Timeout(schema.TimeoutUpdate),
@@ -1109,7 +1374,7 @@ func resourceUniverseUpdate(
 					tflog.Info(ctx, "UpdatePrimaryCluster task is executing")
 					err = utils.WaitForTask(
 						ctx,
-						*r.TaskUUID,
+						r.GetTaskUUID(),
 						cUUID,
 						c,
 						d.Timeout(schema.TimeoutUpdate),
@@ -1169,7 +1434,7 @@ func resourceUniverseUpdate(
 						return diag.FromErr(errMessage)
 					}
 					tflog.Info(ctx, "UpdateReadOnlyCluster task is executing")
-					err = utils.WaitForTask(ctx, *r.TaskUUID, cUUID, c, d.Timeout(schema.TimeoutUpdate))
+					err = utils.WaitForTask(ctx, r.GetTaskUUID(), cUUID, c, d.Timeout(schema.TimeoutUpdate))
 					if err != nil {
 						return diag.FromErr(err)
 					}
@@ -1190,6 +1455,7 @@ func resourceUniverseUpdate(
 			}
 			if diagErr := performVMImageUpgrade(
 				ctx, c, cUUID, d, updateUni, imageBundleUpgrades,
+				sleepAfterMasterMs, sleepAfterTServerMs,
 			); diagErr != nil {
 				return diagErr
 			}
@@ -1206,6 +1472,8 @@ func performVMImageUpgrade(
 	d *schema.ResourceData,
 	updateUni *client.UniverseResp,
 	imageBundleUpgrades []client.ImageBundleUpgradeInfo,
+	sleepAfterMasterMs int32,
+	sleepAfterTServerMs int32,
 ) diag.Diagnostics {
 	for _, ibUpgrade := range imageBundleUpgrades {
 		for k := range updateUni.UniverseDetails.Clusters {
@@ -1217,9 +1485,11 @@ func performVMImageUpgrade(
 		}
 	}
 	req := client.VMImageUpgradeParams{
-		Clusters:      updateUni.UniverseDetails.Clusters,
-		UpgradeOption: "Rolling",
-		ImageBundles:  imageBundleUpgrades,
+		Clusters:                       updateUni.UniverseDetails.Clusters,
+		UpgradeOption:                  "Rolling",
+		ImageBundles:                   imageBundleUpgrades,
+		SleepAfterMasterRestartMillis:  sleepAfterMasterMs,
+		SleepAfterTServerRestartMillis: sleepAfterTServerMs,
 	}
 	r, response, err := c.UniverseUpgradesManagementAPI.UpgradeVMImage(
 		ctx, cUUID, d.Id()).VmimageUpgradeParams(req).Execute()
@@ -1233,7 +1503,7 @@ func performVMImageUpgrade(
 		"UpgradeVMImage task is executing for %d cluster(s)",
 		len(imageBundleUpgrades)))
 	err = utils.WaitForTask(
-		ctx, *r.TaskUUID, cUUID, c, d.Timeout(schema.TimeoutUpdate))
+		ctx, r.GetTaskUUID(), cUUID, c, d.Timeout(schema.TimeoutUpdate))
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -1261,7 +1531,7 @@ func resourceUniverseDelete(
 	}
 
 	tflog.Debug(ctx, fmt.Sprintf("Waiting for universe %s to be deleted", d.Id()))
-	err = utils.WaitForTask(ctx, *r.TaskUUID, cUUID, c, d.Timeout(schema.TimeoutDelete))
+	err = utils.WaitForTask(ctx, r.GetTaskUUID(), cUUID, c, d.Timeout(schema.TimeoutDelete))
 	if err != nil {
 		return diag.FromErr(err)
 	}

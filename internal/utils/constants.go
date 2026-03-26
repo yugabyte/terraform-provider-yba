@@ -72,10 +72,6 @@ const (
 	// enforced during provider configuration.
 	YBATerraformProviderMinPreviewVersion = "2.23.1.0-b1"
 
-	// YBAAllowUniverseMinVersion specifies minimum version
-	// required to use Universe resource via YBA Terraform
-	YBAAllowUniverseMinVersion = "2.17.1.0-b371"
-
 	// YBAAllowEditProviderMinVersion specifies minimum version
 	// required to Edit a Provider (onprem or cloud) resource
 	// via YBA Terraform
