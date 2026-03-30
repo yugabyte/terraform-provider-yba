@@ -559,6 +559,140 @@ func buildRegions(regions []interface{}) []client.Region {
 	return result
 }
 
+// mergeOnPremRegionUUIDs merges UUIDs from old state into new config regions and marks
+// removed regions as inactive (Active: false) so the YBA API deactivates them.
+// Preserved UUIDs prevent YBA from re-creating regions on every update.
+func mergeOnPremRegionUUIDs(oldRegions []interface{}, newRegions []interface{}) []client.Region {
+	oldByCode := make(map[string]map[string]interface{})
+	for _, r := range oldRegions {
+		if regionMap, ok := r.(map[string]interface{}); ok {
+			if code, _ := regionMap["code"].(string); code != "" {
+				oldByCode[code] = regionMap
+			}
+		}
+	}
+
+	newRegionCodes := make(map[string]bool)
+	result := make([]client.Region, 0, len(newRegions))
+
+	for _, nr := range newRegions {
+		newMap, ok := nr.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		regionCode, _ := newMap["code"].(string)
+		newRegionCodes[regionCode] = true
+
+		latitude, _ := newMap["latitude"].(float64)
+		longitude, _ := newMap["longitude"].(float64)
+
+		var zones []client.AvailabilityZone
+		if old, exists := oldByCode[regionCode]; exists {
+			oldZonesRaw, _ := old["zones"].([]interface{})
+			zones = mergeOnPremZoneUUIDs(oldZonesRaw, newMap["zones"].([]interface{}))
+		} else {
+			zones = buildZones(newMap["zones"].([]interface{}))
+		}
+
+		region := client.Region{
+			Code:      utils.GetStringPointer(regionCode),
+			Name:      utils.GetStringPointer(regionCode),
+			Latitude:  utils.GetFloat64Pointer(latitude),
+			Longitude: utils.GetFloat64Pointer(longitude),
+			Zones:     zones,
+		}
+		if old, exists := oldByCode[regionCode]; exists {
+			if uuid, _ := old["uuid"].(string); uuid != "" {
+				region.Uuid = utils.GetStringPointer(uuid)
+			}
+		}
+		result = append(result, region)
+	}
+
+	// Deactivate removed regions; preserve UUID and zones so the API validator does not
+	// receive an incomplete region record.
+	for code, oldRegion := range oldByCode {
+		if !newRegionCodes[code] {
+			uuid, _ := oldRegion["uuid"].(string)
+			oldZonesRaw, _ := oldRegion["zones"].([]interface{})
+			latitude, _ := oldRegion["latitude"].(float64)
+			longitude, _ := oldRegion["longitude"].(float64)
+
+			region := client.Region{
+				Code:      utils.GetStringPointer(code),
+				Name:      utils.GetStringPointer(code),
+				Active:    utils.GetBoolPointer(false),
+				Latitude:  utils.GetFloat64Pointer(latitude),
+				Longitude: utils.GetFloat64Pointer(longitude),
+				Zones:     mergeOnPremZoneUUIDs(oldZonesRaw, oldZonesRaw),
+			}
+			if uuid != "" {
+				region.Uuid = utils.GetStringPointer(uuid)
+			}
+			result = append(result, region)
+		}
+	}
+
+	return result
+}
+
+// mergeOnPremZoneUUIDs merges UUIDs from old state zones into new config zones and
+// marks removed zones as inactive.
+func mergeOnPremZoneUUIDs(
+	oldZones []interface{},
+	newZones []interface{},
+) []client.AvailabilityZone {
+	oldByCode := make(map[string]map[string]interface{})
+	for _, z := range oldZones {
+		if zoneMap, ok := z.(map[string]interface{}); ok {
+			if code, _ := zoneMap["code"].(string); code != "" {
+				oldByCode[code] = zoneMap
+			}
+		}
+	}
+
+	newZoneCodes := make(map[string]bool)
+	result := make([]client.AvailabilityZone, 0, len(newZones))
+
+	for _, nz := range newZones {
+		newMap, ok := nz.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		zoneCode, _ := newMap["code"].(string)
+		newZoneCodes[zoneCode] = true
+
+		zone := client.AvailabilityZone{
+			Code: utils.GetStringPointer(zoneCode),
+			Name: zoneCode,
+		}
+		if old, exists := oldByCode[zoneCode]; exists {
+			if uuid, _ := old["uuid"].(string); uuid != "" {
+				zone.Uuid = utils.GetStringPointer(uuid)
+			}
+		}
+		result = append(result, zone)
+	}
+
+	// Deactivate removed zones.
+	for code, oldZone := range oldByCode {
+		if !newZoneCodes[code] {
+			uuid, _ := oldZone["uuid"].(string)
+			zone := client.AvailabilityZone{
+				Code:   utils.GetStringPointer(code),
+				Name:   code,
+				Active: utils.GetBoolPointer(false),
+			}
+			if uuid != "" {
+				zone.Uuid = utils.GetStringPointer(uuid)
+			}
+			result = append(result, zone)
+		}
+	}
+
+	return result
+}
+
 // buildZones builds zones for a region
 func buildZones(zones []interface{}) []client.AvailabilityZone {
 	result := make([]client.AvailabilityZone, 0)
@@ -1186,7 +1320,10 @@ func resourceOnPremProviderUpdate(
 	}
 
 	if d.HasChange("regions") {
-		providerReq.SetRegions(buildRegions(d.Get("regions").([]interface{})))
+		oldRegionsRaw, newRegionsRaw := d.GetChange("regions")
+		oldRegions, _ := oldRegionsRaw.([]interface{})
+		newRegions, _ := newRegionsRaw.([]interface{})
+		providerReq.SetRegions(mergeOnPremRegionUUIDs(oldRegions, newRegions))
 	}
 
 	if d.HasChange("ssh_user") || d.HasChange("ssh_port") || d.HasChange("skip_provisioning") ||

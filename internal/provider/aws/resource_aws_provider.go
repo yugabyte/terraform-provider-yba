@@ -77,7 +77,7 @@ func awsProviderSchema() map[string]*schema.Schema {
 	s["use_iam_instance_profile"] = &schema.Schema{
 		Type:          schema.TypeBool,
 		Optional:      true,
-		Computed:      true,
+		Default:       false,
 		ConflictsWith: []string{"access_key_id", "secret_access_key"},
 		Description: "Use IAM Role from the YugabyteDB Anywhere host. " +
 			"Provider creation will fail on insufficient permissions. Default is false.",
@@ -85,7 +85,6 @@ func awsProviderSchema() map[string]*schema.Schema {
 	s["hosted_zone_id"] = &schema.Schema{
 		Type:        schema.TypeString,
 		Optional:    true,
-		Computed:    true,
 		Description: "Hosted Zone ID corresponding to Amazon Route53.",
 	}
 	// Read-only fields from AWS cloud info
@@ -135,7 +134,7 @@ func awsProviderSchema() map[string]*schema.Schema {
 	s["skip_ssh_keypair_validation"] = &schema.Schema{
 		Type:     schema.TypeBool,
 		Optional: true,
-		Computed: true,
+		Default:  false,
 		Description: "Skip SSH keypair validation and upload to AWS. " +
 			"Only applies in self-managed mode (when ssh_keypair_name and " +
 			"ssh_private_key_content are set). Use when the keypair already exists " +
@@ -327,7 +326,6 @@ func awsZonesSchema() *schema.Schema {
 				"secondary_subnet": {
 					Type:             schema.TypeString,
 					Optional:         true,
-					Computed:         true,
 					DiffSuppressFunc: suppressIfAWSRegionsPureReorder,
 					Description:      "Secondary subnet ID for this zone.",
 				},

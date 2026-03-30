@@ -148,7 +148,8 @@ func TestBuildGCPZones(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := buildGCPZones(tt.input)
+			code, _ := tt.input["code"].(string)
+			result := buildGCPZones(code, tt.input)
 			if len(result) != tt.expected {
 				t.Errorf("expected %d zones, got %d", tt.expected, len(result))
 			}
@@ -162,13 +163,15 @@ func TestBuildGCPZonesValues(t *testing.T) {
 		"shared_subnet": "projects/my-project/regions/us-west1/subnetworks/my-subnet",
 	}
 
-	result := buildGCPZones(input)
+	result := buildGCPZones("us-west1", input)
 	if len(result) != 1 {
 		t.Fatalf("expected 1 zone, got %d", len(result))
 	}
 
 	zone := result[0]
-	// Zone code/name are empty - YBA will populate them
+	if zone.GetCode() != "us-west1" {
+		t.Errorf("expected zone code 'us-west1', got '%s'", zone.GetCode())
+	}
 	if zone.GetSubnet() != "projects/my-project/regions/us-west1/subnetworks/my-subnet" {
 		t.Errorf("expected subnet, got '%s'", zone.GetSubnet())
 	}

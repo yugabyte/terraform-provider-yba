@@ -122,9 +122,7 @@ func buildGCPRegions(regions []interface{}) []client.Region {
 		regionMap := r.(map[string]interface{})
 		regionCode := regionMap["code"].(string)
 
-		// Build zone with shared_subnet - YBA will auto-discover zone names
-		// This mirrors yba-cli behavior: buildGCPZones(region["shared-subnet"])
-		zones := buildGCPZones(regionMap)
+		zones := buildGCPZones(regionCode, regionMap)
 
 		region := client.Region{
 			Code:  utils.GetStringPointer(regionCode),
@@ -155,15 +153,15 @@ func buildGCPRegions(regions []interface{}) []client.Region {
 
 // buildGCPZones builds zones for a region using shared_subnet
 // Mirrors yba-cli: only sets subnet, YBA auto-discovers zone names
-func buildGCPZones(regionMap map[string]interface{}) []client.AvailabilityZone {
-	// Get shared_subnet for all zones in this region
+func buildGCPZones(regionCode string, regionMap map[string]interface{}) []client.AvailabilityZone {
 	sharedSubnet := ""
 	if v, ok := regionMap["shared_subnet"]; ok && v != nil {
 		sharedSubnet = v.(string)
 	}
 
-	// Create a single zone entry with the subnet - YBA will populate zone details
 	zone := client.AvailabilityZone{
+		Code:   utils.GetStringPointer(regionCode),
+		Name:   regionCode,
 		Subnet: utils.GetStringPointer(sharedSubnet),
 	}
 
@@ -261,7 +259,7 @@ func mergeRegionUUIDs(
 			zones = buildGCPZonesFromState(oldRegion, newMap)
 		} else {
 			// New region: send placeholder zone so YBA auto-discovers zones.
-			zones = buildGCPZones(newMap)
+			zones = buildGCPZones(regionCode, newMap)
 		}
 
 		// Build the region
@@ -297,6 +295,10 @@ func mergeRegionUUIDs(
 	for code, oldRegion := range oldByCode {
 		if !newRegionCodes[code] {
 			uuid, _ := oldRegion["uuid"].(string)
+			gcpInfo := &client.GCPRegionCloudInfo{}
+			if v, ok := oldRegion["instance_template"].(string); ok && v != "" {
+				gcpInfo.SetInstanceTemplate(v)
+			}
 			region := client.Region{
 				Code:   utils.GetStringPointer(code),
 				Name:   utils.GetStringPointer(code),
@@ -304,7 +306,7 @@ func mergeRegionUUIDs(
 				Zones:  buildGCPZonesFromState(oldRegion, oldRegion),
 				Details: &client.RegionDetails{
 					CloudInfo: &client.RegionCloudInfo{
-						Gcp: &client.GCPRegionCloudInfo{},
+						Gcp: gcpInfo,
 					},
 				},
 			}
@@ -331,13 +333,15 @@ func buildGCPZonesFromState(
 		newSubnet = v.(string)
 	}
 
+	regionCode, _ := newRegion["code"].(string)
+
 	oldZonesRaw, ok := oldRegion["zones"]
 	if !ok || oldZonesRaw == nil {
-		return buildGCPZones(newRegion)
+		return buildGCPZones(regionCode, newRegion)
 	}
 	oldZones, ok := oldZonesRaw.([]interface{})
 	if !ok || len(oldZones) == 0 {
-		return buildGCPZones(newRegion)
+		return buildGCPZones(regionCode, newRegion)
 	}
 
 	zones := make([]client.AvailabilityZone, 0, len(oldZones))
@@ -362,7 +366,7 @@ func buildGCPZonesFromState(
 	}
 
 	if len(zones) == 0 {
-		return buildGCPZones(newRegion)
+		return buildGCPZones(regionCode, newRegion)
 	}
 	return zones
 }

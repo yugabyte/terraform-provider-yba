@@ -18,6 +18,7 @@ package azure
 import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	client "github.com/yugabyte/platform-go-client"
+	"github.com/yugabyte/terraform-provider-yba/internal/provider/providerutil"
 	"github.com/yugabyte/terraform-provider-yba/internal/utils"
 )
 
@@ -96,19 +97,22 @@ func buildAzureRegions(regions []interface{}) []client.Region {
 		// Build zones for this region
 		zones := buildAzureZones(regionMap["zones"].([]interface{}))
 
+		azuInfo := &client.AzureRegionCloudInfo{
+			Vnet:            utils.GetStringPointer(regionMap["vnet"].(string)),
+			SecurityGroupId: utils.GetStringPointer(regionMap["security_group_id"].(string)),
+		}
+		if v, ok := regionMap["resource_group"].(string); ok && v != "" {
+			azuInfo.SetAzuRGOverride(v)
+		}
+		if v, ok := regionMap["network_resource_group"].(string); ok && v != "" {
+			azuInfo.SetAzuNetworkRGOverride(v)
+		}
 		region := client.Region{
 			Code:  utils.GetStringPointer(regionCode),
 			Name:  utils.GetStringPointer(regionCode),
 			Zones: zones,
 			Details: &client.RegionDetails{
-				CloudInfo: &client.RegionCloudInfo{
-					Azu: &client.AzureRegionCloudInfo{
-						Vnet: utils.GetStringPointer(regionMap["vnet"].(string)),
-						SecurityGroupId: utils.GetStringPointer(
-							regionMap["security_group_id"].(string),
-						),
-					},
-				},
+				CloudInfo: &client.RegionCloudInfo{Azu: azuInfo},
 			},
 		}
 		result = append(result, region)
@@ -232,19 +236,22 @@ func mergeRegionUUIDs(
 		}
 		newZonesRaw, _ := newMap["zones"].([]interface{})
 
+		azuInfo := &client.AzureRegionCloudInfo{
+			Vnet:            utils.GetStringPointer(newMap["vnet"].(string)),
+			SecurityGroupId: utils.GetStringPointer(newMap["security_group_id"].(string)),
+		}
+		if v := providerutil.GetString(newMap, "resource_group"); v != "" {
+			azuInfo.SetAzuRGOverride(v)
+		}
+		if v := providerutil.GetString(newMap, "network_resource_group"); v != "" {
+			azuInfo.SetAzuNetworkRGOverride(v)
+		}
 		region := client.Region{
 			Code:  utils.GetStringPointer(regionCode),
 			Name:  utils.GetStringPointer(regionCode),
 			Zones: mergeZoneUUIDs(oldZones, newZonesRaw),
 			Details: &client.RegionDetails{
-				CloudInfo: &client.RegionCloudInfo{
-					Azu: &client.AzureRegionCloudInfo{
-						Vnet: utils.GetStringPointer(newMap["vnet"].(string)),
-						SecurityGroupId: utils.GetStringPointer(
-							newMap["security_group_id"].(string),
-						),
-					},
-				},
+				CloudInfo: &client.RegionCloudInfo{Azu: azuInfo},
 			},
 		}
 		if old, exists := oldByCode[regionCode]; exists {
@@ -260,20 +267,25 @@ func mergeRegionUUIDs(
 		if !newRegionCodes[code] {
 			uuid, _ := oldRegion["uuid"].(string)
 			oldZonesRaw, _ := oldRegion["zones"].([]interface{})
+			azuInfo := &client.AzureRegionCloudInfo{
+				Vnet: utils.GetStringPointer(providerutil.GetString(oldRegion, "vnet")),
+				SecurityGroupId: utils.GetStringPointer(
+					providerutil.GetString(oldRegion, "security_group_id"),
+				),
+			}
+			if v := providerutil.GetString(oldRegion, "resource_group"); v != "" {
+				azuInfo.SetAzuRGOverride(v)
+			}
+			if v := providerutil.GetString(oldRegion, "network_resource_group"); v != "" {
+				azuInfo.SetAzuNetworkRGOverride(v)
+			}
 			region := client.Region{
 				Code:   utils.GetStringPointer(code),
 				Name:   utils.GetStringPointer(code),
 				Active: utils.GetBoolPointer(false),
 				Zones:  mergeZoneUUIDs(oldZonesRaw, oldZonesRaw), // preserve all zones as-is
 				Details: &client.RegionDetails{
-					CloudInfo: &client.RegionCloudInfo{
-						Azu: &client.AzureRegionCloudInfo{
-							Vnet: utils.GetStringPointer(oldRegion["vnet"].(string)),
-							SecurityGroupId: utils.GetStringPointer(
-								oldRegion["security_group_id"].(string),
-							),
-						},
-					},
+					CloudInfo: &client.RegionCloudInfo{Azu: azuInfo},
 				},
 			}
 			if uuid != "" {
@@ -291,19 +303,20 @@ func flattenAzureRegions(regions []client.Region) []map[string]interface{} {
 	result := make([]map[string]interface{}, 0)
 
 	for _, region := range regions {
-		r := map[string]interface{}{
-			"uuid":  region.GetUuid(),
-			"code":  region.GetCode(),
-			"name":  region.GetCode(),
-			"zones": flattenAzureZones(region.GetZones()),
-		}
-
-		// Extract Azure-specific region info
 		details := region.GetDetails()
 		cloudInfo := details.GetCloudInfo()
 		azureInfo := cloudInfo.GetAzu()
-		r["vnet"] = azureInfo.GetVnet()
-		r["security_group_id"] = azureInfo.GetSecurityGroupId()
+
+		r := map[string]interface{}{
+			"uuid":                   region.GetUuid(),
+			"code":                   region.GetCode(),
+			"name":                   region.GetCode(),
+			"zones":                  flattenAzureZones(region.GetZones()),
+			"vnet":                   azureInfo.GetVnet(),
+			"security_group_id":      azureInfo.GetSecurityGroupId(),
+			"resource_group":         azureInfo.GetAzuRGOverride(),
+			"network_resource_group": azureInfo.GetAzuNetworkRGOverride(),
+		}
 
 		result = append(result, r)
 	}

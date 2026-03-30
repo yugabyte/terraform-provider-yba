@@ -68,8 +68,8 @@ func gcpProviderSchema() map[string]*schema.Schema {
 	s["use_host_credentials"] = &schema.Schema{
 		Type:          schema.TypeBool,
 		Optional:      true,
+		Default:       false,
 		ConflictsWith: []string{"credentials"},
-		Computed:      true,
 		Description: "Use credentials from the YugabyteDB Anywhere host. " +
 			"Default is false.",
 	}
@@ -82,34 +82,31 @@ func gcpProviderSchema() map[string]*schema.Schema {
 	s["shared_vpc_project_id"] = &schema.Schema{
 		Type:     schema.TypeString,
 		Optional: true,
-		Computed: true,
 		Description: "Shared VPC project ID. Use this to connect resources " +
 			"from multiple GCP projects to a common VPC.",
 	}
 	s["network"] = &schema.Schema{
 		Type:        schema.TypeString,
 		Optional:    true,
-		Computed:    true,
 		Description: "VPC network name in GCP.",
 	}
 	s["use_host_vpc"] = &schema.Schema{
 		Type:     schema.TypeBool,
 		Optional: true,
-		Computed: true,
+		Default:  false,
 		Description: "Use VPC from the YugabyteDB Anywhere host. " +
 			"If false, network must be specified. Default is false.",
 	}
 	s["create_vpc"] = &schema.Schema{
 		Type:     schema.TypeBool,
 		Optional: true,
-		Computed: true,
+		Default:  false,
 		Description: "Create a new VPC in GCP. " +
 			"If true, network must be specified as the new VPC name. Default is false.",
 	}
 	s["yb_firewall_tags"] = &schema.Schema{
 		Type:        schema.TypeString,
 		Optional:    true,
-		Computed:    true,
 		Description: "Tags for firewall rules in GCP.",
 	}
 	// Read-only GCP fields
@@ -202,7 +199,6 @@ func gcpRegionsSchema() *schema.Schema {
 				"instance_template": {
 					Type:             schema.TypeString,
 					Optional:         true,
-					Computed:         true,
 					DiffSuppressFunc: suppressIfGCPRegionsPureReorder,
 					Description:      "Instance template for this region.",
 				},
@@ -554,7 +550,11 @@ func resourceGCPProviderUpdate(
 			gcpInfo.SetGceProject(d.Get("project_id").(string))
 		}
 		if d.HasChange("shared_vpc_project_id") {
-			gcpInfo.SetSharedVPCProject(d.Get("shared_vpc_project_id").(string))
+			if v := d.Get("shared_vpc_project_id").(string); v != "" {
+				gcpInfo.SetSharedVPCProject(v)
+			} else {
+				gcpInfo.SharedVPCProject = nil
+			}
 		}
 
 		cloudInfo.SetGcp(gcpInfo)

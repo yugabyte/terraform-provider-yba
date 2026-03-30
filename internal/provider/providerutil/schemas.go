@@ -36,7 +36,7 @@ func CommonProviderSchema() map[string]*schema.Schema {
 		"air_gap_install": {
 			Type:     schema.TypeBool,
 			Optional: true,
-			Computed: true,
+			Default:  false,
 			Description: "Flag indicating if YugabyteDB nodes are installed in an air-gapped " +
 				"environment, lacking access to the public internet for package downloads. " +
 				"Default is false.",
@@ -53,7 +53,7 @@ func CommonProviderSchema() map[string]*schema.Schema {
 		"set_up_chrony": {
 			Type:     schema.TypeBool,
 			Optional: true,
-			Computed: true,
+			Default:  false,
 			Description: "Set up NTP chrony service. When true with empty ntp_servers, " +
 				"uses cloud provider's NTP server (e.g., AWS Time Sync). " +
 				"When true with ntp_servers specified, uses custom NTP servers. " +
