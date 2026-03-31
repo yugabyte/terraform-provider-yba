@@ -281,7 +281,6 @@ Required:
 
 Optional:
 
-- `global_yb_image` (String) Global YB image for the bundle.
 - `region_overrides` (Map of String) Per-region AMI overrides for AWS. Provide region code as the key and AMI ID as the value. Required: one override per region in the provider.
 - `ssh_port` (Number) SSH port for the image. Default is 22.
 - `use_imds_v2` (Boolean) Use IMDS v2 for the image. Default is true. Set to false to allow IMDSv1 (not recommended). Note: Terraform may show a cosmetic plan-time warning for this field when omitted from config - this is a known legacy SDK limitation and does not affect behaviour.

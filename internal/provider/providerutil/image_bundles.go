@@ -32,48 +32,6 @@ const (
 	ImageBundleTypeCustom        = "CUSTOM"
 )
 
-// DetectUserBundleRemoval checks if user removed bundles from config.
-func DetectUserBundleRemoval(oldBundles, newBundles []interface{}) bool {
-	// If the user specifies an empty list of bundles in their config, but the state has bundles,
-	// Terraform sets newBundles = oldBundles because of Optional+Computed.
-	// So we need to determine if newBundles is EXACTLY a copy of oldBundles.
-	// If it is, and there are custom bundles, it means the user probably removed the block.
-	if len(oldBundles) != len(newBundles) {
-		return false
-	}
-
-	// If there are no custom bundles, we can't tell if it was removed or just wasn't there.
-	hasCustom := false
-	for _, b := range oldBundles {
-		bundleMap, ok := b.(map[string]interface{})
-		if !ok {
-			continue
-		}
-		metadataType, _ := bundleMap["metadata_type"].(string)
-		if metadataType != ImageBundleTypeYBAActive {
-			hasCustom = true
-		}
-	}
-	if !hasCustom {
-		return false
-	}
-
-	// If we have custom bundles, let's see if new is a perfect copy of old.
-	// We'll just check UUIDs and Names
-	for i := range oldBundles {
-		oldB := oldBundles[i].(map[string]interface{})
-		newB := newBundles[i].(map[string]interface{})
-
-		if GetString(oldB, "name") != GetString(newB, "name") ||
-			GetString(oldB, "uuid") != GetString(newB, "uuid") ||
-			oldB["use_as_default"] != newB["use_as_default"] {
-			return false
-		}
-	}
-
-	return true
-}
-
 // BuildImageBundleFromState converts state data to client.ImageBundle.
 func BuildImageBundleFromState(bundleMap map[string]interface{}) client.ImageBundle {
 	name, _ := bundleMap["name"].(string)
@@ -114,15 +72,20 @@ func BuildImageBundleFromState(bundleMap map[string]interface{}) client.ImageBun
 				bundle.Details.UseIMDSv2 = utils.GetBoolPointer(v)
 			}
 
-			if regionOverrides, ok := det["region_overrides"].(map[string]interface{}); ok &&
-				len(regionOverrides) > 0 {
-				overridesMap := make(map[string]client.BundleInfo)
-				for region, image := range regionOverrides {
-					overridesMap[region] = client.BundleInfo{
-						YbImage: utils.GetStringPointer(image.(string)),
+			// region_overrides is present in the AWS schema; absent for GCP/Azure so no-op there.
+			if overrides, ok := det["region_overrides"].(map[string]interface{}); ok &&
+				len(overrides) > 0 {
+				regionMap := make(map[string]client.BundleInfo)
+				for regionCode, amiID := range overrides {
+					if ami, ok := amiID.(string); ok && ami != "" {
+						regionMap[regionCode] = client.BundleInfo{
+							YbImage: utils.GetStringPointer(ami),
+						}
 					}
 				}
-				bundle.Details.Regions = &overridesMap
+				if len(regionMap) > 0 {
+					bundle.Details.SetRegions(regionMap)
+				}
 			}
 		}
 	}
@@ -189,9 +152,6 @@ func MergeImageBundlesForUpdate(
 			}
 		}
 	}
-
-	// Detect if user removed bundles from config
-	// userBundlesRemoved := DetectUserBundleRemoval(oldBundlesList, newBundlesList)
 
 	// YBA-managed bundles are always preserved from state (via yba_managed_image_bundles).
 	// Custom image_bundles are processed separately from new config.
@@ -309,10 +269,6 @@ func MergeImageBundlesForUpdate(
 		}
 	}
 
-	// We no longer rely on userBundlesRemoved to conditionally omit YBA bundles.
-	// We ALWAYS preserve YBA managed bundles unless they were explicitly changed
-	// in a way that requires replacing them (which isn't really a thing for YBA_ACTIVE bundles).
-
 	// Process user bundles from new value
 	for _, b := range newBundlesList {
 		bundleMap, ok := b.(map[string]interface{})
@@ -334,17 +290,17 @@ func MergeImageBundlesForUpdate(
 		// Get details
 		var arch, sshUser, globalYbImage string
 		var sshPort int
-		var regionOverrides map[string]interface{}
 		var useIMDSv2 bool
 		var hasUseIMDSv2 bool
+		var det map[string]interface{}
 
 		if details, ok := bundleMap["details"].([]interface{}); ok && len(details) > 0 {
-			if det, ok := details[0].(map[string]interface{}); ok {
+			if d, ok := details[0].(map[string]interface{}); ok {
+				det = d
 				arch, _ = det["arch"].(string)
 				sshUser, _ = det["ssh_user"].(string)
 				sshPort, _ = det["ssh_port"].(int)
 				globalYbImage, _ = det["global_yb_image"].(string)
-				regionOverrides, _ = det["region_overrides"].(map[string]interface{})
 				useIMDSv2, hasUseIMDSv2 = det["use_imds_v2"].(bool)
 			}
 		}
@@ -370,15 +326,20 @@ func MergeImageBundlesForUpdate(
 			bundle.Details.UseIMDSv2 = utils.GetBoolPointer(useIMDSv2)
 		}
 
-		// Add region overrides if present
-		if len(regionOverrides) > 0 {
-			overridesMap := make(map[string]client.BundleInfo)
-			for region, image := range regionOverrides {
-				overridesMap[region] = client.BundleInfo{
-					YbImage: utils.GetStringPointer(image.(string)),
+		// region_overrides is in the AWS schema; present in the map when set, absent for GCP/Azure.
+		if overrides, ok := det["region_overrides"].(map[string]interface{}); ok &&
+			len(overrides) > 0 {
+			regionMap := make(map[string]client.BundleInfo)
+			for regionCode, amiID := range overrides {
+				if ami, ok := amiID.(string); ok && ami != "" {
+					regionMap[regionCode] = client.BundleInfo{
+						YbImage: utils.GetStringPointer(ami),
+					}
 				}
 			}
-			bundle.Details.Regions = &overridesMap
+			if len(regionMap) > 0 {
+				bundle.Details.SetRegions(regionMap)
+			}
 		}
 
 		// Copy UUID from state
@@ -585,7 +546,7 @@ func BundleContentChanged(old, new map[string]interface{}) bool {
 		return true
 	}
 
-	// Compare region_overrides
+	// Compare region_overrides (AWS-specific; absent for GCP/Azure, treated as empty map).
 	oldOverrides, _ := oldDetails["region_overrides"].(map[string]interface{})
 	newOverrides, _ := newDetails["region_overrides"].(map[string]interface{})
 	if len(oldOverrides) != len(newOverrides) {
@@ -738,156 +699,31 @@ func HasImageBundleRealChange(d *schema.ResourceDiff) bool {
 	return false
 }
 
-// CopyBundleMap creates a deep copy of a bundle map.
-func CopyBundleMap(original map[string]interface{}) map[string]interface{} {
-	cp := make(map[string]interface{})
-	for k, v := range original {
-		if k == "details" {
-			if details, ok := v.([]interface{}); ok && len(details) > 0 {
-				if detMap, ok := details[0].(map[string]interface{}); ok {
-					detCopy := make(map[string]interface{})
-					for dk, dv := range detMap {
-						detCopy[dk] = dv
-					}
-					cp[k] = []interface{}{detCopy}
-					continue
-				}
-			}
-		}
-		cp[k] = v
-	}
-	return cp
-}
-
-// PreserveYBAManagedBundlesInPlan ensures YBA-managed bundles are preserved in the plan.
-// It injects any YBA-managed bundles from state that the user omitted from their config,
-// preventing misleading plan diffs that show YBA bundles being removed.
-func PreserveYBAManagedBundlesInPlan(ctx context.Context, d *schema.ResourceDiff) error {
-	// If there's no change to image_bundles, we don't need to manipulate the plan.
-	if !d.HasChange("image_bundles") {
-		return nil
-	}
-
-	oldRaw, newRaw := d.GetChange("image_bundles")
-
-	// TypeList returns []interface{} directly
-	oldBundles, _ := oldRaw.([]interface{})
-	newBundles, _ := newRaw.([]interface{})
-
-	// Find YBA-managed bundles in old state
-	var ybaManagedBundles []interface{}
-	for _, b := range oldBundles {
-		bundleMap, ok := b.(map[string]interface{})
-		if !ok {
-			continue
-		}
-		metadataType, _ := bundleMap["metadata_type"].(string)
-		if metadataType == ImageBundleTypeYBAActive {
-			ybaManagedBundles = append(ybaManagedBundles, bundleMap)
-		}
-	}
-
-	if len(ybaManagedBundles) == 0 {
-		return nil
-	}
-
-	// Check if YBA-managed bundles are already in the new value (by name)
-	newBundleNames := make(map[string]bool)
-	for _, b := range newBundles {
-		if bundleMap, ok := b.(map[string]interface{}); ok {
-			if name, _ := bundleMap["name"].(string); name != "" {
-				newBundleNames[name] = true
-			}
-		}
-	}
-
-	// Since we ALWAYS preserve YBA-managed bundles during MergeImageBundlesForUpdate,
-	// we must also force them into the new plan so that Terraform doesn't falsely
-	// show them as being "removed".
-	needsMerge := false
-	for _, ybaBundle := range ybaManagedBundles {
-		bundleMap := ybaBundle.(map[string]interface{})
-		name, _ := bundleMap["name"].(string)
-		if !newBundleNames[name] {
-			needsMerge = true
-			break
-		}
-	}
-
-	if !needsMerge {
-		return nil
-	}
-
-	// Build a map of architectures to the name of the bundle the user has marked as default
-	userDefaultByArch := make(map[string]string)
-	for _, b := range newBundles {
-		if bundleMap, ok := b.(map[string]interface{}); ok {
-			if useAsDefault, _ := bundleMap["use_as_default"].(bool); useAsDefault {
-				if details, ok := bundleMap["details"].([]interface{}); ok && len(details) > 0 {
-					if det, ok := details[0].(map[string]interface{}); ok {
-						if arch, _ := det["arch"].(string); arch != "" {
-							if name, _ := bundleMap["name"].(string); name != "" {
-								userDefaultByArch[arch] = name
-							}
-						}
-					}
-				}
-			}
-		}
-	}
-
-	// Build merged bundle list (using slice for TypeList)
-	var mergedList []interface{}
-
-	// Add all new bundles first (user-provided bundles)
-	for _, b := range newBundles {
-		mergedList = append(mergedList, b)
-	}
-
-	// Add YBA-managed bundles that aren't already in new value
-	for _, ybaBundle := range ybaManagedBundles {
-		bundleMap := ybaBundle.(map[string]interface{})
-		name, _ := bundleMap["name"].(string)
-
-		if newBundleNames[name] {
-			continue
-		}
-
-		// Always create a copy to avoid modifying original state
-		bundleCopy := CopyBundleMap(bundleMap)
-
-		// Check if user has a default for this arch in their custom bundles
-		// and unmark the YBA bundle if necessary
-		if details, ok := bundleMap["details"].([]interface{}); ok && len(details) > 0 {
-			if det, ok := details[0].(map[string]interface{}); ok {
-				if arch, _ := det["arch"].(string); arch != "" {
-					if customDefaultName, hasCustomDefault := userDefaultByArch[arch]; hasCustomDefault {
-						// Only unmark if the YBA bundle is NOT the one the user marked as default
-						if name != customDefaultName {
-							bundleCopy["use_as_default"] = false
-						}
-					}
-				}
-			}
-		}
-
-		mergedList = append(mergedList, bundleCopy)
-	}
-
-	if err := d.SetNew("image_bundles", mergedList); err != nil {
-		return err
-	}
-
-	return nil
-}
-
 // ValidateImageBundles checks image_bundles for duplicate names and duplicate
-// use_as_default=true within the same architecture.
+// use_as_default=true within the same architecture, including cross-block conflicts
+// with yba_managed_image_bundles entries that also have use_as_default=true.
 func ValidateImageBundles(d *schema.ResourceDiff) error {
 	bundles, _ := d.Get("image_bundles").([]interface{})
 
 	seenNames := make(map[string]bool)
+	// Seed defaultByArch from yba_managed_image_bundles so that cross-block
+	// conflicts are detected (e.g. both blocks claim use_as_default=true for x86_64).
 	defaultByArch := make(map[string]bool)
+	if ybaBundles, ok := d.Get("yba_managed_image_bundles").([]interface{}); ok {
+		for _, b := range ybaBundles {
+			bm, ok := b.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			arch, _ := bm["arch"].(string)
+			if arch == "" {
+				continue
+			}
+			if useAsDefault, _ := bm["use_as_default"].(bool); useAsDefault {
+				defaultByArch[arch] = true
+			}
+		}
+	}
 
 	for _, b := range bundles {
 		m, ok := b.(map[string]interface{})
@@ -921,7 +757,8 @@ func ValidateImageBundles(d *schema.ResourceDiff) error {
 			}
 			if defaultByArch[arch] {
 				return fmt.Errorf(
-					"multiple image_bundles have use_as_default=true for arch %q: "+
+					"multiple bundles have use_as_default=true for arch %q (across "+
+						"image_bundles and yba_managed_image_bundles): "+
 						"at most one bundle per architecture can be the default",
 					arch,
 				)
@@ -995,18 +832,40 @@ func MarkVersionComputedIfChanged(
 		}
 	}
 
-	return PreserveYBAManagedBundlesInPlan(ctx, d)
+	return nil
 }
 
 // ValidateNewBundlesNotDefault rejects use_as_default=true on a new bundle (no UUID)
-// during UPDATE. createBundle rejects this when another bundle is already the default;
-// add the bundle first (use_as_default=false) then promote it in a subsequent apply.
+// during UPDATE, but only when an existing bundle for the same arch already exists.
+// If no bundle for that arch exists yet, setting use_as_default=true on the first one
+// is valid. The restriction exists because the API's createBundle rejects a new bundle
+// that would compete with an already-existing default for the same architecture.
 func ValidateNewBundlesNotDefault(d *schema.ResourceDiff) error {
 	if d.Id() == "" {
-		return nil // creates are fine - no existing default yet
+		return nil // creates are fine - no existing bundles yet
 	}
 
 	bundles, _ := d.Get("image_bundles").([]interface{})
+
+	// Build set of arches that already have an existing bundle (have a uuid).
+	existingArchs := make(map[string]bool)
+	for _, b := range bundles {
+		m, ok := b.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if uuid, _ := m["uuid"].(string); uuid == "" {
+			continue
+		}
+		details, _ := m["details"].([]interface{})
+		if len(details) > 0 {
+			det, _ := details[0].(map[string]interface{})
+			if arch, _ := det["arch"].(string); arch != "" {
+				existingArchs[arch] = true
+			}
+		}
+	}
+
 	for _, b := range bundles {
 		m, ok := b.(map[string]interface{})
 		if !ok {
@@ -1015,18 +874,45 @@ func ValidateNewBundlesNotDefault(d *schema.ResourceDiff) error {
 		if uuid, _ := m["uuid"].(string); uuid != "" {
 			continue // existing bundle - can freely change its default flag
 		}
-		if useAsDefault, _ := m["use_as_default"].(bool); useAsDefault {
+		if useAsDefault, _ := m["use_as_default"].(bool); !useAsDefault {
+			continue
+		}
+		// New bundle with use_as_default=true: only reject if an existing bundle
+		// for the same arch is already present (would conflict at the API layer).
+		details, _ := m["details"].([]interface{})
+		var arch string
+		if len(details) > 0 {
+			det, _ := details[0].(map[string]interface{})
+			arch, _ = det["arch"].(string)
+		}
+		if existingArchs[arch] {
 			name, _ := m["name"].(string)
 			return fmt.Errorf(
 				"image bundle %q is new (no uuid yet) and cannot have use_as_default=true "+
-					"in the same apply: add it first with use_as_default=false, then set it "+
-					"as default in a subsequent apply once it has been created",
-				name,
+					"in the same apply when an existing bundle for arch %q already exists: "+
+					"add it first with use_as_default=false, then promote it in a subsequent apply",
+				name, arch,
 			)
 		}
 	}
 
 	ybaBundles, _ := d.Get("yba_managed_image_bundles").([]interface{})
+
+	// Build set of arches that already have an existing YBA-managed bundle.
+	existingYBAArchs := make(map[string]bool)
+	for _, b := range ybaBundles {
+		m, ok := b.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if uuid, _ := m["uuid"].(string); uuid == "" {
+			continue
+		}
+		if arch, _ := m["arch"].(string); arch != "" {
+			existingYBAArchs[arch] = true
+		}
+	}
+
 	for _, b := range ybaBundles {
 		m, ok := b.(map[string]interface{})
 		if !ok {
@@ -1035,12 +921,16 @@ func ValidateNewBundlesNotDefault(d *schema.ResourceDiff) error {
 		if uuid, _ := m["uuid"].(string); uuid != "" {
 			continue
 		}
-		if useAsDefault, _ := m["use_as_default"].(bool); useAsDefault {
-			arch, _ := m["arch"].(string)
+		if useAsDefault, _ := m["use_as_default"].(bool); !useAsDefault {
+			continue
+		}
+		arch, _ := m["arch"].(string)
+		if existingYBAArchs[arch] {
 			return fmt.Errorf(
 				"yba_managed_image_bundles entry for arch %q is new (no uuid yet) and cannot "+
-					"have use_as_default=true in the same apply: add it first with "+
-					"use_as_default=false, then set it as default in a subsequent apply",
+					"have use_as_default=true in the same apply when an existing bundle for that "+
+					"arch already exists: add it first with use_as_default=false, then promote "+
+					"it in a subsequent apply",
 				arch,
 			)
 		}

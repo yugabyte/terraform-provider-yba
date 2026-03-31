@@ -78,21 +78,12 @@ func FlattenYBADefaultImageBundles(bundles []client.ImageBundle) []map[string]in
 
 func flattenImageBundleDetails(details client.ImageBundleDetails) []map[string]interface{} {
 	d := map[string]interface{}{
-		"arch":             details.GetArch(),
-		"ssh_user":         details.GetSshUser(),
-		"ssh_port":         details.GetSshPort(),
-		"global_yb_image":  details.GetGlobalYbImage(),
-		"region_overrides": flattenRegionOverrides(details.GetRegions()),
+		"arch":            details.GetArch(),
+		"ssh_user":        details.GetSshUser(),
+		"ssh_port":        details.GetSshPort(),
+		"global_yb_image": details.GetGlobalYbImage(),
 	}
 	return []map[string]interface{}{d}
-}
-
-func flattenRegionOverrides(overrides map[string]client.BundleInfo) map[string]interface{} {
-	result := make(map[string]interface{})
-	for k, v := range overrides {
-		result[k] = v.GetYbImage()
-	}
-	return result
 }
 
 // FlattenAccessKeys converts API access keys to schema format

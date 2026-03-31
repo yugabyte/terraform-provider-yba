@@ -308,7 +308,7 @@ Read-Only:
 
 Required:
 
-- `details` (Block List, Min: 1, Max: 1) Image bundle details including architecture and SSH configuration. (see [below for nested schema](#nestedblock--image_bundles--details))
+- `details` (Block List, Min: 1, Max: 1) Image bundle details including SSH configuration. Architecture is always x86_64 for this cloud provider. (see [below for nested schema](#nestedblock--image_bundles--details))
 - `name` (String) Name of the image bundle.
 
 Optional:
@@ -324,13 +324,11 @@ Read-Only:
 
 Required:
 
-- `arch` (String) Image bundle architecture. Allowed values: x86_64, aarch64.
 - `ssh_user` (String) SSH user for the image.
 
 Optional:
 
 - `global_yb_image` (String) Global YB image for the bundle.
-- `region_overrides` (Map of String) Region overrides for the bundle. Provide region code as the key and override image as the value.
 - `ssh_port` (Number) SSH port for the image. Default is 22.
 
 

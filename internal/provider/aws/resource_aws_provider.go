@@ -24,6 +24,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 	client "github.com/yugabyte/platform-go-client"
 	"github.com/yugabyte/terraform-provider-yba/internal/provider/providerutil"
 	"github.com/yugabyte/terraform-provider-yba/internal/utils"
@@ -167,7 +168,6 @@ func awsImageBundleSchema() *schema.Schema {
 			"At least one image_bundles or yba_managed_image_bundles block must be specified.",
 		Type:     schema.TypeList,
 		Optional: true,
-		Computed: true,
 		Elem: &schema.Resource{
 			Schema: map[string]*schema.Schema{
 				"uuid": {
@@ -202,6 +202,10 @@ func awsImageBundleSchema() *schema.Schema {
 								Type:        schema.TypeString,
 								Required:    true,
 								Description: "Image bundle architecture. Allowed values: x86_64, aarch64.",
+								ValidateFunc: validation.StringInSlice(
+									[]string{"x86_64", "aarch64"},
+									false,
+								),
 							},
 							"ssh_user": {
 								Type:        schema.TypeString,
@@ -223,12 +227,6 @@ func awsImageBundleSchema() *schema.Schema {
 									"Note: Terraform may show a cosmetic plan-time warning for this field " +
 									"when omitted from config - this is a known legacy SDK limitation " +
 									"and does not affect behaviour.",
-							},
-							"global_yb_image": {
-								Type:        schema.TypeString,
-								Optional:    true,
-								Computed:    true,
-								Description: "Global YB image for the bundle.",
 							},
 							"region_overrides": {
 								Type:     schema.TypeMap,
@@ -359,7 +357,7 @@ func resourceAWSProviderCreate(
 	// Build image bundles with AWS-specific region overrides - TypeList returns []interface{}
 	var imageBundles []client.ImageBundle
 	if v := d.Get("image_bundles"); v != nil && len(v.([]interface{})) > 0 {
-		imageBundles = append(imageBundles, providerutil.BuildImageBundles(v.([]interface{}))...)
+		imageBundles = append(imageBundles, buildAWSImageBundles(v.([]interface{}))...)
 	}
 	if v := d.Get("yba_managed_image_bundles"); v != nil && len(v.([]interface{})) > 0 {
 		imageBundles = append(

@@ -340,7 +340,6 @@ func TestBuildAWSImageBundles(t *testing.T) {
 							"ssh_user":         "ec2-user",
 							"ssh_port":         22,
 							"use_imds_v2":      true,
-							"global_yb_image":  "ami-12345",
 							"region_overrides": map[string]interface{}{},
 						},
 					},
@@ -367,11 +366,10 @@ func TestBuildAWSImageBundlesValues(t *testing.T) {
 			"use_as_default": true,
 			"details": []interface{}{
 				map[string]interface{}{
-					"arch":            "x86_64",
-					"ssh_user":        "centos",
-					"ssh_port":        22,
-					"use_imds_v2":     true,
-					"global_yb_image": "ami-global-123",
+					"arch":        "x86_64",
+					"ssh_user":    "centos",
+					"ssh_port":    22,
+					"use_imds_v2": true,
 					"region_overrides": map[string]interface{}{
 						"us-west-2": "ami-west-123",
 						"us-east-1": "ami-east-123",
@@ -406,9 +404,6 @@ func TestBuildAWSImageBundlesValues(t *testing.T) {
 	}
 	if !details.GetUseIMDSv2() {
 		t.Error("expected use_imds_v2 to be true")
-	}
-	if details.GetGlobalYbImage() != "ami-global-123" {
-		t.Errorf("expected global_yb_image 'ami-global-123', got '%s'", details.GetGlobalYbImage())
 	}
 
 	regions := details.GetRegions()
@@ -461,11 +456,10 @@ func TestFlattenAWSImageBundles(t *testing.T) {
 			Name:         utils.GetStringPointer("test-bundle"),
 			UseAsDefault: utils.GetBoolPointer(true),
 			Details: &client.ImageBundleDetails{
-				Arch:          utils.GetStringPointer("x86_64"),
-				SshUser:       utils.GetStringPointer("ec2-user"),
-				SshPort:       utils.GetInt32Pointer(22),
-				UseIMDSv2:     utils.GetBoolPointer(true),
-				GlobalYbImage: utils.GetStringPointer("ami-global"),
+				Arch:      utils.GetStringPointer("x86_64"),
+				SshUser:   utils.GetStringPointer("ec2-user"),
+				SshPort:   utils.GetInt32Pointer(22),
+				UseIMDSv2: utils.GetBoolPointer(true),
 				Regions: &map[string]client.BundleInfo{
 					"us-west-2": {YbImage: utils.GetStringPointer("ami-west")},
 					"us-east-1": {YbImage: utils.GetStringPointer("ami-east")},
@@ -508,9 +502,6 @@ func TestFlattenAWSImageBundles(t *testing.T) {
 	if details["use_imds_v2"] != true {
 		t.Error("expected use_imds_v2 to be true")
 	}
-	if details["global_yb_image"] != "ami-global" {
-		t.Errorf("expected global_yb_image 'ami-global', got '%v'", details["global_yb_image"])
-	}
 
 	regionOverrides := details["region_overrides"].(map[string]interface{})
 	if len(regionOverrides) != 2 {
@@ -528,10 +519,9 @@ func TestFlattenAWSImageBundlesNoRegionOverrides(t *testing.T) {
 			Name:         utils.GetStringPointer("simple-bundle"),
 			UseAsDefault: utils.GetBoolPointer(false),
 			Details: &client.ImageBundleDetails{
-				Arch:          utils.GetStringPointer("aarch64"),
-				SshUser:       utils.GetStringPointer("ubuntu"),
-				SshPort:       utils.GetInt32Pointer(22),
-				GlobalYbImage: utils.GetStringPointer("ami-arm"),
+				Arch:    utils.GetStringPointer("aarch64"),
+				SshUser: utils.GetStringPointer("ubuntu"),
+				SshPort: utils.GetInt32Pointer(22),
 			},
 		},
 	}

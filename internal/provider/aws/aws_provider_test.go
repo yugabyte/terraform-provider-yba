@@ -374,10 +374,9 @@ resource "yba_aws_provider" "test" {
     use_as_default = true
     details {
       arch            = "x86_64"
-      ssh_user        = "ec2-user"
-      ssh_port        = 22
-      # use_imds_v2 is computed - YBA enforces IMDSv2=true for security
-      global_yb_image = var.AWS_AMI_ID
+      ssh_user     = "ec2-user"
+      ssh_port     = 22
+      # use_imds_v2 defaults to true; omitted here to test the default behaviour
     }
   }
   air_gap_install = false
@@ -507,7 +506,7 @@ resource "yba_aws_provider" "test" {
       arch     = "x86_64"
       ssh_user = "ec2-user"
       ssh_port = 22
-      # use_imds_v2 is computed - YBA enforces IMDSv2=true for security
+      # use_imds_v2 defaults to true; omitted here to test the default behaviour
       region_overrides = {
         "us-west-2" = var.AWS_AMI_ID
         "us-west-1" = var.AWS_AMI_ID

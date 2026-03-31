@@ -76,7 +76,6 @@ func ImageBundleSchema() *schema.Schema {
 			"At least one image_bundles or yba_managed_image_bundles block must be specified.",
 		Type:     schema.TypeList,
 		Optional: true,
-		Computed: true,
 		Elem: &schema.Resource{
 			Schema: map[string]*schema.Schema{
 				"uuid": {
@@ -102,11 +101,6 @@ func ImageBundleSchema() *schema.Schema {
 					MaxItems: 1,
 					Elem: &schema.Resource{
 						Schema: map[string]*schema.Schema{
-							"arch": {
-								Type:        schema.TypeString,
-								Required:    true,
-								Description: "Image bundle architecture. Allowed values: x86_64, aarch64.",
-							},
 							"ssh_user": {
 								Type:        schema.TypeString,
 								Required:    true,
@@ -124,16 +118,10 @@ func ImageBundleSchema() *schema.Schema {
 								Computed:    true,
 								Description: "Global YB image for the bundle.",
 							},
-							"region_overrides": {
-								Type:     schema.TypeMap,
-								Optional: true,
-								Elem:     &schema.Schema{Type: schema.TypeString},
-								Description: "Region overrides for the bundle. " +
-									"Provide region code as the key and override image as the value.",
-							},
 						},
 					},
-					Description: "Image bundle details including architecture and SSH configuration.",
+					Description: "Image bundle details including SSH configuration. " +
+						"Architecture is always x86_64 for this cloud provider.",
 				},
 			},
 		},

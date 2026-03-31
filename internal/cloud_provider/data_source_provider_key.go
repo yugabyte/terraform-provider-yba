@@ -17,10 +17,12 @@ package cloud_provider
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/yugabyte/terraform-provider-yba/internal/api"
+	"github.com/yugabyte/terraform-provider-yba/internal/provider/providerutil"
 	"github.com/yugabyte/terraform-provider-yba/internal/utils"
 )
 
@@ -57,6 +59,12 @@ func dataSourceProviderKeyRead(
 		return diag.FromErr(errMessage)
 	}
 
-	d.SetId(*r[0].IdKey.KeyCode)
+	latest := providerutil.LatestAccessKey(r)
+	if latest == nil {
+		return diag.FromErr(fmt.Errorf("no access keys found for provider %s",
+			d.Get("provider_id").(string)))
+	}
+	keyInfo := latest.GetKeyInfo()
+	d.SetId(keyInfo.GetKeyPairName())
 	return diags
 }

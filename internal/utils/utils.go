@@ -484,8 +484,8 @@ func ErrorFromResponseBody(errorBlock YbaStructuredError) string {
 		}
 		switch val := v.(type) {
 		case []interface{}:
-			for _, s := range *StringSlice(val) {
-				errorString = fmt.Sprintf("%s %s", errorString, s)
+			for _, s := range val {
+				errorString = fmt.Sprintf("%s %v", errorString, s)
 			}
 		case string:
 			errorString = fmt.Sprintf("%s %s", errorString, val)

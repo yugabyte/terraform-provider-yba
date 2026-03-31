@@ -212,11 +212,6 @@ func buildAWSImageBundles(imageBundles []interface{}) []client.ImageBundle {
 			UseIMDSv2: utils.GetBoolPointer(detailsMap["use_imds_v2"].(bool)),
 		}
 
-		// Global YB image
-		if v, ok := detailsMap["global_yb_image"].(string); ok && v != "" {
-			details.SetGlobalYbImage(v)
-		}
-
 		// AWS-specific: Region overrides
 		if v, ok := detailsMap["region_overrides"].(map[string]interface{}); ok && len(v) > 0 {
 			regionOverrides := make(map[string]client.BundleInfo)
@@ -263,11 +258,10 @@ func flattenAWSImageBundles(imageBundles []client.ImageBundle) []map[string]inte
 
 		details := ib.GetDetails()
 		detailsMap := map[string]interface{}{
-			"arch":            details.GetArch(),
-			"ssh_user":        details.GetSshUser(),
-			"ssh_port":        details.GetSshPort(),
-			"use_imds_v2":     details.GetUseIMDSv2(),
-			"global_yb_image": details.GetGlobalYbImage(),
+			"arch":        details.GetArch(),
+			"ssh_user":    details.GetSshUser(),
+			"ssh_port":    details.GetSshPort(),
+			"use_imds_v2": details.GetUseIMDSv2(),
 		}
 
 		regionOverrides := details.GetRegions()

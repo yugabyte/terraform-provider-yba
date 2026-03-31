@@ -138,8 +138,12 @@ func buildImageBundleDetails(details []interface{}) *client.ImageBundleDetails {
 		sshPort = 22
 	}
 
+	arch, _ := d["arch"].(string)
+	if arch == "" {
+		arch = "x86_64"
+	}
 	result := &client.ImageBundleDetails{
-		Arch:    utils.GetStringPointer(d["arch"].(string)),
+		Arch:    utils.GetStringPointer(arch),
 		SshUser: utils.GetStringPointer(d["ssh_user"].(string)),
 		SshPort: utils.GetInt32Pointer(sshPort),
 	}
@@ -150,30 +154,11 @@ func buildImageBundleDetails(details []interface{}) *client.ImageBundleDetails {
 	// Regions must be non-null; validateAMI calls getRegions().get(...) and NPEs on null.
 	emptyRegions := make(map[string]client.BundleInfo)
 	result.Regions = &emptyRegions
-	if v, ok := d["region_overrides"].(map[string]interface{}); ok && len(v) > 0 {
-		overrides := buildRegionOverrides(v)
-		result.Regions = &overrides
-	}
 	// use_imds_v2 is present in the AWS schema; absent for GCP/Azure so this is a no-op there.
 	if v, ok := d["use_imds_v2"].(bool); ok {
 		result.UseIMDSv2 = utils.GetBoolPointer(v)
 	}
 
-	return result
-}
-
-func buildRegionOverrides(overrides map[string]interface{}) map[string]client.BundleInfo {
-	if overrides == nil {
-		return nil
-	}
-	result := make(map[string]client.BundleInfo)
-	for k, v := range overrides {
-		if str, ok := v.(string); ok {
-			result[k] = client.BundleInfo{
-				YbImage: utils.GetStringPointer(str),
-			}
-		}
-	}
 	return result
 }
 

@@ -207,10 +207,7 @@ func TestBuildImageBundles(t *testing.T) {
 							"arch":            "x86_64",
 							"ssh_user":        "centos",
 							"ssh_port":        22,
-							"global_yb_image": "",
-							"region_overrides": map[string]interface{}{
-								"us-west-2": "ami-12345",
-							},
+							"global_yb_image": "projects/my-project/global/images/my-image",
 						},
 					},
 				},
@@ -237,13 +234,9 @@ func TestBuildImageBundlesValues(t *testing.T) {
 			"details": []interface{}{
 				map[string]interface{}{
 					"arch":            "x86_64",
-					"ssh_user":        "ec2-user",
+					"ssh_user":        "centos",
 					"ssh_port":        22,
-					"global_yb_image": "ami-global",
-					"region_overrides": map[string]interface{}{
-						"us-east-1": "ami-east",
-						"us-west-2": "ami-west",
-					},
+					"global_yb_image": "projects/my-project/global/images/my-image",
 				},
 			},
 		},
@@ -266,27 +259,15 @@ func TestBuildImageBundlesValues(t *testing.T) {
 	if details.GetArch() != "x86_64" {
 		t.Errorf("expected arch 'x86_64', got '%s'", details.GetArch())
 	}
-	if details.GetSshUser() != "ec2-user" {
-		t.Errorf("expected ssh_user 'ec2-user', got '%s'", details.GetSshUser())
+	if details.GetSshUser() != "centos" {
+		t.Errorf("expected ssh_user 'centos', got '%s'", details.GetSshUser())
 	}
 	if details.GetSshPort() != 22 {
 		t.Errorf("expected ssh_port 22, got %d", details.GetSshPort())
 	}
-	if details.GetGlobalYbImage() != "ami-global" {
-		t.Errorf("expected global_yb_image 'ami-global', got '%s'", details.GetGlobalYbImage())
-	}
-
-	regions := details.GetRegions()
-	if len(regions) != 2 {
-		t.Errorf("expected 2 region overrides, got %d", len(regions))
-	}
-	usEast := regions["us-east-1"]
-	if usEast.GetYbImage() != "ami-east" {
-		t.Errorf("expected us-east-1 AMI 'ami-east', got '%s'", usEast.GetYbImage())
-	}
-	usWest := regions["us-west-2"]
-	if usWest.GetYbImage() != "ami-west" {
-		t.Errorf("expected us-west-2 AMI 'ami-west', got '%s'", usWest.GetYbImage())
+	if details.GetGlobalYbImage() != "projects/my-project/global/images/my-image" {
+		t.Errorf("expected global_yb_image 'projects/my-project/global/images/my-image', got '%s'",
+			details.GetGlobalYbImage())
 	}
 }
 
@@ -359,19 +340,5 @@ func TestBuildImageBundleDetailsNilDetails(t *testing.T) {
 	result := buildImageBundleDetails([]interface{}{})
 	if result != nil {
 		t.Error("expected nil for empty details list")
-	}
-}
-
-func TestBuildRegionOverridesNil(t *testing.T) {
-	result := buildRegionOverrides(nil)
-	if result != nil {
-		t.Error("expected nil for nil overrides")
-	}
-}
-
-func TestBuildRegionOverridesEmpty(t *testing.T) {
-	result := buildRegionOverrides(map[string]interface{}{})
-	if len(result) != 0 {
-		t.Errorf("expected empty map, got %d entries", len(result))
 	}
 }
