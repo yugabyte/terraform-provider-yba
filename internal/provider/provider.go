@@ -94,6 +94,7 @@ func New() *schema.Provider {
 			"yba_provider_filter":  cloud_provider.ProviderFilter(),
 			"yba_provider_key":     cloud_provider.ProviderKey(),
 			"yba_provider_regions": cloud_provider.ProviderRegions(),
+			"yba_provider_image_bundles":  cloud_provider.ProviderImageBundles(),
 			"yba_storage_configs":  backups.StorageConfigs(),
 			"yba_release_version":  releases.ReleaseVersion(),
 			"yba_backup_info":      backups.Lists(),

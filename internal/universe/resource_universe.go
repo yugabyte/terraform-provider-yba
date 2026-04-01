@@ -105,6 +105,8 @@ func ResourceUniverse() *schema.Resource {
 				Type:     schema.TypeString,
 				Optional: true,
 				Default:  "x86_64",
+				ValidateFunc: validation.StringInSlice(
+					[]string{"x86_64", "aarch64"}, false),
 				Description: "The architecture of the universe nodes." +
 					" Allowed values are x86_64 and aarch64.",
 			},
@@ -485,6 +487,65 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 				return nil
 			},
 		),
+		customdiff.ValidateChange(
+			"clusters",
+			func(ctx context.Context, old, new, m interface{}) error {
+				// if not a new universe, prevent VM image upgrade on unsupported providers
+				newClusterSet := buildClusters(new.([]interface{}))
+				if len(old.([]interface{})) != 0 {
+					oldClusterSet := buildClusters(old.([]interface{}))
+					oldPrimaryCluster, isPresent := getClusterByType(oldClusterSet, "PRIMARY")
+					if isPresent {
+						newPrimaryCluster, isNewPresent := getClusterByType(
+							newClusterSet,
+							"PRIMARY",
+						)
+						if isNewPresent {
+							if oldPrimaryCluster.UserIntent.GetImageBundleUUID() !=
+								newPrimaryCluster.UserIntent.GetImageBundleUUID() {
+								providerType := newPrimaryCluster.UserIntent.GetProviderType()
+								if providerType != "aws" && providerType != "gcp" &&
+									providerType != "azu" {
+									return errors.New("VM Image upgrade is only supported " +
+										"for aws, gcp, and azu providers")
+								}
+							}
+						}
+					}
+				}
+				return nil
+			},
+		),
+		customdiff.ValidateChange(
+			"clusters",
+			func(ctx context.Context, old, new, m interface{}) error {
+				// if not a new universe, prevent VM image upgrade on unsupported
+				// providers for read replica
+				newClusterSet := buildClusters(new.([]interface{}))
+				if len(old.([]interface{})) != 0 {
+					oldClusterSet := buildClusters(old.([]interface{}))
+					oldRRCluster, isPresent := getClusterByType(oldClusterSet, "ASYNC")
+					if isPresent {
+						newRRCluster, isNewPresent := getClusterByType(
+							newClusterSet,
+							"ASYNC",
+						)
+						if isNewPresent {
+							if oldRRCluster.UserIntent.GetImageBundleUUID() !=
+								newRRCluster.UserIntent.GetImageBundleUUID() {
+								providerType := newRRCluster.UserIntent.GetProviderType()
+								if providerType != "aws" && providerType != "gcp" &&
+									providerType != "azu" {
+									return errors.New("VM Image upgrade is only supported " +
+										"for aws, gcp, and azu providers in Read Replica Cluster")
+								}
+							}
+						}
+					}
+				}
+				return nil
+			},
+		),
 		customdiff.ValidateValue("clusters", func(ctx context.Context, value,
 			meta interface{}) error {
 			// block adding instance tags to on prem nodes
@@ -702,6 +763,46 @@ func resourceUniverseUpdate(
 			return diag.FromErr(errMessage)
 		}
 		newUni := buildUniverse(d)
+
+		// Detect image bundle changes and scale direction across all clusters
+		var imageBundleUpgrades []client.ImageBundleUpgradeInfo
+		hasScaleOut := false
+		for j, cl := range updateUni.UniverseDetails.Clusters {
+			if j >= len(newUni.Clusters) {
+				continue
+			}
+			oldIB := cl.UserIntent.GetImageBundleUUID()
+			newIB := newUni.Clusters[j].UserIntent.GetImageBundleUUID()
+			if oldIB != newIB {
+				imageBundleUpgrades = append(imageBundleUpgrades,
+					*client.NewImageBundleUpgradeInfo(cl.GetUuid(), newIB))
+			}
+			if newUni.Clusters[j].UserIntent.GetNumNodes() >
+				cl.UserIntent.GetNumNodes() {
+				hasScaleOut = true
+			}
+		}
+
+		// VM Image Upgrade BEFORE cluster operations if scaling out.
+		// New nodes will be provisioned with the new image directly.
+		if len(imageBundleUpgrades) > 0 && hasScaleOut {
+			if diagErr := performVMImageUpgrade(
+				ctx, c, cUUID, d, updateUni, imageBundleUpgrades,
+			); diagErr != nil {
+				return diagErr
+			}
+			imageBundleUpgrades = nil
+
+			updateUni, response, err = c.UniverseManagementAPI.GetUniverse(
+				ctx, cUUID, d.Id()).Execute()
+			if err != nil {
+				errMessage := utils.ErrorFromHTTPResponse(
+					response, err, utils.ResourceEntity,
+					"Universe", "Update - Fetch universe")
+				return diag.FromErr(errMessage)
+			}
+			newUni = buildUniverse(d)
+		}
 
 		if len(clusters) > 2 {
 			tflog.Error(ctx, "Cannot have more than 1 Read only cluster")
@@ -1074,11 +1175,69 @@ func resourceUniverseUpdate(
 					}
 				}
 			}
-
+		}
+		// VM Image Upgrade AFTER cluster operations if scaling in or no scale change.
+		// Avoids upgrading nodes that are about to be removed.
+		// imageBundleUpgrades is nil if already executed before the loop (scale-out case).
+		if len(imageBundleUpgrades) > 0 {
+			updateUni, response, err = c.UniverseManagementAPI.GetUniverse(
+				ctx, cUUID, d.Id()).Execute()
+			if err != nil {
+				errMessage := utils.ErrorFromHTTPResponse(
+					response, err, utils.ResourceEntity,
+					"Universe", "Update - Fetch universe")
+				return diag.FromErr(errMessage)
+			}
+			if diagErr := performVMImageUpgrade(
+				ctx, c, cUUID, d, updateUni, imageBundleUpgrades,
+			); diagErr != nil {
+				return diagErr
+			}
 		}
 	}
 
 	return resourceUniverseRead(ctx, d, meta)
+}
+
+func performVMImageUpgrade(
+	ctx context.Context,
+	c *client.APIClient,
+	cUUID string,
+	d *schema.ResourceData,
+	updateUni *client.UniverseResp,
+	imageBundleUpgrades []client.ImageBundleUpgradeInfo,
+) diag.Diagnostics {
+	for _, ibUpgrade := range imageBundleUpgrades {
+		for k := range updateUni.UniverseDetails.Clusters {
+			if updateUni.UniverseDetails.Clusters[k].GetUuid() ==
+				ibUpgrade.ClusterUuid {
+				ib := ibUpgrade.ImageBundleUuid
+				updateUni.UniverseDetails.Clusters[k].UserIntent.ImageBundleUUID = &ib
+			}
+		}
+	}
+	req := client.VMImageUpgradeParams{
+		Clusters:      updateUni.UniverseDetails.Clusters,
+		UpgradeOption: "Rolling",
+		ImageBundles:  imageBundleUpgrades,
+	}
+	r, response, err := c.UniverseUpgradesManagementAPI.UpgradeVMImage(
+		ctx, cUUID, d.Id()).VmimageUpgradeParams(req).Execute()
+	if err != nil {
+		errMessage := utils.ErrorFromHTTPResponse(
+			response, err, utils.ResourceEntity,
+			"Universe", "Update - VM Image")
+		return diag.FromErr(errMessage)
+	}
+	tflog.Info(ctx, fmt.Sprintf(
+		"UpgradeVMImage task is executing for %d cluster(s)",
+		len(imageBundleUpgrades)))
+	err = utils.WaitForTask(
+		ctx, *r.TaskUUID, cUUID, c, d.Timeout(schema.TimeoutUpdate))
+	if err != nil {
+		return diag.FromErr(err)
+	}
+	return nil
 }
 
 func resourceUniverseDelete(

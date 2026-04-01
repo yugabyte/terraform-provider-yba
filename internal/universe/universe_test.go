@@ -351,3 +351,220 @@ func cloudProviderAzureConfig(name string) string {
 	}
 `, name)
 }
+
+func TestAccUniverse_AWS_VMImageUpgrade(t *testing.T) {
+	var universeBefore, universeAfter client.UniverseResp
+
+	rName := fmt.Sprintf("tf-acctest-aws-universe-%s", sdkacctest.RandString(12))
+	resource.ParallelTest(t, resource.TestCase{
+		PreCheck: func() {
+			acctest.TestAccPreCheck(t)
+			acctest.TestAccPreCheckAWS(t)
+		},
+		ProviderFactories: acctest.ProviderFactories,
+		CheckDestroy:      testAccCheckDestroyProviderAndUniverse,
+		Steps: []resource.TestStep{
+			{
+				Config: universeAwsConfigWithImageBundle(rName,
+					"${yba_aws_provider.aws.image_bundles[0].uuid}"),
+				Check: resource.ComposeTestCheckFunc(
+					testAccCheckUniverseExists("yba_universe.aws", &universeBefore),
+				),
+			},
+			{
+				Config: universeAwsConfigWithImageBundle(rName,
+					"${yba_aws_provider.aws.image_bundles[1].uuid}"),
+				Check: resource.ComposeTestCheckFunc(
+					testAccCheckUniverseExists("yba_universe.aws", &universeAfter),
+					testAccCheckImageBundleUpdated(&universeBefore, &universeAfter),
+				),
+			},
+		},
+	})
+}
+
+func testAccCheckImageBundleUpdated(before *client.UniverseResp,
+    after *client.UniverseResp) resource.TestCheckFunc {
+    return func(s *terraform.State) error {
+        // Validate Primary Cluster (Index 0)
+        oldBundleP := before.UniverseDetails.Clusters[0].UserIntent.GetImageBundleUUID()
+        newBundleP := after.UniverseDetails.Clusters[0].UserIntent.GetImageBundleUUID()
+
+        if oldBundleP == newBundleP {
+            return fmt.Errorf("PRIMARY: expected image_bundle_uuid to change,
+			but both are %s", oldBundleP)
+        }
+
+        // Validate Async Cluster (Index 1)
+        if len(before.UniverseDetails.Clusters) < 2 || len(after.UniverseDetails.Clusters) < 2 {
+			return errors.New("universe must have at least 2 clusters (Primary and Async) for this test")
+		}
+
+        oldBundleA := before.UniverseDetails.Clusters[1].UserIntent.GetImageBundleUUID()
+        newBundleA := after.UniverseDetails.Clusters[1].UserIntent.GetImageBundleUUID()
+
+        if oldBundleA == newBundleA {
+            return fmt.Errorf("ASYNC: expected image_bundle_uuid to change,
+			but both are %s", oldBundleA)
+        }
+
+        if newBundleP == "" || newBundleA == "" {
+            return errors.New("image_bundle_uuid is empty after VM Image upgrade")
+        }
+
+        return nil
+    }
+}
+
+func universeAwsConfigWithImageBundle(name string, imageBundleUUID string) string {
+	return cloudProviderAWSConfigForVMImageUpgrade(fmt.Sprintf(name+"-provider")) +
+		universeConfigWithProviderWithImageBundle("aws", name, imageBundleUUID)
+}
+
+func cloudProviderAWSConfigForVMImageUpgrade(name string) string {
+	return fmt.Sprintf(`
+	variable "AWS_ACCESS_KEY_ID" {
+		type        = string
+		description = "AWS access key ID"
+	}
+
+	variable "AWS_SECRET_ACCESS_KEY" {
+		type        = string
+		sensitive   = true
+		description = "AWS secret access key"
+	}
+
+	variable "AWS_SG_ID" {
+		type        = string
+		description = "AWS sg-id to run acceptance testing"
+	}
+
+	variable "AWS_VPC_ID" {
+		type        = string
+		description = "AWS VPC ID to run acceptance testing"
+	}
+
+	variable "AWS_ZONE_SUBNET_ID" {
+		type        = string
+		description = "AWS zonal subnet ID to run acceptance testing"
+	}
+
+	variable "AWS_AMI_ID_OLD" {
+		type        = string
+		description = "AMI ID for the first image bundle"
+	}
+
+	variable "AWS_AMI_ID_NEW" {
+		type        = string
+		description = "AMI ID for the second image bundle"
+	}
+
+	resource "yba_aws_provider" "aws" {
+		name              = "%s"
+		access_key_id     = var.AWS_ACCESS_KEY_ID
+		secret_access_key = var.AWS_SECRET_ACCESS_KEY
+		regions {
+			code              = "us-west-2"
+			security_group_id = var.AWS_SG_ID
+			vpc_id            = var.AWS_VPC_ID
+			zones {
+				code   = "us-west-2a"
+				subnet = var.AWS_ZONE_SUBNET_ID
+			}
+		}
+		image_bundles {
+			name           = "test-bundle-old"
+			use_as_default = true
+			details {
+				arch     = "x86_64"
+				ssh_user = "ec2-user"
+				ssh_port = 22
+				region_overrides = {
+					"us-west-2" = var.AWS_AMI_ID_OLD
+				}
+			}
+		}
+		image_bundles {
+			name           = "test-bundle-new"
+			use_as_default = false
+			details {
+				arch     = "x86_64"
+				ssh_user = "ec2-user"
+				ssh_port = 22
+				region_overrides = {
+					"us-west-2" = var.AWS_AMI_ID_NEW
+				}
+			}
+		}
+	}
+`, name)
+}
+
+func universeConfigWithProviderWithImageBundle(p string, name string,
+    imageBundleUUID string) string {
+    return fmt.Sprintf(`
+    data "yba_release_version" "release_version"{
+        depends_on = [
+            yba_aws_provider.%s
+        ]
+    }
+
+    resource "yba_universe" "%s" {
+        clusters {
+            cluster_type = "PRIMARY"
+            user_intent {
+                universe_name      = "%s"
+                provider_type      = "%s"
+                provider           = yba_aws_provider.%s.id
+                region_list        = yba_aws_provider.%s.regions[*].uuid
+                num_nodes          = 1
+                replication_factor = 1
+                instance_type      = "%s"
+                image_bundle_uuid  = "%s"
+                device_info {
+                    num_volumes  = 1
+                    volume_size  = 375
+                    storage_type = "%s"
+                }
+                assign_public_ip              = true
+                use_time_sync                 = true
+                enable_ysql                   = true
+                enable_node_to_node_encrypt   = true
+                enable_client_to_node_encrypt = true
+                yb_software_version           = data.yba_release_version.release_version.id
+                access_key_code               = yba_aws_provider.%s.access_key_code
+                instance_tags = {
+                    "yb_owner"  = "terraform_acctest"
+                    "yb_task"   = "dev"
+                    "yb_dept"   = "dev"
+                }
+            }
+        }
+        # Added ASYNC Cluster Block
+        clusters {
+            cluster_type = "ASYNC"
+            user_intent {
+                universe_name      = "%s"
+                provider_type      = "%s"
+                provider           = yba_aws_provider.%s.id
+                region_list        = yba_aws_provider.%s.regions[*].uuid
+                num_nodes          = 1
+                replication_factor = 1
+                instance_type      = "c5.large"
+                image_bundle_uuid  = "%s"
+                device_info {
+                    num_volumes  = 1
+                    volume_size  = 375
+                    storage_type = "%s"
+                }
+                assign_public_ip              = true
+                enable_ysql                   = true
+                yb_software_version           = data.yba_release_version.release_version.id
+                access_key_code               = yba_aws_provider.%s.access_key_code
+            }
+        }
+        communication_ports {}
+    }
+`, p, p, name, p, p, p, getUniverseInstanceType(p), imageBundleUUID, getUniverseStorageType(p), p,
+   name, p, p, p, imageBundleUUID, getUniverseStorageType(p), p) // Map the new ASYNC arguments
+}

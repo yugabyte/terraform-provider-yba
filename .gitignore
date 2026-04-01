@@ -27,6 +27,7 @@ website/node_modules
 .cursor/
 .vscode/
 .terraform.lock.hcl
+samples/
 
 website/vendor
 
