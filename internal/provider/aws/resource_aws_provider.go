@@ -161,11 +161,15 @@ func awsProviderSchema() map[string]*schema.Schema {
 	return s
 }
 
-// awsImageBundleSchema returns AWS-specific image bundle schema with region overrides
+// awsImageBundleSchema returns AWS-specific image bundle schema with region overrides.
+// NOTE: global_yb_image is intentionally absent. AWS requires per-region AMI IDs via
+// region_overrides; a single global image is not a valid concept for AWS providers.
+// Every custom bundle must specify a non-empty AMI for each configured region.
 func awsImageBundleSchema() *schema.Schema {
 	return &schema.Schema{
 		Description: "Custom image bundles for the AWS provider. " +
-			"At least one image_bundles or yba_managed_image_bundles block must be specified.",
+			"At least one image_bundles or yba_managed_image_bundles block must be specified. " +
+			"Every bundle must supply a non-empty AMI in region_overrides for each configured region.",
 		Type:     schema.TypeList,
 		Optional: true,
 		Elem: &schema.Resource{
@@ -232,9 +236,10 @@ func awsImageBundleSchema() *schema.Schema {
 								Type:     schema.TypeMap,
 								Optional: true,
 								Elem:     &schema.Schema{Type: schema.TypeString},
-								Description: "Per-region AMI overrides for AWS. " +
-									"Provide region code as the key and AMI ID as the value. " +
-									"Required: one override per region in the provider.",
+								Description: "Per-region AMI IDs for AWS. " +
+									"Key is the region code (e.g. us-east-1), value is the AMI ID. " +
+									"A non-empty AMI must be provided for every region configured in " +
+									"the provider. Validation enforces this at plan time.",
 							},
 						},
 					},

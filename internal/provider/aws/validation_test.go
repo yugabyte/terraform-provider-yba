@@ -182,6 +182,182 @@ func TestValidateDuplicateZones(t *testing.T) {
 	}
 }
 
+// TestCheckImageBundleRegionCoverage exercises the pure region-coverage logic.
+// It covers the four operations described in the PLAT-20294 issue:
+// provider creation, adding a region, adding a bundle, and modifying a bundle.
+func TestCheckImageBundleRegionCoverage(t *testing.T) {
+	bundle := func(name string, overrides map[string]interface{}) interface{} {
+		return map[string]interface{}{
+			"name": name,
+			"details": []interface{}{
+				map[string]interface{}{
+					"arch":             "x86_64",
+					"ssh_user":         "ec2-user",
+					"ssh_port":         22,
+					"use_imds_v2":      true,
+					"region_overrides": overrides,
+				},
+			},
+		}
+	}
+
+	tests := []struct {
+		name        string
+		bundles     []interface{}
+		regions     []string
+		expectError bool
+		errorMsg    string
+	}{
+		// --- happy paths ---
+		{
+			name: "single bundle single region covered",
+			bundles: []interface{}{
+				bundle("b1", map[string]interface{}{"us-east-1": "ami-aaa"}),
+			},
+			regions:     []string{"us-east-1"},
+			expectError: false,
+		},
+		{
+			name: "single bundle multiple regions all covered",
+			bundles: []interface{}{
+				bundle("b1", map[string]interface{}{
+					"us-east-1": "ami-aaa",
+					"us-west-2": "ami-bbb",
+				}),
+			},
+			regions:     []string{"us-east-1", "us-west-2"},
+			expectError: false,
+		},
+		{
+			name: "multiple bundles all regions covered",
+			bundles: []interface{}{
+				bundle("b1", map[string]interface{}{
+					"us-east-1": "ami-aaa",
+					"us-west-2": "ami-bbb",
+				}),
+				bundle("b2", map[string]interface{}{
+					"us-east-1": "ami-ccc",
+					"us-west-2": "ami-ddd",
+				}),
+			},
+			regions:     []string{"us-east-1", "us-west-2"},
+			expectError: false,
+		},
+		{
+			name:        "no bundles - validation skipped",
+			bundles:     []interface{}{},
+			regions:     []string{"us-east-1"},
+			expectError: false,
+		},
+		{
+			name: "bundle has extra region not in provider - allowed",
+			bundles: []interface{}{
+				bundle("b1", map[string]interface{}{
+					"us-east-1":  "ami-aaa",
+					"ap-south-1": "ami-zzz", // extra; not a provider region
+				}),
+			},
+			regions:     []string{"us-east-1"},
+			expectError: false,
+		},
+		// --- provider creation: missing region from the start ---
+		{
+			name: "create: bundle missing one region",
+			bundles: []interface{}{
+				bundle("b1", map[string]interface{}{"us-east-1": "ami-aaa"}),
+			},
+			regions:     []string{"us-east-1", "us-west-2"},
+			expectError: true,
+			errorMsg:    `image bundle "b1" must specify a non-empty AMI for region "us-west-2"`,
+		},
+		// --- add region: existing bundle lacks AMI for new region ---
+		{
+			name: "add region: second bundle has no override for new region",
+			bundles: []interface{}{
+				bundle("b1", map[string]interface{}{
+					"us-east-1": "ami-aaa",
+					"us-west-2": "ami-bbb",
+				}),
+				bundle("b2", map[string]interface{}{
+					"us-east-1": "ami-ccc",
+					// us-west-2 missing in b2
+				}),
+			},
+			regions:     []string{"us-east-1", "us-west-2"},
+			expectError: true,
+			errorMsg:    `image bundle "b2" must specify a non-empty AMI for region "us-west-2"`,
+		},
+		// --- add bundle: new bundle is incomplete ---
+		{
+			name: "add bundle: new bundle missing a region",
+			bundles: []interface{}{
+				bundle("existing-bundle", map[string]interface{}{
+					"us-east-1": "ami-aaa",
+					"us-west-2": "ami-bbb",
+				}),
+				bundle("new-bundle", map[string]interface{}{
+					"us-east-1": "ami-ccc",
+					// us-west-2 intentionally omitted in new-bundle
+				}),
+			},
+			regions:     []string{"us-east-1", "us-west-2"},
+			expectError: true,
+			errorMsg:    `image bundle "new-bundle" must specify a non-empty AMI for region "us-west-2"`,
+		},
+		// --- modify bundle: user sets AMI to empty string ---
+		{
+			name: "modify bundle: AMI set to empty string",
+			bundles: []interface{}{
+				bundle("b1", map[string]interface{}{
+					"us-east-1": "ami-aaa",
+					"us-west-2": "", // user cleared the AMI
+				}),
+			},
+			regions:     []string{"us-east-1", "us-west-2"},
+			expectError: true,
+			errorMsg:    `image bundle "b1" must specify a non-empty AMI for region "us-west-2"`,
+		},
+		// --- region_overrides absent entirely ---
+		{
+			name: "bundle with no region_overrides at all",
+			bundles: []interface{}{
+				map[string]interface{}{
+					"name": "bare-bundle",
+					"details": []interface{}{
+						map[string]interface{}{
+							"arch":        "x86_64",
+							"ssh_user":    "ec2-user",
+							"ssh_port":    22,
+							"use_imds_v2": true,
+							// region_overrides key absent
+						},
+					},
+				},
+			},
+			regions:     []string{"us-east-1"},
+			expectError: true,
+			errorMsg:    `image bundle "bare-bundle" must specify a non-empty AMI for region "us-east-1"`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := checkImageBundleRegionCoverage(tt.bundles, tt.regions)
+			if tt.expectError {
+				if err == nil {
+					t.Errorf("expected error containing %q, got nil", tt.errorMsg)
+				} else if !strings.Contains(err.Error(), tt.errorMsg) {
+					t.Errorf("expected error containing %q, got %q", tt.errorMsg, err.Error())
+				}
+			} else {
+				if err != nil {
+					t.Errorf("expected no error, got %v", err)
+				}
+			}
+		})
+	}
+}
+
 // Helper function to check duplicate regions (mirrors the validation logic)
 func checkDuplicateRegions(regions []map[string]interface{}) error {
 	regionCodes := make(map[string]bool)

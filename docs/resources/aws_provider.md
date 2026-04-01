@@ -195,7 +195,7 @@ The details for configuration are available in the [YugabyteDB Anywhere Configur
 - `access_key_id` (String, Sensitive) AWS Access Key ID. Required for non-IAM role based providers. Stored in Terraform state - use an encrypted backend for security.
 - `air_gap_install` (Boolean) Flag indicating if YugabyteDB nodes are installed in an air-gapped environment, lacking access to the public internet for package downloads. Default is false.
 - `hosted_zone_id` (String) Hosted Zone ID corresponding to Amazon Route53.
-- `image_bundles` (Block List) Custom image bundles for the AWS provider. At least one image_bundles or yba_managed_image_bundles block must be specified. (see [below for nested schema](#nestedblock--image_bundles))
+- `image_bundles` (Block List) Custom image bundles for the AWS provider. At least one image_bundles or yba_managed_image_bundles block must be specified. Every bundle must supply a non-empty AMI in region_overrides for each configured region. (see [below for nested schema](#nestedblock--image_bundles))
 - `ntp_servers` (List of String) List of NTP servers for time synchronization.
 - `secret_access_key` (String, Sensitive) AWS Secret Access Key. Required with access_key_id. Stored in Terraform state - use an encrypted backend for security.
 - `set_up_chrony` (Boolean) Set up NTP chrony service. When true with empty ntp_servers, uses cloud provider's NTP server (e.g., AWS Time Sync). When true with ntp_servers specified, uses custom NTP servers. When false, assumes NTP is pre-configured in the machine image. Default is false.
@@ -281,7 +281,7 @@ Required:
 
 Optional:
 
-- `region_overrides` (Map of String) Per-region AMI overrides for AWS. Provide region code as the key and AMI ID as the value. Required: one override per region in the provider.
+- `region_overrides` (Map of String) Per-region AMI IDs for AWS. Key is the region code (e.g. us-east-1), value is the AMI ID. A non-empty AMI must be provided for every region configured in the provider. Validation enforces this at plan time.
 - `ssh_port` (Number) SSH port for the image. Default is 22.
 - `use_imds_v2` (Boolean) Use IMDS v2 for the image. Default is true. Set to false to allow IMDSv1 (not recommended). Note: Terraform may show a cosmetic plan-time warning for this field when omitted from config - this is a known legacy SDK limitation and does not affect behaviour.
 

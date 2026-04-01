@@ -120,6 +120,93 @@ func validateNoDuplicateRegionsOrZones(
 		return err
 	}
 
+	if err := validateAWSImageBundleRegionCoverage(d); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// validateAWSImageBundleRegionCoverage ensures that every custom image bundle provides
+// a non-empty AMI in region_overrides for every region configured in the provider.
+//
+// This enforces correctness for all mutating operations:
+//   - Provider creation: all configured regions must be covered from the start.
+//   - Adding a region: all existing bundles must be updated with the new region's AMI.
+//   - Adding a new bundle: the bundle must cover all currently configured regions.
+//   - Modifying a bundle: region_overrides must still cover all configured regions.
+//
+// Empty string "" is not a valid AMI and is rejected alongside missing keys.
+func validateAWSImageBundleRegionCoverage(d *schema.ResourceDiff) error {
+	bundlesRaw, _ := d.Get("image_bundles").([]interface{})
+	if len(bundlesRaw) == 0 {
+		return nil
+	}
+
+	regionsRaw, _ := d.Get("regions").([]interface{})
+	regionCodes := collectRegionCodes(regionsRaw)
+	if len(regionCodes) == 0 {
+		return nil
+	}
+
+	return checkImageBundleRegionCoverage(bundlesRaw, regionCodes)
+}
+
+// collectRegionCodes extracts non-empty region codes from the raw regions list.
+func collectRegionCodes(regionsRaw []interface{}) []string {
+	codes := make([]string, 0, len(regionsRaw))
+	for _, r := range regionsRaw {
+		regionMap, ok := r.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		code, _ := regionMap["code"].(string)
+		if code != "" {
+			codes = append(codes, code)
+		}
+	}
+	return codes
+}
+
+// checkImageBundleRegionCoverage is the pure validation logic, extracted so it can
+// be exercised directly in unit tests without a live schema.ResourceDiff.
+func checkImageBundleRegionCoverage(
+	bundlesRaw []interface{},
+	regionCodes []string,
+) error {
+	for _, b := range bundlesRaw {
+		bundleMap, ok := b.(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		name, _ := bundleMap["name"].(string)
+
+		details, ok := bundleMap["details"].([]interface{})
+		if !ok || len(details) == 0 {
+			continue
+		}
+		det, ok := details[0].(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		overrides, _ := det["region_overrides"].(map[string]interface{})
+
+		for _, regionCode := range regionCodes {
+			ami, exists := overrides[regionCode]
+			amiStr, _ := ami.(string)
+			if !exists || amiStr == "" {
+				return fmt.Errorf(
+					"image bundle %q must specify a non-empty AMI for region %q in "+
+						"region_overrides: all custom image bundles must provide a valid "+
+						"AMI for every region configured in the provider "+
+						"(empty string \"\" is not accepted)",
+					name, regionCode,
+				)
+			}
+		}
+	}
 	return nil
 }
 
