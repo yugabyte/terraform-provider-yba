@@ -274,10 +274,24 @@ func resourceAzureStorageConfigRead(
 func resourceAzureStorageConfigUpdate(
 	ctx context.Context,
 	d *schema.ResourceData,
-	meta interface{}) diag.Diagnostics {
+	meta interface{}) (diags diag.Diagnostics) {
 
 	c := meta.(*api.APIClient).YugawareClient
 	cUUID := meta.(*api.APIClient).CustomerID
+
+	// Always refresh state before returning. On success, Read errors are
+	// propagated. On failure, they are swallowed so the original error is preserved.
+	defer func() {
+		readDiags := resourceAzureStorageConfigRead(ctx, d, meta)
+		if !diags.HasError() {
+			diags = append(diags, readDiags...)
+		} else {
+			// Read rebuilds region_locations without sas_token entries, clearing
+			// them. Restore sas_token and the full region_locations list from prior
+			// state so a failed update does not wipe the tokens from state.
+			utils.RevertFields(d, "sas_token", "region_locations")
+		}
+	}()
 
 	data, err := buildAzureData(d)
 	if err != nil {
@@ -301,5 +315,5 @@ func resourceAzureStorageConfigUpdate(
 		return diag.FromErr(errMessage)
 	}
 
-	return resourceAzureStorageConfigRead(ctx, d, meta)
+	return
 }

@@ -454,13 +454,22 @@ func resourceAzureProviderUpdate(
 	ctx context.Context,
 	d *schema.ResourceData,
 	meta interface{},
-) diag.Diagnostics {
+) (diags diag.Diagnostics) {
 	c, cUUID := providerutil.GetAPIClient(meta)
 
 	p, err := providerutil.GetProvider(ctx, c, cUUID, d.Id())
 	if err != nil {
 		return diag.FromErr(err)
 	}
+
+	// Always refresh state before returning. On success, Read errors are
+	// propagated. On failure, they are swallowed so the original error is preserved.
+	defer func() {
+		readDiags := resourceAzureProviderRead(ctx, d, meta)
+		if !diags.HasError() {
+			diags = append(diags, readDiags...)
+		}
+	}()
 
 	providerReq := *p
 	providerName := d.Get("name").(string)
@@ -556,6 +565,10 @@ func resourceAzureProviderUpdate(
 	r, response, err := c.CloudProvidersAPI.EditProvider(ctx, cUUID, d.Id()).
 		EditProviderRequest(providerReq).Execute()
 	if err != nil {
+		utils.RevertFields(d,
+			"ssh_keypair_name", "ssh_private_key_content",
+			"client_secret", "use_managed_identity",
+		)
 		errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
 			"Azure Provider", "Update")
 		return diag.FromErr(errMessage)
@@ -565,11 +578,16 @@ func resourceAzureProviderUpdate(
 		err = providerutil.WaitForProviderTask(ctx, *r.TaskUUID, providerName, "updated",
 			c, cUUID, d.Timeout(schema.TimeoutUpdate))
 		if err != nil {
+			// CloudProviderEdit task is not atomic: updateProviderData and
+			// updateAccessKeys commit to the DB before updateRegionsAndZones
+			// and runSubTasks. Do not revert write-only fields here because
+			// some may already be persisted on the server. Read (via defer)
+			// reflects actual server state for all API-readable fields.
 			return diag.FromErr(err)
 		}
 	}
 
-	return resourceAzureProviderRead(ctx, d, meta)
+	return
 }
 
 func resourceAzureProviderDelete(

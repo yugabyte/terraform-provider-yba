@@ -135,8 +135,8 @@ Optional:
 - `use_host_name` (Boolean) Enable to use host name instead of IP addresses to communicate.
 - `use_systemd` (Boolean) Enable Systemd in universe nodes. True by default.
 - `use_time_sync` (Boolean) Enable time sync. True by default.
-- `ycql_password` (String) YCQL auth password.
-- `ysql_password` (String) YSQL auth password.
+- `ycql_password` (String, Sensitive) YCQL auth password. Required when enable_ycql_auth is true.
+- `ysql_password` (String, Sensitive) YSQL auth password. Required when enable_ysql_auth is true.
 
 <a id="nestedblock--clusters--user_intent--device_info"></a>
 ### Nested Schema for `clusters.user_intent.device_info`

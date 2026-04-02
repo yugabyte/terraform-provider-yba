@@ -181,12 +181,14 @@ func userIntentSchema() *schema.Resource {
 			"ysql_password": {
 				Type:        schema.TypeString,
 				Optional:    true,
-				Description: "YSQL auth password.",
+				Sensitive:   true,
+				Description: "YSQL auth password. Required when enable_ysql_auth is true.",
 			},
 			"ycql_password": {
 				Type:        schema.TypeString,
 				Optional:    true,
-				Description: "YCQL auth password.",
+				Sensitive:   true,
+				Description: "YCQL auth password. Required when enable_ycql_auth is true.",
 			},
 			"universe_name": {
 				Type:        schema.TypeString,

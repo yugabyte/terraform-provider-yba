@@ -436,10 +436,19 @@ func resourceS3StorageConfigRead(
 func resourceS3StorageConfigUpdate(
 	ctx context.Context,
 	d *schema.ResourceData,
-	meta interface{}) diag.Diagnostics {
+	meta interface{}) (diags diag.Diagnostics) {
 
 	c := meta.(*api.APIClient).YugawareClient
 	cUUID := meta.(*api.APIClient).CustomerID
+
+	// Always refresh state before returning. On success, Read errors are
+	// propagated. On failure, they are swallowed so the original error is preserved.
+	defer func() {
+		readDiags := resourceS3StorageConfigRead(ctx, d, meta)
+		if !diags.HasError() {
+			diags = append(diags, readDiags...)
+		}
+	}()
 
 	data := buildS3Data(d)
 
@@ -455,10 +464,11 @@ func resourceS3StorageConfigUpdate(
 		Config(req).
 		Execute()
 	if err != nil {
+		utils.RevertFields(d, "access_key_id", "secret_access_key")
 		errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
 			"S3 Storage Config", "Update")
 		return diag.FromErr(errMessage)
 	}
 
-	return resourceS3StorageConfigRead(ctx, d, meta)
+	return
 }

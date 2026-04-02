@@ -31,6 +31,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	client "github.com/yugabyte/platform-go-client"
 )
 
@@ -717,4 +718,18 @@ func CheckMinimumYBAVersion(ctx context.Context, c *client.APIClient) error {
 	}
 
 	return nil
+}
+
+// RevertFields resets each named field to its prior state value.
+// Call this before returning an error from an Update function to prevent
+// Terraform from persisting new planned values to state when the API call
+// has failed. This is necessary for write-only fields that the Read function
+// does not refresh from the API (e.g. sensitive credentials, SSH key content).
+// For all other fields, the next Read/refresh will restore the correct
+// server-side value automatically.
+func RevertFields(d *schema.ResourceData, fields ...string) {
+	for _, field := range fields {
+		old, _ := d.GetChange(field)
+		_ = d.Set(field, old)
+	}
 }

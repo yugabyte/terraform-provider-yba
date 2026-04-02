@@ -692,6 +692,30 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 				return nil
 			},
 		),
+		customdiff.ValidateValue(
+			"clusters",
+			func(ctx context.Context, value, meta interface{}) error {
+				clusterSet := buildClusters(value.([]interface{}))
+				primary, isPresent := getClusterByType(clusterSet, "PRIMARY")
+				if !isPresent {
+					return nil
+				}
+				ui := primary.GetUserIntent()
+				if !ui.GetUseSystemd() {
+					return errors.New(
+						"use_systemd must be true: non-systemd universes are not supported")
+				}
+				if ui.GetEnableYSQLAuth() && ui.GetYsqlPassword() == "" {
+					return errors.New(
+						"ysql_password is required when enable_ysql_auth is true")
+				}
+				if ui.GetEnableYCQLAuth() && ui.GetYcqlPassword() == "" {
+					return errors.New(
+						"ycql_password is required when enable_ycql_auth is true")
+				}
+				return nil
+			},
+		),
 	)
 }
 func resourceUniverseCreate(
@@ -847,11 +871,15 @@ func runFinalizeUpgrade(
 func resourceUniverseUpdate(
 	ctx context.Context,
 	d *schema.ResourceData,
-	meta interface{}) diag.Diagnostics {
+	meta interface{}) (diags diag.Diagnostics) {
 	// Only updates user intent for each cluster
 	// cloud Info can have changes in zones
 	c := meta.(*api.APIClient).YugawareClient
 	cUUID := meta.(*api.APIClient).CustomerID
+
+	defer func() {
+		diags = append(resourceUniverseRead(ctx, d, meta), diags...)
+	}()
 
 	// Read node_restart_settings once with explicit fallbacks. When the block is absent,
 	// d.Get returns zero values ("" / 0) rather than the schema defaults, so we apply the
@@ -1462,7 +1490,7 @@ func resourceUniverseUpdate(
 		}
 	}
 
-	return resourceUniverseRead(ctx, d, meta)
+	return
 }
 
 func performVMImageUpgrade(

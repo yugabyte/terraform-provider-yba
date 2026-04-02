@@ -155,6 +155,9 @@ func resourceUserUpdate(
 		_, response, err := c.UserManagementAPI.UpdateUserRole(ctx, cUUID, d.Id()).Role(
 			d.Get("role").(string)).Execute()
 		if err != nil {
+			// role IS read back by Read (self-corrects); revert password here
+			// because it was never attempted and is write-only (Read never sets it).
+			utils.RevertFields(d, "password")
 			errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
 				"User", "Update - Role")
 			return diag.FromErr(errMessage)
@@ -169,6 +172,7 @@ func resourceUserUpdate(
 		_, response, err := c.UserManagementAPI.ResetUserPassword(ctx, cUUID).Users(
 			req).Execute()
 		if err != nil {
+			utils.RevertFields(d, "password")
 			errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
 				"User", "Update - Password")
 			return diag.FromErr(errMessage)

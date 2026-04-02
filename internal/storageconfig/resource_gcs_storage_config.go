@@ -266,10 +266,19 @@ func resourceGCSStorageConfigRead(
 func resourceGCSStorageConfigUpdate(
 	ctx context.Context,
 	d *schema.ResourceData,
-	meta interface{}) diag.Diagnostics {
+	meta interface{}) (diags diag.Diagnostics) {
 
 	c := meta.(*api.APIClient).YugawareClient
 	cUUID := meta.(*api.APIClient).CustomerID
+
+	// Always refresh state before returning. On success, Read errors are
+	// propagated. On failure, they are swallowed so the original error is preserved.
+	defer func() {
+		readDiags := resourceGCSStorageConfigRead(ctx, d, meta)
+		if !diags.HasError() {
+			diags = append(diags, readDiags...)
+		}
+	}()
 
 	data, err := buildGCSData(d)
 	if err != nil {
@@ -288,10 +297,11 @@ func resourceGCSStorageConfigUpdate(
 		Config(req).
 		Execute()
 	if err != nil {
+		utils.RevertFields(d, "credentials")
 		errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
 			"GCS Storage Config", "Update")
 		return diag.FromErr(errMessage)
 	}
 
-	return resourceGCSStorageConfigRead(ctx, d, meta)
+	return
 }
