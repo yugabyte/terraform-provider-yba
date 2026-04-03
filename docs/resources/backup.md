@@ -60,7 +60,6 @@ For more details, see the [YugabyteDB Anywhere Back Up Data](https://docs.yugaby
 - `table_uuid_list` (List of String) List of specific table UUIDs to backup. Only applicable when a single keyspace is specified in 'keyspaces'. If 'keyspaces' has multiple entries, this field is ignored.
 - `time_before_delete` (String) Time before the backup expires and is deleted from storage. Accepts duration strings (e.g., '720h' for 30 days, '2160h' for 90 days). If not set, backup is kept indefinitely. Can be updated after creation.
 - `timeouts` (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))
-- `transactional_backup` (Boolean) Create a transactional backup across tables.
 - `use_roles` (Boolean) Backup global YSQL roles and grants to preserve database access controls after restore. Only applicable for YSQL (PGSQL_TABLE_TYPE) backups.
 - `use_tablespaces` (Boolean) Include tablespace information in the backup. Only applicable for YSQL (PGSQL_TABLE_TYPE) backups.
 

@@ -91,16 +91,18 @@ func gcpProviderSchema() map[string]*schema.Schema {
 		Description: "VPC network name in GCP.",
 	}
 	s["use_host_vpc"] = &schema.Schema{
-		Type:     schema.TypeBool,
-		Optional: true,
-		Default:  false,
+		Type:          schema.TypeBool,
+		Optional:      true,
+		Default:       false,
+		ConflictsWith: []string{"create_vpc"},
 		Description: "Use VPC from the YugabyteDB Anywhere host. " +
 			"If false, network must be specified. Default is false.",
 	}
 	s["create_vpc"] = &schema.Schema{
-		Type:     schema.TypeBool,
-		Optional: true,
-		Default:  false,
+		Type:          schema.TypeBool,
+		Optional:      true,
+		Default:       false,
+		ConflictsWith: []string{"use_host_vpc"},
 		Description: "Create a new VPC in GCP. " +
 			"If true, network must be specified as the new VPC name. Default is false.",
 	}

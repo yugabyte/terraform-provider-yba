@@ -64,11 +64,11 @@ terraform state mv yba_backups.example yba_backup_schedule.example
 - `parallelism` (Number) Number of concurrent commands to run on nodes over SSH.
 - `run_immediate_backup_on_resume` (Boolean) When resuming a paused schedule (setting enabled=true), run a full or incremental backup immediately instead of waiting for the next scheduled time.
 - `sse` (Boolean) Is SSE.
-- `table_by_table_backup` (Boolean) Take table-by-table backups.
+- `table_by_table_backup` (Boolean) Take table-by-table backups. Conflicts with transactional_backup.
 - `table_uuid_list` (List of String) List of specific table UUIDs to backup. Only applicable when a single keyspace is specified in 'keyspaces'. If 'keyspaces' has multiple entries, this field is ignored.
 - `time_before_delete` (String) Time before deleting the backup from storage. Accepts string duration in the standard format <https://pkg.go.dev/time#Duration>. Backups are kept indefinitely if not set.
 - `timeouts` (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))
-- `transactional_backup` (Boolean) Flag for indicating if backup is transactional across tables.
+- `transactional_backup` (Boolean, Deprecated) Deprecated in the YBA API. Use table_by_table_backup instead.
 - `use_local_timezone` (Boolean) Use local timezone for cron expression, otherwise use UTC.
 - `use_roles` (Boolean) Backup global YSQL roles.
 - `use_tablespaces` (Boolean) Include tablespaces information in backup.

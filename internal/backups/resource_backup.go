@@ -138,13 +138,6 @@ func ResourceBackup() *schema.Resource {
 				Default:     false,
 				Description: "Enable server-side encryption.",
 			},
-			"transactional_backup": {
-				Type:        schema.TypeBool,
-				Optional:    true,
-				ForceNew:    true,
-				Default:     false,
-				Description: "Create a transactional backup across tables.",
-			},
 			"table_by_table_backup": {
 				Type:        schema.TypeBool,
 				Optional:    true,

@@ -22,12 +22,12 @@ S3 Storage Configuration for YugabyteDB Anywhere backups. Supports AWS S3 and S3
 
 ### Optional
 
-- `access_key_id` (String, Sensitive) AWS Access Key ID. Required if use_iam_instance_profile is false.
+- `access_key_id` (String, Sensitive) AWS Access Key ID. Required with secret_access_key when use_iam_instance_profile is false.
 - `aws_host_base` (String) S3-compatible endpoint URL (e.g., s3.amazonaws.com for AWS, or custom endpoint for MinIO/Ceph). Leave empty for default AWS S3.
 - `iam_config` (Block List, Max: 1) Advanced IAM configuration settings. (see [below for nested schema](#nestedblock--iam_config))
 - `path_style_access` (Boolean) Use path-style access for S3 requests (required for some S3-compatible storage). Default: false.
 - `region_locations` (Block List) Region-specific backup locations for multi-region backups. (see [below for nested schema](#nestedblock--region_locations))
-- `secret_access_key` (String, Sensitive) AWS Secret Access Key. Required if use_iam_instance_profile is false.
+- `secret_access_key` (String, Sensitive) AWS Secret Access Key. Required with access_key_id when use_iam_instance_profile is false.
 - `signing_region` (String) AWS signing region for S3 requests. Used as fallback region for STS.
 - `timeouts` (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))
 - `use_chunked_encoding` (Boolean) Use chunked encoding for S3 requests. Default: true.

@@ -49,6 +49,8 @@ func ResourceAzureStorageConfig() *schema.Resource {
 			Delete: schema.DefaultTimeout(5 * time.Minute),
 		},
 
+		CustomizeDiff: validateNoDuplicateRegionLocations,
+
 		Schema: map[string]*schema.Schema{
 			"name": {
 				Type:        schema.TypeString,
@@ -63,16 +65,18 @@ func ResourceAzureStorageConfig() *schema.Resource {
 					"(e.g., https://<account>.blob.core.windows.net/<container>).",
 			},
 			"sas_token": {
-				Type:      schema.TypeString,
-				Optional:  true,
-				Sensitive: true,
+				Type:          schema.TypeString,
+				Optional:      true,
+				Sensitive:     true,
+				ConflictsWith: []string{"use_azure_iam"},
 				Description: "Azure SAS (Shared Access Signature) token. " +
 					"Required if use_azure_iam is false.",
 			},
 			"use_azure_iam": {
-				Type:     schema.TypeBool,
-				Optional: true,
-				Default:  false,
+				Type:          schema.TypeBool,
+				Optional:      true,
+				Default:       false,
+				ConflictsWith: []string{"sas_token"},
 				Description: "Use Azure managed identities for authentication. " +
 					"If true, sas_token is not required. Default: false.",
 			},

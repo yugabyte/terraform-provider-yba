@@ -50,6 +50,8 @@ func ResourceGCSStorageConfig() *schema.Resource {
 			Delete: schema.DefaultTimeout(5 * time.Minute),
 		},
 
+		CustomizeDiff: validateNoDuplicateRegionLocations,
+
 		Schema: map[string]*schema.Schema{
 			"name": {
 				Type:        schema.TypeString,
@@ -63,15 +65,17 @@ func ResourceGCSStorageConfig() *schema.Resource {
 				Description: "GCS bucket URI (e.g., gs://bucket-name/path).",
 			},
 			"credentials": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				Sensitive:   true,
-				Description: "GCP Service Account credentials JSON. Required if use_gcp_iam is false.",
+				Type:          schema.TypeString,
+				Optional:      true,
+				Sensitive:     true,
+				ConflictsWith: []string{"use_gcp_iam"},
+				Description:   "GCP Service Account credentials JSON. Required if use_gcp_iam is false.",
 			},
 			"use_gcp_iam": {
-				Type:     schema.TypeBool,
-				Optional: true,
-				Default:  false,
+				Type:          schema.TypeBool,
+				Optional:      true,
+				Default:       false,
+				ConflictsWith: []string{"credentials"},
 				Description: "Use GCP IAM for authentication (workload identity). " +
 					"Supported for Kubernetes GKE clusters with workload identity. " +
 					"If true, credentials field is not required. Default: false.",

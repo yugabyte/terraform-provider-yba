@@ -51,6 +51,8 @@ func ResourceS3StorageConfig() *schema.Resource {
 			Delete: schema.DefaultTimeout(5 * time.Minute),
 		},
 
+		CustomizeDiff: validateNoDuplicateRegionLocations,
+
 		Schema: map[string]*schema.Schema{
 			"name": {
 				Type:        schema.TypeString,
@@ -64,21 +66,28 @@ func ResourceS3StorageConfig() *schema.Resource {
 				Description: "S3 bucket URI (e.g., s3://bucket-name/path).",
 			},
 			"access_key_id": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				Sensitive:   true,
-				Description: "AWS Access Key ID. Required if use_iam_instance_profile is false.",
+				Type:          schema.TypeString,
+				Optional:      true,
+				Sensitive:     true,
+				ConflictsWith: []string{"use_iam_instance_profile"},
+				RequiredWith:  []string{"secret_access_key"},
+				Description: "AWS Access Key ID. Required with secret_access_key " +
+					"when use_iam_instance_profile is false.",
 			},
 			"secret_access_key": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				Sensitive:   true,
-				Description: "AWS Secret Access Key. Required if use_iam_instance_profile is false.",
+				Type:          schema.TypeString,
+				Optional:      true,
+				Sensitive:     true,
+				ConflictsWith: []string{"use_iam_instance_profile"},
+				RequiredWith:  []string{"access_key_id"},
+				Description: "AWS Secret Access Key. Required with access_key_id " +
+					"when use_iam_instance_profile is false.",
 			},
 			"use_iam_instance_profile": {
-				Type:     schema.TypeBool,
-				Optional: true,
-				Default:  false,
+				Type:          schema.TypeBool,
+				Optional:      true,
+				Default:       false,
+				ConflictsWith: []string{"access_key_id", "secret_access_key"},
 				Description: "Use IAM Role from the YugabyteDB Anywhere host. " +
 					"If true, access_key_id and secret_access_key are not required. Default: false.",
 			},
