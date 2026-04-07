@@ -18,9 +18,9 @@ package backups
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"time"
 
-	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/customdiff"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
@@ -331,19 +331,21 @@ func resourceRestoreCreate(
 		req.RestoreToPointInTimeMillis = &millis
 	}
 
-	// Execute restore
-	r, response, err := c.BackupsAPI.RestoreBackupV2(ctx, cUUID).Backup(req).Execute()
-	if err != nil {
-		errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
-			"Restore", "Create")
-		return diag.FromErr(errMessage)
-	}
-
-	taskUUID := *r.TaskUUID
-	tflog.Debug(ctx, fmt.Sprintf("Waiting for restore task %s to complete", taskUUID))
-	err = utils.WaitForTask(ctx, taskUUID, cUUID, c, d.Timeout(schema.TimeoutCreate))
-	if err != nil {
-		return diag.FromErr(err)
+	// Execute restore, retrying on 409 universe-task conflicts.
+	var taskUUID string
+	if diags := utils.DispatchAndWait(ctx, "Create Restore", cUUID, c,
+		d.Timeout(schema.TimeoutCreate),
+		utils.ResourceEntity, "Restore", "Create",
+		func() (string, *http.Response, error) {
+			r, resp, err := c.BackupsAPI.RestoreBackupV2(ctx, cUUID).Backup(req).Execute()
+			if err != nil {
+				return "", resp, err
+			}
+			taskUUID = *r.TaskUUID
+			return taskUUID, resp, nil
+		},
+	); diags != nil {
+		return diags
 	}
 
 	// Set ID using task UUID since restores don't have a persistent ID

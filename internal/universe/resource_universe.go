@@ -19,6 +19,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"reflect"
 	"time"
 
@@ -733,11 +734,10 @@ func resourceUniverseCreate(
 			"Universe", "Create")
 		return diag.FromErr(errMessage)
 	}
-
 	d.SetId(*r.ResourceUUID)
 	tflog.Debug(ctx, fmt.Sprintf("Waiting for universe %s to be active", d.Id()))
-	err = utils.WaitForTask(ctx, r.GetTaskUUID(), cUUID, c, d.Timeout(schema.TimeoutCreate))
-	if err != nil {
+	if err = utils.WaitForTask(ctx, r.GetTaskUUID(), cUUID, c,
+		d.Timeout(schema.TimeoutCreate)); err != nil {
 		return diag.FromErr(err)
 	}
 	return resourceUniverseRead(ctx, d, meta)
@@ -850,7 +850,7 @@ func runFinalizeUpgrade(
 	sleepAfterMasterMs int32,
 	sleepAfterTServerMs int32,
 	timeout time.Duration,
-) error {
+) diag.Diagnostics {
 	finalizeReq := client.FinalizeUpgradeParams{
 		Clusters:                       clusters,
 		UpgradeOption:                  upgradeOption,
@@ -858,14 +858,17 @@ func runFinalizeUpgrade(
 		SleepAfterMasterRestartMillis:  sleepAfterMasterMs,
 		SleepAfterTServerRestartMillis: sleepAfterTServerMs,
 	}
-	r, response, err := c.UniverseUpgradesManagementAPI.FinalizeUpgrade(
-		ctx, cUUID, uniUUID).FinalizeUpgradeParams(finalizeReq).Execute()
-	if err != nil {
-		return utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
-			"Universe", "Update - Finalize Upgrade")
-	}
-	tflog.Info(ctx, "FinalizeUpgrade task is executing")
-	return utils.WaitForTask(ctx, r.GetTaskUUID(), cUUID, c, timeout)
+	return utils.DispatchAndWait(ctx, "Finalize Upgrade", cUUID, c, timeout,
+		utils.ResourceEntity, "Universe", "Update - Finalize Upgrade",
+		func() (string, *http.Response, error) {
+			r, resp, err := c.UniverseUpgradesManagementAPI.FinalizeUpgrade(
+				ctx, cUUID, uniUUID).FinalizeUpgradeParams(finalizeReq).Execute()
+			if err != nil {
+				return "", resp, err
+			}
+			return r.GetTaskUUID(), resp, nil
+		},
+	)
 }
 
 func resourceUniverseUpdate(
@@ -927,17 +930,19 @@ func resourceUniverseUpdate(
 				SleepAfterMasterRestartMillis:  sleepAfterMasterMs,
 				SleepAfterTServerRestartMillis: sleepAfterTServerMs,
 			}
-			r, response, err := c.UniverseUpgradesManagementAPI.RollbackUpgrade(
-				ctx, cUUID, d.Id()).RollbackUpgradeParams(rollbackReq).Execute()
-			if err != nil {
-				errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
-					"Universe", "Update - Rollback Upgrade")
-				return diag.FromErr(errMessage)
-			}
-			tflog.Info(ctx, "RollbackUpgrade task is executing")
-			err = utils.WaitForTask(ctx, r.GetTaskUUID(), cUUID, c, d.Timeout(schema.TimeoutUpdate))
-			if err != nil {
-				return diag.FromErr(err)
+			if diags := utils.DispatchAndWait(ctx, "Rollback Upgrade", cUUID, c,
+				d.Timeout(schema.TimeoutUpdate),
+				utils.ResourceEntity, "Universe", "Update - Rollback Upgrade",
+				func() (string, *http.Response, error) {
+					r, resp, err := c.UniverseUpgradesManagementAPI.RollbackUpgrade(
+						ctx, cUUID, d.Id()).RollbackUpgradeParams(rollbackReq).Execute()
+					if err != nil {
+						return "", resp, err
+					}
+					return r.GetTaskUUID(), resp, nil
+				},
+			); diags != nil {
+				return diags
 			}
 			// Reset rollback_upgrade to false in state after a successful rollback.
 			// This intentionally creates a plan diff (state=false vs config=true) on the
@@ -979,12 +984,12 @@ func resourceUniverseUpdate(
 			}
 			if currentUni.UniverseDetails.GetSoftwareUpgradeState() == "PreFinalize" {
 				upgradeSystemCatalog := d.Get("db_version_upgrade_options.0.upgrade_system_catalog").(bool)
-				if err := runFinalizeUpgrade(ctx, c, cUUID, d.Id(),
+				if diags := runFinalizeUpgrade(ctx, c, cUUID, d.Id(),
 					currentUni.UniverseDetails.Clusters,
 					upgradeOption, upgradeSystemCatalog,
 					sleepAfterMasterMs, sleepAfterTServerMs,
-					d.Timeout(schema.TimeoutUpdate)); err != nil {
-					return diag.FromErr(err)
+					d.Timeout(schema.TimeoutUpdate)); diags != nil {
+					return diags
 				}
 			}
 		}
@@ -1055,18 +1060,20 @@ func resourceUniverseUpdate(
 					}
 				}
 
-				r, response, err := c.UniverseClusterMutationsAPI.DeleteReadonlyCluster(ctx, cUUID,
-					d.Id(), clusterUUID).IsForceDelete(
-					d.Get("delete_options.0.force_delete").(bool)).Execute()
-				if err != nil {
-					errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
-						"Universe", "Update - Delete Read Replica cluster")
-					return diag.FromErr(errMessage)
-				}
-				tflog.Info(ctx, "DeleteReadOnlyCluster task is executing")
-				err = utils.WaitForTask(ctx, r.GetTaskUUID(), cUUID, c, d.Timeout(schema.TimeoutUpdate))
-				if err != nil {
-					return diag.FromErr(err)
+				if diags := utils.DispatchAndWait(ctx, "Delete Read Replica Cluster", cUUID, c,
+					d.Timeout(schema.TimeoutUpdate),
+					utils.ResourceEntity, "Universe", "Update - Delete Read Replica cluster",
+					func() (string, *http.Response, error) {
+						r, resp, err := c.UniverseClusterMutationsAPI.DeleteReadonlyCluster(
+							ctx, cUUID, d.Id(), clusterUUID).IsForceDelete(
+							d.Get("delete_options.0.force_delete").(bool)).Execute()
+						if err != nil {
+							return "", resp, err
+						}
+						return r.GetTaskUUID(), resp, nil
+					},
+				); diags != nil {
+					return diags
 				}
 			}
 		}
@@ -1096,22 +1103,19 @@ func resourceUniverseUpdate(
 						SleepAfterTServerRestartMillis: sleepAfterTServerMs,
 					}
 
-					r, response, err := c.UniverseUpgradesManagementAPI.UpgradeDBVersion(
-						ctx, cUUID, d.Id()).SoftwareUpgradeParams(req).Execute()
-					if err != nil {
-						errMessage := utils.ErrorFromHTTPResponse(
-							response, err, utils.ResourceEntity,
-							"Universe", "Update - DB Version Upgrade",
-						)
-						return diag.FromErr(errMessage)
-					}
-
-					tflog.Info(ctx, "DB version upgrade task is executing")
-					err = utils.WaitForTask(
-						ctx, r.GetTaskUUID(), cUUID, c, d.Timeout(schema.TimeoutUpdate),
-					)
-					if err != nil {
-						return diag.FromErr(err)
+					if diags := utils.DispatchAndWait(ctx, "DB Version Upgrade", cUUID, c,
+						d.Timeout(schema.TimeoutUpdate),
+						utils.ResourceEntity, "Universe", "Update - DB Version Upgrade",
+						func() (string, *http.Response, error) {
+							r, resp, err := c.UniverseUpgradesManagementAPI.UpgradeDBVersion(
+								ctx, cUUID, d.Id()).SoftwareUpgradeParams(req).Execute()
+							if err != nil {
+								return "", resp, err
+							}
+							return r.GetTaskUUID(), resp, nil
+						},
+					); diags != nil {
+						return diags
 					}
 
 					// Finalize after upgrade if configured
@@ -1128,12 +1132,12 @@ func resourceUniverseUpdate(
 						upgradeState := updateUni.UniverseDetails.GetSoftwareUpgradeState()
 						if upgradeState == "PreFinalize" {
 							tflog.Info(ctx, "Universe is in PreFinalize state, finalizing upgrade")
-							if err := runFinalizeUpgrade(ctx, c, cUUID, d.Id(),
+							if diags := runFinalizeUpgrade(ctx, c, cUUID, d.Id(),
 								updateUni.UniverseDetails.Clusters,
 								upgradeOption, upgradeSystemCatalog,
 								sleepAfterMasterMs, sleepAfterTServerMs,
-								d.Timeout(schema.TimeoutUpdate)); err != nil {
-								return diag.FromErr(err)
+								d.Timeout(schema.TimeoutUpdate)); diags != nil {
+								return diags
 							}
 						} else {
 							tflog.Info(ctx, fmt.Sprintf(
@@ -1170,23 +1174,19 @@ func resourceUniverseUpdate(
 							sleepAfterTServerMs,
 						),
 					}
-					r, response, err := c.UniverseUpgradesManagementAPI.UpgradeGFlags(
-						ctx, cUUID, d.Id()).GflagsUpgradeParams(req).Execute()
-					if err != nil {
-						errMessage := utils.ErrorFromHTTPResponse(
-							response,
-							err,
-							utils.ResourceEntity,
-							"Universe",
-							"Update - GFlags",
-						)
-						return diag.FromErr(errMessage)
-					}
-					tflog.Info(ctx, "UpgradeGFlags task is executing")
-					err = utils.WaitForTask(ctx, r.GetTaskUUID(), cUUID, c,
-						d.Timeout(schema.TimeoutUpdate))
-					if err != nil {
-						return diag.FromErr(err)
+					if diags := utils.DispatchAndWait(ctx, "GFlags Upgrade", cUUID, c,
+						d.Timeout(schema.TimeoutUpdate),
+						utils.ResourceEntity, "Universe", "Update - GFlags",
+						func() (string, *http.Response, error) {
+							r, resp, err := c.UniverseUpgradesManagementAPI.UpgradeGFlags(
+								ctx, cUUID, d.Id()).GflagsUpgradeParams(req).Execute()
+							if err != nil {
+								return "", resp, err
+							}
+							return r.GetTaskUUID(), resp, nil
+						},
+					); diags != nil {
+						return diags
 					}
 				}
 
@@ -1225,28 +1225,19 @@ func resourceUniverseUpdate(
 							sleepAfterTServerMs,
 						),
 					}
-					r, response, err := c.UniverseUpgradesManagementAPI.UpgradeTls(
-						ctx, cUUID, d.Id()).TlsToggleParams(req).Execute()
-					if err != nil {
-						errMessage := utils.ErrorFromHTTPResponse(
-							response,
-							err,
-							utils.ResourceEntity,
-							"Universe",
-							"Update - TLS Toggle",
-						)
-						return diag.FromErr(errMessage)
-					}
-					tflog.Info(ctx, "UpgradeTLS task is executing")
-					err = utils.WaitForTask(
-						ctx,
-						r.GetTaskUUID(),
-						cUUID,
-						c,
+					if diags := utils.DispatchAndWait(ctx, "TLS Toggle", cUUID, c,
 						d.Timeout(schema.TimeoutUpdate),
-					)
-					if err != nil {
-						return diag.FromErr(err)
+						utils.ResourceEntity, "Universe", "Update - TLS Toggle",
+						func() (string, *http.Response, error) {
+							r, resp, err := c.UniverseUpgradesManagementAPI.UpgradeTls(
+								ctx, cUUID, d.Id()).TlsToggleParams(req).Execute()
+							if err != nil {
+								return "", resp, err
+							}
+							return r.GetTaskUUID(), resp, nil
+						},
+					); diags != nil {
+						return diags
 					}
 				}
 
@@ -1273,28 +1264,19 @@ func resourceUniverseUpdate(
 							sleepAfterTServerMs,
 						),
 					}
-					r, response, err := c.UniverseUpgradesManagementAPI.UpgradeSystemd(
-						ctx, cUUID, d.Id()).SystemdUpgradeParams(req).Execute()
-					if err != nil {
-						errMessage := utils.ErrorFromHTTPResponse(
-							response,
-							err,
-							utils.ResourceEntity,
-							"Universe",
-							"Update - Systemd",
-						)
-						return diag.FromErr(errMessage)
-					}
-					tflog.Info(ctx, "UpgradeSystemd task is executing")
-					err = utils.WaitForTask(
-						ctx,
-						r.GetTaskUUID(),
-						cUUID,
-						c,
+					if diags := utils.DispatchAndWait(ctx, "Systemd Upgrade", cUUID, c,
 						d.Timeout(schema.TimeoutUpdate),
-					)
-					if err != nil {
-						return diag.FromErr(err)
+						utils.ResourceEntity, "Universe", "Update - Systemd",
+						func() (string, *http.Response, error) {
+							r, resp, err := c.UniverseUpgradesManagementAPI.UpgradeSystemd(
+								ctx, cUUID, d.Id()).SystemdUpgradeParams(req).Execute()
+							if err != nil {
+								return "", resp, err
+							}
+							return r.GetTaskUUID(), resp, nil
+						},
+					); diags != nil {
+						return diags
 					}
 				} else if oldUserIntent.GetUseSystemd() == true &&
 					newUserIntent.GetUseSystemd() == false {
@@ -1335,28 +1317,19 @@ func resourceUniverseUpdate(
 								sleepAfterTServerMs,
 							),
 						}
-						r, response, err := c.UniverseUpgradesManagementAPI.ResizeNode(
-							ctx, cUUID, d.Id()).ResizeNodeParams(req).Execute()
-						if err != nil {
-							errMessage := utils.ErrorFromHTTPResponse(
-								response,
-								err,
-								utils.ResourceEntity,
-								"Universe",
-								"Update - Resize Nodes",
-							)
-							return diag.FromErr(errMessage)
-						}
-						tflog.Info(ctx, "ResizeNode task is executing")
-						err = utils.WaitForTask(
-							ctx,
-							r.GetTaskUUID(),
-							cUUID,
-							c,
+						if diags := utils.DispatchAndWait(ctx, "Resize Nodes", cUUID, c,
 							d.Timeout(schema.TimeoutUpdate),
-						)
-						if err != nil {
-							return diag.FromErr(err)
+							utils.ResourceEntity, "Universe", "Update - Resize Nodes",
+							func() (string, *http.Response, error) {
+								r, resp, err := c.UniverseUpgradesManagementAPI.ResizeNode(
+									ctx, cUUID, d.Id()).ResizeNodeParams(req).Execute()
+								if err != nil {
+									return "", resp, err
+								}
+								return r.GetTaskUUID(), resp, nil
+							},
+						); diags != nil {
+							return diags
 						}
 					} else {
 						tflog.Error(ctx, "Volume Size cannot be decreased")
@@ -1387,28 +1360,19 @@ func resourceUniverseUpdate(
 							updateUni.UniverseDetails.NodeDetailsSet),
 						CommunicationPorts: updateUni.UniverseDetails.CommunicationPorts,
 					}
-					r, response, err := c.UniverseClusterMutationsAPI.UpdatePrimaryCluster(
-						ctx, cUUID, d.Id()).UniverseConfigureTaskParams(req).Execute()
-					if err != nil {
-						errMessage := utils.ErrorFromHTTPResponse(
-							response,
-							err,
-							utils.ResourceEntity,
-							"Universe",
-							"Update - Primary Cluster",
-						)
-						return diag.FromErr(errMessage)
-					}
-					tflog.Info(ctx, "UpdatePrimaryCluster task is executing")
-					err = utils.WaitForTask(
-						ctx,
-						r.GetTaskUUID(),
-						cUUID,
-						c,
+					if diags := utils.DispatchAndWait(ctx, "Update Primary Cluster", cUUID, c,
 						d.Timeout(schema.TimeoutUpdate),
-					)
-					if err != nil {
-						return diag.FromErr(err)
+						utils.ResourceEntity, "Universe", "Update - Primary Cluster",
+						func() (string, *http.Response, error) {
+							r, resp, err := c.UniverseClusterMutationsAPI.UpdatePrimaryCluster(
+								ctx, cUUID, d.Id()).UniverseConfigureTaskParams(req).Execute()
+							if err != nil {
+								return "", resp, err
+							}
+							return r.GetTaskUUID(), resp, nil
+						},
+					); diags != nil {
+						return diags
 					}
 				}
 
@@ -1454,17 +1418,19 @@ func resourceUniverseUpdate(
 							updateUni.UniverseDetails.NodeDetailsSet),
 						CommunicationPorts: updateUni.UniverseDetails.CommunicationPorts,
 					}
-					r, response, err := c.UniverseClusterMutationsAPI.UpdateReadOnlyCluster(
-						ctx, cUUID, d.Id()).UniverseConfigureTaskParams(req).Execute()
-					if err != nil {
-						errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
-							"Universe", "Update - Read Replica Cluster")
-						return diag.FromErr(errMessage)
-					}
-					tflog.Info(ctx, "UpdateReadOnlyCluster task is executing")
-					err = utils.WaitForTask(ctx, r.GetTaskUUID(), cUUID, c, d.Timeout(schema.TimeoutUpdate))
-					if err != nil {
-						return diag.FromErr(err)
+					if diags := utils.DispatchAndWait(ctx, "Update Read Replica Cluster", cUUID, c,
+						d.Timeout(schema.TimeoutUpdate),
+						utils.ResourceEntity, "Universe", "Update - Read Replica Cluster",
+						func() (string, *http.Response, error) {
+							r, resp, err := c.UniverseClusterMutationsAPI.UpdateReadOnlyCluster(
+								ctx, cUUID, d.Id()).UniverseConfigureTaskParams(req).Execute()
+							if err != nil {
+								return "", resp, err
+							}
+							return r.GetTaskUUID(), resp, nil
+						},
+					); diags != nil {
+						return diags
 					}
 				}
 			}
@@ -1519,23 +1485,18 @@ func performVMImageUpgrade(
 		SleepAfterMasterRestartMillis:  sleepAfterMasterMs,
 		SleepAfterTServerRestartMillis: sleepAfterTServerMs,
 	}
-	r, response, err := c.UniverseUpgradesManagementAPI.UpgradeVMImage(
-		ctx, cUUID, d.Id()).VmimageUpgradeParams(req).Execute()
-	if err != nil {
-		errMessage := utils.ErrorFromHTTPResponse(
-			response, err, utils.ResourceEntity,
-			"Universe", "Update - VM Image")
-		return diag.FromErr(errMessage)
-	}
-	tflog.Info(ctx, fmt.Sprintf(
-		"UpgradeVMImage task is executing for %d cluster(s)",
-		len(imageBundleUpgrades)))
-	err = utils.WaitForTask(
-		ctx, r.GetTaskUUID(), cUUID, c, d.Timeout(schema.TimeoutUpdate))
-	if err != nil {
-		return diag.FromErr(err)
-	}
-	return nil
+	return utils.DispatchAndWait(ctx, "VM Image Upgrade", cUUID, c,
+		d.Timeout(schema.TimeoutUpdate),
+		utils.ResourceEntity, "Universe", "Update - VM Image",
+		func() (string, *http.Response, error) {
+			r, resp, err := c.UniverseUpgradesManagementAPI.UpgradeVMImage(
+				ctx, cUUID, d.Id()).VmimageUpgradeParams(req).Execute()
+			if err != nil {
+				return "", resp, err
+			}
+			return r.GetTaskUUID(), resp, nil
+		},
+	)
 }
 
 func resourceUniverseDelete(
@@ -1547,21 +1508,22 @@ func resourceUniverseDelete(
 	c := meta.(*api.APIClient).YugawareClient
 	cUUID := meta.(*api.APIClient).CustomerID
 
-	r, response, err := c.UniverseManagementAPI.DeleteUniverse(ctx, cUUID, d.Id()).
-		IsForceDelete(d.Get("delete_options.0.force_delete").(bool)).
-		IsDeleteBackups(d.Get("delete_options.0.delete_backups").(bool)).
-		IsDeleteAssociatedCerts(d.Get("delete_options.0.delete_certs").(bool)).
-		Execute()
-	if err != nil {
-		errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
-			"Universe", "Delete")
-		return diag.FromErr(errMessage)
-	}
-
-	tflog.Debug(ctx, fmt.Sprintf("Waiting for universe %s to be deleted", d.Id()))
-	err = utils.WaitForTask(ctx, r.GetTaskUUID(), cUUID, c, d.Timeout(schema.TimeoutDelete))
-	if err != nil {
-		return diag.FromErr(err)
+	if diags = utils.DispatchAndWait(ctx, "Delete Universe", cUUID, c,
+		d.Timeout(schema.TimeoutDelete),
+		utils.ResourceEntity, "Universe", "Delete",
+		func() (string, *http.Response, error) {
+			r, resp, err := c.UniverseManagementAPI.DeleteUniverse(ctx, cUUID, d.Id()).
+				IsForceDelete(d.Get("delete_options.0.force_delete").(bool)).
+				IsDeleteBackups(d.Get("delete_options.0.delete_backups").(bool)).
+				IsDeleteAssociatedCerts(d.Get("delete_options.0.delete_certs").(bool)).
+				Execute()
+			if err != nil {
+				return "", resp, err
+			}
+			return r.GetTaskUUID(), resp, nil
+		},
+	); diags != nil {
+		return diags
 	}
 
 	d.SetId("")

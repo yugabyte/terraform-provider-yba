@@ -30,6 +30,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-log/tflog"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	client "github.com/yugabyte/platform-go-client"
@@ -134,6 +135,11 @@ var (
 	// SuccessTaskStates lists successful task states
 	SuccessTaskStates = []string{"Success"}
 )
+
+// TaskConflictRetryDelay is the wait between dispatch retries when YBA returns a 409
+// universe task conflict. A running universe operation can hold the lock for several
+// minutes, so a short but non-trivial delay avoids hammering the API.
+const TaskConflictRetryDelay = 10 * time.Second
 
 // WaitForTask waits for State change for a YBA task
 func WaitForTask(ctx context.Context, tUUID string, cUUID string, c *client.APIClient,
@@ -691,6 +697,163 @@ func CheckHTTPError(resp *http.Response, operation string) error {
 	}
 	// Return formatted error for other status codes
 	return FormatHTTPError(resp, operation)
+}
+
+// IsUniverseTaskConflict returns true when the YBA API rejected the request with a 409
+// because another task is already running on the universe. YBA produces two distinct
+// 409 messages that both indicate a transient conflict:
+//
+//   - TaskQueue: "Task X cannot be queued on existing task Y"
+//     (the incoming task type is not compatible with the currently running task)
+//
+//   - BackupHelper: "Cannot run Backup task since the universe U is currently in a
+//     locked state."
+//     (universe.updateInProgress is true while a task holds the universe lock)
+//
+// The generated platform-go-client returns errors as *GenericOpenAPIError (pointer),
+// so we use errors.As rather than a direct type assertion. err.Error() only returns
+// the HTTP status line ("409 Conflict"), not the body, so we always inspect Body().
+func IsUniverseTaskConflict(response *http.Response, err error) bool {
+	if response == nil || response.StatusCode != http.StatusConflict {
+		return false
+	}
+	var oErr *client.GenericOpenAPIError
+	if errors.As(err, &oErr) {
+		body := string(oErr.Body())
+		return strings.Contains(body, "cannot be queued") ||
+			strings.Contains(body, "currently in a locked state")
+	}
+	return false
+}
+
+// RetryOnUniverseTaskConflict calls fn repeatedly whenever YBA returns a 409 Conflict
+// indicating that the requested task cannot be queued because another universe task is
+// already running. It delegates to resource.RetryContext so context cancellation,
+// exponential back-off, and overall timeout are all handled by the SDK.
+//
+// fn must capture its result variables via closure so the caller can inspect them after
+// a successful call. fn should return (*http.Response, error) -- exactly what the
+// generated API client Execute() methods return after stripping the task/result value.
+//
+// Example usage:
+//
+//	var r *client.YBPTask
+//	resp, err := utils.RetryOnUniverseTaskConflict(ctx, "Create Backup",
+//	    d.Timeout(schema.TimeoutCreate),
+//	    func() (*http.Response, error) {
+//	        var apiResp *http.Response
+//	        r, apiResp, err = c.BackupsAPI.Createbackup(ctx, cUUID).Backup(req).Execute()
+//	        return apiResp, err
+//	    })
+func RetryOnUniverseTaskConflict(
+	ctx context.Context,
+	label string,
+	timeout time.Duration,
+	fn func() (*http.Response, error),
+) (*http.Response, error) {
+	var lastResponse *http.Response
+	retryErr := resource.RetryContext(ctx, timeout, func() *resource.RetryError {
+		resp, err := fn()
+		lastResponse = resp
+		if err != nil {
+			if IsUniverseTaskConflict(resp, err) {
+				tflog.Info(ctx, fmt.Sprintf(
+					"%s: universe task conflict (409), retrying in %s",
+					label, TaskConflictRetryDelay))
+				time.Sleep(TaskConflictRetryDelay)
+				return resource.RetryableError(err)
+			}
+			return resource.NonRetryableError(err)
+		}
+		return nil
+	})
+	return lastResponse, retryErr
+}
+
+// DispatchAndWait is the idiomatic helper for submitting a universe task and waiting
+// for it to complete. It combines three steps that every task-dispatching call site
+// previously repeated verbatim:
+//
+//  1. Call the YBA API to queue the task (retrying on 409 universe-task conflicts).
+//  2. Format and return any error that prevents the task from being queued.
+//  3. Wait for the task to reach a terminal state via WaitForTask.
+//
+// fn must return the task UUID on success together with the raw HTTP response and any
+// error. Additional values produced by the API (e.g. a resource UUID) can be captured
+// from within the fn closure before returning.
+//
+// Example -- universe upgrade:
+//
+//	if diags := utils.DispatchAndWait(ctx, "GFlags Upgrade", cUUID, c,
+//	    d.Timeout(schema.TimeoutUpdate),
+//	    utils.ResourceEntity, "Universe", "Update - GFlags",
+//	    func() (string, *http.Response, error) {
+//	        r, resp, err := c.UniverseUpgradesManagementAPI.UpgradeGFlags(
+//	            ctx, cUUID, d.Id()).GflagsUpgradeParams(req).Execute()
+//	        if err != nil { return "", resp, err }
+//	        return r.GetTaskUUID(), resp, nil
+//	    },
+//	); diags != nil {
+//	    return diags
+//	}
+//
+// Example -- capturing an extra field from the response:
+//
+//	var resourceUUID string
+//	if diags := utils.DispatchAndWait(ctx, "Create Universe", cUUID, c,
+//	    d.Timeout(schema.TimeoutCreate),
+//	    utils.ResourceEntity, "Universe", "Create",
+//	    func() (string, *http.Response, error) {
+//	        r, resp, err := c.UniverseClusterMutationsAPI.CreateAllClusters(ctx, cUUID).
+//	            UniverseConfigureTaskParams(req).Execute()
+//	        if err != nil { return "", resp, err }
+//	        resourceUUID = *r.ResourceUUID
+//	        return r.GetTaskUUID(), resp, nil
+//	    },
+//	); diags != nil {
+//	    return diags
+//	}
+//	d.SetId(resourceUUID)
+func DispatchAndWait(
+	ctx context.Context,
+	label string,
+	cUUID string,
+	c *client.APIClient,
+	timeout time.Duration,
+	entity, resourceName, operation string,
+	fn func() (taskUUID string, response *http.Response, err error),
+) diag.Diagnostics {
+	var taskUUID string
+	var lastResponse *http.Response
+
+	retryErr := resource.RetryContext(ctx, timeout, func() *resource.RetryError {
+		tUUID, resp, err := fn()
+		lastResponse = resp
+		if err != nil {
+			if IsUniverseTaskConflict(resp, err) {
+				tflog.Info(ctx, fmt.Sprintf(
+					"%s: universe task conflict (409), retrying in %s",
+					label, TaskConflictRetryDelay))
+				time.Sleep(TaskConflictRetryDelay)
+				return resource.RetryableError(err)
+			}
+			return resource.NonRetryableError(err)
+		}
+		taskUUID = tUUID
+		return nil
+	})
+
+	if retryErr != nil {
+		return diag.FromErr(ErrorFromHTTPResponse(
+			lastResponse, retryErr, entity, resourceName, operation))
+	}
+
+	tflog.Info(ctx, fmt.Sprintf("%s: task %s dispatched, waiting for completion",
+		label, taskUUID))
+	if err := WaitForTask(ctx, taskUUID, cUUID, c, timeout); err != nil {
+		return diag.FromErr(err)
+	}
+	return nil
 }
 
 // CheckMinimumYBAVersion validates that the YBA version meets the minimum requirement

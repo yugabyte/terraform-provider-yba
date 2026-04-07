@@ -319,25 +319,21 @@ func resourceBackupCreate(
 
 	tflog.Info(ctx, fmt.Sprintf("Creating on-demand backup for universe %s", req.UniverseUUID))
 
-	// Call create backup API
-	r, response, err := c.BackupsAPI.Createbackup(ctx, cUUID).Backup(req).Execute()
-	if err != nil {
-		errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
-			"Backup", "Create")
-		return diag.FromErr(errMessage)
+	var taskUUID string
+	if diags := utils.DispatchAndWait(ctx, "Create Backup", cUUID, c,
+		d.Timeout(schema.TimeoutCreate),
+		utils.ResourceEntity, "Backup", "Create",
+		func() (string, *http.Response, error) {
+			r, resp, err := c.BackupsAPI.Createbackup(ctx, cUUID).Backup(req).Execute()
+			if err != nil {
+				return "", resp, err
+			}
+			taskUUID = r.GetTaskUUID()
+			return taskUUID, resp, nil
+		},
+	); diags != nil {
+		return diags
 	}
-
-	taskUUID := r.GetTaskUUID()
-	tflog.Info(ctx, fmt.Sprintf("Backup task created with UUID: %s", taskUUID))
-
-	// Wait for backup task to complete
-	tflog.Info(ctx, "Waiting for backup task to complete...")
-	err = utils.WaitForTask(ctx, taskUUID, cUUID, c, d.Timeout(schema.TimeoutCreate))
-	if err != nil {
-		return diag.FromErr(fmt.Errorf("backup task failed: %w", err))
-	}
-
-	tflog.Info(ctx, "Backup task completed successfully")
 
 	// Find the backup UUID from the task
 	universeUUID := d.Get("universe_uuid").(string)
@@ -506,9 +502,20 @@ func resourceBackupDelete(
 		DeleteBackupInfos: []client.DeleteBackupInfo{deleteBackupInfo},
 	}
 
-	// Call delete API
-	_, response, err := c.BackupsAPI.DeleteBackupsV2(ctx, cUUID).
-		DeleteBackup(deleteParams).Execute()
+	// Call delete API, retrying on 409 universe-task conflicts.
+	var (
+		response *http.Response
+		err      error
+	)
+	response, err = utils.RetryOnUniverseTaskConflict(
+		ctx, "Delete Backup", d.Timeout(schema.TimeoutDelete),
+		func() (*http.Response, error) {
+			var apiResp *http.Response
+			_, apiResp, err = c.BackupsAPI.DeleteBackupsV2(ctx, cUUID).
+				DeleteBackup(deleteParams).Execute()
+			return apiResp, err
+		},
+	)
 	if err != nil {
 		if response != nil && response.StatusCode == http.StatusNotFound {
 			tflog.Warn(ctx, fmt.Sprintf("Backup %s already deleted", backupUUID))

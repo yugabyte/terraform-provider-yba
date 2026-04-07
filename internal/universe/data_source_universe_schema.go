@@ -168,6 +168,26 @@ func dataSourceUniverseSchemaRead(
 	includeTables := d.Get("include_tables").(bool)
 	tableTypeFilter := d.Get("table_type").(string)
 
+	// Preflight: fetch the universe to validate it exists and is not paused.
+	// Doing this before GetAllNamespaces avoids a cryptic 500 "Could not find the
+	// master leader" error that YBA returns when the universe nodes are unreachable
+	// because the universe is paused.
+	uni, response, err := c.UniverseManagementAPI.GetUniverse(ctx, cUUID, uUUID).Execute()
+	if err != nil {
+		if utils.IsHTTPNotFound(response) || utils.IsHTTPBadRequestNotFound(response) {
+			return diag.Errorf("universe %s not found: verify that the universe_uuid is correct",
+				uUUID)
+		}
+		errMessage := utils.ErrorFromHTTPResponse(response, err, utils.DataSourceEntity,
+			"Universe Schema", "Read - Fetch Universe")
+		return diag.FromErr(errMessage)
+	}
+	uniDetails := uni.GetUniverseDetails()
+	if uniDetails.GetUniversePaused() {
+		return diag.Errorf(
+			"universe %s is paused: resume the universe before reading its schema", uUUID)
+	}
+
 	// Fetch namespaces
 	namespaces, response, err := c.TableManagementAPI.GetAllNamespaces(ctx, cUUID, uUUID).
 		IncludeSystemNamespaces(includeSystem).Execute()

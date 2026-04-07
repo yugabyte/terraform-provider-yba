@@ -526,29 +526,25 @@ func resourceBackupsCreate(
 		fmt.Sprintf("Creating backup schedule %s for universe %s", scheduleName, universeUUID),
 	)
 
-	var response *http.Response
-	r, response, err := c.BackupsAPI.CreateBackupScheduleAsync(ctx, cUUID).Backup(req).Execute()
-	if err != nil {
-		errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
-			"Backup Schedule", "Create")
-		return diag.FromErr(errMessage)
+	var scheduleUUID string
+	if diags := utils.DispatchAndWait(ctx, "Create Backup Schedule", cUUID, c,
+		d.Timeout(schema.TimeoutCreate),
+		utils.ResourceEntity, "Backup Schedule", "Create",
+		func() (string, *http.Response, error) {
+			r, resp, err := c.BackupsAPI.CreateBackupScheduleAsync(ctx, cUUID).Backup(req).Execute()
+			if err != nil {
+				return "", resp, err
+			}
+			scheduleUUID = r.GetResourceUUID()
+			return r.GetTaskUUID(), resp, nil
+		},
+	); diags != nil {
+		return diags
 	}
 
-	taskUUID := r.GetTaskUUID()
-	if taskUUID == "" {
-		return diag.Errorf("no task UUID returned from create backup schedule async API")
-	}
-
-	tflog.Info(ctx, fmt.Sprintf("Waiting for backup schedule creation task %s", taskUUID))
-	err = utils.WaitForTask(ctx, taskUUID, cUUID, c, d.Timeout(schema.TimeoutCreate))
-	if err != nil {
-		return diag.FromErr(fmt.Errorf("backup schedule creation failed: %w", err))
-	}
-
-	// The async API doesn't return resourceUUID, so find the schedule by name
-	// Schedule names are unique within a universe
-	scheduleUUID := r.GetResourceUUID()
+	// The async API may not return the resource UUID; fall back to a name lookup.
 	if scheduleUUID == "" {
+		var err error
 		scheduleUUID, err = findScheduleUUIDByName(ctx, c, cUUID, universeUUID, scheduleName)
 		if err != nil {
 			return diag.FromErr(fmt.Errorf("failed to find created schedule: %w", err))
@@ -768,10 +764,18 @@ func resourceBackupsUpdate(
 
 		tflog.Info(ctx, fmt.Sprintf("Toggling backup schedule %s to %s", d.Id(), status))
 
-		_, response, err := c.ScheduleManagementAPI.ToggleBackupSchedule(
-			ctx, cUUID, universeUUID, d.Id()).Body(toggleReq).Execute()
+		var toggleResponse *http.Response
+		toggleResponse, err = utils.RetryOnUniverseTaskConflict(
+			ctx, "Toggle Backup Schedule", d.Timeout(schema.TimeoutUpdate),
+			func() (*http.Response, error) {
+				var apiResp *http.Response
+				_, apiResp, err = c.ScheduleManagementAPI.ToggleBackupSchedule(
+					ctx, cUUID, universeUUID, d.Id()).Body(toggleReq).Execute()
+				return apiResp, err
+			},
+		)
 		if err != nil {
-			errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
+			errMessage := utils.ErrorFromHTTPResponse(toggleResponse, err, utils.ResourceEntity,
 				"Backup Schedule", "Toggle")
 			return diag.FromErr(errMessage)
 		}
@@ -847,23 +851,19 @@ func resourceBackupsUpdate(
 
 		tflog.Info(ctx, fmt.Sprintf("Updating backup schedule %s", d.Id()))
 
-		r, response, err := c.ScheduleManagementAPI.EditBackupScheduleAsync(
-			ctx, cUUID, universeUUID, d.Id()).Body(req).Execute()
-		if err != nil {
-			errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
-				"Backup Schedule", "Update")
-			return diag.FromErr(errMessage)
-		}
-
-		taskUUID := r.GetTaskUUID()
-		if taskUUID == "" {
-			return diag.Errorf("no task UUID returned from edit backup schedule async API")
-		}
-
-		tflog.Info(ctx, fmt.Sprintf("Waiting for backup schedule update task %s", taskUUID))
-		err = utils.WaitForTask(ctx, taskUUID, cUUID, c, d.Timeout(schema.TimeoutUpdate))
-		if err != nil {
-			return diag.FromErr(fmt.Errorf("backup schedule update failed: %w", err))
+		if diags := utils.DispatchAndWait(ctx, "Edit Backup Schedule", cUUID, c,
+			d.Timeout(schema.TimeoutUpdate),
+			utils.ResourceEntity, "Backup Schedule", "Update",
+			func() (string, *http.Response, error) {
+				r, resp, err := c.ScheduleManagementAPI.EditBackupScheduleAsync(
+					ctx, cUUID, universeUUID, d.Id()).Body(req).Execute()
+				if err != nil {
+					return "", resp, err
+				}
+				return r.GetTaskUUID(), resp, nil
+			},
+		); diags != nil {
+			return diags
 		}
 	}
 	return resourceBackupsRead(ctx, d, meta)
@@ -900,7 +900,15 @@ func resourceBackupsDelete(
 			req = client.DeleteBackupParams{
 				DeleteBackupInfos: deleteBackupInfoList,
 			}
-			_, response, err = c.BackupsAPI.DeleteBackupsV2(ctx, cUUID).DeleteBackup(req).Execute()
+			response, err = utils.RetryOnUniverseTaskConflict(
+				ctx, "Delete Associated Backups", d.Timeout(schema.TimeoutDelete),
+				func() (*http.Response, error) {
+					var apiResp *http.Response
+					_, apiResp, err = c.BackupsAPI.DeleteBackupsV2(ctx, cUUID).
+						DeleteBackup(req).Execute()
+					return apiResp, err
+				},
+			)
 			if err != nil {
 				errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
 					"Backups", "Delete - Associated backups")
@@ -916,23 +924,19 @@ func resourceBackupsDelete(
 	universeUUID := d.Get("universe_uuid").(string)
 	tflog.Info(ctx, fmt.Sprintf("Deleting backup schedule %s", d.Id()))
 
-	r, response, err := c.ScheduleManagementAPI.DeleteBackupScheduleAsync(
-		ctx, cUUID, universeUUID, d.Id()).Execute()
-	if err != nil {
-		errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
-			"Backup Schedule", "Delete")
-		return diag.FromErr(errMessage)
-	}
-
-	taskUUID := r.GetTaskUUID()
-	if taskUUID == "" {
-		return diag.Errorf("no task UUID returned from delete backup schedule async API")
-	}
-
-	tflog.Info(ctx, fmt.Sprintf("Waiting for backup schedule deletion task %s", taskUUID))
-	err = utils.WaitForTask(ctx, taskUUID, cUUID, c, d.Timeout(schema.TimeoutDelete))
-	if err != nil {
-		return diag.FromErr(fmt.Errorf("backup schedule deletion failed: %w", err))
+	if diags := utils.DispatchAndWait(ctx, "Delete Backup Schedule", cUUID, c,
+		d.Timeout(schema.TimeoutDelete),
+		utils.ResourceEntity, "Backup Schedule", "Delete",
+		func() (string, *http.Response, error) {
+			r, resp, err := c.ScheduleManagementAPI.DeleteBackupScheduleAsync(
+				ctx, cUUID, universeUUID, d.Id()).Execute()
+			if err != nil {
+				return "", resp, err
+			}
+			return r.GetTaskUUID(), resp, nil
+		},
+	); diags != nil {
+		return diags
 	}
 
 	d.SetId("")
