@@ -384,36 +384,38 @@ func TestAccUniverse_AWS_VMImageUpgrade(t *testing.T) {
 }
 
 func testAccCheckImageBundleUpdated(before *client.UniverseResp,
-    after *client.UniverseResp) resource.TestCheckFunc {
-    return func(s *terraform.State) error {
-        // Validate Primary Cluster (Index 0)
-        oldBundleP := before.UniverseDetails.Clusters[0].UserIntent.GetImageBundleUUID()
-        newBundleP := after.UniverseDetails.Clusters[0].UserIntent.GetImageBundleUUID()
+	after *client.UniverseResp) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		// Validate Primary Cluster (Index 0)
+		oldBundleP := before.UniverseDetails.Clusters[0].UserIntent.GetImageBundleUUID()
+		newBundleP := after.UniverseDetails.Clusters[0].UserIntent.GetImageBundleUUID()
 
-        if oldBundleP == newBundleP {
-            return fmt.Errorf("PRIMARY: expected image_bundle_uuid to change,
-			but both are %s", oldBundleP)
-        }
-
-        // Validate Async Cluster (Index 1)
-        if len(before.UniverseDetails.Clusters) < 2 || len(after.UniverseDetails.Clusters) < 2 {
-			return errors.New("universe must have at least 2 clusters (Primary and Async) for this test")
+		if oldBundleP == newBundleP {
+			return fmt.Errorf("PRIMARY: expected image_bundle_uuid to change, but both are %s",
+				oldBundleP)
 		}
 
-        oldBundleA := before.UniverseDetails.Clusters[1].UserIntent.GetImageBundleUUID()
-        newBundleA := after.UniverseDetails.Clusters[1].UserIntent.GetImageBundleUUID()
+		// Validate Async Cluster (Index 1)
+		if len(before.UniverseDetails.Clusters) < 2 || len(after.UniverseDetails.Clusters) < 2 {
+			return errors.New(
+				"universe must have at least 2 clusters (Primary and Async) for this test",
+			)
+		}
 
-        if oldBundleA == newBundleA {
-            return fmt.Errorf("ASYNC: expected image_bundle_uuid to change,
-			but both are %s", oldBundleA)
-        }
+		oldBundleA := before.UniverseDetails.Clusters[1].UserIntent.GetImageBundleUUID()
+		newBundleA := after.UniverseDetails.Clusters[1].UserIntent.GetImageBundleUUID()
 
-        if newBundleP == "" || newBundleA == "" {
-            return errors.New("image_bundle_uuid is empty after VM Image upgrade")
-        }
+		if oldBundleA == newBundleA {
+			return fmt.Errorf("ASYNC: expected image_bundle_uuid to change, but both are %s",
+				oldBundleA)
+		}
 
-        return nil
-    }
+		if newBundleP == "" || newBundleA == "" {
+			return errors.New("image_bundle_uuid is empty after VM Image upgrade")
+		}
+
+		return nil
+	}
 }
 
 func universeAwsConfigWithImageBundle(name string, imageBundleUUID string) string {
@@ -501,8 +503,8 @@ func cloudProviderAWSConfigForVMImageUpgrade(name string) string {
 }
 
 func universeConfigWithProviderWithImageBundle(p string, name string,
-    imageBundleUUID string) string {
-    return fmt.Sprintf(`
+	imageBundleUUID string) string {
+	return fmt.Sprintf(`
     data "yba_release_version" "release_version"{
         depends_on = [
             yba_aws_provider.%s
@@ -566,5 +568,5 @@ func universeConfigWithProviderWithImageBundle(p string, name string,
         communication_ports {}
     }
 `, p, p, name, p, p, p, getUniverseInstanceType(p), imageBundleUUID, getUniverseStorageType(p), p,
-   name, p, p, p, imageBundleUUID, getUniverseStorageType(p), p) // Map the new ASYNC arguments
+		name, p, p, p, imageBundleUUID, getUniverseStorageType(p), p) // Map the new ASYNC arguments
 }

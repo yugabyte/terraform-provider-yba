@@ -120,15 +120,14 @@ func ResourceBackupSchedule() *schema.Resource {
 				ForceNew: true,
 				Elem:     &schema.Schema{Type: schema.TypeString},
 				Description: "List of keyspaces (YCQL) or databases (YSQL) to back up on each run. " +
-					"If empty or not specified, performs a full universe backup of all databases/keyspaces. " +
-					"For YSQL, each entry is a database name. For YCQL, each entry is a keyspace name.",
+					"If empty or not specified, a full universe backup is taken. " +
+					"For YSQL each entry is a database name; for YCQL each entry is a keyspace name.",
 			},
 			"storage_config_uuid": {
-				Type:     schema.TypeString,
-				Required: true,
-				ForceNew: true,
-				Description: "UUID of the storage configuration to use. Can be " +
-					"retrieved from the storage config data source.",
+				Type:        schema.TypeString,
+				Required:    true,
+				ForceNew:    true,
+				Description: descStorageConfigUUID,
 			},
 			"time_before_delete": {
 				Type:     schema.TypeString,
@@ -155,7 +154,8 @@ func ResourceBackupSchedule() *schema.Resource {
 				Type:        schema.TypeBool,
 				Optional:    true,
 				ForceNew:    true,
-				Description: "Is SSE.",
+				Default:     false,
+				Description: descSSE,
 			},
 			"transactional_backup": {
 				Type:          schema.TypeBool,
@@ -166,28 +166,27 @@ func ResourceBackupSchedule() *schema.Resource {
 				Description:   "Deprecated in the YBA API. Use table_by_table_backup instead.",
 			},
 			"parallelism": {
-				Type:        schema.TypeInt,
-				Optional:    true,
-				ForceNew:    true,
-				Description: "Number of concurrent commands to run on nodes over SSH.",
+				Type:     schema.TypeInt,
+				Optional: true,
+				Computed: true,
+				ForceNew: true,
+				Description: "Number of concurrent commands to run on nodes over SSH. " +
+					"When not specified, the server default is used and no diff is planned.",
 			},
 			"backup_type": {
 				Type:     schema.TypeString,
-				Optional: true,
+				Required: true,
 				ForceNew: true,
 				ValidateDiagFunc: validation.ToDiagFunc(validation.StringInSlice(
 					[]string{"YQL_TABLE_TYPE", "REDIS_TABLE_TYPE", "PGSQL_TABLE_TYPE"}, false)),
-				Description: "Type of the backup. Permitted values: YQL_TABLE_TYPE, " +
-					"REDIS_TABLE_TYPE, PGSQL_TABLE_TYPE.",
+				Description: descBackupType,
 			},
 			"table_uuid_list": {
-				Type:     schema.TypeList,
-				Optional: true,
-				Elem:     &schema.Schema{Type: schema.TypeString},
-				ForceNew: true,
-				Description: "List of specific table UUIDs to backup. " +
-					"Only applicable when a single keyspace is specified in 'keyspaces'. " +
-					"If 'keyspaces' has multiple entries, this field is ignored.",
+				Type:        schema.TypeList,
+				Optional:    true,
+				Elem:        &schema.Schema{Type: schema.TypeString},
+				ForceNew:    true,
+				Description: descTableUUIDList,
 			},
 			"delete_backup": {
 				Type:        schema.TypeBool,
@@ -219,7 +218,7 @@ func ResourceBackupSchedule() *schema.Resource {
 				Type:        schema.TypeString,
 				Optional:    true,
 				ForceNew:    true,
-				Description: "KMS configuration UUID for encrypted backups.",
+				Description: descKMSConfigUUID,
 			},
 			"enable_point_in_time_restore": {
 				Type:        schema.TypeBool,
@@ -233,20 +232,23 @@ func ResourceBackupSchedule() *schema.Resource {
 				Optional:    true,
 				ForceNew:    true,
 				Default:     false,
-				Description: "Include tablespaces information in backup.",
+				Description: descUseTablespaces,
 			},
 			"use_roles": {
 				Type:        schema.TypeBool,
 				Optional:    true,
 				ForceNew:    true,
 				Default:     false,
-				Description: "Backup global YSQL roles.",
+				Description: descUseRoles,
 			},
 			"min_num_backups_to_retain": {
-				Type:        schema.TypeInt,
-				Optional:    true,
-				ForceNew:    true,
-				Description: "Minimum number of backups to retain for this schedule.",
+				Type:     schema.TypeInt,
+				Optional: true,
+				ForceNew: true,
+				Description: "Minimum number of backups to retain for this schedule. " +
+					"Must be >= 1 when specified. Omit or set to 0 for no minimum. " +
+					"Note: this value is not returned by the API and cannot be recovered " +
+					"during import; omit it or set it to 0 when importing an existing schedule.",
 			},
 			"table_by_table_backup": {
 				Type:          schema.TypeBool,
@@ -254,7 +256,7 @@ func ResourceBackupSchedule() *schema.Resource {
 				ForceNew:      true,
 				Default:       false,
 				ConflictsWith: []string{"transactional_backup"},
-				Description:   "Take table-by-table backups. Conflicts with transactional_backup.",
+				Description:   descTableByTableBackup + " Conflicts with transactional_backup.",
 			},
 			"parallel_db_backups": {
 				Type:        schema.TypeInt,
@@ -263,10 +265,12 @@ func ResourceBackupSchedule() *schema.Resource {
 				Description: "Number of parallel DB backups.",
 			},
 			"use_local_timezone": {
-				Type:        schema.TypeBool,
-				Optional:    true,
-				Default:     true,
-				Description: "Use local timezone for cron expression, otherwise use UTC.",
+				Type:     schema.TypeBool,
+				Optional: true,
+				ForceNew: true,
+				Default:  false,
+				Description: "Use local timezone for cron expression, otherwise use UTC. " +
+					"Defaults to false (UTC).",
 			},
 			"enabled": {
 				Type:        schema.TypeBool,
@@ -274,13 +278,14 @@ func ResourceBackupSchedule() *schema.Resource {
 				Default:     true,
 				Description: "Whether the backup schedule is enabled. Set to false to pause the schedule.",
 			},
-			"run_immediate_backup_on_resume": {
+			"run_backup_on_enable": {
 				Type:     schema.TypeBool,
 				Optional: true,
 				Default:  false,
-				Description: "When resuming a paused schedule (setting enabled=true), " +
-					"run a full or incremental backup immediately instead of waiting for " +
-					"the next scheduled time.",
+				Description: "Only applies when re-enabling a previously stopped or paused " +
+					"schedule (i.e. transitioning enabled from false to true). " +
+					"When true, a backup runs immediately instead of waiting for the next " +
+					"scheduled time. Has no effect when creating a new schedule.",
 			},
 			"status": {
 				Type:        schema.TypeString,
@@ -353,7 +358,9 @@ func resourceBackupDiff() schema.CustomizeDiffFunc {
 					GetChange("incremental_backup_frequency")
 				if !d.HasChange("schedule_name") {
 					if oldIncrFreqInterface.(string) == "" && newIncrFreqInterface.(string) != "" {
-						return errors.New("Cannot take incremental backups on existing schedules")
+						// The YBA API does not support enabling incremental backups on an
+						// existing schedule, so force resource replacement instead of failing.
+						return d.ForceNew("incremental_backup_frequency")
 					}
 					if oldIncrFreqInterface.(string) != "" && newIncrFreqInterface.(string) == "" {
 						return errors.New(
@@ -376,32 +383,25 @@ func resourceBackupDiff() schema.CustomizeDiffFunc {
 				}
 				return nil
 			}),
-		// Validate min_num_backups_to_retain is positive (only if explicitly set)
+		// Validate min_num_backups_to_retain is non-negative (0 = not set, allows imports).
 		customdiff.ValidateValue("min_num_backups_to_retain", func(ctx context.Context, value,
 			meta interface{}) error {
-			v := value.(int)
-			// Skip validation if not set (zero value) - allows imports to work
-			if v == 0 {
-				return nil
-			}
-			if v < 1 {
-				return errors.New("min_num_backups_to_retain must be at least 1")
+			if value.(int) < 0 {
+				return errors.New("min_num_backups_to_retain must be non-negative (0 = not set)")
 			}
 			return nil
 		}),
-		// Validate parallel_db_backups is positive (only if explicitly set)
+		// Validate parallel_db_backups is non-negative (0 = not set, allows imports).
 		customdiff.ValidateValue("parallel_db_backups", func(ctx context.Context, value,
 			meta interface{}) error {
-			v := value.(int)
-			// Skip validation if not set (zero value) - allows imports to work
-			if v == 0 {
-				return nil
-			}
-			if v < 1 {
-				return errors.New("parallel_db_backups must be at least 1")
+			if value.(int) < 0 {
+				return errors.New("parallel_db_backups must be non-negative (0 = not set)")
 			}
 			return nil
 		}),
+		validateIncrementalFrequencyDiff(),
+		validateTableUUIDListDiff(),
+		validateYSQLOnlyFieldsDiff(),
 	)
 }
 
@@ -489,10 +489,7 @@ func resourceBackupsCreate(
 		TimeBeforeDelete:  utils.GetInt64Pointer(timeBeforeDelete),
 		ExpiryTimeUnit:    utils.GetStringPointer(timeBeforeDeleteUnit),
 		Sse:               utils.GetBoolPointer(d.Get("sse").(bool)),
-		Parallelism: utils.GetInt32Pointer(
-			int32(d.Get("parallelism").(int)),
-		),
-		BackupType: utils.GetStringPointer(d.Get("backup_type").(string)),
+		BackupType:        utils.GetStringPointer(d.Get("backup_type").(string)),
 		CronExpression: utils.GetStringPointer(
 			d.Get("cron_expression").(string),
 		),
@@ -503,19 +500,28 @@ func resourceBackupsCreate(
 		UniverseUUID:                       d.Get("universe_uuid").(string),
 		IncrementalBackupFrequency:         utils.GetInt64Pointer(incrementalFrequency),
 		IncrementalBackupFrequencyTimeUnit: utils.GetStringPointer(incrementalFrequencyUnit),
-		// New fields
-		KmsConfigUUID: utils.GetStringPointer(d.Get("kms_config_uuid").(string)),
+		KmsConfigUUID: utils.GetStringPointer(
+			d.Get("kms_config_uuid").(string),
+		),
 		EnablePointInTimeRestore: utils.GetBoolPointer(
 			d.Get("enable_point_in_time_restore").(bool),
 		),
-		UseTablespaces: utils.GetBoolPointer(d.Get("use_tablespaces").(bool)),
-		UseRoles:       utils.GetBoolPointer(d.Get("use_roles").(bool)),
-		MinNumBackupsToRetain: utils.GetInt32Pointer(
-			int32(d.Get("min_num_backups_to_retain").(int)),
-		),
+		UseTablespaces:     utils.GetBoolPointer(d.Get("use_tablespaces").(bool)),
+		UseRoles:           utils.GetBoolPointer(d.Get("use_roles").(bool)),
 		TableByTableBackup: utils.GetBoolPointer(d.Get("table_by_table_backup").(bool)),
-		ParallelDBBackups:  utils.GetInt32Pointer(int32(d.Get("parallel_db_backups").(int))),
 		UseLocalTimezone:   utils.GetBoolPointer(d.Get("use_local_timezone").(bool)),
+	}
+
+	// Only send optional int fields if explicitly provided (non-zero).
+	// Zero is the TypeInt zero value meaning "not set" in Terraform.
+	if v := d.Get("parallelism").(int); v > 0 {
+		req.Parallelism = utils.GetInt32Pointer(int32(v))
+	}
+	if v := d.Get("min_num_backups_to_retain").(int); v > 0 {
+		req.MinNumBackupsToRetain = utils.GetInt32Pointer(int32(v))
+	}
+	if v := d.Get("parallel_db_backups").(int); v > 0 {
+		req.ParallelDBBackups = utils.GetInt32Pointer(int32(v))
 	}
 
 	// Create schedule async
@@ -564,9 +570,10 @@ func resourceBackupsRead(
 	c := meta.(*api.APIClient).YugawareClient
 	cUUID := meta.(*api.APIClient).CustomerID
 
-	// Build filter - include both Active and Stopped statuses
+	// Build filter - include all non-deleted schedule statuses so that paused
+	// schedules are not mistakenly removed from state on the next read.
 	filter := client.ScheduleApiFilter{
-		Status: []string{"Active", "Stopped"},
+		Status: []string{"Active", "Paused", "Stopped"},
 	}
 
 	// Only filter by universe_uuid if it's known (not during import)
@@ -628,9 +635,18 @@ func resourceBackupsRead(
 		return diag.FromErr(err)
 	}
 
-	frequencyString := fmt.Sprintf("%v", b.Frequency)
-	if err = d.Set("frequency", frequencyString); err != nil {
-		return diag.FromErr(err)
+	// Store frequency as a duration string so DiffSuppressFunc can compare via
+	// time.ParseDuration. When cron_expression is active the API returns Frequency=0;
+	// store "" so there is no spurious "0 -> null" diff during replacement plans.
+	if b.Frequency > 0 {
+		freqDuration := (time.Duration(b.Frequency) * time.Millisecond).String()
+		if err = d.Set("frequency", freqDuration); err != nil {
+			return diag.FromErr(err)
+		}
+	} else {
+		if err = d.Set("frequency", ""); err != nil {
+			return diag.FromErr(err)
+		}
 	}
 
 	if err = d.Set("schedule_name", b.ScheduleName); err != nil {
@@ -668,11 +684,16 @@ func resourceBackupsRead(
 	if err = d.Set("parallelism", int(b.BackupInfo.Parallelism)); err != nil {
 		return diag.FromErr(err)
 	}
-	if err = d.Set("use_tablespaces", b.BackupInfo.UseTablespaces); err != nil {
-		return diag.FromErr(err)
-	}
-	if err = d.Set("use_roles", b.BackupInfo.UseRoles); err != nil {
-		return diag.FromErr(err)
+	// use_tablespaces and use_roles are only meaningful for PGSQL_TABLE_TYPE (YSQL).
+	// For other backup types the API may return unexpected values; keep the config
+	// value in state rather than overwriting it with API noise.
+	if b.BackupInfo.BackupType == "PGSQL_TABLE_TYPE" {
+		if err = d.Set("use_tablespaces", b.BackupInfo.UseTablespaces); err != nil {
+			return diag.FromErr(err)
+		}
+		if err = d.Set("use_roles", b.BackupInfo.UseRoles); err != nil {
+			return diag.FromErr(err)
+		}
 	}
 	pitrEnabled := b.BackupInfo.PointInTimeRestoreEnabled
 	if err = d.Set("enable_point_in_time_restore", pitrEnabled); err != nil {
@@ -681,6 +702,33 @@ func resourceBackupsRead(
 	if err = d.Set("table_by_table_backup", b.TableByTableBackup); err != nil {
 		return diag.FromErr(err)
 	}
+
+	// Populate keyspaces and table_uuid_list from the keyspace list returned by the API.
+	// A non-empty KeyspaceList means a targeted (non-full-universe) backup.
+	if len(b.BackupInfo.KeyspaceList) > 0 {
+		keyspaces := make([]string, 0, len(b.BackupInfo.KeyspaceList))
+		for _, ks := range b.BackupInfo.KeyspaceList {
+			keyspaces = append(keyspaces, ks.Keyspace)
+		}
+		if err = d.Set("keyspaces", keyspaces); err != nil {
+			return diag.FromErr(err)
+		}
+
+		// table_uuid_list is only meaningful when exactly one keyspace is targeted
+		// and the backup is not for all tables in that keyspace.
+		first := b.BackupInfo.KeyspaceList[0]
+		if len(b.BackupInfo.KeyspaceList) == 1 &&
+			!first.AllTables &&
+			len(first.TableUUIDList) > 0 {
+			if err = d.Set("table_uuid_list", first.TableUUIDList); err != nil {
+				return diag.FromErr(err)
+			}
+		}
+	}
+	// min_num_backups_to_retain is not returned by the API. To avoid triggering a
+	// ForceNew replacement on every refresh, do not overwrite the state value here.
+	// After an import the field will be 0 (unknown); users should omit this field
+	// from their configuration or set it to 0 when importing an existing schedule.
 
 	// Set time_before_delete if present (convert ms to duration string)
 	if b.BackupInfo.TimeBeforeDelete > 0 {
@@ -748,7 +796,7 @@ func resourceBackupsUpdate(
 	// Handle enable/disable (pause/resume) of schedule
 	if d.HasChange("enabled") {
 		enabled := d.Get("enabled").(bool)
-		runImmediate := d.Get("run_immediate_backup_on_resume").(bool)
+		runImmediate := d.Get("run_backup_on_enable").(bool)
 
 		var status string
 		if enabled {

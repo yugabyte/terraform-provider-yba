@@ -19,10 +19,12 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/customdiff"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 	client "github.com/yugabyte/platform-go-client"
@@ -41,15 +43,13 @@ func ResourceBackup() *schema.Resource {
 		UpdateContext: resourceBackupUpdate,
 		DeleteContext: resourceBackupDelete,
 
-		Importer: &schema.ResourceImporter{
-			StateContext: schema.ImportStatePassthroughContext,
-		},
-
 		Timeouts: &schema.ResourceTimeout{
 			Create: schema.DefaultTimeout(60 * time.Minute),
 			Update: schema.DefaultTimeout(10 * time.Minute),
 			Delete: schema.DefaultTimeout(30 * time.Minute),
 		},
+
+		CustomizeDiff: resourceBackupValidateDiff(),
 
 		Schema: map[string]*schema.Schema{
 			// Required fields - ForceNew (changing these creates a new backup)
@@ -57,13 +57,13 @@ func ResourceBackup() *schema.Resource {
 				Type:        schema.TypeString,
 				Required:    true,
 				ForceNew:    true,
-				Description: "UUID of the universe to backup.",
+				Description: "UUID of the universe to back up.",
 			},
 			"storage_config_uuid": {
 				Type:        schema.TypeString,
 				Required:    true,
 				ForceNew:    true,
-				Description: "UUID of the storage configuration to use for the backup.",
+				Description: descStorageConfigUUID,
 			},
 			"backup_type": {
 				Type:     schema.TypeString,
@@ -71,88 +71,78 @@ func ResourceBackup() *schema.Resource {
 				ForceNew: true,
 				ValidateDiagFunc: validation.ToDiagFunc(validation.StringInSlice(
 					[]string{"YQL_TABLE_TYPE", "REDIS_TABLE_TYPE", "PGSQL_TABLE_TYPE"}, false)),
-				Description: "Type of tables to backup. " +
-					"Allowed values: YQL_TABLE_TYPE (YCQL), REDIS_TABLE_TYPE, PGSQL_TABLE_TYPE (YSQL).",
+				Description: descBackupType,
 			},
 
 			// Optional fields - ForceNew
 			"keyspaces": {
-				Type:     schema.TypeList,
-				Optional: true,
-				ForceNew: true,
-				Elem:     &schema.Schema{Type: schema.TypeString},
-				Description: "List of keyspaces (YCQL) or databases (YSQL) to backup. " +
-					"If empty or not specified, performs a full universe backup of all databases/keyspaces. " +
-					"For YSQL, each entry is a database name. For YCQL, each entry is a keyspace name.",
+				Type:        schema.TypeList,
+				Optional:    true,
+				ForceNew:    true,
+				Elem:        &schema.Schema{Type: schema.TypeString},
+				Description: descKeyspaces,
 			},
 			"table_uuid_list": {
-				Type:     schema.TypeList,
-				Optional: true,
-				ForceNew: true,
-				Elem:     &schema.Schema{Type: schema.TypeString},
-				Description: "List of specific table UUIDs to backup. " +
-					"Only applicable when a single keyspace is specified in 'keyspaces'. " +
-					"If 'keyspaces' has multiple entries, this field is ignored.",
+				Type:        schema.TypeList,
+				Optional:    true,
+				ForceNew:    true,
+				Elem:        &schema.Schema{Type: schema.TypeString},
+				Description: descTableUUIDList,
 			},
 			"base_backup_uuid": {
 				Type:     schema.TypeString,
 				Optional: true,
 				ForceNew: true,
-				Description: "UUID of a previous backup to use as base for incremental backup. " +
-					"Only supported on YB-Controller enabled universes.",
+				Description: "UUID of a previous backup to use as the base for an incremental backup. " +
+					"Supported on YB-Controller enabled universes only.",
 			},
 			"kms_config_uuid": {
 				Type:        schema.TypeString,
 				Optional:    true,
 				ForceNew:    true,
-				Description: "KMS configuration UUID for encrypted backups.",
+				Description: descKMSConfigUUID,
 			},
 			"use_tablespaces": {
-				Type:     schema.TypeBool,
-				Optional: true,
-				ForceNew: true,
-				Default:  false,
-				Description: "Include tablespace information in the backup. " +
-					"Only applicable for YSQL (PGSQL_TABLE_TYPE) backups.",
+				Type:        schema.TypeBool,
+				Optional:    true,
+				ForceNew:    true,
+				Default:     false,
+				Description: descUseTablespaces,
 			},
 			"use_roles": {
-				Type:     schema.TypeBool,
-				Optional: true,
-				ForceNew: true,
-				Default:  false,
-				Description: "Backup global YSQL roles and grants to preserve " +
-					"database access controls after restore. " +
-					"Only applicable for YSQL (PGSQL_TABLE_TYPE) backups.",
+				Type:        schema.TypeBool,
+				Optional:    true,
+				ForceNew:    true,
+				Default:     false,
+				Description: descUseRoles,
 			},
 			"parallelism": {
 				Type:        schema.TypeInt,
 				Optional:    true,
 				ForceNew:    true,
 				Default:     8,
-				Description: "Number of concurrent commands to run on nodes over SSH.",
+				Description: descParallelism,
 			},
 			"sse": {
 				Type:        schema.TypeBool,
 				Optional:    true,
 				ForceNew:    true,
 				Default:     false,
-				Description: "Enable server-side encryption.",
+				Description: descSSE,
 			},
 			"table_by_table_backup": {
 				Type:        schema.TypeBool,
 				Optional:    true,
 				ForceNew:    true,
 				Default:     false,
-				Description: "Take table-by-table backups.",
+				Description: descTableByTableBackup,
 			},
 
 			// Updatable fields - can be changed without recreating
 			"time_before_delete": {
-				Type:     schema.TypeString,
-				Optional: true,
-				Description: "Time before the backup expires and is deleted from storage. " +
-					"Accepts duration strings (e.g., '720h' for 30 days, '2160h' for 90 days). " +
-					"If not set, backup is kept indefinitely. Can be updated after creation.",
+				Type:        schema.TypeString,
+				Optional:    true,
+				Description: descTimeBeforeDelete,
 				DiffSuppressFunc: func(k, old, new string, d *schema.ResourceData) bool {
 					if old == "" && new == "" {
 						return true
@@ -248,6 +238,23 @@ func ResourceBackup() *schema.Resource {
 			},
 		},
 	}
+}
+
+func resourceBackupValidateDiff() schema.CustomizeDiffFunc {
+	return customdiff.All(
+		customdiff.ValidateValue("time_before_delete", func(ctx context.Context, value,
+			meta interface{}) error {
+			if value.(string) != "" {
+				_, err := time.ParseDuration(value.(string))
+				if err != nil {
+					return fmt.Errorf("Backup Expiry Time: %w", err)
+				}
+			}
+			return nil
+		}),
+		validateTableUUIDListDiff(),
+		validateYSQLOnlyFieldsDiff(),
+	)
 }
 
 func resourceBackupCreate(
@@ -363,8 +370,10 @@ func resourceBackupRead(
 	// Get backup details
 	backup, response, err := c.BackupsAPI.GetBackupV2(ctx, cUUID, backupUUID).Execute()
 	if err != nil {
-		if response != nil && response.StatusCode == http.StatusNotFound {
-			tflog.Warn(ctx, fmt.Sprintf("Backup %s not found, removing from state", backupUUID))
+		if isBackupGone(response, err) {
+			tflog.Warn(ctx,
+				fmt.Sprintf("Backup %s no longer exists (may have expired), "+
+					"removing from state", backupUUID))
 			d.SetId("")
 			return diags
 		}
@@ -373,7 +382,7 @@ func resourceBackupRead(
 		return diag.FromErr(errMessage)
 	}
 
-	// Set computed fields
+	// Set computed state fields
 	if err := d.Set("state", backup.GetState()); err != nil {
 		return diag.FromErr(err)
 	}
@@ -393,10 +402,9 @@ func resourceBackupRead(
 		}
 	}
 
-	// Get backup info
+	// backupInfo is BackupTableParams and contains the backup parameters and derived fields.
 	backupInfo := backup.GetBackupInfo()
 
-	// Set universe UUID from backup info
 	if err := d.Set("universe_uuid", backupInfo.GetUniverseUUID()); err != nil {
 		return diag.FromErr(err)
 	}
@@ -404,14 +412,11 @@ func resourceBackupRead(
 		return diag.FromErr(err)
 	}
 
-	// Determine if this is a full backup based on whether keyspace list is empty
-	// Full backup = no specific keyspace specified (backs up all databases)
 	if err := d.Set("is_full_backup", backupInfo.GetFullBackup()); err != nil {
 		return diag.FromErr(err)
 	}
 
-	// Populate keyspace_details from the per-keyspace BackupList so callers can
-	// reference storage locations directly without a yba_backup_info data source.
+	// Populate keyspace_details from the per-keyspace BackupList.
 	backupList := backupInfo.GetBackupList()
 	keyspaceDetails := make([]map[string]interface{}, 0, len(backupList))
 	for _, sub := range backupList {
@@ -517,8 +522,10 @@ func resourceBackupDelete(
 		},
 	)
 	if err != nil {
-		if response != nil && response.StatusCode == http.StatusNotFound {
-			tflog.Warn(ctx, fmt.Sprintf("Backup %s already deleted", backupUUID))
+		if isBackupGone(response, err) {
+			tflog.Warn(ctx,
+				fmt.Sprintf("Backup %s no longer exists (already deleted or expired), "+
+					"removing from state", backupUUID))
 			d.SetId("")
 			return nil
 		}
@@ -530,6 +537,25 @@ func resourceBackupDelete(
 	tflog.Info(ctx, fmt.Sprintf("Successfully deleted backup %s", backupUUID))
 	d.SetId("")
 	return nil
+}
+
+// isBackupGone returns true when the API response indicates the backup no longer exists.
+// YBA returns 404 for completely unknown UUIDs and 400 "Invalid customer or backup UUID"
+// for backups that have been removed after expiry. The body is inspected via the
+// GenericOpenAPIError.Body() method so the response stream is not consumed twice.
+func isBackupGone(response *http.Response, err error) bool {
+	if response == nil {
+		return false
+	}
+	if response.StatusCode == http.StatusNotFound {
+		return true
+	}
+	if response.StatusCode == http.StatusBadRequest {
+		if oErr, ok := err.(client.GenericOpenAPIError); ok {
+			return strings.Contains(string(oErr.Body()), "Invalid customer or backup UUID")
+		}
+	}
+	return false
 }
 
 // findBackupUUIDFromTask retrieves the backup UUID created by a backup task

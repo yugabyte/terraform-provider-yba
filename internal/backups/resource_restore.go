@@ -49,8 +49,6 @@ func ResourceRestore() *schema.Resource {
 		CustomizeDiff: customdiff.All(
 			// Prevent accidental re-creation of completed restores
 			func(ctx context.Context, d *schema.ResourceDiff, meta interface{}) error {
-				// If resource already exists (has an ID) and any ForceNew field changes,
-				// block the operation to prevent accidental re-restore
 				if d.Id() == "" {
 					return nil
 				}
@@ -70,6 +68,7 @@ func ResourceRestore() *schema.Resource {
 				}
 				return nil
 			},
+			validateRestoreOwnerFields,
 		),
 
 		Schema: map[string]*schema.Schema{
@@ -98,9 +97,10 @@ func ResourceRestore() *schema.Resource {
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
 						"storage_location": {
-							Type:        schema.TypeString,
-							Required:    true,
-							Description: "Storage location of the backup to restore.",
+							Type:     schema.TypeString,
+							Required: true,
+							Description: "Complete storage location path of the backup for the keyspace. " +
+								"For multi-keyspace backups, each keyspace has its own storage location.",
 						},
 						"keyspace": {
 							Type:     schema.TypeString,
@@ -133,44 +133,37 @@ func ResourceRestore() *schema.Resource {
 							Optional: true,
 							Elem:     &schema.Schema{Type: schema.TypeString},
 							Description: "List of specific table names to restore. " +
-								"Only applicable for YCQL (YQL_TABLE_TYPE) backups on YBC-enabled universes. " +
-								"Has no effect for YSQL - YSQL restores are always full-database.",
-						},
-						"selective_table_restore": {
-							Type:     schema.TypeBool,
-							Optional: true,
-							Default:  false,
-							Description: "Only restore the tables listed in table_name_list " +
-								"instead of all tables in the keyspace. " +
-								"Only supported for YCQL (YQL_TABLE_TYPE) backups on YBC-enabled universes. " +
-								"Setting this for YSQL will be rejected by the API.",
+								"Allowed for YQL_TABLE_TYPE (YCQL) on YBC-enabled universes only. " +
+								"When set, selective table restore is automatically enabled.",
 						},
 						"old_owner": {
 							Type:     schema.TypeString,
 							Optional: true,
 							Default:  "postgres",
 							Description: "Current owner of the tables in the backup. " +
-								"Used with new_owner to transfer ownership. Default: postgres.",
+								"Used with new_owner to transfer ownership. " +
+								"Allowed for PGSQL_TABLE_TYPE (YSQL) backups only. Default: postgres.",
 						},
 						"new_owner": {
 							Type:     schema.TypeString,
 							Optional: true,
 							Description: "New owner for the restored tables. " +
-								"If specified, ownership is transferred from old_owner to new_owner.",
+								"If specified, ownership is transferred from old_owner to new_owner. " +
+								"Allowed for PGSQL_TABLE_TYPE (YSQL) backups only.",
 						},
 						"use_tablespaces": {
 							Type:     schema.TypeBool,
 							Optional: true,
 							Default:  false,
 							Description: "Restore tablespace information. " +
-								"Only applicable for YSQL backups.",
+								"Allowed for PGSQL_TABLE_TYPE (YSQL) backups only.",
 						},
 						"use_roles": {
 							Type:     schema.TypeBool,
 							Optional: true,
 							Default:  false,
 							Description: "Restore global YSQL roles. " +
-								"Only applicable for YSQL backups.",
+								"Allowed for PGSQL_TABLE_TYPE (YSQL) backups only.",
 						},
 						"ignore_errors": {
 							Type:     schema.TypeBool,
@@ -184,7 +177,7 @@ func ResourceRestore() *schema.Resource {
 							Optional: true,
 							Default:  false,
 							Description: "Fail if tablespaces with the same names already exist. " +
-								"Only applicable with use_roles enabled. " +
+								"Allowed when use_tablespaces is enabled. " +
 								"WARNING: This is a preview API that could change.",
 						},
 						"error_if_roles_exists": {
@@ -192,7 +185,7 @@ func ResourceRestore() *schema.Resource {
 							Optional: true,
 							Default:  false,
 							Description: "Fail if roles with the same names already exist. " +
-								"Only applicable with use_roles enabled. " +
+								"Allowed when use_roles is enabled. " +
 								"WARNING: This is a preview API that could change.",
 						},
 					},
@@ -254,6 +247,103 @@ func ResourceRestore() *schema.Resource {
 	}
 }
 
+// validateRestoreBackupStorageInfo enforces per-entry type restrictions at plan time:
+//   - PGSQL_TABLE_TYPE: table_name_list is not allowed (YSQL restores are always full-database)
+//   - YQL_TABLE_TYPE:   YSQL-only fields (use_tablespaces, use_roles,
+//     error_if_tablespaces_exists, error_if_roles_exists, old_owner, new_owner) are not allowed
+//   - other types:      old_owner and new_owner are not allowed
+func validateRestoreOwnerFields(
+	ctx context.Context,
+	d *schema.ResourceDiff,
+	meta interface{},
+) error {
+	storageInfos, ok := d.GetOk("backup_storage_info")
+	if !ok {
+		return nil
+	}
+	for i, si := range storageInfos.([]interface{}) {
+		info, ok := si.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		backupType, _ := info["backup_type"].(string)
+		newOwner, _ := info["new_owner"].(string)
+		oldOwner, _ := info["old_owner"].(string)
+
+		switch backupType {
+		case "PGSQL_TABLE_TYPE":
+			if tableNames, ok := info["table_name_list"].([]interface{}); ok &&
+				len(tableNames) > 0 {
+				return fmt.Errorf(
+					"backup_storage_info[%d]: table_name_list is not applicable for "+
+						"PGSQL_TABLE_TYPE (YSQL) - YSQL restores are always full-database",
+					i,
+				)
+			}
+		case "YQL_TABLE_TYPE":
+			if info["use_tablespaces"].(bool) {
+				return fmt.Errorf(
+					"backup_storage_info[%d]: use_tablespaces is only applicable for "+
+						"PGSQL_TABLE_TYPE (YSQL), got backup_type %q",
+					i, backupType,
+				)
+			}
+			if info["use_roles"].(bool) {
+				return fmt.Errorf(
+					"backup_storage_info[%d]: use_roles is only applicable for "+
+						"PGSQL_TABLE_TYPE (YSQL), got backup_type %q",
+					i, backupType,
+				)
+			}
+			if info["error_if_tablespaces_exists"].(bool) {
+				return fmt.Errorf(
+					"backup_storage_info[%d]: error_if_tablespaces_exists is only applicable for "+
+						"PGSQL_TABLE_TYPE (YSQL), got backup_type %q",
+					i, backupType,
+				)
+			}
+			if info["error_if_roles_exists"].(bool) {
+				return fmt.Errorf(
+					"backup_storage_info[%d]: error_if_roles_exists is only applicable for "+
+						"PGSQL_TABLE_TYPE (YSQL), got backup_type %q",
+					i, backupType,
+				)
+			}
+			if newOwner != "" {
+				return fmt.Errorf(
+					"backup_storage_info[%d]: new_owner is only applicable for YSQL "+
+						"(PGSQL_TABLE_TYPE) backups, got backup_type %q",
+					i, backupType,
+				)
+			}
+			if oldOwner != "" && oldOwner != "postgres" {
+				return fmt.Errorf(
+					"backup_storage_info[%d]: old_owner is only applicable for YSQL "+
+						"(PGSQL_TABLE_TYPE) backups, got backup_type %q",
+					i, backupType,
+				)
+			}
+		default:
+			// REDIS_TABLE_TYPE and any future types
+			if newOwner != "" {
+				return fmt.Errorf(
+					"backup_storage_info[%d]: new_owner is only applicable for YSQL "+
+						"(PGSQL_TABLE_TYPE) backups, got backup_type %q",
+					i, backupType,
+				)
+			}
+			if oldOwner != "" && oldOwner != "postgres" {
+				return fmt.Errorf(
+					"backup_storage_info[%d]: old_owner is only applicable for YSQL "+
+						"(PGSQL_TABLE_TYPE) backups, got backup_type %q",
+					i, backupType,
+				)
+			}
+		}
+	}
+	return nil
+}
+
 func resourceRestoreCreate(
 	ctx context.Context,
 	d *schema.ResourceData,
@@ -268,11 +358,15 @@ func resourceRestoreCreate(
 	for _, si := range storageInfos {
 		info := si.(map[string]interface{})
 
+		// Derive selective_table_restore from whether table_name_list is non-empty.
+		tableNames, _ := info["table_name_list"].([]interface{})
+		selectiveTableRestore := len(tableNames) > 0
+
 		backupStorageInfo := client.BackupStorageInfo{
 			StorageLocation:       utils.GetStringPointer(info["storage_location"].(string)),
 			BackupType:            utils.GetStringPointer(info["backup_type"].(string)),
 			Sse:                   utils.GetBoolPointer(info["sse"].(bool)),
-			SelectiveTableRestore: utils.GetBoolPointer(info["selective_table_restore"].(bool)),
+			SelectiveTableRestore: utils.GetBoolPointer(selectiveTableRestore),
 			UseTablespaces:        utils.GetBoolPointer(info["use_tablespaces"].(bool)),
 			UseRoles:              utils.GetBoolPointer(info["use_roles"].(bool)),
 			IgnoreErrors:          utils.GetBoolPointer(info["ignore_errors"].(bool)),

@@ -1,12 +1,16 @@
 ---
 page_title: "yba_backup_info Data Source - YugabyteDB Anywhere"
 description: |-
-  Retrieve list of backups.
+  Fetch backup information for use in restore operations. Supports two lookup modes:
+    1. Direct lookup: provide backupuuid to read a specific backup (works for backups created outside Terraform).
+    2. Universe filter: provide universeuuid or universename (with optional daterangestart/daterange_end) to fetch the most recent matching backup.
 ---
 
 # yba_backup_info (Data Source)
 
-Retrieve list of backups.
+Fetch backup information for use in restore operations. Supports two lookup modes:
+  1. Direct lookup: provide backup_uuid to read a specific backup (works for backups created outside Terraform).
+  2. Universe filter: provide universe_uuid or universe_name (with optional date_range_start/date_range_end) to fetch the most recent matching backup.
 
 ## Example Usage
 
@@ -21,17 +25,20 @@ data "yba_backup_info" "backup" {
 
 ### Optional
 
-- `date_range_end` (String) End date of range in which to fetch backups, in RFC3339 format.
-- `date_range_start` (String) Start date of range in which to fetch backups, in RFC3339 format.
-- `universe_name` (String) The name of the universe whose latest backup you want to fetch.
-- `universe_uuid` (String) The UUID of the universe whose latest backup you want to fetch.
+- `backup_uuid` (String) UUID of a specific backup to read. Mutually exclusive with universe_uuid, universe_name, date_range_start, and date_range_end. Use this when the backup UUID is known from the UI or API. Also populated as an output when using universe filter mode.
+- `date_range_end` (String) Latest backup creation time to include, in RFC3339 format (e.g. 2024-12-31T23:59:59Z). Must be UTC. Only used with universe filter mode. When omitted, no upper bound is applied.
+- `date_range_start` (String) Earliest backup creation time to include, in RFC3339 format (e.g. 2024-01-01T00:00:00Z). Must be UTC. Only used with universe filter mode. When omitted, no lower bound is applied.
+- `universe_name` (String) Name of the universe whose latest backup you want to fetch. Mutually exclusive with backup_uuid and universe_uuid. Also populated as an output.
+- `universe_uuid` (String) UUID of the universe whose latest backup you want to fetch. Mutually exclusive with backup_uuid and universe_name. Also populated as an output.
 
 ### Read-Only
 
-- `backup_type` (String) Type of the backup fetched.
+- `backup_type` (String) Type of the backup: YQL_TABLE_TYPE, PGSQL_TABLE_TYPE, or REDIS_TABLE_TYPE.
+- `create_time` (String) Timestamp when the backup was created (RFC3339 UTC).
 - `id` (String) The ID of this resource.
-- `keyspace_details` (List of Object) Per-keyspace/database details for the backup. For multi-keyspace YCQL backups each entry corresponds to one keyspace, each with its own storage location. For YSQL, typically one entry per database. Use this to build backup_storage_info blocks when restoring multi-keyspace backups. (see [below for nested schema](#nestedatt--keyspace_details))
-- `storage_config_uuid` (String) UUID of the storage configuration used for backup.
+- `keyspace_details` (List of Object) Per-keyspace/database details for the backup. For multi-keyspace YCQL backups each entry corresponds to one keyspace with its own storage location. For YSQL, typically one entry per database. Use keyspace_details[N].storage_location and keyspace_details[N].backup_type when building backup_storage_info blocks for a restore. (see [below for nested schema](#nestedatt--keyspace_details))
+- `state` (String) State of the backup (e.g. Completed, InProgress, Failed).
+- `storage_config_uuid` (String) UUID of the storage configuration used for the backup.
 - `storage_location` (String) Storage location of the first keyspace in the backup. For multi-keyspace YCQL backups, use keyspace_details to access all locations.
 
 <a id="nestedatt--keyspace_details"></a>
@@ -40,6 +47,7 @@ data "yba_backup_info" "backup" {
 Read-Only:
 
 - `backup_size_in_bytes` (Number)
+- `backup_type` (String)
 - `keyspace` (String)
 - `storage_location` (String)
 - `tables` (List of String)

@@ -45,23 +45,23 @@ For more details, see the [YugabyteDB Anywhere Back Up Data](https://docs.yugaby
 
 ### Required
 
-- `backup_type` (String) Type of tables to backup. Allowed values: YQL_TABLE_TYPE (YCQL), REDIS_TABLE_TYPE, PGSQL_TABLE_TYPE (YSQL).
-- `storage_config_uuid` (String) UUID of the storage configuration to use for the backup.
-- `universe_uuid` (String) UUID of the universe to backup.
+- `backup_type` (String) Type of tables to back up. Allowed values: YQL_TABLE_TYPE (YCQL), REDIS_TABLE_TYPE, PGSQL_TABLE_TYPE (YSQL).
+- `storage_config_uuid` (String) UUID of the storage configuration to use. Can be retrieved from the yba_storage_configs data source.
+- `universe_uuid` (String) UUID of the universe to back up.
 
 ### Optional
 
-- `base_backup_uuid` (String) UUID of a previous backup to use as base for incremental backup. Only supported on YB-Controller enabled universes.
-- `keyspaces` (List of String) List of keyspaces (YCQL) or databases (YSQL) to backup. If empty or not specified, performs a full universe backup of all databases/keyspaces. For YSQL, each entry is a database name. For YCQL, each entry is a keyspace name.
+- `base_backup_uuid` (String) UUID of a previous backup to use as the base for an incremental backup. Supported on YB-Controller enabled universes only.
+- `keyspaces` (List of String) List of keyspaces (YCQL) or databases (YSQL) to back up. If empty or not specified, a full universe backup of all databases/keyspaces is taken. For YSQL each entry is a database name; for YCQL each entry is a keyspace name.
 - `kms_config_uuid` (String) KMS configuration UUID for encrypted backups.
 - `parallelism` (Number) Number of concurrent commands to run on nodes over SSH.
-- `sse` (Boolean) Enable server-side encryption.
+- `sse` (Boolean) Enable server-side encryption for backups. Defaults to false.
 - `table_by_table_backup` (Boolean) Take table-by-table backups.
-- `table_uuid_list` (List of String) List of specific table UUIDs to backup. Only applicable when a single keyspace is specified in 'keyspaces'. If 'keyspaces' has multiple entries, this field is ignored.
-- `time_before_delete` (String) Time before the backup expires and is deleted from storage. Accepts duration strings (e.g., '720h' for 30 days, '2160h' for 90 days). If not set, backup is kept indefinitely. Can be updated after creation.
+- `table_uuid_list` (List of String) List of specific table UUIDs to back up. Allowed for YQL_TABLE_TYPE (YCQL) and REDIS_TABLE_TYPE; requires exactly one keyspace in 'keyspaces'.
+- `time_before_delete` (String) Time before the backup is deleted from storage. Accepts string duration in the standard format <https://pkg.go.dev/time#Duration>. Backups are kept indefinitely if not set.
 - `timeouts` (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))
-- `use_roles` (Boolean) Backup global YSQL roles and grants to preserve database access controls after restore. Only applicable for YSQL (PGSQL_TABLE_TYPE) backups.
-- `use_tablespaces` (Boolean) Include tablespace information in the backup. Only applicable for YSQL (PGSQL_TABLE_TYPE) backups.
+- `use_roles` (Boolean) Backup global YSQL roles and grants. Allowed for PGSQL_TABLE_TYPE (YSQL) backups only.
+- `use_tablespaces` (Boolean) Include tablespace information in the backup. Allowed for PGSQL_TABLE_TYPE (YSQL) backups only.
 
 ### Read-Only
 

@@ -75,20 +75,19 @@ Required:
 
 - `backup_type` (String) Type of the backup. Allowed values: YQL_TABLE_TYPE (YCQL), REDIS_TABLE_TYPE, PGSQL_TABLE_TYPE (YSQL).
 - `keyspace` (String) Target keyspace/database name for the restore. Can differ from the original to restore into a different keyspace.
-- `storage_location` (String) Storage location of the backup to restore.
+- `storage_location` (String) Complete storage location path of the backup for the keyspace. For multi-keyspace backups, each keyspace has its own storage location.
 
 Optional:
 
-- `error_if_roles_exists` (Boolean) Fail if roles with the same names already exist. Only applicable with use_roles enabled. WARNING: This is a preview API that could change.
-- `error_if_tablespaces_exists` (Boolean) Fail if tablespaces with the same names already exist. Only applicable with use_roles enabled. WARNING: This is a preview API that could change.
+- `error_if_roles_exists` (Boolean) Fail if roles with the same names already exist. Allowed when use_roles is enabled. WARNING: This is a preview API that could change.
+- `error_if_tablespaces_exists` (Boolean) Fail if tablespaces with the same names already exist. Allowed when use_tablespaces is enabled. WARNING: This is a preview API that could change.
 - `ignore_errors` (Boolean) Ignore all restore errors. WARNING: This is a preview API that could change.
-- `new_owner` (String) New owner for the restored tables. If specified, ownership is transferred from old_owner to new_owner.
-- `old_owner` (String) Current owner of the tables in the backup. Used with new_owner to transfer ownership. Default: postgres.
-- `selective_table_restore` (Boolean) Only restore the tables listed in table_name_list instead of all tables in the keyspace. Only supported for YCQL (YQL_TABLE_TYPE) backups on YBC-enabled universes. Setting this for YSQL will be rejected by the API.
+- `new_owner` (String) New owner for the restored tables. If specified, ownership is transferred from old_owner to new_owner. Allowed for PGSQL_TABLE_TYPE (YSQL) backups only.
+- `old_owner` (String) Current owner of the tables in the backup. Used with new_owner to transfer ownership. Allowed for PGSQL_TABLE_TYPE (YSQL) backups only. Default: postgres.
 - `sse` (Boolean) Enable server-side encryption for S3 storage.
-- `table_name_list` (List of String) List of specific table names to restore. Only applicable for YCQL (YQL_TABLE_TYPE) backups on YBC-enabled universes. Has no effect for YSQL - YSQL restores are always full-database.
-- `use_roles` (Boolean) Restore global YSQL roles. Only applicable for YSQL backups.
-- `use_tablespaces` (Boolean) Restore tablespace information. Only applicable for YSQL backups.
+- `table_name_list` (List of String) List of specific table names to restore. Allowed for YQL_TABLE_TYPE (YCQL) on YBC-enabled universes only. When set, selective table restore is automatically enabled.
+- `use_roles` (Boolean) Restore global YSQL roles. Allowed for PGSQL_TABLE_TYPE (YSQL) backups only.
+- `use_tablespaces` (Boolean) Restore tablespace information. Allowed for PGSQL_TABLE_TYPE (YSQL) backups only.
 
 
 <a id="nestedblock--timeouts"></a>

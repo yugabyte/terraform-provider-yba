@@ -44,34 +44,34 @@ terraform state mv yba_backups.example yba_backup_schedule.example
 
 ### Required
 
+- `backup_type` (String) Type of tables to back up. Allowed values: YQL_TABLE_TYPE (YCQL), REDIS_TABLE_TYPE, PGSQL_TABLE_TYPE (YSQL).
 - `schedule_name` (String) Backup schedule name.
-- `storage_config_uuid` (String) UUID of the storage configuration to use. Can be retrieved from the storage config data source.
+- `storage_config_uuid` (String) UUID of the storage configuration to use. Can be retrieved from the yba_storage_configs data source.
 - `universe_uuid` (String) The UUID of the universe that this backup schedule targets.
 
 ### Optional
 
-- `backup_type` (String) Type of the backup. Permitted values: YQL_TABLE_TYPE, REDIS_TABLE_TYPE, PGSQL_TABLE_TYPE.
 - `cron_expression` (String) A cron expression to use.
 - `delete_backup` (Boolean) Delete backup while deleting schedule. False by default.
 - `enable_point_in_time_restore` (Boolean) Enable Point-In-Time-Restore capability. Only for YBC-enabled universes.
 - `enabled` (Boolean) Whether the backup schedule is enabled. Set to false to pause the schedule.
 - `frequency` (String) Frequency to run the backup.  Accepts string duration in the standard format <https://pkg.go.dev/time#Duration>.
 - `incremental_backup_frequency` (String) Frequency to take incremental backups. Accepts string duration in the standard format <https://pkg.go.dev/time#Duration>.
-- `keyspaces` (List of String) List of keyspaces (YCQL) or databases (YSQL) to back up on each run. If empty or not specified, performs a full universe backup of all databases/keyspaces. For YSQL, each entry is a database name. For YCQL, each entry is a keyspace name.
+- `keyspaces` (List of String) List of keyspaces (YCQL) or databases (YSQL) to back up on each run. If empty or not specified, a full universe backup is taken. For YSQL each entry is a database name; for YCQL each entry is a keyspace name.
 - `kms_config_uuid` (String) KMS configuration UUID for encrypted backups.
-- `min_num_backups_to_retain` (Number) Minimum number of backups to retain for this schedule.
+- `min_num_backups_to_retain` (Number) Minimum number of backups to retain for this schedule. Must be >= 1 when specified. Omit or set to 0 for no minimum. Note: this value is not returned by the API and cannot be recovered during import; omit it or set it to 0 when importing an existing schedule.
 - `parallel_db_backups` (Number) Number of parallel DB backups.
-- `parallelism` (Number) Number of concurrent commands to run on nodes over SSH.
-- `run_immediate_backup_on_resume` (Boolean) When resuming a paused schedule (setting enabled=true), run a full or incremental backup immediately instead of waiting for the next scheduled time.
-- `sse` (Boolean) Is SSE.
+- `parallelism` (Number) Number of concurrent commands to run on nodes over SSH. When not specified, the server default is used and no diff is planned.
+- `run_backup_on_enable` (Boolean) Only applies when re-enabling a previously stopped or paused schedule (i.e. transitioning enabled from false to true). When true, a backup runs immediately instead of waiting for the next scheduled time. Has no effect when creating a new schedule.
+- `sse` (Boolean) Enable server-side encryption for backups. Defaults to false.
 - `table_by_table_backup` (Boolean) Take table-by-table backups. Conflicts with transactional_backup.
-- `table_uuid_list` (List of String) List of specific table UUIDs to backup. Only applicable when a single keyspace is specified in 'keyspaces'. If 'keyspaces' has multiple entries, this field is ignored.
+- `table_uuid_list` (List of String) List of specific table UUIDs to back up. Allowed for YQL_TABLE_TYPE (YCQL) and REDIS_TABLE_TYPE; requires exactly one keyspace in 'keyspaces'.
 - `time_before_delete` (String) Time before deleting the backup from storage. Accepts string duration in the standard format <https://pkg.go.dev/time#Duration>. Backups are kept indefinitely if not set.
 - `timeouts` (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))
 - `transactional_backup` (Boolean, Deprecated) Deprecated in the YBA API. Use table_by_table_backup instead.
-- `use_local_timezone` (Boolean) Use local timezone for cron expression, otherwise use UTC.
-- `use_roles` (Boolean) Backup global YSQL roles.
-- `use_tablespaces` (Boolean) Include tablespaces information in backup.
+- `use_local_timezone` (Boolean) Use local timezone for cron expression, otherwise use UTC. Defaults to false (UTC).
+- `use_roles` (Boolean) Backup global YSQL roles and grants. Allowed for PGSQL_TABLE_TYPE (YSQL) backups only.
+- `use_tablespaces` (Boolean) Include tablespace information in the backup. Allowed for PGSQL_TABLE_TYPE (YSQL) backups only.
 
 ### Read-Only
 

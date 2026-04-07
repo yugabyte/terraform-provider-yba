@@ -17,6 +17,7 @@ package backups
 
 import (
 	"context"
+	"net/http"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
@@ -27,42 +28,83 @@ import (
 	"github.com/yugabyte/terraform-provider-yba/internal/utils"
 )
 
-// Lists fetches the backups within the given set of conditions
+// Lists fetches backup information by direct UUID lookup or by universe + date filter.
 func Lists() *schema.Resource {
 	return &schema.Resource{
-		Description: "Retrieve list of backups.",
+		Description: "Fetch backup information for use in restore operations. " +
+			"Supports two lookup modes:\n" +
+			"  1. Direct lookup: provide backup_uuid to read a specific backup " +
+			"(works for backups created outside Terraform).\n" +
+			"  2. Universe filter: provide universe_uuid or universe_name (with optional " +
+			"date_range_start/date_range_end) to fetch the most recent matching backup.",
 
 		ReadContext: dataSourceBackupsListRead,
 
 		Schema: map[string]*schema.Schema{
-			// accept date range and check backups between that time to be chosen. Pick the latest
-			// backup. Accept universe name or uuid to select backup
+			// --- Lookup mode 1: direct by UUID ---
+			"backup_uuid": {
+				Type:          schema.TypeString,
+				Optional:      true,
+				Computed:      true,
+				ConflictsWith: []string{"date_range_start", "date_range_end"},
+				ExactlyOneOf:  []string{"backup_uuid", "universe_uuid", "universe_name"},
+				Description: "UUID of a specific backup to read. " +
+					"Mutually exclusive with universe_uuid, universe_name, " +
+					"date_range_start, and date_range_end. " +
+					"Use this when the backup UUID is known from the UI or API. " +
+					"Also populated as an output when using universe filter mode.",
+			},
+
+			// --- Lookup mode 2: universe + optional date range ---
 			"universe_name": {
 				Type:         schema.TypeString,
 				Optional:     true,
-				ExactlyOneOf: []string{"universe_name", "universe_uuid"},
-				Description:  "The name of the universe whose latest backup you want to fetch.",
+				Computed:     true,
+				ExactlyOneOf: []string{"backup_uuid", "universe_uuid", "universe_name"},
+				Description: "Name of the universe whose latest backup you want to fetch. " +
+					"Mutually exclusive with backup_uuid and universe_uuid. " +
+					"Also populated as an output.",
 			},
 			"universe_uuid": {
 				Type:         schema.TypeString,
 				Optional:     true,
-				ExactlyOneOf: []string{"universe_name", "universe_uuid"},
-				Description:  "The UUID of the universe whose latest backup you want to fetch.",
+				Computed:     true,
+				ExactlyOneOf: []string{"backup_uuid", "universe_uuid", "universe_name"},
+				Description: "UUID of the universe whose latest backup you want to fetch. " +
+					"Mutually exclusive with backup_uuid and universe_name. " +
+					"Also populated as an output.",
 			},
 			"date_range_start": {
 				Type:             schema.TypeString,
 				Optional:         true,
+				ConflictsWith:    []string{"backup_uuid"},
 				ValidateDiagFunc: validation.ToDiagFunc(validation.IsRFC3339Time),
-				Description: "Start date of range in which to fetch backups, " +
-					"in RFC3339 format.",
+				Description: "Earliest backup creation time to include, in RFC3339 format " +
+					"(e.g. 2024-01-01T00:00:00Z). Must be UTC. " +
+					"Only used with universe filter mode. " +
+					"When omitted, no lower bound is applied.",
 			},
-
 			"date_range_end": {
 				Type:             schema.TypeString,
 				Optional:         true,
+				ConflictsWith:    []string{"backup_uuid"},
 				ValidateDiagFunc: validation.ToDiagFunc(validation.IsRFC3339Time),
-				Description: "End date of range in which to fetch backups, " +
-					"in RFC3339 format.",
+				Description: "Latest backup creation time to include, in RFC3339 format " +
+					"(e.g. 2024-12-31T23:59:59Z). Must be UTC. " +
+					"Only used with universe filter mode. " +
+					"When omitted, no upper bound is applied.",
+			},
+
+			// --- Computed outputs ---
+			"state": {
+				Type:        schema.TypeString,
+				Computed:    true,
+				Description: "State of the backup (e.g. Completed, InProgress, Failed).",
+			},
+			"create_time": {
+				Type:        schema.TypeString,
+				Computed:    true,
+				Description: "Timestamp when the backup was created (RFC3339 UTC).",
 			},
 			"storage_location": {
 				Type:     schema.TypeString,
@@ -73,20 +115,21 @@ func Lists() *schema.Resource {
 			"backup_type": {
 				Type:        schema.TypeString,
 				Computed:    true,
-				Description: "Type of the backup fetched.",
+				Description: "Type of the backup: YQL_TABLE_TYPE, PGSQL_TABLE_TYPE, or REDIS_TABLE_TYPE.",
 			},
 			"storage_config_uuid": {
 				Type:        schema.TypeString,
 				Computed:    true,
-				Description: "UUID of the storage configuration used for backup.",
+				Description: "UUID of the storage configuration used for the backup.",
 			},
 			"keyspace_details": {
 				Type:     schema.TypeList,
 				Computed: true,
 				Description: "Per-keyspace/database details for the backup. " +
-					"For multi-keyspace YCQL backups each entry corresponds to one keyspace, " +
-					"each with its own storage location. For YSQL, typically one entry per database. " +
-					"Use this to build backup_storage_info blocks when restoring multi-keyspace backups.",
+					"For multi-keyspace YCQL backups each entry corresponds to one keyspace " +
+					"with its own storage location. For YSQL, typically one entry per database. " +
+					"Use keyspace_details[N].storage_location and keyspace_details[N].backup_type " +
+					"when building backup_storage_info blocks for a restore.",
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
 						"storage_location": {
@@ -98,6 +141,12 @@ func Lists() *schema.Resource {
 							Type:        schema.TypeString,
 							Computed:    true,
 							Description: "Keyspace (YCQL) or database (YSQL) name.",
+						},
+						"backup_type": {
+							Type:     schema.TypeString,
+							Computed: true,
+							Description: "Backup type for this entry: " +
+								"YQL_TABLE_TYPE, PGSQL_TABLE_TYPE, or REDIS_TABLE_TYPE.",
 						},
 						"backup_size_in_bytes": {
 							Type:        schema.TypeInt,
@@ -122,54 +171,140 @@ func dataSourceBackupsListRead(
 	ctx context.Context,
 	d *schema.ResourceData,
 	meta interface{}) diag.Diagnostics {
-	var diags diag.Diagnostics
+
 	c := meta.(*api.APIClient).YugawareClient
 	cUUID := meta.(*api.APIClient).CustomerID
 
+	// Direct lookup by backup UUID - works for any backup regardless of how it was created.
+	if backupUUID := d.Get("backup_uuid").(string); backupUUID != "" {
+		return readBackupByUUID(ctx, d, c, cUUID, backupUUID)
+	}
+
+	// Universe filter mode - fetch the most recent backup matching the criteria.
+	return readLatestBackupForUniverse(ctx, d, c, cUUID)
+}
+
+// readBackupByUUID fetches a specific backup by its UUID and populates state.
+func readBackupByUUID(
+	ctx context.Context,
+	d *schema.ResourceData,
+	c *client.APIClient,
+	cUUID string,
+	backupUUID string,
+) diag.Diagnostics {
+	var diags diag.Diagnostics
+
+	backup, response, err := c.BackupsAPI.GetBackupV2(ctx, cUUID, backupUUID).Execute()
+	if err != nil {
+		if response != nil && response.StatusCode == http.StatusNotFound {
+			return diag.Errorf("backup %s not found", backupUUID)
+		}
+		errMessage := utils.ErrorFromHTTPResponse(response, err, utils.DataSourceEntity,
+			"Backup", "Read")
+		return diag.FromErr(errMessage)
+	}
+
+	if err := d.Set("backup_uuid", backup.GetBackupUUID()); err != nil {
+		return diag.FromErr(err)
+	}
+	if err := d.Set("state", backup.GetState()); err != nil {
+		return diag.FromErr(err)
+	}
+	if backup.HasCreateTime() {
+		if err := d.Set("create_time", backup.GetCreateTime().UTC().Format(time.RFC3339)); err != nil {
+			return diag.FromErr(err)
+		}
+	}
+	if backup.HasUniverseName() {
+		if err := d.Set("universe_name", backup.GetUniverseName()); err != nil {
+			return diag.FromErr(err)
+		}
+	}
+
+	backupInfo := backup.GetBackupInfo()
+	if err := d.Set("universe_uuid", backupInfo.GetUniverseUUID()); err != nil {
+		return diag.FromErr(err)
+	}
+	if err := d.Set("storage_config_uuid", backupInfo.GetStorageConfigUUID()); err != nil {
+		return diag.FromErr(err)
+	}
+	if err := d.Set("backup_type", backupInfo.GetBackupType()); err != nil {
+		return diag.FromErr(err)
+	}
+
+	backupList := backupInfo.GetBackupList()
+	if len(backupList) > 0 {
+		if err := d.Set("storage_location", backupList[0].GetStorageLocation()); err != nil {
+			return diag.FromErr(err)
+		}
+		details := make([]map[string]interface{}, 0, len(backupList))
+		for _, sub := range backupList {
+			backupType := ""
+			if sub.BackupType != nil {
+				backupType = *sub.BackupType
+			}
+			details = append(details, map[string]interface{}{
+				"storage_location":     sub.GetStorageLocation(),
+				"keyspace":             sub.GetKeyspace(),
+				"backup_type":          backupType,
+				"backup_size_in_bytes": int(sub.GetBackupSizeInBytes()),
+				"tables":               sub.GetTableNameList(),
+			})
+		}
+		if err := d.Set("keyspace_details", details); err != nil {
+			return diag.FromErr(err)
+		}
+	}
+
+	d.SetId(backupUUID)
+	return diags
+}
+
+// readLatestBackupForUniverse fetches the most recent backup for the given universe.
+func readLatestBackupForUniverse(
+	ctx context.Context,
+	d *schema.ResourceData,
+	c *client.APIClient,
+	cUUID string,
+) diag.Diagnostics {
+	var diags diag.Diagnostics
+
+	filter := client.BackupApiFilter{}
+
+	// Only populate the universe field that was actually specified so we don't
+	// send [""] for the unused one (which the API would treat as a name filter).
+	if v := d.Get("universe_name").(string); v != "" {
+		filter.UniverseNameList = []string{v}
+	}
+	if v := d.Get("universe_uuid").(string); v != "" {
+		filter.UniverseUUIDList = []string{v}
+	}
+
+	// Date range is optional. When omitted, leave nil so omitempty removes the
+	// field from JSON and the API applies no date filter.
+	// Convert to UTC - YBA requires the Z suffix and rejects timezone offsets.
+	if s := d.Get("date_range_start").(string); s != "" {
+		t, err := time.Parse(time.RFC3339, s)
+		if err != nil {
+			return diag.FromErr(err)
+		}
+		utc := t.UTC()
+		filter.DateRangeStart = &utc
+	}
+	if s := d.Get("date_range_end").(string); s != "" {
+		t, err := time.Parse(time.RFC3339, s)
+		if err != nil {
+			return diag.FromErr(err)
+		}
+		utc := t.UTC()
+		filter.DateRangeEnd = &utc
+	}
+
 	req := client.BackupPagedApiQuery{
-		Filter: client.BackupApiFilter{
-			UniverseNameList: *utils.StringSlice(utils.CreateSingletonList(d.Get(
-				"universe_name"))),
-			UniverseUUIDList: *utils.StringSlice(utils.CreateSingletonList(d.Get(
-				"universe_uuid"))),
-		},
+		Filter:    filter,
 		SortBy:    "createTime",
 		Direction: "DESC",
 		Limit:     *utils.GetInt32Pointer(10),
-	}
-
-	var minTime = time.Unix(-2208988800, 0) // Jan 1, 1900
-	var maxTime = minTime.Add(1<<63 - 1)
-
-	startDateString := d.Get("date_range_start").(string)
-	if startDateString != "" {
-		startDate, err := time.Parse(time.RFC3339, startDateString)
-		if err != nil {
-			return diag.FromErr(err)
-		}
-		req.Filter.DateRangeStart = &startDate
-	} else {
-		startDate, err := time.Parse(time.RFC3339, minTime.Format(time.RFC3339))
-		if err != nil {
-			return diag.FromErr(err)
-		}
-		req.Filter.DateRangeStart = &startDate
-	}
-
-	endDateString := d.Get("date_range_end").(string)
-	if endDateString != "" {
-		endDate, err := time.Parse(time.RFC3339, endDateString)
-		if err != nil {
-			return diag.FromErr(err)
-		}
-		req.Filter.DateRangeEnd = &endDate
-
-	} else {
-		endDate, err := time.Parse(time.RFC3339, maxTime.Format(time.RFC3339))
-		if err != nil {
-			return diag.FromErr(err)
-		}
-		req.Filter.DateRangeEnd = &endDate
 	}
 
 	r, response, err := c.BackupsAPI.ListBackupsV2(ctx, cUUID).PageBackupsRequest(req).Execute()
@@ -179,46 +314,63 @@ func dataSourceBackupsListRead(
 		return diag.FromErr(errMessage)
 	}
 
-	// Get the first entity from r
-	if len(r.Entities) > 0 {
-		chosenBackup := r.Entities[0]
-		err = d.Set("storage_config_uuid", chosenBackup.GetCommonBackupInfo().StorageConfigUUID)
-		if err != nil {
-			return diag.FromErr(err)
-		}
-		if err = d.Set("backup_type", chosenBackup.BackupType); err != nil {
-			return diag.FromErr(err)
-		}
-		responseList := chosenBackup.GetCommonBackupInfo().ResponseList
-		if len(responseList) > 0 {
-			if err = d.Set("storage_location", responseList[0].DefaultLocation); err != nil {
-				return diag.FromErr(err)
-			}
-			keyspaceDetails := make([]map[string]interface{}, 0, len(responseList))
-			for _, entry := range responseList {
-				keyspaceDetails = append(keyspaceDetails, map[string]interface{}{
-					"storage_location":     entry.DefaultLocation,
-					"keyspace":             entry.Keyspace,
-					"backup_size_in_bytes": int(entry.BackupSizeInBytes),
-					"tables":               entry.TablesList,
-				})
-			}
-			if err = d.Set("keyspace_details", keyspaceDetails); err != nil {
-				return diag.FromErr(err)
-			}
-		}
-		if err = d.Set("universe_name", chosenBackup.UniverseName); err != nil {
-			return diag.FromErr(err)
-		}
-		if err = d.Set("universe_uuid", chosenBackup.UniverseUUID); err != nil {
-			return diag.FromErr(err)
-		}
-		d.SetId(chosenBackup.CommonBackupInfo.BackupUUID)
+	if len(r.Entities) == 0 {
+		// No backup found - preserve the input filter values and clear ID.
+		d.Set("universe_uuid", d.Get("universe_uuid"))
+		d.Set("universe_name", d.Get("universe_name"))
+		d.SetId("")
 		return diags
 	}
-	d.Set("universe_uuid", d.Get("universe_uuid"))
-	d.Set("universe_name", d.Get("universe_name"))
 
-	d.SetId("")
+	b := r.Entities[0]
+	info := b.GetCommonBackupInfo()
+
+	if err := d.Set("backup_uuid", info.BackupUUID); err != nil {
+		return diag.FromErr(err)
+	}
+	if err := d.Set("state", info.State); err != nil {
+		return diag.FromErr(err)
+	}
+	if info.CreateTime != nil {
+		if err := d.Set("create_time", info.CreateTime.UTC().Format(time.RFC3339)); err != nil {
+			return diag.FromErr(err)
+		}
+	}
+	if err := d.Set("storage_config_uuid", info.StorageConfigUUID); err != nil {
+		return diag.FromErr(err)
+	}
+	if err := d.Set("backup_type", b.BackupType); err != nil {
+		return diag.FromErr(err)
+	}
+	if err := d.Set("universe_name", b.UniverseName); err != nil {
+		return diag.FromErr(err)
+	}
+	if err := d.Set("universe_uuid", b.UniverseUUID); err != nil {
+		return diag.FromErr(err)
+	}
+
+	responseList := info.ResponseList
+	if len(responseList) > 0 {
+		if err := d.Set("storage_location", responseList[0].DefaultLocation); err != nil {
+			return diag.FromErr(err)
+		}
+		// backup_type is uniform across all keyspace entries for a given backup.
+		backupType := b.BackupType
+		details := make([]map[string]interface{}, 0, len(responseList))
+		for _, entry := range responseList {
+			details = append(details, map[string]interface{}{
+				"storage_location":     entry.DefaultLocation,
+				"keyspace":             entry.Keyspace,
+				"backup_type":          backupType,
+				"backup_size_in_bytes": int(entry.BackupSizeInBytes),
+				"tables":               entry.TablesList,
+			})
+		}
+		if err := d.Set("keyspace_details", details); err != nil {
+			return diag.FromErr(err)
+		}
+	}
+
+	d.SetId(info.BackupUUID)
 	return diags
 }
