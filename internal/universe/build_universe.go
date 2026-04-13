@@ -26,42 +26,134 @@ func buildUniverse(d *schema.ResourceData) client.UniverseConfigureTaskParams {
 	enableYbc := true
 	rootCA := d.Get("root_ca").(string)
 	clientRootCA := d.Get("client_root_ca").(string)
-	// rootAndClientRootCASame defaults to true on the YBA server side.  The server's
-	// getClientRootCA() getter returns rootCA (ignoring the clientRootCA field) whenever
-	// rootAndClientRootCASame is true, so a user-supplied client_root_ca that differs from
-	// root_ca would be silently discarded.  Explicitly set the flag to false when the two
-	// UUIDs differ so the server honours the caller-specified clientRootCA.
+	// rootAndClientRootCASame defaults to true on the YBA server side.  When true, the
+	// server ignores the clientRootCA field and sets it equal to rootCA instead.  We must
+	// explicitly send false in any situation where the caller has chosen a clientRootCA that
+	// differs from rootCA -- including when rootCA is absent and the server will auto-generate
+	// one:
+	//
+	//   client_root_ca set, root_ca not set   -> false (server must not override with auto-rootCA)
+	//   client_root_ca set, root_ca set same  -> nil  (server default "true" is correct)
+	//   client_root_ca set, root_ca set diff  -> false (keep certs separate)
+	//   client_root_ca not set                -> nil  (server picks/reuses rootCA for both)
 	var rootAndClientRootCASame *bool
-	if rootCA != "" && clientRootCA != "" && clientRootCA != rootCA {
+	if clientRootCA != "" && (rootCA == "" || clientRootCA != rootCA) {
 		rootAndClientRootCASame = utils.GetBoolPointer(false)
 	}
-	return client.UniverseConfigureTaskParams{
-		RootCA:                  utils.GetStringPointer(rootCA),
-		ClientRootCA:            utils.GetStringPointer(clientRootCA),
+	// Only set RootCA/ClientRootCA when the UUID is non-empty.  Sending a
+	// pointer to an empty string serialises as "rootCA": "" in JSON, which the
+	// server treats differently from a missing/null field: it may bypass the
+	// rootAndClientRootCASame logic and reset both certs to the auto-generated
+	// rootCA.  Omitting the field entirely (nil pointer) lets the server
+	// correctly auto-generate rootCA while still honoring the separate
+	// clientRootCA when rootAndClientRootCASame=false.
+	params := client.UniverseConfigureTaskParams{
 		RootAndClientRootCASame: rootAndClientRootCASame,
 		Arch:                    utils.GetStringPointer(d.Get("arch").(string)),
 		Clusters:                clusters,
 		CommunicationPorts: buildCommunicationPorts(
 			utils.MapFromSingletonList(d.Get("communication_ports").([]interface{}))),
-		EnableYbc: utils.GetBoolPointer(enableYbc),
+		EnableYbc:      utils.GetBoolPointer(enableYbc),
+		UserAZSelected: utils.GetBoolPointer(hasExplicitCloudList(clusters)),
 	}
+	if rootCA != "" {
+		params.RootCA = utils.GetStringPointer(rootCA)
+	}
+	if clientRootCA != "" {
+		params.ClientRootCA = utils.GetStringPointer(clientRootCA)
+	}
+	return params
 }
 
 func buildUniverseDefinitionTaskParams(d *schema.ResourceData) client.UniverseDefinitionTaskParams {
 	rootCA := d.Get("root_ca").(string)
 	clientRootCA := d.Get("client_root_ca").(string)
-	// See comment in buildUniverse for the rationale behind this flag.
+	// See comment in buildUniverse for the full rationale behind this flag.
 	var rootAndClientRootCASame *bool
-	if rootCA != "" && clientRootCA != "" && clientRootCA != rootCA {
+	if clientRootCA != "" && (rootCA == "" || clientRootCA != rootCA) {
 		rootAndClientRootCASame = utils.GetBoolPointer(false)
 	}
-	return client.UniverseDefinitionTaskParams{
-		RootCA:                  utils.GetStringPointer(rootCA),
-		ClientRootCA:            utils.GetStringPointer(clientRootCA),
+	clusters := buildClusters(d.Get("clusters").([]interface{}))
+	// See comment in buildUniverse: only set RootCA/ClientRootCA when non-empty
+	// so that the server receives a missing/null field rather than "" when the
+	// user has not specified a cert UUID.
+	params := client.UniverseDefinitionTaskParams{
 		RootAndClientRootCASame: rootAndClientRootCASame,
-		Clusters:                buildClusters(d.Get("clusters").([]interface{})),
+		Clusters:                clusters,
 		CommunicationPorts: buildCommunicationPorts(
 			utils.MapFromSingletonList(d.Get("communication_ports").([]interface{}))),
+		UserAZSelected: utils.GetBoolPointer(hasExplicitCloudList(clusters)),
+	}
+	if rootCA != "" {
+		params.RootCA = utils.GetStringPointer(rootCA)
+	}
+	if clientRootCA != "" {
+		params.ClientRootCA = utils.GetStringPointer(clientRootCA)
+	}
+	return params
+}
+
+// hasExplicitCloudList returns true when at least one cluster in the request
+// carries an explicit PlacementInfo, mirroring the UI's userAZSelected flag.
+// With userAZSelected=true YBA treats the per-AZ node counts as the source of
+// truth and derives userIntent.numNodes from them, instead of the reverse.
+func hasExplicitCloudList(clusters []client.Cluster) bool {
+	for _, c := range clusters {
+		if c.PlacementInfo != nil && len(c.PlacementInfo.CloudList) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// resolveAZUUIDs fixes the UUID on every PlacementRegion and PlacementAZ in
+// newPI by matching on Code (for regions) and Name (for AZs) against the live
+// cloud list fetched from the YBA API (oldCloudList).
+//
+// The problem it solves: region_list and az_list are TypeLists in the schema,
+// so Terraform matches elements by index position. When the practitioner
+// removes a region or AZ from the middle of the list, subsequent elements shift
+// down one index and inherit the wrong state UUID (the removed element's UUID).
+// This leads to incorrect ToBeRemoved node marking and wrong placement sent to
+// the API.
+//
+// The fix mirrors the mergeZoneUUIDs pattern used in the AWS/GCP/on-prem
+// provider resources: look up UUIDs by the user-authored identifier (code for
+// regions, name for AZs) rather than trusting the index-matched state value.
+func resolveAZUUIDs(newPI *client.PlacementInfo, oldCloudList []client.PlacementCloud) {
+	if newPI == nil {
+		return
+	}
+	// Build lookup maps from the live API state (correct, stable UUIDs).
+	uuidByRegionCode := make(map[string]string)
+	uuidByAZName := make(map[string]string)
+	for _, cloud := range oldCloudList {
+		for _, region := range cloud.GetRegionList() {
+			if region.GetCode() != "" && region.GetUuid() != "" {
+				uuidByRegionCode[region.GetCode()] = region.GetUuid()
+			}
+			for _, az := range region.GetAzList() {
+				if az.GetName() != "" && az.GetUuid() != "" {
+					uuidByAZName[az.GetName()] = az.GetUuid()
+				}
+			}
+		}
+	}
+	// Overwrite each region's and AZ's UUID in the new placement with the
+	// resolved value from the live API state.
+	for ci := range newPI.CloudList {
+		for ri := range newPI.CloudList[ci].RegionList {
+			region := &newPI.CloudList[ci].RegionList[ri]
+			if uuid, ok := uuidByRegionCode[region.GetCode()]; ok {
+				region.Uuid = utils.GetStringPointer(uuid)
+			}
+			for ai := range region.AzList {
+				az := &region.AzList[ai]
+				if uuid, ok := uuidByAZName[az.GetName()]; ok {
+					az.Uuid = utils.GetStringPointer(uuid)
+				}
+			}
+		}
 	}
 }
 
@@ -116,6 +208,7 @@ func buildCloudList(clI interface{}) (res []client.PlacementCloud) {
 	for _, v := range cl {
 		c := v.(map[string]interface{})
 		pc := client.PlacementCloud{
+			Uuid:       utils.GetStringPointer(c["uuid"].(string)),
 			Code:       utils.GetStringPointer(c["code"].(string)),
 			RegionList: buildRegionList(c["region_list"].([]interface{})),
 		}
@@ -129,7 +222,9 @@ func buildRegionList(cl []interface{}) []client.PlacementRegion {
 	for _, v := range cl {
 		r := v.(map[string]interface{})
 		pr := client.PlacementRegion{
+			Uuid:   utils.GetStringPointer(r["uuid"].(string)),
 			Code:   utils.GetStringPointer(r["code"].(string)),
+			Name:   utils.GetStringPointer(r["name"].(string)),
 			AzList: buildAzList(r["az_list"].(interface{})),
 		}
 		res = append(res, pr)
@@ -146,8 +241,10 @@ func buildAzList(clI interface{}) []client.PlacementAZ {
 	for _, v := range cl {
 		az := v.(map[string]interface{})
 		paz := client.PlacementAZ{
+			Uuid:              utils.GetStringPointer(az["uuid"].(string)),
 			IsAffinitized:     utils.GetBoolPointer(az["is_affinitized"].(bool)),
-			Name:              utils.GetStringPointer(az["name"].(string)),
+			LeaderPreference:  utils.GetInt32Pointer(int32(az["leader_preference"].(int))),
+			Name:              utils.GetStringPointer(az["code"].(string)),
 			NumNodesInAZ:      utils.GetInt32Pointer(int32(az["num_nodes"].(int))),
 			ReplicationFactor: utils.GetInt32Pointer(int32(az["replication_factor"].(int))),
 			SecondarySubnet:   utils.GetStringPointer(az["secondary_subnet"].(string)),
@@ -188,7 +285,6 @@ func buildUserIntent(ui map[string]interface{}) client.UserIntent {
 		EnableYEDIS:               utils.GetBoolPointer(ui["enable_yedis"].(bool)),
 		EnableNodeToNodeEncrypt:   utils.GetBoolPointer(ui["enable_node_to_node_encrypt"].(bool)),
 		EnableClientToNodeEncrypt: utils.GetBoolPointer(ui["enable_client_to_node_encrypt"].(bool)),
-		EnableVolumeEncryption:    utils.GetBoolPointer(ui["enable_volume_encryption"].(bool)),
 		YbSoftwareVersion:         utils.GetStringPointer(ui["yb_software_version"].(string)),
 		AccessKeyCode:             utils.GetStringPointer(ui["access_key_code"].(string)),
 		TserverGFlags:             utils.StringMap(ui["tserver_gflags"].(map[string]interface{})),
@@ -205,6 +301,19 @@ func buildDeviceInfo(di map[string]interface{}) *client.DeviceInfo {
 		VolumeSize:  utils.GetInt32Pointer(int32(di["volume_size"].(int))),
 		StorageType: utils.GetStringPointer(di["storage_type"].(string)),
 	}
+}
+
+// collectAZUUIDs returns a set of AZ UUIDs present in the given cloud list.
+func collectAZUUIDs(cloudList []client.PlacementCloud) map[string]bool {
+	uuids := make(map[string]bool)
+	for _, cloud := range cloudList {
+		for _, region := range cloud.GetRegionList() {
+			for _, az := range region.GetAzList() {
+				uuids[az.GetUuid()] = true
+			}
+		}
+	}
+	return uuids
 }
 
 func buildNodeDetailsRespArrayToNodeDetailsArray(

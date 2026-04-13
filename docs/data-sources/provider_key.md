@@ -25,4 +25,5 @@ data "yba_provider_key" "cloud_key" {
 
 ### Read-Only
 
+- `available_access_keys` (List of String) List of all available access key names for this provider.
 - `id` (String) The ID of this resource.

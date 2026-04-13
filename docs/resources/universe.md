@@ -66,8 +66,9 @@ The following operations are supported in the Edit universe workflow:
 
 ### Optional
 
+- `allow_full_move` (Boolean) Explicit acknowledgment required to perform operations that trigger a FULL MOVE on the Primary or Read Replica Cluster: volume_size decrease (any instance type); num_volumes change with same instance type; storage_type change (any instance type). Full moves provision new nodes with the new configuration, migrate data from the old nodes, and decommission the old nodes. They require temporary 2x node capacity during migration and take significantly longer than in-place operations. False by default; set to true when the full-move implications have been reviewed and accepted.
 - `arch` (String) The architecture of the universe nodes. Allowed values are x86_64 and aarch64.
-- `client_root_ca` (String) The UUID of the clientRootCA to be used to generate client certificates and facilitate TLS communication between server and client. When set to a different value than root_ca, separate certificates are used for node-to-node and client-to-node TLS. When not set, root_ca is reused for client-to-node TLS.
+- `client_root_ca` (String) The UUID of the clientRootCA to be used to generate client certificates and facilitate TLS communication between server and client. When set to a different value than root_ca, separate certificates are used for node-to-node and client-to-node TLS. May be set without root_ca (e.g. when node-to-node encryption is disabled but client-to-node encryption is enabled); in that case YBA auto-generates a root CA for node-to-node if needed and uses the provided value for client-to-node. When not set, root_ca is reused for client-to-node TLS.
 - `communication_ports` (Block List, Max: 1) Communication ports. (see [below for nested schema](#nestedblock--communication_ports))
 - `db_version_upgrade_options` (Block List, Max: 1) Options controlling the DB version upgrade path (UpgradeDBVersion). By default finalize = false pauses the upgrade in PreFinalize state for a monitoring phase; flip to true and re-apply to commit, or set rollback = true to revert to the previous DB version. (see [below for nested schema](#nestedblock--db_version_upgrade_options))
 - `delete_options` (Block List, Max: 1) (see [below for nested schema](#nestedblock--delete_options))
@@ -91,7 +92,7 @@ Required:
 
 Optional:
 
-- `cloud_list` (Block List) Cloud, region, and zone placement information for the universe. (see [below for nested schema](#nestedblock--clusters--cloud_list))
+- `cloud_list` (Block List) Explicit per-zone placement for the universe. When omitted, YBA distributes nodes across zones automatically. (see [below for nested schema](#nestedblock--clusters--cloud_list))
 
 Read-Only:
 
@@ -104,7 +105,7 @@ Required:
 
 - `device_info` (Block List, Min: 1, Max: 1) Configuration values associated with the machines used for this universe. (see [below for nested schema](#nestedblock--clusters--user_intent--device_info))
 - `instance_type` (String) Instance type of universe nodes.
-- `num_nodes` (Number) Number of nodes for this universe.
+- `num_nodes` (Number) Desired total number of nodes for this universe. When cloud_list is also set, this value is ignored by YBA: the actual node count is determined by the sum of cloud_list[*].region_list[*].az_list[*].num_nodes (userAZSelected=true). Set this to match that sum to avoid plan drift on subsequent applies.
 - `provider` (String) Provider UUID.
 - `region_list` (List of String) List of regions for node placement.
 - `replication_factor` (Number) Replication factor for this universe.
@@ -120,7 +121,6 @@ Optional:
 - `enable_client_to_node_encrypt` (Boolean) Enable Encryption in Transit - Client to Node encryption. True by default.
 - `enable_ipv6` (Boolean) Enable IPv6.
 - `enable_node_to_node_encrypt` (Boolean) Enable Encryption in Transit - Node to Node encryption. True by default.
-- `enable_volume_encryption` (Boolean) Enable Encryption At Rest. False by default.
 - `enable_ycql` (Boolean) Enable YCQL. True by default.
 - `enable_ycql_auth` (Boolean) Enable YCQL authentication.
 - `enable_yedis` (Boolean) Enable YEDIS. False by default.
@@ -163,34 +163,45 @@ Optional:
 
 Optional:
 
-- `code` (String) Cloud provider code.
-- `region_list` (Block List) (see [below for nested schema](#nestedblock--clusters--cloud_list--region_list))
-- `uuid` (String) Cloud Provider UUID.
+- `code` (String) Cloud provider code (e.g. aws, gcp, azu, onprem).
+- `region_list` (Block List) Regions participating in placement for this cloud provider. (see [below for nested schema](#nestedblock--clusters--cloud_list--region_list))
+- `uuid` (String) YBA cloud provider UUID.
 
 <a id="nestedblock--clusters--cloud_list--region_list"></a>
 ### Nested Schema for `clusters.cloud_list.region_list`
 
+Required:
+
+- `code` (String) Region code identifying the target region (e.g. us-east-1, us-central1).
+
 Optional:
 
-- `az_list` (Block List) (see [below for nested schema](#nestedblock--clusters--cloud_list--region_list--az_list))
-- `code` (String) Region Code.
+- `az_list` (Block List) Availability zones participating in placement for this region. Note: this is a positional list. When removing a zone, the plan may show adjacent zones appearing to change (code, num_nodes, etc.) due to index shifting. The provider resolves zones by code before sending the API request, so the actual operation is always correct regardless of how the plan is displayed. (see [below for nested schema](#nestedblock--clusters--cloud_list--region_list--az_list))
+
+Read-Only:
+
+- `name` (String) Region display name as returned by YBA.
 - `uuid` (String) Region UUID.
 
 <a id="nestedblock--clusters--cloud_list--region_list--az_list"></a>
 ### Nested Schema for `clusters.cloud_list.region_list.az_list`
 
+Required:
+
+- `code` (String) Availability zone code (e.g. us-east-1a, us-central1-a).
+
 Optional:
 
-- `name` (String) Zone name.
-- `num_nodes` (Number) Number of nodes in this zone.
-- `replication_factor` (Number) Replication factor in this zone.
-- `secondary_subnet` (String) Secondary subnet of the zone.
-- `subnet` (String) Subnet ID of zone.
-- `uuid` (String) Zone UUID.
+- `is_affinitized` (Boolean) Whether this zone is preferred (affinitized) for read traffic. When true, YBA routes read requests to nodes in this zone first.
+- `leader_preference` (Number) Leader placement priority for this zone. Zero means no preference. A lower non-zero value indicates higher priority. Multiple zones may share the same value. Must be non-negative contiguous integers when used.
+- `num_nodes` (Number) Number of nodes to place in this zone. When cloud_list is set, these per-AZ counts are the authoritative source of truth: YBA derives the total node count from their sum and user_intent.num_nodes is ignored.
+- `replication_factor` (Number) Replication factor for this zone.
 
 Read-Only:
 
-- `is_affinitized` (Boolean) Is it an affinitized zone.
+- `secondary_subnet` (String) Secondary subnet ID for this zone, inherited from the provider.
+- `subnet` (String) Primary subnet ID for this zone, inherited from the provider.
+- `uuid` (String) Availability zone UUID.
 
 
 

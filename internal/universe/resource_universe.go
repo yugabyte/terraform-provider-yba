@@ -153,8 +153,11 @@ func ResourceUniverse() *schema.Resource {
 				Description: "The UUID of the clientRootCA to be used to generate client" +
 					" certificates and facilitate TLS communication between server and client." +
 					" When set to a different value than root_ca, separate certificates are used" +
-					" for node-to-node and client-to-node TLS. When not set, root_ca is reused" +
-					" for client-to-node TLS.",
+					" for node-to-node and client-to-node TLS. May be set without root_ca" +
+					" (e.g. when node-to-node encryption is disabled but client-to-node" +
+					" encryption is enabled); in that case YBA auto-generates a root CA for" +
+					" node-to-node if needed and uses the provided value for client-to-node." +
+					" When not set, root_ca is reused for client-to-node TLS.",
 			},
 			"arch": {
 				Type:     schema.TypeString,
@@ -206,13 +209,31 @@ func ResourceUniverse() *schema.Resource {
 							Description: "Configuration values used in universe creation. Only " +
 								"these values can be updated.",
 						},
+						// When cloud_list is present the provider sets userAZSelected=true
+						// on the request (mirroring the UI). With userAZSelected=true YBA
+						// treats the per-AZ node counts as the source of truth and derives
+						// user_intent.numNodes from their sum
+						// (PlacementInfoUtil.java lines 574-598). Without cloud_list
+						// userAZSelected stays false and user_intent.numNodes drives the
+						// placement instead.
 						"cloud_list": {
 							Type:     schema.TypeList,
 							Optional: true,
 							Computed: true,
 							Elem:     cloudListSchema(),
-							Description: "Cloud, region, and zone placement information " +
-								"for the universe.",
+							Description: "Explicit per-zone placement for the universe. " +
+								"When omitted, YBA distributes nodes across zones automatically.",
+							// The SDK v2 may spuriously report HasChange=true for an
+							// Optional+Computed TypeList nested inside a Required TypeList
+							// parent when the user does not configure it: the SDK resets
+							// the unconfigured child to its zero value (empty) instead of
+							// carrying forward the prior Computed state. Suppress diffs that
+							// reduce the list to zero elements so that unauthored cloud_list
+							// blocks never produce a plan diff or trigger placement changes.
+							DiffSuppressFunc: func(k, old, new string, d *schema.ResourceData) bool {
+								return strings.HasSuffix(k, "cloud_list.#") && new == "0" &&
+									old != "0"
+							},
 						},
 					},
 				},
@@ -439,6 +460,38 @@ func getClusterByType(clusters []client.Cluster, clusterType string) (client.Clu
 
 func resourceUniverseDiff() schema.CustomizeDiffFunc {
 	return customdiff.All(
+		customdiff.ValidateValue("clusters", func(ctx context.Context, value,
+			meta interface{}) error {
+			// Exactly one PRIMARY cluster and at most one ASYNC cluster are allowed.
+			// The YBA API enforces both constraints server-side; catch them at plan time.
+			primaryCount := 0
+			asyncCount := 0
+			for _, clRaw := range value.([]interface{}) {
+				cl, ok := clRaw.(map[string]interface{})
+				if !ok {
+					continue
+				}
+				switch cl["cluster_type"] {
+				case "PRIMARY":
+					primaryCount++
+				case "ASYNC":
+					asyncCount++
+				}
+			}
+			if primaryCount != 1 {
+				return fmt.Errorf(
+					"exactly one cluster with cluster_type \"PRIMARY\" is required, got %d",
+					primaryCount,
+				)
+			}
+			if asyncCount > 1 {
+				return fmt.Errorf(
+					"at most one cluster with cluster_type \"ASYNC\" is allowed, got %d",
+					asyncCount,
+				)
+			}
+			return nil
+		}),
 		customdiff.ValidateChange(
 			"clusters",
 			func(ctx context.Context, old, new, m interface{}) error {
@@ -1399,32 +1452,6 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 			},
 		),
 
-		// YBA EncryptionAtRest API: enable_volume_encryption.
-		// Remove this block when EncryptionAtRest toggle is implemented.
-		customdiff.ValidateChange("clusters",
-			func(ctx context.Context, old, new, m interface{}) error {
-				if len(old.([]interface{})) == 0 {
-					return nil
-				}
-				oldClusters := buildClusters(old.([]interface{}))
-				newClusters := buildClusters(new.([]interface{}))
-				for i, oldCl := range oldClusters {
-					if i >= len(newClusters) {
-						continue
-					}
-					newCl := newClusters[i]
-					if oldCl.UserIntent.GetEnableVolumeEncryption() !=
-						newCl.UserIntent.GetEnableVolumeEncryption() {
-						return errors.New(
-							"enable_volume_encryption cannot be changed after universe " +
-								"creation: EncryptionAtRest update support is not yet " +
-								"implemented in this provider version")
-					}
-				}
-				return nil
-			},
-		),
-
 		// YBA cert rotation API: root_ca, client_root_ca.
 		// Remove this block when cert rotation is implemented.
 		customdiff.ValidateChange("root_ca",
@@ -1668,7 +1695,239 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 			},
 		),
 		// --- END PENDING UPDATE SUPPORT ---
+		// When cloud_list is present, validate that the per-AZ sums are consistent
+		// with the corresponding user_intent totals.
+		//
+		// num_nodes: YBA ignores user_intent.num_nodes when userAZSelected=true and
+		// derives the total from the AZ sum. A mismatch will not cause an API error
+		// but will cause perpetual plan drift on subsequent applies (the Read will
+		// return the AZ-derived count, which differs from what is in state).
+		//
+		// replication_factor: YBA enforces server-side that the per-AZ RF sum equals
+		// user_intent.replicationFactor. Catching this at plan time gives a clear
+		// error message instead of a failed 12-minute create.
+		//
+		// Both checks are skipped for any AZ whose value is 0 (Computed, not yet
+		// known) to avoid false positives on first create when some fields are
+		// not yet set by the practitioner.
+		customdiff.ValidateValue("clusters",
+			func(ctx context.Context, value, meta interface{}) error {
+				for _, clRaw := range value.([]interface{}) {
+					cl, ok := clRaw.(map[string]interface{})
+					if !ok {
+						continue
+					}
+					cloudList, ok := cl["cloud_list"].([]interface{})
+					if !ok || len(cloudList) == 0 {
+						continue
+					}
+					uiRaw, ok := cl["user_intent"].([]interface{})
+					if !ok || len(uiRaw) == 0 {
+						continue
+					}
+					ui, ok := uiRaw[0].(map[string]interface{})
+					if !ok {
+						continue
+					}
+					wantNodes := ui["num_nodes"].(int)
+					wantRF := ui["replication_factor"].(int)
+
+					var sumNodes, sumRF int
+					allNodesKnown, allRFKnown := true, true
+					for _, pcRaw := range cloudList {
+						pc, ok := pcRaw.(map[string]interface{})
+						if !ok {
+							continue
+						}
+						for _, prRaw := range pc["region_list"].([]interface{}) {
+							pr, ok := prRaw.(map[string]interface{})
+							if !ok {
+								continue
+							}
+							for _, pazRaw := range pr["az_list"].([]interface{}) {
+								paz, ok := pazRaw.(map[string]interface{})
+								if !ok {
+									continue
+								}
+								n := paz["num_nodes"].(int)
+								r := paz["replication_factor"].(int)
+								if n == 0 {
+									allNodesKnown = false
+								} else {
+									sumNodes += n
+								}
+								if r == 0 {
+									allRFKnown = false
+								} else {
+									sumRF += r
+								}
+							}
+						}
+					}
+
+					if allNodesKnown && sumNodes > 0 && wantNodes != sumNodes {
+						return fmt.Errorf(
+							"user_intent.num_nodes (%d) must equal the sum of "+
+								"cloud_list az_list num_nodes (%d): "+
+								"when cloud_list is set, YBA ignores user_intent.num_nodes "+
+								"and uses the AZ sum as the authoritative node count",
+							wantNodes, sumNodes)
+					}
+					if allRFKnown && sumRF > 0 && wantRF != sumRF {
+						return fmt.Errorf(
+							"user_intent.replication_factor (%d) must equal the sum of "+
+								"cloud_list az_list replication_factor (%d)",
+							wantRF, sumRF)
+					}
+				}
+				return nil
+			},
+		),
+		// --- END PENDING UPDATE SUPPORT ---
 	)
+}
+
+// resolveCloudListUUIDs fills in the uuid field for every region and AZ inside
+// each cluster's cloud_list by looking them up from the live provider data.
+//
+// On create the practitioner specifies codes (e.g. "us-west-2a") but the
+// schema marks uuid as Computed-only, so it is an empty string at plan time.
+// YBA's PlacementInfoUtil.setPerAZRF matches AZs by UUID; without valid UUIDs
+// the request fails with "Unable to place replicas, no zones available."
+func resolveCloudListUUIDs(
+	ctx context.Context,
+	c *client.APIClient,
+	cUUID string,
+	d *schema.ResourceData,
+) error {
+	clusters := d.Get("clusters").([]interface{})
+	changed := false
+	for _, clRaw := range clusters {
+		cl, ok := clRaw.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		cloudList, ok := cl["cloud_list"].([]interface{})
+		if !ok || len(cloudList) == 0 {
+			continue
+		}
+
+		// Determine which provider to look up.  Prefer cloud_list.uuid (the
+		// provider UUID the user explicitly wired in), fall back to
+		// user_intent.provider.
+		providerUUID := ""
+		for _, pcRaw := range cloudList {
+			pc, ok := pcRaw.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			if u, ok := pc["uuid"].(string); ok && u != "" {
+				providerUUID = u
+				break
+			}
+		}
+		if providerUUID == "" {
+			uiRaw, ok := cl["user_intent"].([]interface{})
+			if ok && len(uiRaw) > 0 {
+				if ui, ok := uiRaw[0].(map[string]interface{}); ok {
+					providerUUID, _ = ui["provider"].(string)
+				}
+			}
+		}
+		if providerUUID == "" {
+			continue
+		}
+
+		p, err := providerutil.GetProvider(ctx, c, cUUID, providerUUID)
+		if err != nil {
+			return err
+		}
+
+		// Build lookup maps keyed by AZ/region code.
+		type azAttrs struct {
+			uuid            string
+			subnet          string
+			secondarySubnet string
+		}
+		regionUUIDByCode := make(map[string]string)
+		azByCode := make(map[string]azAttrs)
+		for _, region := range p.GetRegions() {
+			if region.GetCode() != "" && region.GetUuid() != "" {
+				regionUUIDByCode[region.GetCode()] = region.GetUuid()
+			}
+			for _, az := range region.GetZones() {
+				if az.GetCode() != "" && az.GetUuid() != "" {
+					azByCode[az.GetCode()] = azAttrs{
+						uuid:            az.GetUuid(),
+						subnet:          az.GetSubnet(),
+						secondarySubnet: az.GetSecondarySubnet(),
+					}
+				}
+			}
+		}
+
+		providerCode := p.GetCode()
+
+		// Patch UUIDs and codes in-place inside the deserialized cloud_list.
+		for _, pcRaw := range cloudList {
+			pc, ok := pcRaw.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			// code must be set on the cloud entry: UpdatePlacementInfo.mapToCloudInfoPB
+			// reads placementCloud.code directly and passes it to setPlacementCloud(),
+			// which throws NullPointerException when the field is null/empty.
+			if cur, _ := pc["code"].(string); cur == "" && providerCode != "" {
+				pc["code"] = providerCode
+				changed = true
+			}
+			regionList, ok := pc["region_list"].([]interface{})
+			if !ok {
+				continue
+			}
+			for _, prRaw := range regionList {
+				pr, ok := prRaw.(map[string]interface{})
+				if !ok {
+					continue
+				}
+				if uuid, ok := regionUUIDByCode[pr["code"].(string)]; ok {
+					pr["uuid"] = uuid
+					changed = true
+				}
+				azList, ok := pr["az_list"].([]interface{})
+				if !ok {
+					continue
+				}
+				for _, pazRaw := range azList {
+					paz, ok := pazRaw.(map[string]interface{})
+					if !ok {
+						continue
+					}
+					attrs, found := azByCode[paz["code"].(string)]
+					if !found {
+						continue
+					}
+					paz["uuid"] = attrs.uuid
+					changed = true
+					// Fill subnet and secondary_subnet from the provider zone
+					// when the practitioner has not set them explicitly.
+					if cur, _ := paz["subnet"].(string); cur == "" && attrs.subnet != "" {
+						paz["subnet"] = attrs.subnet
+					}
+					if cur, _ := paz["secondary_subnet"].(string); cur == "" &&
+						attrs.secondarySubnet != "" {
+						paz["secondary_subnet"] = attrs.secondarySubnet
+					}
+				}
+			}
+		}
+	}
+	if changed {
+		if err := d.Set("clusters", clusters); err != nil {
+			return fmt.Errorf("failed to set resolved cloud list UUIDs: %w", err)
+		}
+	}
+	return nil
 }
 
 // resolveProviderTypes fills in provider_type in each cluster's user_intent
@@ -1723,6 +1982,9 @@ func resourceUniverseCreate(
 	cUUID := meta.(*api.APIClient).CustomerID
 
 	if err := resolveProviderTypes(ctx, c, cUUID, d); err != nil {
+		return diag.FromErr(err)
+	}
+	if err := resolveCloudListUUIDs(ctx, c, cUUID, d); err != nil {
 		return diag.FromErr(err)
 	}
 	req := buildUniverse(d)
@@ -1780,7 +2042,9 @@ func resourceUniverseRead(
 		return diag.FromErr(err)
 	}
 	newClusters := flattenClusters(u.Clusters)
-	restoreRedactedPasswords(ctx, newClusters, d.Get("clusters").([]interface{}))
+	oldClusters := d.Get("clusters").([]interface{})
+	restoreRedactedPasswords(ctx, newClusters, oldClusters)
+	alignClustersCloudList(newClusters, oldClusters)
 	if err = d.Set("clusters", newClusters); err != nil {
 		return diag.FromErr(err)
 	}
@@ -2289,6 +2553,33 @@ func resourceUniverseUpdate(
 							newUserIntent.EnableNodeToNodeEncrypt
 					}
 					//updateUni.UniverseDetails.Clusters[i].UserIntent = newUserIntent
+
+					// When re-enabling TLS, pass the cert UUIDs that were used at create
+					// time so YBA reuses them instead of auto-generating new certificates.
+					// We prefer the Terraform plan value (d.Get) because it always reflects
+					// the user's intent: an explicitly-configured UUID is returned directly,
+					// and an auto-generated UUID stored in state is returned via the
+					// DiffSuppressFunc when the config field is left empty.
+					// Fall back to the live universe value for each field that is still
+					// empty after consulting the plan (e.g. when YBA cleared the field
+					// during a previous TLS disable).
+					tlsRootCA := d.Get("root_ca").(string)
+					if tlsRootCA == "" {
+						tlsRootCA = updateUni.UniverseDetails.GetRootCA()
+					}
+					tlsClientRootCA := d.Get("client_root_ca").(string)
+					if tlsClientRootCA == "" {
+						tlsClientRootCA = updateUni.UniverseDetails.GetClientRootCA()
+					}
+					// Mirror the same rootAndClientRootCASame logic used at create time.
+					// nil means "let the server default to true (same cert for both)".
+					// false means "use separate certs for node-to-node and client-to-node".
+					var tlsRootAndClientSame *bool
+					if tlsClientRootCA != "" &&
+						(tlsRootCA == "" || tlsClientRootCA != tlsRootCA) {
+						tlsRootAndClientSame = utils.GetBoolPointer(false)
+					}
+
 					req := client.TlsToggleParams{
 						EnableClientToNodeEncrypt: newUserIntent.GetEnableClientToNodeEncrypt(),
 						EnableNodeToNodeEncrypt:   newUserIntent.GetEnableNodeToNodeEncrypt(),
@@ -2300,6 +2591,13 @@ func resourceUniverseUpdate(
 						SleepAfterTServerRestartMillis: int32(
 							sleepAfterTServerMs,
 						),
+						RootAndClientRootCASame: tlsRootAndClientSame,
+					}
+					if tlsRootCA != "" {
+						req.RootCA = utils.GetStringPointer(tlsRootCA)
+					}
+					if tlsClientRootCA != "" {
+						req.ClientRootCA = utils.GetStringPointer(tlsClientRootCA)
 					}
 					if diags := utils.DispatchAndWait(ctx, "TLS Toggle", cUUID, c,
 						d.Timeout(schema.TimeoutUpdate),
@@ -2432,6 +2730,53 @@ func resourceUniverseUpdate(
 					oldUserIntent,
 					newUserIntent,
 				)
+
+				// Placement (cloud_list) changes: update PlacementInfo and mark removed-AZ
+				// nodes as ToBeRemoved so the backend detects the placement diff.
+				//
+				// We only act when the new cloud_list is non-empty. If the new value is
+				// empty, we do nothing. This handles two cases safely:
+				//
+				//   1. User never configured cloud_list: the SDK v2 may spuriously report
+				//      HasChange=true for an Optional+Computed TypeList nested inside a
+				//      Required TypeList parent (it resets the unconfigured child to its
+				//      zero value instead of using prior Computed state). Acting on an
+				//      empty newPI here would incorrectly clear placement on a live
+				//      universe the user never touched.
+				//
+				//   2. User intentionally removes cloud_list from their config: switching
+				//      back to auto-placement is not supported via a config change alone
+				//      because we cannot distinguish this from case 1. Destroy and
+				//      recreate the universe to reset placement.
+				var userAZExplicit bool
+				if d.HasChange(fmt.Sprintf("clusters.%d.cloud_list", i)) {
+					newPI := newUni.Clusters[i].PlacementInfo
+					if newPI != nil && len(newPI.CloudList) > 0 {
+						var oldCloudList []client.PlacementCloud
+						if updateUni.UniverseDetails.Clusters[i].PlacementInfo != nil {
+							oldCloudList = updateUni.UniverseDetails.Clusters[i].PlacementInfo.CloudList
+						}
+						// Resolve AZ UUIDs by name from the live API state before
+						// computing the diff. TypeList index-matching can assign a
+						// removed AZ's UUID to a kept AZ; resolveAZUUIDs corrects
+						// this by looking up each AZ's UUID by its name.
+						resolveAZUUIDs(newPI, oldCloudList)
+						oldAZUUIDs := collectAZUUIDs(oldCloudList)
+						newAZUUIDs := collectAZUUIDs(newPI.CloudList)
+						clusterUUID := updateUni.UniverseDetails.Clusters[i].GetUuid()
+						for j := range updateUni.UniverseDetails.NodeDetailsSet {
+							n := &updateUni.UniverseDetails.NodeDetailsSet[j]
+							if n.GetPlacementUuid() == clusterUUID &&
+								oldAZUUIDs[n.GetAzUuid()] && !newAZUUIDs[n.GetAzUuid()] {
+								n.SetState("ToBeRemoved")
+							}
+						}
+						updateUni.UniverseDetails.Clusters[i].PlacementInfo = newPI
+						userAZExplicit = true
+						editZoneAllowed = true
+					}
+				}
+
 				if editAllowed || editZoneAllowed {
 					effectiveCommPorts := updateUni.UniverseDetails.CommunicationPorts
 					if d.HasChange("communication_ports") {
@@ -2440,11 +2785,13 @@ func resourceUniverseUpdate(
 								d.Get("communication_ports").([]interface{})))
 					}
 					req := client.UniverseConfigureTaskParams{
-						UniverseUUID: utils.GetStringPointer(d.Id()),
-						Clusters:     updateUni.UniverseDetails.Clusters,
+						UniverseUUID:       utils.GetStringPointer(d.Id()),
+						CurrentClusterType: utils.GetStringPointer("PRIMARY"),
+						Clusters:           updateUni.UniverseDetails.Clusters,
 						NodeDetailsSet: buildNodeDetailsRespArrayToNodeDetailsArray(
 							updateUni.UniverseDetails.NodeDetailsSet),
 						CommunicationPorts: effectiveCommPorts,
+						UserAZSelected:     utils.GetBoolPointer(userAZExplicit),
 					}
 					if diags := utils.DispatchAndWait(ctx, "Update Primary Cluster", cUUID, c,
 						d.Timeout(schema.TimeoutUpdate),
@@ -2553,10 +2900,39 @@ func resourceUniverseUpdate(
 				}
 
 				// Num of nodes, Instance Type, Num of Volumes, Volume Size User Tags changes
-				var editAllowed bool
+				var editAllowed, editZoneAllowed bool
 				editAllowed, updateUni.UniverseDetails.Clusters[i].UserIntent = editUniverseParameters(
 					ctx, oldUserIntent, newUserIntent)
-				if editAllowed {
+
+				// Placement (cloud_list) changes for read replica.
+				// See PRIMARY path comment above for why empty newPI is ignored.
+				var userAZExplicit bool
+				if d.HasChange(fmt.Sprintf("clusters.%d.cloud_list", i)) {
+					newPI := newUni.Clusters[i].PlacementInfo
+					if newPI != nil && len(newPI.CloudList) > 0 {
+						var oldCloudList []client.PlacementCloud
+						if updateUni.UniverseDetails.Clusters[i].PlacementInfo != nil {
+							oldCloudList = updateUni.UniverseDetails.Clusters[i].PlacementInfo.CloudList
+						}
+						// Resolve AZ UUIDs by name from the live API state.
+						resolveAZUUIDs(newPI, oldCloudList)
+						oldAZUUIDs := collectAZUUIDs(oldCloudList)
+						newAZUUIDs := collectAZUUIDs(newPI.CloudList)
+						clusterUUID := updateUni.UniverseDetails.Clusters[i].GetUuid()
+						for j := range updateUni.UniverseDetails.NodeDetailsSet {
+							n := &updateUni.UniverseDetails.NodeDetailsSet[j]
+							if n.GetPlacementUuid() == clusterUUID &&
+								oldAZUUIDs[n.GetAzUuid()] && !newAZUUIDs[n.GetAzUuid()] {
+								n.SetState("ToBeRemoved")
+							}
+						}
+						updateUni.UniverseDetails.Clusters[i].PlacementInfo = newPI
+						userAZExplicit = true
+						editZoneAllowed = true
+					}
+				}
+
+				if editAllowed || editZoneAllowed {
 					effectiveCommPorts := updateUni.UniverseDetails.CommunicationPorts
 					if d.HasChange("communication_ports") {
 						effectiveCommPorts = buildCommunicationPorts(
@@ -2564,11 +2940,13 @@ func resourceUniverseUpdate(
 								d.Get("communication_ports").([]interface{})))
 					}
 					req := client.UniverseConfigureTaskParams{
-						UniverseUUID: utils.GetStringPointer(d.Id()),
-						Clusters:     updateUni.UniverseDetails.Clusters,
+						UniverseUUID:       utils.GetStringPointer(d.Id()),
+						CurrentClusterType: utils.GetStringPointer("ASYNC"),
+						Clusters:           updateUni.UniverseDetails.Clusters,
 						NodeDetailsSet: buildNodeDetailsRespArrayToNodeDetailsArray(
 							updateUni.UniverseDetails.NodeDetailsSet),
 						CommunicationPorts: effectiveCommPorts,
+						UserAZSelected:     utils.GetBoolPointer(userAZExplicit),
 					}
 					if diags := utils.DispatchAndWait(ctx, "Update Read Replica Cluster", cUUID, c,
 						d.Timeout(schema.TimeoutUpdate),

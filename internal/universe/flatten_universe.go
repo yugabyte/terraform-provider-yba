@@ -44,11 +44,15 @@ func flattenCommunicationPorts(cp *client.CommunicationPorts) []interface{} {
 
 func flattenClusters(clusters []client.Cluster) (res []map[string]interface{}) {
 	for _, cluster := range clusters {
+		var cloudList []client.PlacementCloud
+		if cluster.PlacementInfo != nil {
+			cloudList = cluster.PlacementInfo.CloudList
+		}
 		c := map[string]interface{}{
 			"uuid":         cluster.GetUuid(),
 			"cluster_type": cluster.ClusterType,
 			"user_intent":  flattenUserIntent(cluster.UserIntent),
-			"cloud_list":   flattenCloudList(cluster.PlacementInfo.CloudList),
+			"cloud_list":   flattenCloudList(cloudList),
 		}
 		res = append(res, c)
 	}
@@ -142,6 +146,9 @@ func restoreRedactedPasswords(
 	}
 }
 
+// flattenCloudList converts the API placement cloud list to schema format,
+// aligning region and AZ order to match the prior state so that TypeList
+// index-based comparisons stay stable across reads.
 func flattenCloudList(cl []client.PlacementCloud) (res []interface{}) {
 	for _, c := range cl {
 		pc := map[string]interface{}{
@@ -159,6 +166,7 @@ func flattenRegionList(cl []client.PlacementRegion) (res []interface{}) {
 		pr := map[string]interface{}{
 			"uuid":    r.Uuid,
 			"code":    r.Code,
+			"name":    r.Name,
 			"az_list": flattenAzList(r.AzList),
 		}
 		res = append(res, pr)
@@ -170,8 +178,9 @@ func flattenAzList(cl []client.PlacementAZ) (res []interface{}) {
 	for _, az := range cl {
 		paz := map[string]interface{}{
 			"uuid":               az.Uuid,
+			"code":               az.Name,
 			"is_affinitized":     az.IsAffinitized,
-			"name":               az.Name,
+			"leader_preference":  az.LeaderPreference,
 			"num_nodes":          az.NumNodesInAZ,
 			"replication_factor": az.ReplicationFactor,
 			"secondary_subnet":   az.SecondarySubnet,
@@ -180,6 +189,146 @@ func flattenAzList(cl []client.PlacementAZ) (res []interface{}) {
 		res = append(res, paz)
 	}
 	return res
+}
+
+// alignCloudList reorders the API cloud list to match the order of regions and
+// AZs recorded in the prior state (stateCloudList). Any API entries not present
+// in state are appended at the end. This mirrors the AlignRegions/AlignZones
+// pattern used in the AWS/GCP/on-prem provider resources and prevents spurious
+// TypeList index-shift diffs after every read.
+func alignCloudList(
+	apiCloudList []interface{},
+	stateCloudList []interface{},
+) []interface{} {
+	if len(stateCloudList) == 0 {
+		return apiCloudList
+	}
+
+	// Index API clouds by code for O(1) lookup.
+	apiByCode := make(map[string]map[string]interface{}, len(apiCloudList))
+	for _, c := range apiCloudList {
+		cm := c.(map[string]interface{})
+		code, _ := cm["code"].(string)
+		if code != "" {
+			apiByCode[code] = cm
+		}
+	}
+
+	used := make(map[string]bool)
+	result := make([]interface{}, 0, len(apiCloudList))
+
+	for _, sc := range stateCloudList {
+		scm := sc.(map[string]interface{})
+		code, _ := scm["code"].(string)
+		apiCloud, ok := apiByCode[code]
+		if !ok {
+			continue
+		}
+		used[code] = true
+
+		// Align region_list within this cloud.
+		stateRegions, _ := scm["region_list"].([]interface{})
+		apiRegions, _ := apiCloud["region_list"].([]interface{})
+		apiCloud["region_list"] = alignRegionList(apiRegions, stateRegions)
+		result = append(result, apiCloud)
+	}
+
+	// Append any API clouds not present in state (newly added).
+	for _, c := range apiCloudList {
+		cm := c.(map[string]interface{})
+		code, _ := cm["code"].(string)
+		if !used[code] {
+			result = append(result, cm)
+		}
+	}
+	return result
+}
+
+func alignRegionList(
+	apiRegions []interface{},
+	stateRegions []interface{},
+) []interface{} {
+	if len(stateRegions) == 0 {
+		return apiRegions
+	}
+
+	apiByCode := make(map[string]map[string]interface{}, len(apiRegions))
+	for _, r := range apiRegions {
+		rm := r.(map[string]interface{})
+		code, _ := rm["code"].(string)
+		if code != "" {
+			apiByCode[code] = rm
+		}
+	}
+
+	used := make(map[string]bool)
+	result := make([]interface{}, 0, len(apiRegions))
+
+	for _, sr := range stateRegions {
+		srm := sr.(map[string]interface{})
+		code, _ := srm["code"].(string)
+		apiRegion, ok := apiByCode[code]
+		if !ok {
+			continue
+		}
+		used[code] = true
+
+		// Align az_list within this region.
+		stateAZs, _ := srm["az_list"].([]interface{})
+		apiAZs, _ := apiRegion["az_list"].([]interface{})
+		apiRegion["az_list"] = alignAZList(apiAZs, stateAZs)
+		result = append(result, apiRegion)
+	}
+
+	for _, r := range apiRegions {
+		rm := r.(map[string]interface{})
+		code, _ := rm["code"].(string)
+		if !used[code] {
+			result = append(result, rm)
+		}
+	}
+	return result
+}
+
+func alignAZList(
+	apiAZs []interface{},
+	stateAZs []interface{},
+) []interface{} {
+	if len(stateAZs) == 0 {
+		return apiAZs
+	}
+
+	apiByCode := make(map[string]map[string]interface{}, len(apiAZs))
+	for _, a := range apiAZs {
+		am := a.(map[string]interface{})
+		code, _ := am["code"].(string)
+		if code != "" {
+			apiByCode[code] = am
+		}
+	}
+
+	used := make(map[string]bool)
+	result := make([]interface{}, 0, len(apiAZs))
+
+	for _, sa := range stateAZs {
+		sam := sa.(map[string]interface{})
+		code, _ := sam["code"].(string)
+		apiAZ, ok := apiByCode[code]
+		if !ok {
+			continue
+		}
+		used[code] = true
+		result = append(result, apiAZ)
+	}
+
+	for _, a := range apiAZs {
+		am := a.(map[string]interface{})
+		code, _ := am["code"].(string)
+		if !used[code] {
+			result = append(result, am)
+		}
+	}
+	return result
 }
 
 func flattenUserIntent(ui client.UserIntent) []interface{} {
@@ -211,7 +360,6 @@ func flattenUserIntent(ui client.UserIntent) []interface{} {
 		"enable_yedis":                  ui.EnableYEDIS,
 		"enable_node_to_node_encrypt":   ui.EnableNodeToNodeEncrypt,
 		"enable_client_to_node_encrypt": ui.EnableClientToNodeEncrypt,
-		"enable_volume_encryption":      ui.EnableVolumeEncryption,
 		"yb_software_version":           ui.YbSoftwareVersion,
 		"access_key_code":               ui.AccessKeyCode,
 		"tserver_gflags":                ui.GetTserverGFlags(),
@@ -230,6 +378,46 @@ func flattenDeviceInfo(di *client.DeviceInfo) []interface{} {
 		"storage_type": di.StorageType,
 	}
 	return utils.CreateSingletonList(v)
+}
+
+// alignClustersCloudList reorders the cloud_list, region_list, and az_list
+// within each flattened cluster to match the order held in the prior Terraform
+// state. This prevents spurious TypeList index-shift diffs after every read.
+// Cluster matching mirrors restoreRedactedPasswords: UUID-first, then index.
+func alignClustersCloudList(
+	newClusters []map[string]interface{},
+	oldClusters []interface{},
+) {
+	oldByUUID := make(map[string]map[string]interface{}, len(oldClusters))
+	for _, oc := range oldClusters {
+		ocm, ok := oc.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		uuid, _ := ocm["uuid"].(string)
+		if uuid != "" {
+			oldByUUID[uuid] = ocm
+		}
+	}
+
+	for i, nc := range newClusters {
+		uuid, _ := nc["uuid"].(string)
+		var oldCluster map[string]interface{}
+		if uuid != "" {
+			oldCluster = oldByUUID[uuid]
+		}
+		if oldCluster == nil && i < len(oldClusters) {
+			oldCluster, _ = oldClusters[i].(map[string]interface{})
+		}
+		if oldCluster == nil {
+			continue
+		}
+		newCloudList, _ := nc["cloud_list"].([]interface{})
+		oldCloudList, _ := oldCluster["cloud_list"].([]interface{})
+		if len(newCloudList) > 0 && len(oldCloudList) > 0 {
+			newClusters[i]["cloud_list"] = alignCloudList(newCloudList, oldCloudList)
+		}
+	}
 }
 
 func flattenNodeDetailsSet(nsd []client.NodeDetailsResp) (res []interface{}) {

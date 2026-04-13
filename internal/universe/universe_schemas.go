@@ -27,78 +27,105 @@ func cloudListSchema() *schema.Resource {
 				Type:        schema.TypeString,
 				Optional:    true,
 				Computed:    true,
-				Description: "Cloud Provider UUID.",
+				Description: "YBA cloud provider UUID.",
 			},
 			"code": {
 				Type:        schema.TypeString,
 				Optional:    true,
 				Computed:    true,
-				Description: "Cloud provider code.",
+				Description: "Cloud provider code (e.g. aws, gcp, azu, onprem).",
 			},
 			"region_list": {
-				Type:     schema.TypeList,
-				Optional: true,
-				Computed: true,
+				Type:        schema.TypeList,
+				Optional:    true,
+				Computed:    true,
+				Description: "Regions participating in placement for this cloud provider.",
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
 						"uuid": {
 							Type:        schema.TypeString,
 							Computed:    true,
-							Optional:    true,
 							Description: "Region UUID.",
 						},
 						"code": {
+							Type:     schema.TypeString,
+							Required: true,
+							Description: "Region code identifying the target region " +
+								"(e.g. us-east-1, us-central1).",
+						},
+						"name": {
 							Type:        schema.TypeString,
-							Optional:    true,
 							Computed:    true,
-							Description: "Region Code.",
+							Description: "Region display name as returned by YBA.",
 						},
 						"az_list": {
 							Type:     schema.TypeList,
 							Optional: true,
 							Computed: true,
+							Description: "Availability zones participating in placement " +
+								"for this region. " +
+								"Note: this is a positional list. When removing a zone, " +
+								"the plan may show adjacent zones appearing to change " +
+								"(code, num_nodes, etc.) due to index shifting. " +
+								"The provider resolves zones by code before sending the " +
+								"API request, so the actual operation is always correct " +
+								"regardless of how the plan is displayed.",
 							Elem: &schema.Resource{
 								Schema: map[string]*schema.Schema{
 									"uuid": {
 										Type:        schema.TypeString,
-										Optional:    true,
 										Computed:    true,
-										Description: "Zone UUID.",
+										Description: "Availability zone UUID.",
+									},
+									"code": {
+										Type:     schema.TypeString,
+										Required: true,
+										Description: "Availability zone code " +
+											"(e.g. us-east-1a, us-central1-a).",
 									},
 									"is_affinitized": {
-										Type:        schema.TypeBool,
-										Computed:    true,
-										Description: "Is it an affinitized zone.",
+										Type:     schema.TypeBool,
+										Optional: true,
+										Computed: true,
+										Description: "Whether this zone is preferred (affinitized) " +
+											"for read traffic. When true, YBA routes read requests " +
+											"to nodes in this zone first.",
 									},
-									"name": {
-										Type:        schema.TypeString,
-										Optional:    true,
-										Computed:    true,
-										Description: "Zone name.",
+									"leader_preference": {
+										Type:     schema.TypeInt,
+										Optional: true,
+										Computed: true,
+										Description: "Leader placement priority for this zone. " +
+											"Zero means no preference. A lower non-zero value " +
+											"indicates higher priority. Multiple zones may share " +
+											"the same value. Must be non-negative contiguous " +
+											"integers when used.",
 									},
 									"num_nodes": {
-										Type:        schema.TypeInt,
-										Optional:    true,
-										Computed:    true,
-										Description: "Number of nodes in this zone.",
+										Type:     schema.TypeInt,
+										Optional: true,
+										Computed: true,
+										Description: "Number of nodes to place in this zone. " +
+											"When cloud_list is set, these per-AZ counts are " +
+											"the authoritative source of truth: YBA derives " +
+											"the total node count from their sum and " +
+											"user_intent.num_nodes is ignored.",
 									},
 									"replication_factor": {
 										Type:        schema.TypeInt,
 										Optional:    true,
 										Computed:    true,
-										Description: "Replication factor in this zone.",
-									},
-									"secondary_subnet": {
-										Type:        schema.TypeString,
-										Optional:    true,
-										Computed:    true,
-										Description: "Secondary subnet of the zone.",
+										Description: "Replication factor for this zone.",
 									},
 									"subnet": {
 										Type:        schema.TypeString,
-										Optional:    true,
 										Computed:    true,
-										Description: "Subnet ID of zone.",
+										Description: "Primary subnet ID for this zone, inherited from the provider.",
+									},
+									"secondary_subnet": {
+										Type:        schema.TypeString,
+										Computed:    true,
+										Description: "Secondary subnet ID for this zone, inherited from the provider.",
 									},
 								},
 							},
@@ -228,9 +255,14 @@ func userIntentSchema() *schema.Resource {
 				Description: "List of regions for node placement.",
 			},
 			"num_nodes": {
-				Type:        schema.TypeInt,
-				Required:    true,
-				Description: "Number of nodes for this universe.",
+				Type:     schema.TypeInt,
+				Required: true,
+				Description: "Desired total number of nodes for this universe. " +
+					"When cloud_list is also set, this value is ignored by YBA: " +
+					"the actual node count is determined by the sum of " +
+					"cloud_list[*].region_list[*].az_list[*].num_nodes " +
+					"(userAZSelected=true). Set this to match that sum to " +
+					"avoid plan drift on subsequent applies.",
 			},
 			"replication_factor": {
 				Type:        schema.TypeInt,
@@ -335,12 +367,6 @@ func userIntentSchema() *schema.Resource {
 				Default:  true,
 				Description: "Enable Encryption in Transit - Client to Node encryption." +
 					" True by default.",
-			},
-			"enable_volume_encryption": {
-				Type:        schema.TypeBool,
-				Optional:    true,
-				Default:     false,
-				Description: "Enable Encryption At Rest. False by default.",
 			},
 			"yb_software_version": {
 				Type:     schema.TypeString,
