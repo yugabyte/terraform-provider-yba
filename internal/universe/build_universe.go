@@ -25,6 +25,7 @@ func buildUniverse(d *schema.ResourceData) client.UniverseConfigureTaskParams {
 	clusters := buildClusters(d.Get("clusters").([]interface{}))
 	enableYbc := true
 	return client.UniverseConfigureTaskParams{
+		RootCA:       utils.GetStringPointer(d.Get("root_ca").(string)),
 		ClientRootCA: utils.GetStringPointer(d.Get("client_root_ca").(string)),
 		Arch:         utils.GetStringPointer(d.Get("arch").(string)),
 		Clusters:     clusters,
@@ -36,6 +37,7 @@ func buildUniverse(d *schema.ResourceData) client.UniverseConfigureTaskParams {
 
 func buildUniverseDefinitionTaskParams(d *schema.ResourceData) client.UniverseDefinitionTaskParams {
 	return client.UniverseDefinitionTaskParams{
+		RootCA:       utils.GetStringPointer(d.Get("root_ca").(string)),
 		ClientRootCA: utils.GetStringPointer(d.Get("client_root_ca").(string)),
 		Clusters:     buildClusters(d.Get("clusters").([]interface{})),
 		CommunicationPorts: buildCommunicationPorts(
@@ -173,13 +175,12 @@ func buildUserIntent(ui map[string]interface{}) client.UserIntent {
 
 func buildDeviceInfo(di map[string]interface{}) *client.DeviceInfo {
 	return &client.DeviceInfo{
-		DiskIops:     utils.GetInt32Pointer(int32(di["disk_iops"].(int))),
-		MountPoints:  utils.GetStringPointer(di["mount_points"].(string)),
-		StorageClass: utils.GetStringPointer(di["storage_class"].(string)),
-		Throughput:   utils.GetInt32Pointer(int32(di["throughput"].(int))),
-		NumVolumes:   utils.GetInt32Pointer(int32(di["num_volumes"].(int))),
-		VolumeSize:   utils.GetInt32Pointer(int32(di["volume_size"].(int))),
-		StorageType:  utils.GetStringPointer(di["storage_type"].(string)),
+		DiskIops:    utils.GetInt32Pointer(int32(di["disk_iops"].(int))),
+		MountPoints: utils.GetStringPointer(di["mount_points"].(string)),
+		Throughput:  utils.GetInt32Pointer(int32(di["throughput"].(int))),
+		NumVolumes:  utils.GetInt32Pointer(int32(di["num_volumes"].(int))),
+		VolumeSize:  utils.GetInt32Pointer(int32(di["volume_size"].(int))),
+		StorageType: utils.GetStringPointer(di["storage_type"].(string)),
 	}
 }
 

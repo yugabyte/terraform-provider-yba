@@ -156,9 +156,20 @@ func userIntentSchema() *schema.Resource {
 				Description: "Enable YSQL authentication.",
 			},
 			"image_bundle_uuid": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				Description: "Image Bundle UUID.",
+				Type:     schema.TypeString,
+				Optional: true,
+				Computed: true,
+				DiffSuppressFunc: func(k, old, new string, d *schema.ResourceData) bool {
+					// When omitted, YBA resolves the provider's default image bundle
+					// for the configured arch. Suppress the diff so the auto-assigned
+					// UUID does not appear as a change on subsequent plans.
+					// An explicit non-empty value always takes effect and triggers a
+					// VM image upgrade on update.
+					return len(old) > 0 && new == ""
+				},
+				Description: "Image Bundle UUID. When omitted for cloud providers " +
+					"(aws, gcp, azu), YBA resolves the provider's default image bundle " +
+					"for the configured arch.",
 			},
 			"instance_tags": {
 				Type:        schema.TypeMap,
@@ -206,10 +217,13 @@ func userIntentSchema() *schema.Resource {
 			},
 			"provider_type": {
 				Type:     schema.TypeString,
-				Required: true,
+				Optional: true,
+				Computed: true,
 				ValidateDiagFunc: validation.ToDiagFunc(validation.StringInSlice(
-					[]string{"gcp", "aws", "azu", "onprem"}, false)),
-				Description: "Cloud Provider type. Permitted values: gcp, aws, azu, onprem.",
+					[]string{"gcp", "aws", "azu", "onprem", "kubernetes"}, false)),
+				Description: "Cloud Provider type. Permitted values: gcp, aws, azu, onprem, " +
+					"kubernetes. When omitted the value is derived from the provider UUID. " +
+					"If supplied, it must match the actual type of the referenced provider.",
 			},
 			"provider": {
 				Type:        schema.TypeString,
@@ -253,20 +267,18 @@ func userIntentSchema() *schema.Resource {
 							Description: "Disk IOPS.",
 						},
 						"mount_points": {
-							Type:        schema.TypeString,
-							Optional:    true,
-							Default:     "",
-							Description: "Disk mount points. Required for onprem cluster nodes.",
-						},
-						"storage_class": {
-							Type:        schema.TypeString,
-							Optional:    true,
-							Description: "Storage class.",
+							Type:     schema.TypeString,
+							Optional: true,
+							Default:  "",
+							Description: "Disk mount points. Required for on-prem cluster nodes. " +
+								"Not allowed for any other provider type.",
 						},
 						"throughput": {
-							Type:        schema.TypeInt,
-							Optional:    true,
-							Description: "Disk throughput.",
+							Type:     schema.TypeInt,
+							Optional: true,
+							Description: "Disk throughput in MB/s. Required for storage types " +
+								"that support throughput provisioning: GP3, UltraSSD_LRS, " +
+								"PremiumV2_LRS, Hyperdisk_Balanced.",
 						},
 						"num_volumes": {
 							Type:        schema.TypeInt,
@@ -276,12 +288,23 @@ func userIntentSchema() *schema.Resource {
 						"volume_size": {
 							Type:        schema.TypeInt,
 							Required:    true,
-							Description: "Volume size.",
+							Description: "Volume size in GB.",
 						},
 						"storage_type": {
-							Type:        schema.TypeString,
-							Optional:    true,
-							Description: "Storage type of volume.",
+							Type:     schema.TypeString,
+							Optional: true,
+							ValidateFunc: validation.StringInSlice([]string{
+								"IO1", "IO2", "GP2", "GP3",
+								"Scratch", "Persistent",
+								"Hyperdisk_Balanced", "Hyperdisk_Extreme",
+								"StandardSSD_LRS", "Premium_LRS",
+								"PremiumV2_LRS", "UltraSSD_LRS",
+								"Local",
+							}, false),
+							Description: "Storage type of volume. AWS: IO1, IO2, GP2, GP3. " +
+								"GCP: Scratch, Persistent, Hyperdisk_Balanced, Hyperdisk_Extreme. " +
+								"Azure: StandardSSD_LRS, Premium_LRS, PremiumV2_LRS, UltraSSD_LRS. " +
+								"Not applicable for on-prem or Kubernetes providers.",
 						},
 					},
 				},
@@ -343,8 +366,9 @@ func userIntentSchema() *schema.Resource {
 			"access_key_code": {
 				Type:     schema.TypeString,
 				Optional: true,
-				Description: "Access Key code of provider. Not required for providers " +
-					"using node agents (YNP-provisioned providers).",
+				Description: "Access Key code of provider. Required for cloud providers " +
+					"(aws, gcp, azu). Not required for on-prem providers using node agents " +
+					"(YNP-provisioned / skipProvisioning enabled).",
 			},
 			"tserver_gflags": {
 				Type:        schema.TypeMap,
@@ -396,16 +420,6 @@ func nodeDetailsSetSchema() *schema.Resource {
 							Type:        schema.TypeString,
 							Optional:    true,
 							Description: "The node's instance type.",
-						},
-						"kubernetes_namespace": {
-							Type:        schema.TypeString,
-							Optional:    true,
-							Description: "Kubernetes namespace.",
-						},
-						"kubernetes_pod_name": {
-							Type:        schema.TypeString,
-							Optional:    true,
-							Description: "Pod name in Kubernetes.",
 						},
 						"lun_indexes": {
 							Type:        schema.TypeList,
@@ -512,11 +526,6 @@ func nodeDetailsSetSchema() *schema.Resource {
 				Type:        schema.TypeBool,
 				Optional:    true,
 				Description: "True if this node is a YSQL server.",
-			},
-			"kubernetes_overrides": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				Description: "Kubernetes overrides.",
 			},
 			"last_volume_update_time": {
 				Type:        schema.TypeString,

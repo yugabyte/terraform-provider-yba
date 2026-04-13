@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"net/http"
 	"reflect"
+	"strings"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-log/tflog"
@@ -86,9 +87,24 @@ func ResourceUniverse() *schema.Resource {
 				},
 			},
 			// Universe Fields
+			"root_ca": {
+				Type:     schema.TypeString,
+				Optional: true,
+				Computed: true,
+				DiffSuppressFunc: func(k, old, new string, d *schema.ResourceData) bool {
+					// When TLS is enabled and this field is not set in the config, YBA creates
+					// and assigns a root CA automatically. Suppress the diff so that the
+					// auto-assigned UUID does not appear as a change on subsequent plans.
+					// An explicit value in config always takes effect.
+					return len(old) > 0 && new == ""
+				},
+				Description: "The UUID of the rootCA used for node-to-node TLS encryption." +
+					" When not set, YBA creates and assigns a root CA automatically.",
+			},
 			"client_root_ca": {
 				Type:     schema.TypeString,
 				Optional: true,
+				Computed: true,
 				DiffSuppressFunc: func(k, old, new string, d *schema.ResourceData) bool {
 					// When TLS is enabled and this field is not set in the config, YBA creates
 					// and assigns a root CA automatically. Suppress the diff so that the
@@ -667,6 +683,73 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 			}
 			return nil
 		}),
+		customdiff.ValidateValue("clusters", func(ctx context.Context, value,
+			meta interface{}) error {
+			// storage types that require disk_iops to be provisioned
+			iopsRequired := map[string]bool{
+				"IO1": true, "IO2": true, "GP3": true,
+				"UltraSSD_LRS": true, "PremiumV2_LRS": true,
+				"Hyperdisk_Balanced": true, "Hyperdisk_Extreme": true,
+			}
+			// storage types that also require throughput to be provisioned
+			throughputRequired := map[string]bool{
+				"GP3": true, "UltraSSD_LRS": true,
+				"PremiumV2_LRS": true, "Hyperdisk_Balanced": true,
+			}
+			validateDeviceInfo := func(
+				di *client.DeviceInfo,
+				providerType string,
+				clusterLabel string,
+			) error {
+				var errs []string
+				storageType := di.GetStorageType()
+				if len(di.GetMountPoints()) > 0 && providerType != "onprem" {
+					errs = append(errs,
+						"mount_points can only be specified for on-prem provider clusters")
+				}
+				if len(storageType) > 0 {
+					if iopsRequired[storageType] && di.GetDiskIops() <= 0 {
+						errs = append(errs,
+							fmt.Sprintf("disk_iops is required for storage_type %s",
+								storageType))
+					}
+					if throughputRequired[storageType] && di.GetThroughput() <= 0 {
+						errs = append(errs,
+							fmt.Sprintf("throughput is required for storage_type %s",
+								storageType))
+					}
+				}
+				if len(errs) > 0 {
+					return fmt.Errorf("Error in %s cluster device_info: %s",
+						clusterLabel, strings.Join(errs, "; "))
+				}
+				return nil
+			}
+			clusterSet := buildClusters(value.([]interface{}))
+			primary, isPresent := getClusterByType(clusterSet, "PRIMARY")
+			readOnly, isRRPresent := getClusterByType(clusterSet, "ASYNC")
+			if isPresent {
+				primaryUI := primary.GetUserIntent()
+				if err := validateDeviceInfo(
+					primaryUI.DeviceInfo,
+					primaryUI.GetProviderType(),
+					"PRIMARY",
+				); err != nil {
+					return err
+				}
+			}
+			if isRRPresent {
+				readUI := readOnly.GetUserIntent()
+				if err := validateDeviceInfo(
+					readUI.DeviceInfo,
+					readUI.GetProviderType(),
+					"READ REPLICA",
+				); err != nil {
+					return err
+				}
+			}
+			return nil
+		}),
 		customdiff.ValidateChange(
 			"db_version_upgrade_options",
 			func(ctx context.Context, old, new, m interface{}) error {
@@ -768,8 +851,381 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 				return nil
 			},
 		),
+		customdiff.ValidateValue(
+			"clusters",
+			func(ctx context.Context, value, meta interface{}) error {
+				// access_key_code is required for cloud providers (aws, gcp, azu).
+				// It is not required for on-prem providers that use node agents
+				// (skipProvisioning / YNP-provisioned).
+				clusterSet := buildClusters(value.([]interface{}))
+				cloudProviders := map[string]bool{"aws": true, "gcp": true, "azu": true}
+				primary, isPrimaryPresent := getClusterByType(clusterSet, "PRIMARY")
+				readOnly, isRRPresent := getClusterByType(clusterSet, "ASYNC")
+				if isPrimaryPresent {
+					ui := primary.GetUserIntent()
+					if cloudProviders[ui.GetProviderType()] && ui.GetAccessKeyCode() == "" {
+						return errors.New(
+							"access_key_code is required for cloud providers " +
+								"(aws, gcp, azu) in the primary cluster")
+					}
+				}
+				if isRRPresent {
+					ui := readOnly.GetUserIntent()
+					if cloudProviders[ui.GetProviderType()] && ui.GetAccessKeyCode() == "" {
+						return errors.New(
+							"access_key_code is required for cloud providers " +
+								"(aws, gcp, azu) in the read replica cluster")
+					}
+				}
+				return nil
+			},
+		),
+		func(ctx context.Context, d *schema.ResourceDiff, meta interface{}) error {
+			// When image_bundle_uuid is omitted for a cloud provider (aws, gcp, azu),
+			// the YBA API will attempt to resolve the provider's default image bundle
+			// for the configured arch. Validate here that such a default exists so
+			// the user gets a clear plan-time error instead of an obscure task failure.
+			cloudProviders := map[string]bool{"aws": true, "gcp": true, "azu": true}
+
+			c := meta.(*api.APIClient).YugawareClient
+			cUUID := meta.(*api.APIClient).CustomerID
+			providers, response, err := c.CloudProvidersAPI.GetListOfProviders(ctx, cUUID).Execute()
+			if err != nil {
+				// Do not block the plan on connectivity issues; defer to the API call.
+				_ = utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
+					"Provider", "List")
+				return nil
+			}
+			providerByUUID := make(map[string]client.Provider, len(providers))
+			for _, p := range providers {
+				if p.GetUuid() != "" {
+					providerByUUID[p.GetUuid()] = p
+				}
+			}
+
+			arch := d.Get("arch").(string)
+
+			checkCluster := func(clusterType string, label string) error {
+				clusterSet := buildClusters(d.Get("clusters").([]interface{}))
+				cl, isPresent := getClusterByType(clusterSet, clusterType)
+				if !isPresent {
+					return nil
+				}
+				ui := cl.GetUserIntent()
+				if !cloudProviders[ui.GetProviderType()] {
+					return nil
+				}
+				if ui.GetImageBundleUUID() != "" {
+					return nil
+				}
+				// image_bundle_uuid is empty -- verify the provider has a default bundle
+				// for the requested arch so the API auto-resolution will succeed.
+				p, found := providerByUUID[ui.GetProvider()]
+				if !found {
+					return nil
+				}
+				for _, b := range p.GetImageBundles() {
+					if b.GetUseAsDefault() && b.Details.GetArch() == arch {
+						return nil
+					}
+				}
+				return fmt.Errorf(
+					"image_bundle_uuid is not set for the %s cluster and provider %s "+
+						"has no default image bundle for arch %q: set image_bundle_uuid "+
+						"explicitly or mark a bundle as default for this architecture",
+					label, ui.GetProvider(), arch)
+			}
+
+			if err := checkCluster("PRIMARY", "PRIMARY"); err != nil {
+				return err
+			}
+			return checkCluster("ASYNC", "READ REPLICA")
+		},
+		customdiff.ValidateValue(
+			"clusters",
+			func(ctx context.Context, value, meta interface{}) error {
+				// image_bundle_uuid is not applicable for on-prem providers.
+				// Reject it at plan time so the user gets a clear error rather than
+				// a BAD_REQUEST from the API at apply time.
+				clusterSet := buildClusters(value.([]interface{}))
+				primary, isPrimaryPresent := getClusterByType(clusterSet, "PRIMARY")
+				readOnly, isRRPresent := getClusterByType(clusterSet, "ASYNC")
+				if isPrimaryPresent {
+					ui := primary.GetUserIntent()
+					if ui.GetProviderType() == "onprem" && ui.GetImageBundleUUID() != "" {
+						return errors.New(
+							"image_bundle_uuid is not applicable for on-prem providers " +
+								"in the primary cluster")
+					}
+				}
+				if isRRPresent {
+					ui := readOnly.GetUserIntent()
+					if ui.GetProviderType() == "onprem" && ui.GetImageBundleUUID() != "" {
+						return errors.New(
+							"image_bundle_uuid is not applicable for on-prem providers " +
+								"in the read replica cluster")
+					}
+				}
+				return nil
+			},
+		),
+		// --- PENDING UPDATE SUPPORT ---
+		// The validators in this block prevent in-place changes to fields that
+		// are present in the schema and have a corresponding YBA API update path
+		// but for which the provider does not yet call that API.  Each validator
+		// is self-contained so it can be deleted independently once the matching
+		// update logic is wired into resourceUniverseUpdate.
+
+		// YBA ToggleProtocol API: enable_ycql, enable_ysql, enable_yedis.
+		// Remove this block when ToggleProtocol is implemented.
+		customdiff.ValidateChange("clusters",
+			func(ctx context.Context, old, new, m interface{}) error {
+				if len(old.([]interface{})) == 0 {
+					return nil
+				}
+				oldClusters := buildClusters(old.([]interface{}))
+				newClusters := buildClusters(new.([]interface{}))
+				for i, oldCl := range oldClusters {
+					if i >= len(newClusters) {
+						continue
+					}
+					newCl := newClusters[i]
+					if oldCl.UserIntent.GetEnableYCQL() != newCl.UserIntent.GetEnableYCQL() {
+						return errors.New(
+							"enable_ycql cannot be changed after universe creation: " +
+								"ToggleProtocol update support is not yet implemented in " +
+								"this provider version")
+					}
+					if oldCl.UserIntent.GetEnableYSQL() != newCl.UserIntent.GetEnableYSQL() {
+						return errors.New(
+							"enable_ysql cannot be changed after universe creation: " +
+								"ToggleProtocol update support is not yet implemented in " +
+								"this provider version")
+					}
+					if oldCl.UserIntent.GetEnableYEDIS() != newCl.UserIntent.GetEnableYEDIS() {
+						return errors.New(
+							"enable_yedis cannot be changed after universe creation: " +
+								"ToggleProtocol update support is not yet implemented in " +
+								"this provider version")
+					}
+				}
+				return nil
+			},
+		),
+
+		// YBA YSQL/YCQL auth update APIs: enable_ysql_auth, enable_ycql_auth.
+		// Remove this block when auth toggle is implemented.
+		customdiff.ValidateChange("clusters",
+			func(ctx context.Context, old, new, m interface{}) error {
+				if len(old.([]interface{})) == 0 {
+					return nil
+				}
+				oldClusters := buildClusters(old.([]interface{}))
+				newClusters := buildClusters(new.([]interface{}))
+				for i, oldCl := range oldClusters {
+					if i >= len(newClusters) {
+						continue
+					}
+					newCl := newClusters[i]
+					if oldCl.UserIntent.GetEnableYSQLAuth() !=
+						newCl.UserIntent.GetEnableYSQLAuth() {
+						return errors.New(
+							"enable_ysql_auth cannot be changed after universe creation: " +
+								"auth toggle update support is not yet implemented in " +
+								"this provider version")
+					}
+					if oldCl.UserIntent.GetEnableYCQLAuth() !=
+						newCl.UserIntent.GetEnableYCQLAuth() {
+						return errors.New(
+							"enable_ycql_auth cannot be changed after universe creation: " +
+								"auth toggle update support is not yet implemented in " +
+								"this provider version")
+					}
+				}
+				return nil
+			},
+		),
+
+		// YBA EncryptionAtRest API: enable_volume_encryption.
+		// Remove this block when EncryptionAtRest toggle is implemented.
+		customdiff.ValidateChange("clusters",
+			func(ctx context.Context, old, new, m interface{}) error {
+				if len(old.([]interface{})) == 0 {
+					return nil
+				}
+				oldClusters := buildClusters(old.([]interface{}))
+				newClusters := buildClusters(new.([]interface{}))
+				for i, oldCl := range oldClusters {
+					if i >= len(newClusters) {
+						continue
+					}
+					newCl := newClusters[i]
+					if oldCl.UserIntent.GetEnableVolumeEncryption() !=
+						newCl.UserIntent.GetEnableVolumeEncryption() {
+						return errors.New(
+							"enable_volume_encryption cannot be changed after universe " +
+								"creation: EncryptionAtRest update support is not yet " +
+								"implemented in this provider version")
+					}
+				}
+				return nil
+			},
+		),
+
+		// YBA cert rotation API: root_ca, client_root_ca.
+		// Remove this block when cert rotation is implemented.
+		customdiff.ValidateChange("root_ca",
+			func(ctx context.Context, old, new, m interface{}) error {
+				oldVal := old.(string)
+				newVal := new.(string)
+				// Allow initial assignment (create) and allow clearing the field
+				// (handled by DiffSuppressFunc).  Block only an explicit change
+				// from one non-empty UUID to a different non-empty UUID.
+				if oldVal != "" && newVal != "" && oldVal != newVal {
+					return errors.New(
+						"root_ca cannot be changed after universe creation: " +
+							"cert rotation update support is not yet implemented in " +
+							"this provider version")
+				}
+				return nil
+			},
+		),
+		customdiff.ValidateChange("client_root_ca",
+			func(ctx context.Context, old, new, m interface{}) error {
+				oldVal := old.(string)
+				newVal := new.(string)
+				// Allow initial assignment (create) and allow clearing the field
+				// (handled by DiffSuppressFunc).  Block only an explicit change
+				// from one non-empty UUID to a different non-empty UUID.
+				if oldVal != "" && newVal != "" && oldVal != newVal {
+					return errors.New(
+						"client_root_ca cannot be changed after universe creation: " +
+							"cert rotation update support is not yet implemented in " +
+							"this provider version")
+				}
+				return nil
+			},
+		),
+		// --- END PENDING UPDATE SUPPORT ---
+
+		// Validate that provider_type, when explicitly supplied, matches the
+		// actual code of the referenced provider UUID. Because provider_type is
+		// now Optional+Computed (derived from the provider), supplying a value
+		// that contradicts the provider UUID is always a configuration error.
+		// API errors (e.g. provider not found) are silenced here and deferred
+		// to the real create/update call so plan does not fail on connectivity
+		// issues alone.
+		func(ctx context.Context, d *schema.ResourceDiff, meta interface{}) error {
+			c := meta.(*api.APIClient).YugawareClient
+			cUUID := meta.(*api.APIClient).CustomerID
+			providers, response, err := c.CloudProvidersAPI.GetListOfProviders(ctx, cUUID).Execute()
+			if err != nil {
+				_ = utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
+					"Provider", "List")
+				return nil
+			}
+			providerByUUID := make(map[string]string, len(providers))
+			for _, p := range providers {
+				if p.Uuid != nil {
+					providerByUUID[*p.Uuid] = p.GetCode()
+				}
+			}
+			newClusters := d.Get("clusters").([]interface{})
+			for _, clRaw := range newClusters {
+				cl, ok := clRaw.(map[string]interface{})
+				if !ok {
+					continue
+				}
+				uiRaw, ok := cl["user_intent"].([]interface{})
+				if !ok || len(uiRaw) == 0 {
+					continue
+				}
+				ui, ok := uiRaw[0].(map[string]interface{})
+				if !ok {
+					continue
+				}
+				providerUUID := ui["provider"].(string)
+				providerType := ui["provider_type"].(string)
+				if providerUUID == "" || providerType == "" {
+					continue
+				}
+				actualCode, found := providerByUUID[providerUUID]
+				if !found {
+					continue
+				}
+				if actualCode != providerType {
+					return fmt.Errorf(
+						"provider_type %q conflicts with provider %s whose actual type is %q: "+
+							"remove provider_type from your configuration or set it to %q",
+						providerType, providerUUID, actualCode, actualCode)
+				}
+			}
+			return nil
+		},
 	)
 }
+
+// resolveProviderTypes fills in any empty provider_type in each cluster's
+// user_intent by looking up the provider UUID via the API. This allows
+// provider_type to be omitted from the Terraform configuration (Optional+Computed)
+// while still sending a valid value to the universe create API.
+// Returns an error only if a required lookup actually fails; missing / empty
+// provider UUIDs are skipped silently.
+func resolveProviderTypes(
+	ctx context.Context,
+	c *client.APIClient,
+	cUUID string,
+	d *schema.ResourceData,
+) error {
+	providers, response, err := c.CloudProvidersAPI.GetListOfProviders(ctx, cUUID).Execute()
+	if err != nil {
+		return utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
+			"Provider", "List")
+	}
+	codeByUUID := make(map[string]string, len(providers))
+	for _, p := range providers {
+		if p.Uuid != nil {
+			codeByUUID[*p.Uuid] = p.GetCode()
+		}
+	}
+
+	clusters := d.Get("clusters").([]interface{})
+	changed := false
+	for _, clRaw := range clusters {
+		cl, ok := clRaw.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		uiRaw, ok := cl["user_intent"].([]interface{})
+		if !ok || len(uiRaw) == 0 {
+			continue
+		}
+		ui, ok := uiRaw[0].(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if ui["provider_type"].(string) != "" {
+			continue
+		}
+		providerUUID := ui["provider"].(string)
+		if providerUUID == "" {
+			continue
+		}
+		code, found := codeByUUID[providerUUID]
+		if !found {
+			continue
+		}
+		ui["provider_type"] = code
+		changed = true
+	}
+	if changed {
+		if err := d.Set("clusters", clusters); err != nil {
+			return fmt.Errorf("failed to set resolved provider_type: %w", err)
+		}
+	}
+	return nil
+}
+
 func resourceUniverseCreate(
 	ctx context.Context,
 	d *schema.ResourceData,
@@ -777,6 +1233,9 @@ func resourceUniverseCreate(
 	c := meta.(*api.APIClient).YugawareClient
 	cUUID := meta.(*api.APIClient).CustomerID
 
+	if err := resolveProviderTypes(ctx, c, cUUID, d); err != nil {
+		return diag.FromErr(err)
+	}
 	req := buildUniverse(d)
 	r, response, err := c.UniverseClusterMutationsAPI.CreateAllClusters(ctx, cUUID).
 		UniverseConfigureTaskParams(req).Execute()
@@ -822,6 +1281,9 @@ func resourceUniverseRead(
 	}
 
 	u := r.UniverseDetails
+	if err = d.Set("root_ca", u.RootCA); err != nil {
+		return diag.FromErr(err)
+	}
 	if err = d.Set("client_root_ca", u.ClientRootCA); err != nil {
 		return diag.FromErr(err)
 	}
@@ -1066,7 +1528,10 @@ func resourceUniverseUpdate(
 			}
 			oldIB := cl.UserIntent.GetImageBundleUUID()
 			newIB := newUni.Clusters[j].UserIntent.GetImageBundleUUID()
-			if oldIB != newIB {
+			// Skip when newIB is empty: the user omitted image_bundle_uuid in config
+			// (DiffSuppressFunc handles the no-diff case in state). Dispatching a
+			// VMImageUpgrade with an empty bundle UUID would fail or corrupt the universe.
+			if newIB != "" && oldIB != newIB {
 				imageBundleUpgrades = append(imageBundleUpgrades,
 					*client.NewImageBundleUpgradeInfo(cl.GetUuid(), newIB))
 			}

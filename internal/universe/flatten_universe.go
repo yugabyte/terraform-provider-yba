@@ -222,13 +222,12 @@ func flattenUserIntent(ui client.UserIntent) []interface{} {
 
 func flattenDeviceInfo(di *client.DeviceInfo) []interface{} {
 	v := map[string]interface{}{
-		"disk_iops":     di.DiskIops,
-		"mount_points":  di.MountPoints,
-		"storage_class": di.StorageClass,
-		"throughput":    di.Throughput,
-		"num_volumes":   di.NumVolumes,
-		"volume_size":   di.VolumeSize,
-		"storage_type":  di.StorageType,
+		"disk_iops":    di.DiskIops,
+		"mount_points": di.MountPoints,
+		"throughput":   di.Throughput,
+		"num_volumes":  di.NumVolumes,
+		"volume_size":  di.VolumeSize,
+		"storage_type": di.StorageType,
 	}
 	return utils.CreateSingletonList(v)
 }
@@ -251,7 +250,6 @@ func flattenNodeDetailsSet(nsd []client.NodeDetailsResp) (res []interface{}) {
 			"is_tserver":                  n.IsTserver,
 			"is_yql_server":               n.IsYqlServer,
 			"is_ysql_server":              n.IsYsqlServer,
-			"kubernetes_overrides":        n.KubernetesOverrides,
 			"last_volume_update_time":     lastVolTime,
 			"machine_image":               n.MachineImage,
 			"master_http_port":            n.MasterHttpPort,
@@ -290,8 +288,6 @@ func flattenCloudInfo(ci *client.CloudSpecificInfo) []interface{} {
 		"az":                   ci.Az,
 		"cloud":                ci.Cloud,
 		"instance_type":        ci.InstanceType,
-		"kubernetes_namespace": ci.KubernetesNamespace,
-		"kubernetes_pod_name":  ci.KubernetesPodName,
 		"lun_indexes":          ci.LunIndexes,
 		"mount_roots":          ci.MountRoots,
 		"private_dns":          ci.PrivateDns,

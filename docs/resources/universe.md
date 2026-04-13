@@ -72,6 +72,7 @@ The following operations are supported in the Edit universe workflow:
 - `db_version_upgrade_options` (Block List, Max: 1) Options controlling the DB version upgrade path (UpgradeDBVersion). By default finalize = false pauses the upgrade in PreFinalize state for a monitoring phase; flip to true and re-apply to commit, or set rollback_upgrade = true to revert to the previous DB version. (see [below for nested schema](#nestedblock--db_version_upgrade_options))
 - `delete_options` (Block List, Max: 1) (see [below for nested schema](#nestedblock--delete_options))
 - `node_restart_settings` (Block List, Max: 1) Controls how node restarts are performed during upgrade operations (DB version, GFlags, Systemd, Finalize, Rollback). When omitted, YugabyteDB Anywhere platform defaults apply: Rolling strategy with 180000 ms (3 minutes) sleep after each master and TServer restart. (see [below for nested schema](#nestedblock--node_restart_settings))
+- `root_ca` (String) The UUID of the rootCA used for node-to-node TLS encryption. When not set, YBA creates and assigns a root CA automatically.
 - `timeouts` (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))
 
 ### Read-Only
@@ -105,7 +106,6 @@ Required:
 - `instance_type` (String) Instance type of universe nodes.
 - `num_nodes` (Number) Number of nodes for this universe.
 - `provider` (String) Provider UUID.
-- `provider_type` (String) Cloud Provider type. Permitted values: gcp, aws, azu, onprem.
 - `region_list` (List of String) List of regions for node placement.
 - `replication_factor` (Number) Replication factor for this universe.
 - `universe_name` (String) Universe name.
@@ -113,7 +113,7 @@ Required:
 
 Optional:
 
-- `access_key_code` (String) Access Key code of provider. Not required for providers using node agents (YNP-provisioned providers).
+- `access_key_code` (String) Access Key code of provider. Required for cloud providers (aws, gcp, azu). Not required for on-prem providers using node agents (YNP-provisioned / skipProvisioning enabled).
 - `assign_public_ip` (Boolean) Assign Public IP to universe nodes. True by default.
 - `assign_static_ip` (Boolean) Flag indicating whether a static IP should be assigned.
 - `aws_arn_string` (String) IP ARN String.
@@ -127,10 +127,11 @@ Optional:
 - `enable_yedis` (Boolean) Enable YEDIS. False by default.
 - `enable_ysql` (Boolean) Enable YSQL. True by default.
 - `enable_ysql_auth` (Boolean) Enable YSQL authentication.
-- `image_bundle_uuid` (String) Image Bundle UUID.
+- `image_bundle_uuid` (String) Image Bundle UUID. When omitted for cloud providers (aws, gcp, azu), YBA resolves the provider's default image bundle for the configured arch.
 - `instance_tags` (Map of String) Instance Tags.
 - `master_gflags` (Map of String) Set of Master GFlags.
 - `preferred_region` (String) Preferred Region for node placement.
+- `provider_type` (String) Cloud Provider type. Permitted values: gcp, aws, azu, onprem, kubernetes. When omitted the value is derived from the provider UUID. If supplied, it must match the actual type of the referenced provider.
 - `tserver_gflags` (Map of String) Set of TServer Gflags.
 - `use_host_name` (Boolean) Enable to use host name instead of IP addresses to communicate.
 - `use_systemd` (Boolean) Enable Systemd in universe nodes. True by default.
@@ -144,15 +145,14 @@ Optional:
 Required:
 
 - `num_volumes` (Number) Number of volumes per node.
-- `volume_size` (Number) Volume size.
+- `volume_size` (Number) Volume size in GB.
 
 Optional:
 
 - `disk_iops` (Number) Disk IOPS.
-- `mount_points` (String) Disk mount points. Required for onprem cluster nodes.
-- `storage_class` (String) Storage class.
-- `storage_type` (String) Storage type of volume.
-- `throughput` (Number) Disk throughput.
+- `mount_points` (String) Disk mount points. Required for on-prem cluster nodes. Not allowed for any other provider type.
+- `storage_type` (String) Storage type of volume. AWS: IO1, IO2, GP2, GP3. GCP: Scratch, Persistent, Hyperdisk_Balanced, Hyperdisk_Extreme. Azure: StandardSSD_LRS, Premium_LRS, PremiumV2_LRS, UltraSSD_LRS. Not applicable for on-prem or Kubernetes providers.
+- `throughput` (Number) Disk throughput in MB/s. Required for storage types that support throughput provisioning: GP3, UltraSSD_LRS, PremiumV2_LRS, Hyperdisk_Balanced.
 
 
 
@@ -266,7 +266,6 @@ Read-Only:
 - `is_tserver` (Boolean)
 - `is_yql_server` (Boolean)
 - `is_ysql_server` (Boolean)
-- `kubernetes_overrides` (String)
 - `last_volume_update_time` (String)
 - `machine_image` (String)
 - `master_http_port` (Number)
@@ -302,8 +301,6 @@ Read-Only:
 - `az` (String)
 - `cloud` (String)
 - `instance_type` (String)
-- `kubernetes_namespace` (String)
-- `kubernetes_pod_name` (String)
 - `lun_indexes` (List of Number)
 - `mount_roots` (String)
 - `private_dns` (String)
