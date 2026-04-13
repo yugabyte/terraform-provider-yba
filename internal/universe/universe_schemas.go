@@ -116,11 +116,13 @@ func userIntentSchema() *schema.Resource {
 			"assign_static_ip": {
 				Type:        schema.TypeBool,
 				Optional:    true,
+				Default:     false,
 				Description: "Flag indicating whether a static IP should be assigned.",
 			},
 			"aws_arn_string": {
 				Type:        schema.TypeString,
 				Optional:    true,
+				Default:     "",
 				Description: "IP ARN String.",
 			},
 			"enable_exposing_service": {
@@ -133,6 +135,7 @@ func userIntentSchema() *schema.Resource {
 			"enable_ipv6": {
 				Type:        schema.TypeBool,
 				Optional:    true,
+				Default:     false,
 				Description: "Enable IPv6.",
 			},
 			"enable_ycql": {
@@ -144,6 +147,7 @@ func userIntentSchema() *schema.Resource {
 			"enable_ycql_auth": {
 				Type:        schema.TypeBool,
 				Optional:    true,
+				Default:     false,
 				Description: "Enable YCQL authentication.",
 			},
 			"enable_ysql_auth": {
@@ -165,11 +169,13 @@ func userIntentSchema() *schema.Resource {
 			"preferred_region": {
 				Type:        schema.TypeString,
 				Optional:    true,
+				Default:     "",
 				Description: "Preferred Region for node placement.",
 			},
 			"use_host_name": {
 				Type:        schema.TypeBool,
 				Optional:    true,
+				Default:     false,
 				Description: "Enable to use host name instead of IP addresses to communicate.",
 			},
 			"use_systemd": {
@@ -179,16 +185,19 @@ func userIntentSchema() *schema.Resource {
 				Description: "Enable Systemd in universe nodes. True by default.",
 			},
 			"ysql_password": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				Sensitive:   true,
-				Description: "YSQL auth password. Required when enable_ysql_auth is true.",
+				Type:      schema.TypeString,
+				Optional:  true,
+				Sensitive: true,
+				Description: "YSQL auth password. Required when enable_ysql_auth is true. " +
+					"Stored in Terraform state - use an encrypted backend for security.",
 			},
 			"ycql_password": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				Sensitive:   true,
-				Description: "YCQL auth password. Required when enable_ycql_auth is true.",
+				Type:      schema.TypeString,
+				Optional:  true,
+				Default:   "",
+				Sensitive: true,
+				Description: "YCQL auth password. Required when enable_ycql_auth is true. " +
+					"Stored in Terraform state - use an encrypted backend for security.",
 			},
 			"universe_name": {
 				Type:        schema.TypeString,
@@ -246,6 +255,7 @@ func userIntentSchema() *schema.Resource {
 						"mount_points": {
 							Type:        schema.TypeString,
 							Optional:    true,
+							Default:     "",
 							Description: "Disk mount points. Required for onprem cluster nodes.",
 						},
 						"storage_class": {

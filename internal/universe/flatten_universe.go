@@ -16,8 +16,10 @@
 package universe
 
 import (
+	"context"
 	"time"
 
+	"github.com/hashicorp/terraform-plugin-log/tflog"
 	client "github.com/yugabyte/platform-go-client"
 	"github.com/yugabyte/terraform-provider-yba/internal/utils"
 )
@@ -42,7 +44,7 @@ func flattenCommunicationPorts(cp *client.CommunicationPorts) []interface{} {
 func flattenClusters(clusters []client.Cluster) (res []map[string]interface{}) {
 	for _, cluster := range clusters {
 		c := map[string]interface{}{
-			"uuid":         cluster.Uuid,
+			"uuid":         cluster.GetUuid(),
 			"cluster_type": cluster.ClusterType,
 			"user_intent":  flattenUserIntent(cluster.UserIntent),
 			"cloud_list":   flattenCloudList(cluster.PlacementInfo.CloudList),
@@ -50,6 +52,93 @@ func flattenClusters(clusters []client.Cluster) (res []map[string]interface{}) {
 		res = append(res, c)
 	}
 	return res
+}
+
+// restoreRedactedPasswords replaces "REDACTED" password values in freshly
+// flattened clusters with the values held in the prior Terraform state.
+// YBA never returns plaintext passwords on read; it returns "REDACTED"
+// instead. Without this step every refresh would produce a spurious diff.
+//
+// Matching strategy:
+//   - UUID-based: used on normal refresh where old state already has UUIDs.
+//   - Index-based fallback: used on the initial Create->Read where the config
+//     clusters have no UUIDs yet (they are assigned by YBA during creation).
+func restoreRedactedPasswords(
+	ctx context.Context,
+	newClusters []map[string]interface{},
+	oldClusters []interface{},
+) {
+	const redacted = "REDACTED"
+
+	oldByUUID := make(map[string]map[string]interface{}, len(oldClusters))
+	for _, oc := range oldClusters {
+		ocMap, ok := oc.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		uuid, _ := ocMap["uuid"].(string)
+		if uuid != "" {
+			oldByUUID[uuid] = ocMap
+		}
+	}
+
+	for i, nc := range newClusters {
+		uuid, _ := nc["uuid"].(string)
+
+		var oldCluster map[string]interface{}
+
+		// Prefer UUID-based match (stable across reorders).
+		if uuid != "" {
+			oldCluster = oldByUUID[uuid]
+		}
+
+		// Fall back to positional match when old clusters have no UUIDs,
+		// which happens during the Create->Read call before state is written.
+		if oldCluster == nil && i < len(oldClusters) {
+			oldCluster, _ = oldClusters[i].(map[string]interface{})
+			tflog.Debug(ctx, "restoreRedactedPasswords: using index-based match",
+				map[string]interface{}{"index": i, "uuid": uuid})
+		}
+
+		if oldCluster == nil {
+			tflog.Debug(ctx, "restoreRedactedPasswords: no old cluster found, skipping",
+				map[string]interface{}{"index": i, "uuid": uuid})
+			continue
+		}
+
+		oldUIList, ok := oldCluster["user_intent"].([]interface{})
+		if !ok || len(oldUIList) == 0 {
+			continue
+		}
+		oldUIMap, ok := oldUIList[0].(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		newUIList, ok := nc["user_intent"].([]interface{})
+		if !ok || len(newUIList) == 0 {
+			continue
+		}
+		newUIMap, ok := newUIList[0].(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		for _, field := range []string{"ysql_password", "ycql_password"} {
+			p, ok := newUIMap[field].(*string)
+			if ok && p != nil && *p == redacted {
+				oldVal, _ := oldUIMap[field].(string)
+				tflog.Debug(ctx, "restoreRedactedPasswords: restoring redacted field",
+					map[string]interface{}{
+						"index":         i,
+						"uuid":          uuid,
+						"field":         field,
+						"has_old_value": oldVal != "",
+					})
+				newUIMap[field] = oldVal
+			}
+		}
+	}
 }
 
 func flattenCloudList(cl []client.PlacementCloud) (res []interface{}) {

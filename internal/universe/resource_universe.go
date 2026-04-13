@@ -90,17 +90,15 @@ func ResourceUniverse() *schema.Resource {
 				Type:     schema.TypeString,
 				Optional: true,
 				DiffSuppressFunc: func(k, old, new string, d *schema.ResourceData) bool {
-					// When TLS is enabled and this field is not set in the config file, a new root
-					// certificate is created and this is populated. Subsequent runs will throw a
-					// diff since this field is empty in the config file. This is to ignore the
-					// difference in that case
-					if len(old) > 0 && new == "" {
-						return true
-					}
-					return false
+					// When TLS is enabled and this field is not set in the config, YBA creates
+					// and assigns a root CA automatically. Suppress the diff so that the
+					// auto-assigned UUID does not appear as a change on subsequent plans.
+					// An explicit value in config always takes effect.
+					return len(old) > 0 && new == ""
 				},
 				Description: "The UUID of the clientRootCA to be used to generate client" +
-					" certificates and facilitate TLS communication between server and client.",
+					" certificates and facilitate TLS communication between server and client." +
+					" When not set, YBA creates and assigns a root CA automatically.",
 			},
 			"arch": {
 				Type:     schema.TypeString,
@@ -229,13 +227,6 @@ func ResourceUniverse() *schema.Resource {
 					"rollback_upgrade = true to revert to the previous DB version.",
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
-						"upgrade_system_catalog": {
-							Type:     schema.TypeBool,
-							Optional: true,
-							Default:  true,
-							Description: "Whether to upgrade the YSQL system catalog during " +
-								"the finalize step. Defaults to true.",
-						},
 						"finalize": {
 							Type:     schema.TypeBool,
 							Optional: true,
@@ -693,6 +684,66 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 				return nil
 			},
 		),
+		// When rollback_upgrade is true, require that yb_software_version in the PRIMARY
+		// cluster config matches the universe's previous DB version. This prevents a
+		// spurious upgrade diff on the next plan after rollback (since after rollback the
+		// state will reflect the previous version), and prevents accidental re-upgrade
+		// if the user forgets to remove rollback_upgrade = true from their config.
+		func(ctx context.Context, d *schema.ResourceDiff, m interface{}) error {
+			if d.Id() == "" {
+				return nil
+			}
+			newOptsRaw := d.Get("db_version_upgrade_options").([]interface{})
+			if len(newOptsRaw) == 0 || newOptsRaw[0] == nil {
+				return nil
+			}
+			opt := newOptsRaw[0].(map[string]interface{})
+			if !opt["rollback_upgrade"].(bool) {
+				return nil
+			}
+			c := m.(*api.APIClient).YugawareClient
+			cUUID := m.(*api.APIClient).CustomerID
+			uni, _, err := c.UniverseManagementAPI.GetUniverse(ctx, cUUID, d.Id()).Execute()
+			if err != nil {
+				// Do not block the plan if the universe cannot be fetched.
+				return nil
+			}
+			prevCfg := uni.UniverseDetails.PrevYBSoftwareConfig
+			if prevCfg == nil || prevCfg.SoftwareVersion == nil || *prevCfg.SoftwareVersion == "" {
+				return fmt.Errorf(
+					"rollback_upgrade is true but the universe has no previous software " +
+						"version to roll back to (prevYBSoftwareConfig is absent)")
+			}
+			prevVersion := prevCfg.GetSoftwareVersion()
+			clustersRaw := d.Get("clusters").([]interface{})
+			for _, clRaw := range clustersRaw {
+				cl, ok := clRaw.(map[string]interface{})
+				if !ok {
+					continue
+				}
+				if cl["cluster_type"] != "PRIMARY" {
+					continue
+				}
+				uiRaw, ok := cl["user_intent"].([]interface{})
+				if !ok || len(uiRaw) == 0 {
+					continue
+				}
+				ui, ok := uiRaw[0].(map[string]interface{})
+				if !ok {
+					continue
+				}
+				configVersion, _ := ui["yb_software_version"].(string)
+				if configVersion != prevVersion {
+					return fmt.Errorf(
+						"when rollback_upgrade is true, yb_software_version must be set "+
+							"to the universe's previous DB version %q (currently %q); "+
+							"update yb_software_version = %q in your configuration to "+
+							"prevent a spurious upgrade diff after rollback",
+						prevVersion, configVersion, prevVersion)
+				}
+			}
+			return nil
+		},
 		customdiff.ValidateValue(
 			"clusters",
 			func(ctx context.Context, value, meta interface{}) error {
@@ -777,7 +828,9 @@ func resourceUniverseRead(
 	if err = d.Set("arch", u.GetArch()); err != nil {
 		return diag.FromErr(err)
 	}
-	if err = d.Set("clusters", flattenClusters(u.Clusters)); err != nil {
+	newClusters := flattenClusters(u.Clusters)
+	restoreRedactedPasswords(ctx, newClusters, d.Get("clusters").([]interface{}))
+	if err = d.Set("clusters", newClusters); err != nil {
 		return diag.FromErr(err)
 	}
 	err = d.Set("communication_ports", flattenCommunicationPorts(u.CommunicationPorts))
@@ -846,7 +899,6 @@ func runFinalizeUpgrade(
 	uniUUID string,
 	clusters []client.Cluster,
 	upgradeOption string,
-	upgradeSystemCatalog bool,
 	sleepAfterMasterMs int32,
 	sleepAfterTServerMs int32,
 	timeout time.Duration,
@@ -854,7 +906,7 @@ func runFinalizeUpgrade(
 	finalizeReq := client.FinalizeUpgradeParams{
 		Clusters:                       clusters,
 		UpgradeOption:                  upgradeOption,
-		UpgradeSystemCatalog:           upgradeSystemCatalog,
+		UpgradeSystemCatalog:           true,
 		SleepAfterMasterRestartMillis:  sleepAfterMasterMs,
 		SleepAfterTServerRestartMillis: sleepAfterTServerMs,
 	}
@@ -983,10 +1035,9 @@ func resourceUniverseUpdate(
 				return diag.FromErr(errMessage)
 			}
 			if currentUni.UniverseDetails.GetSoftwareUpgradeState() == "PreFinalize" {
-				upgradeSystemCatalog := d.Get("db_version_upgrade_options.0.upgrade_system_catalog").(bool)
 				if diags := runFinalizeUpgrade(ctx, c, cUUID, d.Id(),
 					currentUni.UniverseDetails.Clusters,
-					upgradeOption, upgradeSystemCatalog,
+					upgradeOption,
 					sleepAfterMasterMs, sleepAfterTServerMs,
 					d.Timeout(schema.TimeoutUpdate)); diags != nil {
 					return diags
@@ -1091,14 +1142,13 @@ func resourceUniverseUpdate(
 				if oldUserIntent.GetYbSoftwareVersion() != newUserIntent.GetYbSoftwareVersion() {
 					updateUni.UniverseDetails.Clusters[i].UserIntent = newUserIntent
 
-					upgradeSystemCatalog := d.Get("db_version_upgrade_options.0.upgrade_system_catalog").(bool)
 					finalize := d.Get("db_version_upgrade_options.0.finalize").(bool)
 
 					req := client.SoftwareUpgradeParams{
 						YbSoftwareVersion:              newUserIntent.GetYbSoftwareVersion(),
 						Clusters:                       updateUni.UniverseDetails.Clusters,
 						UpgradeOption:                  upgradeOption,
-						UpgradeSystemCatalog:           upgradeSystemCatalog,
+						UpgradeSystemCatalog:           true,
 						SleepAfterMasterRestartMillis:  sleepAfterMasterMs,
 						SleepAfterTServerRestartMillis: sleepAfterTServerMs,
 					}
@@ -1134,7 +1184,7 @@ func resourceUniverseUpdate(
 							tflog.Info(ctx, "Universe is in PreFinalize state, finalizing upgrade")
 							if diags := runFinalizeUpgrade(ctx, c, cUUID, d.Id(),
 								updateUni.UniverseDetails.Clusters,
-								upgradeOption, upgradeSystemCatalog,
+								upgradeOption,
 								sleepAfterMasterMs, sleepAfterTServerMs,
 								d.Timeout(schema.TimeoutUpdate)); diags != nil {
 								return diags

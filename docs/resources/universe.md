@@ -67,7 +67,7 @@ The following operations are supported in the Edit universe workflow:
 ### Optional
 
 - `arch` (String) The architecture of the universe nodes. Allowed values are x86_64 and aarch64.
-- `client_root_ca` (String) The UUID of the clientRootCA to be used to generate client certificates and facilitate TLS communication between server and client.
+- `client_root_ca` (String) The UUID of the clientRootCA to be used to generate client certificates and facilitate TLS communication between server and client. When not set, YBA creates and assigns a root CA automatically.
 - `communication_ports` (Block List, Max: 1) Communication ports. (see [below for nested schema](#nestedblock--communication_ports))
 - `db_version_upgrade_options` (Block List, Max: 1) Options controlling the DB version upgrade path (UpgradeDBVersion). By default finalize = false pauses the upgrade in PreFinalize state for a monitoring phase; flip to true and re-apply to commit, or set rollback_upgrade = true to revert to the previous DB version. (see [below for nested schema](#nestedblock--db_version_upgrade_options))
 - `delete_options` (Block List, Max: 1) (see [below for nested schema](#nestedblock--delete_options))
@@ -135,8 +135,8 @@ Optional:
 - `use_host_name` (Boolean) Enable to use host name instead of IP addresses to communicate.
 - `use_systemd` (Boolean) Enable Systemd in universe nodes. True by default.
 - `use_time_sync` (Boolean) Enable time sync. True by default.
-- `ycql_password` (String, Sensitive) YCQL auth password. Required when enable_ycql_auth is true.
-- `ysql_password` (String, Sensitive) YSQL auth password. Required when enable_ysql_auth is true.
+- `ycql_password` (String, Sensitive) YCQL auth password. Required when enable_ycql_auth is true. Stored in Terraform state - use an encrypted backend for security.
+- `ysql_password` (String, Sensitive) YSQL auth password. Required when enable_ysql_auth is true. Stored in Terraform state - use an encrypted backend for security.
 
 <a id="nestedblock--clusters--user_intent--device_info"></a>
 ### Nested Schema for `clusters.user_intent.device_info`
@@ -219,7 +219,6 @@ Optional:
 
 - `finalize` (Boolean) Whether to finalize the DB version upgrade. When false (default), the upgrade pauses at PreFinalize state for a monitoring phase; set to true and re-apply to commit when ready. When true, FinalizeUpgrade is called automatically after the upgrade task completes.
 - `rollback_upgrade` (Boolean) Set to true to roll back a pending DB version upgrade when db_version_upgrade_state is PreFinalize. Mutually exclusive with finalize = true. After rollback the universe returns to Ready state running the previous DB version. The provider automatically resets this field to false in state after a successful rollback.
-- `upgrade_system_catalog` (Boolean) Whether to upgrade the YSQL system catalog during the finalize step. Defaults to true.
 
 
 <a id="nestedblock--delete_options"></a>
