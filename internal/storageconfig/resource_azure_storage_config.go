@@ -156,14 +156,15 @@ func buildAzureData(d *schema.ResourceData) (map[string]interface{}, error) {
 	}
 
 	useAzureIAM := d.Get("use_azure_iam").(bool)
+	topLevelSASToken := ""
 	if useAzureIAM {
 		data["USE_AZURE_IAM"] = strconv.FormatBool(useAzureIAM)
 	} else {
-		sasToken := d.Get("sas_token").(string)
-		if sasToken == "" {
+		topLevelSASToken = d.Get("sas_token").(string)
+		if topLevelSASToken == "" {
 			return nil, fmt.Errorf("sas_token is required when use_azure_iam is false")
 		}
-		data[utils.AzureStorageSasTokenEnv] = sasToken
+		data[utils.AzureStorageSasTokenEnv] = topLevelSASToken
 	}
 
 	// Region locations
@@ -178,8 +179,14 @@ func buildAzureData(d *schema.ResourceData) (map[string]interface{}, error) {
 				"REGION":   loc["region"].(string),
 				"LOCATION": loc["location"].(string),
 			}
-			if v := loc["sas_token"].(string); v != "" {
-				locData["AZURE_STORAGE_SAS_TOKEN"] = v
+			// Use the region-specific SAS token when provided; fall back to the
+			// top-level token so the API never receives a null sasToken value.
+			regionSASToken := loc["sas_token"].(string)
+			if regionSASToken == "" {
+				regionSASToken = topLevelSASToken
+			}
+			if regionSASToken != "" {
+				locData["AZURE_STORAGE_SAS_TOKEN"] = regionSASToken
 			}
 			locations = append(locations, locData)
 		}
@@ -251,6 +258,20 @@ func resourceAzureStorageConfigRead(
 
 	// Region locations
 	if regionLocsRaw, ok := data["REGION_LOCATIONS"]; ok && regionLocsRaw != nil {
+		// The API does not return SAS tokens in its response. To avoid a
+		// perpetual plan diff, carry forward the sas_token values that are
+		// already in state, keyed by region name.
+		existingByRegion := make(map[string]string)
+		for _, el := range d.Get("region_locations").([]interface{}) {
+			if el == nil {
+				continue
+			}
+			m := el.(map[string]interface{})
+			if token, ok2 := m["sas_token"].(string); ok2 && token != "" {
+				existingByRegion[m["region"].(string)] = token
+			}
+		}
+
 		regionLocs := regionLocsRaw.([]interface{})
 		locations := make([]map[string]interface{}, 0, len(regionLocs))
 		for _, rl := range regionLocs {
@@ -258,11 +279,12 @@ func resourceAzureStorageConfigRead(
 				continue
 			}
 			loc := rl.(map[string]interface{})
+			region := fmt.Sprintf("%v", loc["REGION"])
 			locData := map[string]interface{}{
-				"region":   loc["REGION"],
-				"location": loc["LOCATION"],
+				"region":    region,
+				"location":  fmt.Sprintf("%v", loc["LOCATION"]),
+				"sas_token": existingByRegion[region],
 			}
-			// Don't read back SAS tokens - they're sensitive
 			locations = append(locations, locData)
 		}
 		if err = d.Set("region_locations", locations); err != nil {
@@ -270,7 +292,7 @@ func resourceAzureStorageConfigRead(
 		}
 	}
 
-	// Don't read back SAS token - it's sensitive and obfuscated in API response
+	// Don't read back top-level SAS token - it's sensitive and obfuscated in the API response
 
 	return nil
 }

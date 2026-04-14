@@ -19,6 +19,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-log/tflog"
@@ -51,7 +52,16 @@ func ResourceS3StorageConfig() *schema.Resource {
 			Delete: schema.DefaultTimeout(5 * time.Minute),
 		},
 
-		CustomizeDiff: validateNoDuplicateRegionLocations,
+		CustomizeDiff: schema.CustomizeDiffFunc(func(
+			ctx context.Context,
+			d *schema.ResourceDiff,
+			meta interface{},
+		) error {
+			if err := validateIAMConfigRequiresIAMProfile(ctx, d, meta); err != nil {
+				return err
+			}
+			return validateNoDuplicateRegionLocations(ctx, d, meta)
+		}),
 
 		Schema: map[string]*schema.Schema{
 			"name": {
@@ -129,11 +139,13 @@ func ResourceS3StorageConfig() *schema.Resource {
 							Optional: true,
 							Default:  "DEFAULT",
 							ValidateFunc: validation.StringInSlice([]string{
-								"DEFAULT", "EC2_INSTANCE_METADATA", "ECS_CONTAINER",
-								"ENVIRONMENT", "PROFILE", "STS_ASSUME_ROLE",
-							}, false),
-							Description: "IAM credential source. Options: DEFAULT, EC2_INSTANCE_METADATA, " +
-								"ECS_CONTAINER, ENVIRONMENT, PROFILE, STS_ASSUME_ROLE.",
+								"DEFAULT", "EC2_INSTANCE", "IAM_USER",
+								"WEB_TOKEN", "ASSUME_INSTANCE_ROLE",
+							}, true),
+							Description: "IAM credential source (case-insensitive). " +
+								"Options: DEFAULT, EC2_INSTANCE, IAM_USER, WEB_TOKEN, ASSUME_INSTANCE_ROLE. " +
+								"DEFAULT tries all sources in order: " +
+								"WEB_TOKEN > IAM_USER > ASSUME_INSTANCE_ROLE > EC2_INSTANCE.",
 						},
 						"iam_user_profile": {
 							Type:        schema.TypeString,
@@ -271,7 +283,7 @@ func buildS3Data(d *schema.ResourceData) map[string]interface{} {
 		iamData := map[string]interface{}{}
 
 		if v := iamConfig["credential_source"].(string); v != "" {
-			iamData["CREDENTIAL_SOURCE"] = v
+			iamData["CREDENTIAL_SOURCE"] = strings.ToUpper(v)
 		}
 		if v := iamConfig["iam_user_profile"].(string); v != "" {
 			iamData["IAM_USER_PROFILE"] = v

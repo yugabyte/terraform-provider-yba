@@ -43,7 +43,7 @@ S3 Storage Configuration for YugabyteDB Anywhere backups. Supports AWS S3 and S3
 
 Optional:
 
-- `credential_source` (String) IAM credential source. Options: DEFAULT, EC2_INSTANCE_METADATA, ECS_CONTAINER, ENVIRONMENT, PROFILE, STS_ASSUME_ROLE.
+- `credential_source` (String) IAM credential source (case-insensitive). Options: DEFAULT, EC2_INSTANCE, IAM_USER, WEB_TOKEN, ASSUME_INSTANCE_ROLE. DEFAULT tries all sources in order: WEB_TOKEN > IAM_USER > ASSUME_INSTANCE_ROLE > EC2_INSTANCE.
 - `iam_user_profile` (String) AWS profile name for PROFILE credential source.
 - `regional_sts` (Boolean) Use regional STS endpoint instead of global. Default: true.
 - `session_duration_secs` (Number) Session duration in seconds for assume role (900-43200). Default: 3600.

@@ -22,6 +22,29 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 )
 
+// validateIAMConfigRequiresIAMProfile rejects an iam_config block when
+// use_iam_instance_profile is not true. The backend only reads IAM_CONFIGURATION
+// inside the isIAMInstanceProfile branch; providing it alongside static access
+// keys is always a no-op and signals a misconfigured resource.
+func validateIAMConfigRequiresIAMProfile(
+	_ context.Context,
+	d *schema.ResourceDiff,
+	_ interface{},
+) error {
+	iamConfigs, ok := d.Get("iam_config").([]interface{})
+	if !ok || len(iamConfigs) == 0 {
+		return nil
+	}
+	useIAM, _ := d.Get("use_iam_instance_profile").(bool)
+	if !useIAM {
+		return fmt.Errorf(
+			"iam_config block is only valid when use_iam_instance_profile is true; " +
+				"remove iam_config or set use_iam_instance_profile = true",
+		)
+	}
+	return nil
+}
+
 // validateNoDuplicateRegionLocations is the CustomizeDiff function shared by all storage config
 // resources. It rejects configurations where region_locations contains two or more blocks with
 // the same region value, since YBA has no server-side guard and such configs cause silent
