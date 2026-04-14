@@ -31,6 +31,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 	client "github.com/yugabyte/platform-go-client"
 	"github.com/yugabyte/terraform-provider-yba/internal/api"
+	"github.com/yugabyte/terraform-provider-yba/internal/provider/providerutil"
 	"github.com/yugabyte/terraform-provider-yba/internal/utils"
 )
 
@@ -851,124 +852,79 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 				return nil
 			},
 		),
-		customdiff.ValidateValue(
-			"clusters",
-			func(ctx context.Context, value, meta interface{}) error {
-				// access_key_code is required for cloud providers (aws, gcp, azu).
-				// It is not required for on-prem providers that use node agents
-				// (skipProvisioning / YNP-provisioned).
-				clusterSet := buildClusters(value.([]interface{}))
-				cloudProviders := map[string]bool{"aws": true, "gcp": true, "azu": true}
-				primary, isPrimaryPresent := getClusterByType(clusterSet, "PRIMARY")
-				readOnly, isRRPresent := getClusterByType(clusterSet, "ASYNC")
-				if isPrimaryPresent {
-					ui := primary.GetUserIntent()
-					if cloudProviders[ui.GetProviderType()] && ui.GetAccessKeyCode() == "" {
-						return errors.New(
-							"access_key_code is required for cloud providers " +
-								"(aws, gcp, azu) in the primary cluster")
-					}
-				}
-				if isRRPresent {
-					ui := readOnly.GetUserIntent()
-					if cloudProviders[ui.GetProviderType()] && ui.GetAccessKeyCode() == "" {
-						return errors.New(
-							"access_key_code is required for cloud providers " +
-								"(aws, gcp, azu) in the read replica cluster")
-					}
-				}
-				return nil
-			},
-		),
 		func(ctx context.Context, d *schema.ResourceDiff, meta interface{}) error {
-			// When image_bundle_uuid is omitted for a cloud provider (aws, gcp, azu),
-			// the YBA API will attempt to resolve the provider's default image bundle
-			// for the configured arch. Validate here that such a default exists so
-			// the user gets a clear plan-time error instead of an obscure task failure.
-			cloudProviders := map[string]bool{"aws": true, "gcp": true, "azu": true}
-
+			// Validate per-cluster provider-dependent constraints. provider_type is
+			// Computed and not known at plan time, so GetProvider is called once per
+			// cluster to resolve the provider code and run all checks together:
+			//   1. access_key_code is required for cloud providers (aws, gcp, azu).
+			//   2. image_bundle_uuid is not applicable for on-prem providers.
+			//   3. When image_bundle_uuid is omitted for a cloud provider, the
+			//      provider must have a default image bundle for the configured arch
+			//      so the YBA API auto-resolution will succeed.
+			// API errors are silenced and deferred to the real create/update call
+			// so plan does not fail on connectivity issues alone.
 			c := meta.(*api.APIClient).YugawareClient
 			cUUID := meta.(*api.APIClient).CustomerID
-			providers, response, err := c.CloudProvidersAPI.GetListOfProviders(ctx, cUUID).Execute()
-			if err != nil {
-				// Do not block the plan on connectivity issues; defer to the API call.
-				_ = utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
-					"Provider", "List")
-				return nil
-			}
-			providerByUUID := make(map[string]client.Provider, len(providers))
-			for _, p := range providers {
-				if p.GetUuid() != "" {
-					providerByUUID[p.GetUuid()] = p
-				}
-			}
-
 			arch := d.Get("arch").(string)
+			cloudProviders := map[string]bool{"aws": true, "gcp": true, "azu": true}
 
-			checkCluster := func(clusterType string, label string) error {
-				clusterSet := buildClusters(d.Get("clusters").([]interface{}))
-				cl, isPresent := getClusterByType(clusterSet, clusterType)
-				if !isPresent {
-					return nil
-				}
+			checkCluster := func(cl client.Cluster, label string) error {
 				ui := cl.GetUserIntent()
-				if !cloudProviders[ui.GetProviderType()] {
+				providerUUID := ui.GetProvider()
+				if providerUUID == "" {
 					return nil
 				}
-				if ui.GetImageBundleUUID() != "" {
+				p, err := providerutil.GetProvider(ctx, c, cUUID, providerUUID)
+				if err != nil {
 					return nil
 				}
-				// image_bundle_uuid is empty -- verify the provider has a default bundle
-				// for the requested arch so the API auto-resolution will succeed.
-				p, found := providerByUUID[ui.GetProvider()]
-				if !found {
-					return nil
+				code := p.GetCode()
+
+				// Check 1: access_key_code required for cloud providers.
+				if cloudProviders[code] && ui.GetAccessKeyCode() == "" {
+					return fmt.Errorf(
+						"access_key_code is required for cloud providers "+
+							"(aws, gcp, azu) in the %s cluster", label)
 				}
-				for _, b := range p.GetImageBundles() {
-					if b.GetUseAsDefault() && b.Details.GetArch() == arch {
-						return nil
+
+				// Check 2: image_bundle_uuid not applicable for on-prem.
+				if code == "onprem" && ui.GetImageBundleUUID() != "" {
+					return fmt.Errorf(
+						"image_bundle_uuid is not applicable for on-prem providers "+
+							"in the %s cluster", label)
+				}
+
+				// Check 3: cloud provider with no image_bundle_uuid must have a
+				// default bundle for the configured arch so API auto-resolution works.
+				if cloudProviders[code] && ui.GetImageBundleUUID() == "" {
+					for _, b := range p.GetImageBundles() {
+						if b.GetUseAsDefault() && b.Details.GetArch() == arch {
+							return nil
+						}
 					}
+					return fmt.Errorf(
+						"image_bundle_uuid is not set for the %s cluster and provider %s "+
+							"has no default image bundle for arch %q: set image_bundle_uuid "+
+							"explicitly or mark a bundle as default for this architecture",
+						label, providerUUID, arch)
 				}
-				return fmt.Errorf(
-					"image_bundle_uuid is not set for the %s cluster and provider %s "+
-						"has no default image bundle for arch %q: set image_bundle_uuid "+
-						"explicitly or mark a bundle as default for this architecture",
-					label, ui.GetProvider(), arch)
+
+				return nil
 			}
 
-			if err := checkCluster("PRIMARY", "PRIMARY"); err != nil {
-				return err
+			clusterSet := buildClusters(d.Get("clusters").([]interface{}))
+			if primary, ok := getClusterByType(clusterSet, "PRIMARY"); ok {
+				if err := checkCluster(primary, "primary"); err != nil {
+					return err
+				}
 			}
-			return checkCluster("ASYNC", "READ REPLICA")
+			if readOnly, ok := getClusterByType(clusterSet, "ASYNC"); ok {
+				if err := checkCluster(readOnly, "read replica"); err != nil {
+					return err
+				}
+			}
+			return nil
 		},
-		customdiff.ValidateValue(
-			"clusters",
-			func(ctx context.Context, value, meta interface{}) error {
-				// image_bundle_uuid is not applicable for on-prem providers.
-				// Reject it at plan time so the user gets a clear error rather than
-				// a BAD_REQUEST from the API at apply time.
-				clusterSet := buildClusters(value.([]interface{}))
-				primary, isPrimaryPresent := getClusterByType(clusterSet, "PRIMARY")
-				readOnly, isRRPresent := getClusterByType(clusterSet, "ASYNC")
-				if isPrimaryPresent {
-					ui := primary.GetUserIntent()
-					if ui.GetProviderType() == "onprem" && ui.GetImageBundleUUID() != "" {
-						return errors.New(
-							"image_bundle_uuid is not applicable for on-prem providers " +
-								"in the primary cluster")
-					}
-				}
-				if isRRPresent {
-					ui := readOnly.GetUserIntent()
-					if ui.GetProviderType() == "onprem" && ui.GetImageBundleUUID() != "" {
-						return errors.New(
-							"image_bundle_uuid is not applicable for on-prem providers " +
-								"in the read replica cluster")
-					}
-				}
-				return nil
-			},
-		),
 		// --- PENDING UPDATE SUPPORT ---
 		// The validators in this block prevent in-place changes to fields that
 		// are present in the schema and have a corresponding YBA API update path
@@ -1107,68 +1063,11 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 			},
 		),
 		// --- END PENDING UPDATE SUPPORT ---
-
-		// Validate that provider_type, when explicitly supplied, matches the
-		// actual code of the referenced provider UUID. Because provider_type is
-		// now Optional+Computed (derived from the provider), supplying a value
-		// that contradicts the provider UUID is always a configuration error.
-		// API errors (e.g. provider not found) are silenced here and deferred
-		// to the real create/update call so plan does not fail on connectivity
-		// issues alone.
-		func(ctx context.Context, d *schema.ResourceDiff, meta interface{}) error {
-			c := meta.(*api.APIClient).YugawareClient
-			cUUID := meta.(*api.APIClient).CustomerID
-			providers, response, err := c.CloudProvidersAPI.GetListOfProviders(ctx, cUUID).Execute()
-			if err != nil {
-				_ = utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
-					"Provider", "List")
-				return nil
-			}
-			providerByUUID := make(map[string]string, len(providers))
-			for _, p := range providers {
-				if p.Uuid != nil {
-					providerByUUID[*p.Uuid] = p.GetCode()
-				}
-			}
-			newClusters := d.Get("clusters").([]interface{})
-			for _, clRaw := range newClusters {
-				cl, ok := clRaw.(map[string]interface{})
-				if !ok {
-					continue
-				}
-				uiRaw, ok := cl["user_intent"].([]interface{})
-				if !ok || len(uiRaw) == 0 {
-					continue
-				}
-				ui, ok := uiRaw[0].(map[string]interface{})
-				if !ok {
-					continue
-				}
-				providerUUID := ui["provider"].(string)
-				providerType := ui["provider_type"].(string)
-				if providerUUID == "" || providerType == "" {
-					continue
-				}
-				actualCode, found := providerByUUID[providerUUID]
-				if !found {
-					continue
-				}
-				if actualCode != providerType {
-					return fmt.Errorf(
-						"provider_type %q conflicts with provider %s whose actual type is %q: "+
-							"remove provider_type from your configuration or set it to %q",
-						providerType, providerUUID, actualCode, actualCode)
-				}
-			}
-			return nil
-		},
 	)
 }
 
-// resolveProviderTypes fills in any empty provider_type in each cluster's
-// user_intent by looking up the provider UUID via the API. This allows
-// provider_type to be omitted from the Terraform configuration (Optional+Computed)
-// while still sending a valid value to the universe create API.
+// resolveProviderTypes fills in provider_type in each cluster's user_intent
+// by calling GetProvider for that cluster's provider UUID.
 // Returns an error only if a required lookup actually fails; missing / empty
 // provider UUIDs are skipped silently.
 func resolveProviderTypes(
@@ -1177,18 +1076,6 @@ func resolveProviderTypes(
 	cUUID string,
 	d *schema.ResourceData,
 ) error {
-	providers, response, err := c.CloudProvidersAPI.GetListOfProviders(ctx, cUUID).Execute()
-	if err != nil {
-		return utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
-			"Provider", "List")
-	}
-	codeByUUID := make(map[string]string, len(providers))
-	for _, p := range providers {
-		if p.Uuid != nil {
-			codeByUUID[*p.Uuid] = p.GetCode()
-		}
-	}
-
 	clusters := d.Get("clusters").([]interface{})
 	changed := false
 	for _, clRaw := range clusters {
@@ -1204,18 +1091,15 @@ func resolveProviderTypes(
 		if !ok {
 			continue
 		}
-		if ui["provider_type"].(string) != "" {
-			continue
-		}
 		providerUUID := ui["provider"].(string)
 		if providerUUID == "" {
 			continue
 		}
-		code, found := codeByUUID[providerUUID]
-		if !found {
-			continue
+		p, err := providerutil.GetProvider(ctx, c, cUUID, providerUUID)
+		if err != nil {
+			return err
 		}
-		ui["provider_type"] = code
+		ui["provider_type"] = p.GetCode()
 		changed = true
 	}
 	if changed {

@@ -217,13 +217,9 @@ func userIntentSchema() *schema.Resource {
 			},
 			"provider_type": {
 				Type:     schema.TypeString,
-				Optional: true,
 				Computed: true,
-				ValidateDiagFunc: validation.ToDiagFunc(validation.StringInSlice(
-					[]string{"gcp", "aws", "azu", "onprem", "kubernetes"}, false)),
-				Description: "Cloud Provider type. Permitted values: gcp, aws, azu, onprem, " +
-					"kubernetes. When omitted the value is derived from the provider UUID. " +
-					"If supplied, it must match the actual type of the referenced provider.",
+				Description: "Cloud provider type. " +
+					"Derived from the referenced provider UUID via the provider API.",
 			},
 			"provider": {
 				Type:        schema.TypeString,

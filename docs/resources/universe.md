@@ -131,13 +131,16 @@ Optional:
 - `instance_tags` (Map of String) Instance Tags.
 - `master_gflags` (Map of String) Set of Master GFlags.
 - `preferred_region` (String) Preferred Region for node placement.
-- `provider_type` (String) Cloud Provider type. Permitted values: gcp, aws, azu, onprem, kubernetes. When omitted the value is derived from the provider UUID. If supplied, it must match the actual type of the referenced provider.
 - `tserver_gflags` (Map of String) Set of TServer Gflags.
 - `use_host_name` (Boolean) Enable to use host name instead of IP addresses to communicate.
 - `use_systemd` (Boolean) Enable Systemd in universe nodes. True by default.
 - `use_time_sync` (Boolean) Enable time sync. True by default.
 - `ycql_password` (String, Sensitive) YCQL auth password. Required when enable_ycql_auth is true. Stored in Terraform state - use an encrypted backend for security.
 - `ysql_password` (String, Sensitive) YSQL auth password. Required when enable_ysql_auth is true. Stored in Terraform state - use an encrypted backend for security.
+
+Read-Only:
+
+- `provider_type` (String) Cloud provider type. Derived from the referenced provider UUID via the provider API.
 
 <a id="nestedblock--clusters--user_intent--device_info"></a>
 ### Nested Schema for `clusters.user_intent.device_info`
