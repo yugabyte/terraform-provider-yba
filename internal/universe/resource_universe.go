@@ -241,7 +241,7 @@ func ResourceUniverse() *schema.Resource {
 				Description: "Options controlling the DB version upgrade path (UpgradeDBVersion). " +
 					"By default finalize = false pauses the upgrade in PreFinalize state for a " +
 					"monitoring phase; flip to true and re-apply to commit, or set " +
-					"rollback_upgrade = true to revert to the previous DB version.",
+					"rollback = true to revert to the previous DB version.",
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
 						"finalize": {
@@ -254,7 +254,7 @@ func ResourceUniverse() *schema.Resource {
 								"FinalizeUpgrade is called automatically after the upgrade task " +
 								"completes.",
 						},
-						"rollback_upgrade": {
+						"rollback": {
 							Type:     schema.TypeBool,
 							Optional: true,
 							Default:  false,
@@ -759,20 +759,20 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 					return nil
 				}
 				opt := newOpts[0].(map[string]interface{})
-				if opt["rollback_upgrade"].(bool) && opt["finalize"].(bool) {
+				if opt["rollback"].(bool) && opt["finalize"].(bool) {
 					return errors.New(
-						"rollback_upgrade and finalize are mutually exclusive: " +
-							"set finalize = false when using rollback_upgrade = true, " +
-							"and set rollback_upgrade = false when using finalize = true")
+						"rollback and finalize are mutually exclusive: " +
+							"set finalize = false when using rollback = true, " +
+							"and set rollback = false when using finalize = true")
 				}
 				return nil
 			},
 		),
-		// When rollback_upgrade is true, require that yb_software_version in the PRIMARY
+		// When rollback is true, require that yb_software_version in the PRIMARY
 		// cluster config matches the universe's previous DB version. This prevents a
 		// spurious upgrade diff on the next plan after rollback (since after rollback the
 		// state will reflect the previous version), and prevents accidental re-upgrade
-		// if the user forgets to remove rollback_upgrade = true from their config.
+		// if the user forgets to remove rollback = true from their config.
 		func(ctx context.Context, d *schema.ResourceDiff, m interface{}) error {
 			if d.Id() == "" {
 				return nil
@@ -782,7 +782,7 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 				return nil
 			}
 			opt := newOptsRaw[0].(map[string]interface{})
-			if !opt["rollback_upgrade"].(bool) {
+			if !opt["rollback"].(bool) {
 				return nil
 			}
 			c := m.(*api.APIClient).YugawareClient
@@ -795,7 +795,7 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 			prevCfg := uni.UniverseDetails.PrevYBSoftwareConfig
 			if prevCfg == nil || prevCfg.SoftwareVersion == nil || *prevCfg.SoftwareVersion == "" {
 				return fmt.Errorf(
-					"rollback_upgrade is true but the universe has no previous software " +
+					"rollback is true but the universe has no previous software " +
 						"version to roll back to (prevYBSoftwareConfig is absent)")
 			}
 			prevVersion := prevCfg.GetSoftwareVersion()
@@ -819,7 +819,7 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 				configVersion, _ := ui["yb_software_version"].(string)
 				if configVersion != prevVersion {
 					return fmt.Errorf(
-						"when rollback_upgrade is true, yb_software_version must be set "+
+						"when rollback is true, yb_software_version must be set "+
 							"to the universe's previous DB version %q (currently %q); "+
 							"update yb_software_version = %q in your configuration to "+
 							"prevent a spurious upgrade diff after rollback",
@@ -1307,7 +1307,7 @@ func resourceUniverseUpdate(
 	// and rolls back all clusters simultaneously. It must run before the cluster-change loop
 	// so that a rollback + other cluster edits in the same apply are both processed.
 	if d.HasChange("db_version_upgrade_options") &&
-		d.Get("db_version_upgrade_options.0.rollback_upgrade").(bool) {
+		d.Get("db_version_upgrade_options.0.rollback").(bool) {
 		currentUni, response, err := c.UniverseManagementAPI.GetUniverse(ctx, cUUID, d.Id()).
 			Execute()
 		if err != nil {
@@ -1318,8 +1318,8 @@ func resourceUniverseUpdate(
 		upgradeState := currentUni.UniverseDetails.GetSoftwareUpgradeState()
 		if upgradeState != "PreFinalize" {
 			tflog.Warn(ctx, fmt.Sprintf(
-				"rollback_upgrade is true but universe db_version_upgrade_state is %q "+
-					"(not PreFinalize); skipping rollback. Reset rollback_upgrade = false "+
+				"rollback is true but universe db_version_upgrade_state is %q "+
+					"(not PreFinalize); skipping rollback. Reset rollback = false "+
 					"in your configuration.", upgradeState))
 		} else {
 			rollbackReq := client.RollbackUpgradeParams{
@@ -1342,9 +1342,9 @@ func resourceUniverseUpdate(
 			); diags != nil {
 				return diags
 			}
-			// Reset rollback_upgrade to false in state after a successful rollback.
+			// Reset rollback to false in state after a successful rollback.
 			// This intentionally creates a plan diff (state=false vs config=true) on the
-			// next run, which signals to the user that they must set rollback_upgrade = false
+			// next run, which signals to the user that they must set rollback = false
 			// in their configuration to reach a steady state. Without this reset, state
 			// would stay true and no diff would appear, leaving a stale value in state that
 			// silently re-triggers the rollback logic on every apply until the user changes
@@ -1353,7 +1353,7 @@ func resourceUniverseUpdate(
 				optList := opts.([]interface{})
 				if len(optList) > 0 && optList[0] != nil {
 					opt := optList[0].(map[string]interface{})
-					opt["rollback_upgrade"] = false
+					opt["rollback"] = false
 					if err := d.Set("db_version_upgrade_options", optList); err != nil {
 						return diag.FromErr(err)
 					}

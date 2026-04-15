@@ -69,7 +69,7 @@ The following operations are supported in the Edit universe workflow:
 - `arch` (String) The architecture of the universe nodes. Allowed values are x86_64 and aarch64.
 - `client_root_ca` (String) The UUID of the clientRootCA to be used to generate client certificates and facilitate TLS communication between server and client. When not set, YBA creates and assigns a root CA automatically.
 - `communication_ports` (Block List, Max: 1) Communication ports. (see [below for nested schema](#nestedblock--communication_ports))
-- `db_version_upgrade_options` (Block List, Max: 1) Options controlling the DB version upgrade path (UpgradeDBVersion). By default finalize = false pauses the upgrade in PreFinalize state for a monitoring phase; flip to true and re-apply to commit, or set rollback_upgrade = true to revert to the previous DB version. (see [below for nested schema](#nestedblock--db_version_upgrade_options))
+- `db_version_upgrade_options` (Block List, Max: 1) Options controlling the DB version upgrade path (UpgradeDBVersion). By default finalize = false pauses the upgrade in PreFinalize state for a monitoring phase; flip to true and re-apply to commit, or set rollback = true to revert to the previous DB version. (see [below for nested schema](#nestedblock--db_version_upgrade_options))
 - `delete_options` (Block List, Max: 1) (see [below for nested schema](#nestedblock--delete_options))
 - `node_restart_settings` (Block List, Max: 1) Controls how node restarts are performed during upgrade operations (DB version, GFlags, Systemd, Finalize, Rollback). When omitted, YugabyteDB Anywhere platform defaults apply: Rolling strategy with 180000 ms (3 minutes) sleep after each master and TServer restart. (see [below for nested schema](#nestedblock--node_restart_settings))
 - `root_ca` (String) The UUID of the rootCA used for node-to-node TLS encryption. When not set, YBA creates and assigns a root CA automatically.
@@ -221,7 +221,7 @@ Optional:
 Optional:
 
 - `finalize` (Boolean) Whether to finalize the DB version upgrade. When false (default), the upgrade pauses at PreFinalize state for a monitoring phase; set to true and re-apply to commit when ready. When true, FinalizeUpgrade is called automatically after the upgrade task completes.
-- `rollback_upgrade` (Boolean) Set to true to roll back a pending DB version upgrade when db_version_upgrade_state is PreFinalize. Mutually exclusive with finalize = true. After rollback the universe returns to Ready state running the previous DB version. The provider automatically resets this field to false in state after a successful rollback.
+- `rollback` (Boolean) Set to true to roll back a pending DB version upgrade when db_version_upgrade_state is PreFinalize. Mutually exclusive with finalize = true. After rollback the universe returns to Ready state running the previous DB version. The provider automatically resets this field to false in state after a successful rollback.
 
 
 <a id="nestedblock--delete_options"></a>
