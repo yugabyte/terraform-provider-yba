@@ -317,6 +317,34 @@ Read-Only:
 - `subnet_id` (String)
 - `use_time_sync` (Boolean)
 
+## Known Issues
+
+### Fields sourced from data sources show as "(known after apply)" during provider edits
+
+Several `clusters.user_intent` fields are commonly sourced from data sources that carry a
+direct value dependency on the provider resource:
+
+| Field | Typical source |
+|---|---|
+| `access_key_code` | `data.yba_provider_key` |
+| `region_list` | `data.yba_provider_regions.<name>.regions_uuid` |
+
+When the provider resource is modified in the same apply (e.g. adding a region), Terraform
+marks these outputs as deferred and shows the universe fields as changing to
+`(known after apply)`:
+
+```
+~ user_intent {
+    ~ access_key_code = "my-access-key" -> (known after apply)
+    ~ region_list     = [...] -> (known after apply)
+  }
+```
+
+**This diff is cosmetic.** The underlying universe configuration is unchanged; all values
+are resolved correctly before the universe operation runs. Applying will not modify the
+universe itself. The values will return to their prior display on the next plan once the
+provider edit has been applied.
+
 ## Import
 
 Universes can be imported using `universe uuid`:

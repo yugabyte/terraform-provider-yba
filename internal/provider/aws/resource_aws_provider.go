@@ -190,11 +190,15 @@ func awsImageBundleSchema() *schema.Schema {
 					Description: "Name of the image bundle.",
 				},
 				"use_as_default": {
-					Type:     schema.TypeBool,
-					Optional: true,
-					Default:  false,
+					Type:             schema.TypeBool,
+					Optional:         true,
+					Default:          false,
+					DiffSuppressFunc: providerutil.SuppressCustomBundleDefaultDrift,
 					Description: "Flag indicating if the image bundle should be " +
-						"used as default for this architecture.",
+						"used as default for this architecture. " +
+						"When no bundle for a given architecture has this set to true, " +
+						"YBA automatically promotes the first bundle as default. " +
+						"Terraform will suppress the resulting true->false drift in the plan.",
 				},
 				"details": {
 					Type:     schema.TypeList,
@@ -233,9 +237,10 @@ func awsImageBundleSchema() *schema.Schema {
 									"and does not affect behaviour.",
 							},
 							"region_overrides": {
-								Type:     schema.TypeMap,
-								Optional: true,
-								Elem:     &schema.Schema{Type: schema.TypeString},
+								Type:             schema.TypeMap,
+								Optional:         true,
+								Elem:             &schema.Schema{Type: schema.TypeString},
+								DiffSuppressFunc: suppressInactiveRegionOverride,
 								Description: "Per-region AMI IDs for AWS. " +
 									"Key is the region code (e.g. us-east-1), value is the AMI ID. " +
 									"A non-empty AMI must be provided for every region configured in " +

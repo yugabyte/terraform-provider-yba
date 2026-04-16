@@ -205,10 +205,14 @@ func buildAWSImageBundles(imageBundles []interface{}) []client.ImageBundle {
 		}
 		detailsMap := detailsList[0].(map[string]interface{})
 
+		sshPort := int32(detailsMap["ssh_port"].(int))
+		if sshPort == 0 {
+			sshPort = 22
+		}
 		details := client.ImageBundleDetails{
 			Arch:      utils.GetStringPointer(detailsMap["arch"].(string)),
 			SshUser:   utils.GetStringPointer(detailsMap["ssh_user"].(string)),
-			SshPort:   utils.GetInt32Pointer(int32(detailsMap["ssh_port"].(int))),
+			SshPort:   utils.GetInt32Pointer(sshPort),
 			UseIMDSv2: utils.GetBoolPointer(detailsMap["use_imds_v2"].(bool)),
 		}
 

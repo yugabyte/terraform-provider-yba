@@ -18,6 +18,7 @@ package aws
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/yugabyte/terraform-provider-yba/internal/provider/providerutil"
@@ -53,6 +54,14 @@ func validateNoDuplicateRegionsOrZones(
 	}
 
 	if err := providerutil.ValidateAtLeastOneImageBundle(d); err != nil {
+		return err
+	}
+
+	// ValidateImageBundles runs first so a "multiple defaults for arch X" config produces
+	// the clearer "at most one bundle per arch can be the default" message rather than
+	// the more confusing "new bundle cannot have use_as_default=true" message from
+	// ValidateNewBundlesNotDefault, which would otherwise fire first.
+	if err := providerutil.ValidateImageBundles(d); err != nil {
 		return err
 	}
 
@@ -116,15 +125,124 @@ func validateNoDuplicateRegionsOrZones(
 		}
 	}
 
-	if err := providerutil.ValidateImageBundles(d); err != nil {
-		return err
-	}
-
 	if err := validateAWSImageBundleRegionCoverage(d); err != nil {
 		return err
 	}
 
 	return nil
+}
+
+// normalizeRegionOverrides is the pure logic for normalizeAWSRegionOverridesInPlan.
+// It strips region_overrides entries for regions not in activeRegions, returning the
+// (possibly modified) slice and whether any modification was made.
+func normalizeRegionOverrides(
+	bundlesRaw []interface{},
+	activeRegions map[string]bool,
+) ([]interface{}, bool) {
+	if len(bundlesRaw) == 0 {
+		return bundlesRaw, false
+	}
+
+	// Quick scan: check whether any bundle has overrides for inactive regions.
+	needsUpdate := false
+outer:
+	for _, b := range bundlesRaw {
+		m, ok := b.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		details, ok := m["details"].([]interface{})
+		if !ok || len(details) == 0 {
+			continue
+		}
+		det, ok := details[0].(map[string]interface{})
+		if !ok {
+			continue
+		}
+		overrides, _ := det["region_overrides"].(map[string]interface{})
+		for regionCode := range overrides {
+			if !activeRegions[regionCode] {
+				needsUpdate = true
+				break outer
+			}
+		}
+	}
+	if !needsUpdate {
+		return bundlesRaw, false
+	}
+
+	// Rebuild bundles with inactive region overrides stripped.
+	normalized := make([]interface{}, len(bundlesRaw))
+	for i, b := range bundlesRaw {
+		m, ok := b.(map[string]interface{})
+		if !ok {
+			normalized[i] = b
+			continue
+		}
+		newMap := make(map[string]interface{}, len(m))
+		for k, v := range m {
+			newMap[k] = v
+		}
+		details, ok := newMap["details"].([]interface{})
+		if ok && len(details) > 0 {
+			det, ok := details[0].(map[string]interface{})
+			if ok {
+				overrides, hasOverrides := det["region_overrides"].(map[string]interface{})
+				if hasOverrides {
+					newOverrides := make(map[string]interface{}, len(activeRegions))
+					for regionCode, ami := range overrides {
+						if activeRegions[regionCode] {
+							newOverrides[regionCode] = ami
+						}
+					}
+					newDet := make(map[string]interface{}, len(det))
+					for k, v := range det {
+						newDet[k] = v
+					}
+					newDet["region_overrides"] = newOverrides
+					newMap["details"] = []interface{}{newDet}
+				}
+			}
+		}
+		normalized[i] = newMap
+	}
+	return normalized, true
+}
+
+// suppressInactiveRegionOverride is a DiffSuppressFunc for the region_overrides TypeMap
+// inside image_bundles.details. It suppresses "add" diffs (old="", new=AMI) for region
+// codes that are not configured in the provider's regions list.
+//
+// When a region is removed from a provider, the YBA backend automatically removes that
+// region's AMI from every image bundle. Without this suppression the plan would show a
+// false "re-add" for any region that the user still has in region_overrides config but
+// that is no longer a provider region -- a perpetual no-op diff.
+//
+// Because DiffSuppressFunc also governs what d.Get returns during Apply (suppressed keys
+// fall back to the state value, which is absent for a removed region), the update API
+// call will likewise omit the stale entry.
+func suppressInactiveRegionOverride(k, old, new string, d *schema.ResourceData) bool {
+	// Only suppress additions: old="" means the key is in config but absent in state.
+	if old != "" {
+		return false
+	}
+	// Key format: "image_bundles.N.details.0.region_overrides.REGION_CODE"
+	parts := strings.Split(k, ".")
+	if len(parts) == 0 {
+		return false
+	}
+	regionCode := parts[len(parts)-1]
+	regionsRaw, _ := d.Get("regions").([]interface{})
+	for _, r := range regionsRaw {
+		regionMap, ok := r.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if code, _ := regionMap["code"].(string); code == regionCode {
+			return false // region is active -- do not suppress
+		}
+	}
+	return true // region not in provider -- suppress the addition
 }
 
 // validateAWSImageBundleRegionCoverage ensures that every custom image bundle provides

@@ -51,6 +51,14 @@ func validateNoDuplicateRegions(
 		return err
 	}
 
+	// ValidateImageBundles runs first so a "multiple defaults for arch X" config produces
+	// the clearer "at most one bundle per arch can be the default" message rather than
+	// the more confusing "new bundle cannot have use_as_default=true" message from
+	// ValidateNewBundlesNotDefault, which would otherwise fire first.
+	if err := providerutil.ValidateImageBundles(d); err != nil {
+		return err
+	}
+
 	if err := providerutil.ValidateNewBundlesNotDefault(d); err != nil {
 		return err
 	}
@@ -70,10 +78,6 @@ func validateNoDuplicateRegions(
 			)
 		}
 		regionCodes[regionCode] = true
-	}
-
-	if err := providerutil.ValidateImageBundles(d); err != nil {
-		return err
 	}
 
 	return nil

@@ -19,6 +19,8 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strconv"
+	"strings"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	client "github.com/yugabyte/platform-go-client"
@@ -525,6 +527,34 @@ func GetBundleDetails(bundle map[string]interface{}) map[string]interface{} {
 	return make(map[string]interface{})
 }
 
+// bundleDetailsOnlyChanged compares the details fields of two bundles, excluding
+// use_as_default. Used in the drift-suppress path of HasImageBundleRealChange where
+// use_as_default has already been identified as drift and must not be re-evaluated.
+func bundleDetailsOnlyChanged(old, new map[string]interface{}) bool {
+	oldDetails := GetBundleDetails(old)
+	newDetails := GetBundleDetails(new)
+
+	if oldDetails["arch"] != newDetails["arch"] ||
+		oldDetails["ssh_user"] != newDetails["ssh_user"] ||
+		oldDetails["ssh_port"] != newDetails["ssh_port"] ||
+		oldDetails["global_yb_image"] != newDetails["global_yb_image"] ||
+		oldDetails["use_imds_v2"] != newDetails["use_imds_v2"] {
+		return true
+	}
+
+	oldOverrides, _ := oldDetails["region_overrides"].(map[string]interface{})
+	newOverrides, _ := newDetails["region_overrides"].(map[string]interface{})
+	if len(oldOverrides) != len(newOverrides) {
+		return true
+	}
+	for k, v := range oldOverrides {
+		if newOverrides[k] != v {
+			return true
+		}
+	}
+	return false
+}
+
 // BundleContentChanged compares editable fields between two bundles
 func BundleContentChanged(old, new map[string]interface{}) bool {
 	// Compare use_as_default
@@ -639,6 +669,28 @@ func HasImageBundleRealChange(d *schema.ResourceDiff) bool {
 			oldDefault, _ := oldBundle["use_as_default"].(bool)
 			newDefault, _ := newBundle["use_as_default"].(bool)
 			if oldDefault != newDefault {
+				// old=true, new=false is the YBA auto-promotion drift pattern on a
+				// custom bundle. Apply the same guard as SuppressCustomBundleDefaultDrift:
+				// treat as a non-real change when no other bundle explicitly claims
+				// use_as_default=true for the same arch. d.GetChange returns raw config
+				// values, so DiffSuppressFunc has not been applied -- replicate inline.
+				if oldDefault && !newDefault {
+					var arch string
+					if details, ok := newBundle["details"].([]interface{}); ok && len(details) > 0 {
+						if det, ok := details[0].(map[string]interface{}); ok {
+							arch, _ = det["arch"].(string)
+						}
+					}
+					if arch != "" && !archHasExplicitDefaultInDiff(d, arch) {
+						// use_as_default diff is suppressed drift; check only the
+						// bundle details fields -- NOT use_as_default again, since
+						// BundleContentChanged also compares it and would fire.
+						if bundleDetailsOnlyChanged(oldBundle, newBundle) {
+							return true
+						}
+						continue
+					}
+				}
 				return true
 			}
 
@@ -683,7 +735,21 @@ func HasImageBundleRealChange(d *schema.ResourceDiff) bool {
 			newArchsSeen[arch] = true
 			newDefault, _ := m["use_as_default"].(bool)
 			oldDefault, existed := oldByArch[arch]
-			if !existed || oldDefault != newDefault {
+			if !existed {
+				return true
+			}
+			if oldDefault != newDefault {
+				// old=true, new=false is the YBA auto-promotion drift pattern.
+				// Apply the same guard as SuppressYBABundleDefaultDrift: treat this
+				// as a non-real change when no other bundle claims use_as_default=true
+				// for this arch AND no new custom bundle is being added for this arch.
+				// d.GetChange returns raw config values, so DiffSuppressFunc has not
+				// been applied here -- we must replicate the suppress logic manually.
+				if oldDefault && !newDefault &&
+					!archHasNewBundleInDiff(d, arch) &&
+					!archHasExplicitDefaultInDiff(d, arch) {
+					continue
+				}
 				return true
 			}
 		}
@@ -833,6 +899,292 @@ func MarkVersionComputedIfChanged(
 	}
 
 	return nil
+}
+
+// normalizeImageBundleDefaults is the pure logic for NormalizeImageBundleDefaultsInPlan.
+// It promotes the first bundle per arch to use_as_default=true when no bundle for that
+// arch already has it set, mirroring the EnsureImageBundleDefaults call at apply time.
+// Returns the (possibly modified) slice and whether any modification was made.
+func normalizeImageBundleDefaults(bundlesRaw []interface{}) ([]interface{}, bool) {
+	if len(bundlesRaw) == 0 {
+		return bundlesRaw, false
+	}
+
+	// First pass: find arches without a designated default and remember the first bundle index.
+	defaultByArch := make(map[string]bool)
+	firstByArch := make(map[string]int)
+
+	for i, b := range bundlesRaw {
+		m, ok := b.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		details, ok := m["details"].([]interface{})
+		if !ok || len(details) == 0 {
+			continue
+		}
+		det, ok := details[0].(map[string]interface{})
+		if !ok {
+			continue
+		}
+		arch, _ := det["arch"].(string)
+		if arch == "" {
+			continue
+		}
+		if _, seen := firstByArch[arch]; !seen {
+			firstByArch[arch] = i
+		}
+		if useAsDefault, _ := m["use_as_default"].(bool); useAsDefault {
+			defaultByArch[arch] = true
+		}
+	}
+
+	needsNorm := false
+	for arch := range firstByArch {
+		if !defaultByArch[arch] {
+			needsNorm = true
+			break
+		}
+	}
+	if !needsNorm {
+		return bundlesRaw, false
+	}
+
+	// Second pass: shallow-copy each bundle map, promoting the first bundle per
+	// arch that has no designated default.
+	normalized := make([]interface{}, len(bundlesRaw))
+	for i, b := range bundlesRaw {
+		m, ok := b.(map[string]interface{})
+		if !ok {
+			normalized[i] = b
+			continue
+		}
+		newMap := make(map[string]interface{}, len(m))
+		for k, v := range m {
+			newMap[k] = v
+		}
+		if details, ok := newMap["details"].([]interface{}); ok && len(details) > 0 {
+			if det, ok := details[0].(map[string]interface{}); ok {
+				arch, _ := det["arch"].(string)
+				if arch != "" && !defaultByArch[arch] && firstByArch[arch] == i {
+					newMap["use_as_default"] = true
+					defaultByArch[arch] = true
+				}
+			}
+		}
+		normalized[i] = newMap
+	}
+	return normalized, true
+}
+
+// SuppressCustomBundleDefaultDrift is a DiffSuppressFunc for the use_as_default field
+// inside image_bundles blocks. It suppresses the false-positive "true->false" diff that
+// appears when YBA auto-promotes the first custom bundle per arch to use_as_default=true
+// (matching EnsureImageBundleDefaults called at apply time) while the user's config still
+// has use_as_default=false. The suppress fires only when no OTHER bundle for the same arch
+// in either image_bundles or yba_managed_image_bundles has use_as_default=true in the
+// planned config -- i.e., YBA would pick this bundle as default regardless.
+func SuppressCustomBundleDefaultDrift(k, old, new string, d *schema.ResourceData) bool {
+	if old != "true" || new != "false" {
+		return false
+	}
+	// Key format: "image_bundles.N.use_as_default"
+	parts := strings.Split(k, ".")
+	if len(parts) < 2 {
+		return false
+	}
+	idx, err := strconv.Atoi(parts[1])
+	if err != nil {
+		return false
+	}
+	arch, _ := d.Get(fmt.Sprintf("image_bundles.%d.details.0.arch", idx)).(string)
+	if arch == "" {
+		return false
+	}
+	// Suppress only when no other bundle explicitly claims default for this arch.
+	return !archHasExplicitDefault(d, arch, true, idx)
+}
+
+// SuppressYBABundleDefaultDrift is a DiffSuppressFunc for the use_as_default field
+// inside yba_managed_image_bundles blocks. Same logic as SuppressCustomBundleDefaultDrift
+// but reads arch from yba_managed_image_bundles.N.arch instead.
+//
+// The suppress does NOT fire when the user is simultaneously adding a new custom bundle
+// for the same arch (uuid == ""), because in that case the user is deliberately managing
+// bundles for that arch and the demotion diff must be visible and applied.
+func SuppressYBABundleDefaultDrift(k, old, new string, d *schema.ResourceData) bool {
+	if old != "true" || new != "false" {
+		return false
+	}
+	// Key format: "yba_managed_image_bundles.N.use_as_default"
+	parts := strings.Split(k, ".")
+	if len(parts) < 2 {
+		return false
+	}
+	idx, err := strconv.Atoi(parts[1])
+	if err != nil {
+		return false
+	}
+	arch, _ := d.Get(fmt.Sprintf("yba_managed_image_bundles.%d.arch", idx)).(string)
+	if arch == "" {
+		return false
+	}
+	// If the user is adding a new custom bundle for this arch in the same plan,
+	// the demotion is intentional -- do not suppress it.
+	if archHasNewBundle(d, arch) {
+		return false
+	}
+	return !archHasExplicitDefault(d, arch, false, idx)
+}
+
+// archHasNewBundleInDiff is the schema.ResourceDiff-compatible equivalent of
+// archHasNewBundle. Used in HasImageBundleRealChange where d is *schema.ResourceDiff.
+func archHasNewBundleInDiff(d *schema.ResourceDiff, arch string) bool {
+	imageBundles, _ := d.Get("image_bundles").([]interface{})
+	for _, b := range imageBundles {
+		m, ok := b.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if uuid, _ := m["uuid"].(string); uuid != "" {
+			continue
+		}
+		details, ok := m["details"].([]interface{})
+		if !ok || len(details) == 0 {
+			continue
+		}
+		det, ok := details[0].(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if a, _ := det["arch"].(string); a == arch {
+			return true
+		}
+	}
+	return false
+}
+
+// archHasExplicitDefaultInDiff is the schema.ResourceDiff-compatible equivalent of
+// archHasExplicitDefault (without the self-exclusion, which is not needed here).
+// Returns true when any bundle in either block has use_as_default=true for arch.
+func archHasExplicitDefaultInDiff(d *schema.ResourceDiff, arch string) bool {
+	imageBundles, _ := d.Get("image_bundles").([]interface{})
+	for _, b := range imageBundles {
+		m, ok := b.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		details, ok := m["details"].([]interface{})
+		if !ok || len(details) == 0 {
+			continue
+		}
+		det, ok := details[0].(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if a, _ := det["arch"].(string); a != arch {
+			continue
+		}
+		if v, _ := m["use_as_default"].(bool); v {
+			return true
+		}
+	}
+	ybaBundles, _ := d.Get("yba_managed_image_bundles").([]interface{})
+	for _, b := range ybaBundles {
+		m, ok := b.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if GetString(m, "arch") != arch {
+			continue
+		}
+		if v, _ := m["use_as_default"].(bool); v {
+			return true
+		}
+	}
+	return false
+}
+
+// archHasNewBundle returns true when any image_bundles entry for arch has no UUID,
+// meaning it is being freshly created in this apply. This is used to detect that the
+// user is actively managing bundles for that arch so that related drift suppression
+// does not hide intentional changes.
+func archHasNewBundle(d *schema.ResourceData, arch string) bool {
+	imageBundles, _ := d.Get("image_bundles").([]interface{})
+	for _, b := range imageBundles {
+		m, ok := b.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if uuid, _ := m["uuid"].(string); uuid != "" {
+			continue
+		}
+		details, ok := m["details"].([]interface{})
+		if !ok || len(details) == 0 {
+			continue
+		}
+		det, ok := details[0].(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if a, _ := det["arch"].(string); a == arch {
+			return true
+		}
+	}
+	return false
+}
+
+// archHasExplicitDefault returns true if any bundle for arch has use_as_default=true
+// in the planned config, excluding the "self" bundle (selfIsCustom=true means self is in
+// image_bundles at selfIdx; false means self is in yba_managed_image_bundles at selfIdx).
+func archHasExplicitDefault(
+	d *schema.ResourceData,
+	arch string,
+	selfIsCustom bool,
+	selfIdx int,
+) bool {
+	imageBundles, _ := d.Get("image_bundles").([]interface{})
+	for i, b := range imageBundles {
+		m, ok := b.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if selfIsCustom && i == selfIdx {
+			continue
+		}
+		details, ok := m["details"].([]interface{})
+		if !ok || len(details) == 0 {
+			continue
+		}
+		det, ok := details[0].(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if det["arch"] != arch {
+			continue
+		}
+		if v, _ := m["use_as_default"].(bool); v {
+			return true
+		}
+	}
+
+	ybaBundles, _ := d.Get("yba_managed_image_bundles").([]interface{})
+	for i, b := range ybaBundles {
+		m, ok := b.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if !selfIsCustom && i == selfIdx {
+			continue
+		}
+		if m["arch"] != arch {
+			continue
+		}
+		if v, _ := m["use_as_default"].(bool); v {
+			return true
+		}
+	}
+	return false
 }
 
 // ValidateNewBundlesNotDefault rejects use_as_default=true on a new bundle (no UUID)

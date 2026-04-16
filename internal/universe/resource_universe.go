@@ -24,6 +24,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/hashicorp/go-cty/cty"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/customdiff"
@@ -332,6 +333,47 @@ func ResourceUniverse() *schema.Resource {
 			},
 		},
 	}
+}
+
+// accessKeyCodeUnknownInPlan returns true when the access_key_code for the
+// given clusterType is unknown in the raw plan -- meaning its value comes from
+// a data source that Terraform has deferred to after apply (e.g. because the
+// provider resource it depends on is being modified in the same apply).
+//
+// An unknown raw-plan value (cty.UnknownVal) must be distinguished from an
+// explicitly-null value (cty.NullVal), which is what Terraform produces when
+// the user removes the field from their config entirely. Only the unknown case
+// should suppress the plan-time validation; the null case is a real omission
+// and must still be rejected.
+func accessKeyCodeUnknownInPlan(d *schema.ResourceDiff, clusterType string) bool {
+	rawPlan := d.GetRawPlan()
+	if rawPlan == cty.NilVal || !rawPlan.IsKnown() || rawPlan.IsNull() {
+		return false
+	}
+	clusters := rawPlan.GetAttr("clusters")
+	if !clusters.IsKnown() || clusters.IsNull() {
+		return false
+	}
+	for _, clusterVal := range clusters.AsValueSlice() {
+		if !clusterVal.IsKnown() || clusterVal.IsNull() {
+			continue
+		}
+		ct := clusterVal.GetAttr("cluster_type")
+		if !ct.IsKnown() || ct.IsNull() || ct.AsString() != clusterType {
+			continue
+		}
+		ui := clusterVal.GetAttr("user_intent")
+		if !ui.IsKnown() || ui.IsNull() {
+			return false
+		}
+		uiSlice := ui.AsValueSlice()
+		if len(uiSlice) == 0 {
+			return false
+		}
+		akc := uiSlice[0].GetAttr("access_key_code")
+		return !akc.IsKnown()
+	}
+	return false
 }
 
 func getClusterByType(clusters []client.Cluster, clusterType string) (client.Cluster, bool) {
@@ -882,7 +924,10 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 			arch := d.Get("arch").(string)
 			cloudProviders := map[string]bool{"aws": true, "gcp": true, "azu": true}
 
-			checkCluster := func(cl client.Cluster, label string) error {
+			// checkCluster validates provider-dependent constraints for one cluster.
+			// clusterType is "PRIMARY" or "ASYNC" and is needed to locate the
+			// correct cluster in the raw plan for Check 1.
+			checkCluster := func(cl client.Cluster, clusterType, label string) error {
 				ui := cl.GetUserIntent()
 				providerUUID := ui.GetProvider()
 				if providerUUID == "" {
@@ -895,10 +940,24 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 				code := p.GetCode()
 
 				// Check 1: access_key_code required for cloud providers.
+				//
+				// When access_key_code is sourced from a data source (e.g.
+				// data.yba_provider_key) and the upstream provider resource is
+				// being modified in the same apply, Terraform marks the data
+				// source output as "known after apply". ResourceDiff.Get returns
+				// an empty string for such unknown values, which would cause a
+				// false validation failure here.
+				//
+				// The raw plan distinguishes the two cases:
+				//   - Unknown value (!IsKnown): data source deferred; skip and
+				//     let the API enforce this constraint on apply.
+				//   - Null/empty value: user explicitly removed the field; fail.
 				if cloudProviders[code] && ui.GetAccessKeyCode() == "" {
-					return fmt.Errorf(
-						"access_key_code is required for cloud providers "+
-							"(aws, gcp, azu) in the %s cluster", label)
+					if !accessKeyCodeUnknownInPlan(d, clusterType) {
+						return fmt.Errorf(
+							"access_key_code is required for cloud providers "+
+								"(aws, gcp, azu) in the %s cluster", label)
+					}
 				}
 
 				// Check 2: image_bundle_uuid not applicable for on-prem.
@@ -928,12 +987,12 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 
 			clusterSet := buildClusters(d.Get("clusters").([]interface{}))
 			if primary, ok := getClusterByType(clusterSet, "PRIMARY"); ok {
-				if err := checkCluster(primary, "primary"); err != nil {
+				if err := checkCluster(primary, "PRIMARY", "primary"); err != nil {
 					return err
 				}
 			}
 			if readOnly, ok := getClusterByType(clusterSet, "ASYNC"); ok {
-				if err := checkCluster(readOnly, "read replica"); err != nil {
+				if err := checkCluster(readOnly, "ASYNC", "read replica"); err != nil {
 					return err
 				}
 			}

@@ -89,11 +89,15 @@ func ImageBundleSchema() *schema.Schema {
 					Description: "Name of the image bundle.",
 				},
 				"use_as_default": {
-					Type:     schema.TypeBool,
-					Optional: true,
-					Default:  false,
+					Type:             schema.TypeBool,
+					Optional:         true,
+					Default:          false,
+					DiffSuppressFunc: SuppressCustomBundleDefaultDrift,
 					Description: "Flag indicating if the image bundle should be " +
-						"used as default for this architecture.",
+						"used as default for this architecture. " +
+						"When no bundle for a given architecture has this set to true, " +
+						"YBA automatically promotes the first bundle as default. " +
+						"Terraform will suppress the resulting true->false drift in the plan.",
 				},
 				"details": {
 					Type:     schema.TypeList,
@@ -163,11 +167,15 @@ func YBADefaultImageBundleSchema() *schema.Schema {
 					ValidateFunc: validation.StringInSlice([]string{"x86_64", "aarch64"}, false),
 				},
 				"use_as_default": {
-					Type:     schema.TypeBool,
-					Optional: true,
-					Default:  false,
+					Type:             schema.TypeBool,
+					Optional:         true,
+					Default:          false,
+					DiffSuppressFunc: SuppressYBABundleDefaultDrift,
 					Description: "Flag indicating if the image bundle should be " +
-						"used as default for this architecture.",
+						"used as default for this architecture. " +
+						"When no bundle for a given architecture has this set to true, " +
+						"YBA automatically promotes the first bundle as default. " +
+						"Terraform will suppress the resulting true->false drift in the plan.",
 				},
 			},
 		},
@@ -207,11 +215,15 @@ func YBADefaultImageBundleSchemaX86Only() *schema.Schema {
 					ValidateFunc: validation.StringInSlice([]string{"x86_64"}, false),
 				},
 				"use_as_default": {
-					Type:     schema.TypeBool,
-					Optional: true,
-					Default:  false,
+					Type:             schema.TypeBool,
+					Optional:         true,
+					Default:          false,
+					DiffSuppressFunc: SuppressYBABundleDefaultDrift,
 					Description: "Flag indicating if the image bundle should be " +
-						"used as default.",
+						"used as default. " +
+						"When no bundle for a given architecture has this set to true, " +
+						"YBA automatically promotes the first bundle as default. " +
+						"Terraform will suppress the resulting true->false drift in the plan.",
 				},
 			},
 		},

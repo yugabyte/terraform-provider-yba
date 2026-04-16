@@ -358,6 +358,172 @@ func TestCheckImageBundleRegionCoverage(t *testing.T) {
 	}
 }
 
+// TestNormalizeRegionOverrides_NoChange verifies that when all overrides are for active
+// regions, the slice is returned unchanged.
+func TestNormalizeRegionOverrides_NoChange(t *testing.T) {
+	active := map[string]bool{"us-east-1": true, "us-west-2": true}
+	bundles := []interface{}{
+		map[string]interface{}{
+			"name": "b1",
+			"details": []interface{}{
+				map[string]interface{}{
+					"region_overrides": map[string]interface{}{
+						"us-east-1": "ami-aaa",
+						"us-west-2": "ami-bbb",
+					},
+				},
+			},
+		},
+	}
+
+	result, changed := normalizeRegionOverrides(bundles, active)
+
+	if changed {
+		t.Error("expected changed=false when all overrides are for active regions")
+	}
+	_ = result
+}
+
+// TestNormalizeRegionOverrides_StripInactive verifies that overrides for regions not in
+// activeRegions are stripped.
+func TestNormalizeRegionOverrides_StripInactive(t *testing.T) {
+	active := map[string]bool{"us-east-1": true}
+	bundles := []interface{}{
+		map[string]interface{}{
+			"name": "b1",
+			"details": []interface{}{
+				map[string]interface{}{
+					"region_overrides": map[string]interface{}{
+						"us-east-1": "ami-aaa",
+						"us-west-2": "ami-bbb", // inactive
+					},
+				},
+			},
+		},
+	}
+
+	result, changed := normalizeRegionOverrides(bundles, active)
+
+	if !changed {
+		t.Error("expected changed=true when an inactive override exists")
+	}
+	m := result[0].(map[string]interface{})
+	det := m["details"].([]interface{})[0].(map[string]interface{})
+	overrides := det["region_overrides"].(map[string]interface{})
+
+	if _, found := overrides["us-west-2"]; found {
+		t.Error("us-west-2 should have been stripped from region_overrides")
+	}
+	if overrides["us-east-1"] != "ami-aaa" {
+		t.Errorf("us-east-1 should be preserved, got %v", overrides["us-east-1"])
+	}
+}
+
+// TestNormalizeRegionOverrides_AllInactive verifies that when all overrides are for
+// inactive regions, an empty map remains after normalization.
+func TestNormalizeRegionOverrides_AllInactive(t *testing.T) {
+	active := map[string]bool{"us-east-1": true}
+	bundles := []interface{}{
+		map[string]interface{}{
+			"name": "b1",
+			"details": []interface{}{
+				map[string]interface{}{
+					"region_overrides": map[string]interface{}{
+						"us-west-2":  "ami-bbb",
+						"ap-south-1": "ami-ccc",
+					},
+				},
+			},
+		},
+	}
+
+	result, changed := normalizeRegionOverrides(bundles, active)
+
+	if !changed {
+		t.Error("expected changed=true")
+	}
+	m := result[0].(map[string]interface{})
+	det := m["details"].([]interface{})[0].(map[string]interface{})
+	overrides := det["region_overrides"].(map[string]interface{})
+	if len(overrides) != 0 {
+		t.Errorf("expected empty region_overrides, got %v", overrides)
+	}
+}
+
+// TestNormalizeRegionOverrides_MultiBundleSomeInactive verifies that stripping applies
+// to every bundle independently.
+func TestNormalizeRegionOverrides_MultiBundleSomeInactive(t *testing.T) {
+	active := map[string]bool{"us-east-1": true}
+	bundles := []interface{}{
+		map[string]interface{}{
+			"name": "b1",
+			"details": []interface{}{
+				map[string]interface{}{
+					"region_overrides": map[string]interface{}{
+						"us-east-1": "ami-a1",
+						"us-west-2": "ami-b1",
+					},
+				},
+			},
+		},
+		map[string]interface{}{
+			"name": "b2",
+			"details": []interface{}{
+				map[string]interface{}{
+					"region_overrides": map[string]interface{}{
+						"us-east-1": "ami-a2",
+						"us-west-2": "ami-b2",
+					},
+				},
+			},
+		},
+	}
+
+	result, changed := normalizeRegionOverrides(bundles, active)
+
+	if !changed {
+		t.Error("expected changed=true")
+	}
+	for idx, r := range result {
+		m := r.(map[string]interface{})
+		det := m["details"].([]interface{})[0].(map[string]interface{})
+		overrides := det["region_overrides"].(map[string]interface{})
+		if _, found := overrides["us-west-2"]; found {
+			t.Errorf("bundle %d: us-west-2 should have been stripped", idx)
+		}
+		if _, found := overrides["us-east-1"]; !found {
+			t.Errorf("bundle %d: us-east-1 should be preserved", idx)
+		}
+	}
+}
+
+// TestNormalizeRegionOverrides_NoMutateOriginal verifies the original bundle maps are
+// not modified.
+func TestNormalizeRegionOverrides_NoMutateOriginal(t *testing.T) {
+	active := map[string]bool{"us-east-1": true}
+	originalOverrides := map[string]interface{}{
+		"us-east-1": "ami-aaa",
+		"us-west-2": "ami-bbb",
+	}
+	bundles := []interface{}{
+		map[string]interface{}{
+			"name": "b1",
+			"details": []interface{}{
+				map[string]interface{}{
+					"region_overrides": originalOverrides,
+				},
+			},
+		},
+	}
+
+	normalizeRegionOverrides(bundles, active)
+
+	// The original map must not have been mutated.
+	if _, found := originalOverrides["us-west-2"]; !found {
+		t.Error("original region_overrides map must not be mutated")
+	}
+}
+
 // Helper function to check duplicate regions (mirrors the validation logic)
 func checkDuplicateRegions(regions []map[string]interface{}) error {
 	regionCodes := make(map[string]bool)

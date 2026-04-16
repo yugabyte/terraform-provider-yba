@@ -54,10 +54,10 @@ Other YugabyteDB Anywhere entities that are supported by the Terraform provider 
 
     ```sh
     $ terraform import yba_cloud_provider.cloud_provider <cloud-provider-uuid>
-    yba_cloud_provider.cloud_provider: Importing from ID "7fc1c313-5590-4599-88f4-109a15fe7db9"...
+    yba_cloud_provider.cloud_provider: Importing from ID "00000000-0000-0000-0000-000000000000"...
     yba_cloud_provider.cloud_provider: Import prepared!
       Prepared yba_cloud_provider for import
-    yba_cloud_provider.cloud_provider: Refreshing state... [id=7fc1c313-5590-4599-88f4-109a15fe7db9]
+    yba_cloud_provider.cloud_provider: Refreshing state... [id=00000000-0000-0000-0000-000000000000]
 
     Import successful!
 

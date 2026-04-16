@@ -264,7 +264,7 @@ Required:
 
 Optional:
 
-- `use_as_default` (Boolean) Flag indicating if the image bundle should be used as default for this architecture.
+- `use_as_default` (Boolean) Flag indicating if the image bundle should be used as default for this architecture. When no bundle for a given architecture has this set to true, YBA automatically promotes the first bundle as default. Terraform will suppress the resulting true->false drift in the plan.
 
 Read-Only:
 
@@ -306,7 +306,7 @@ Required:
 
 Optional:
 
-- `use_as_default` (Boolean) Flag indicating if the image bundle should be used as default for this architecture.
+- `use_as_default` (Boolean) Flag indicating if the image bundle should be used as default for this architecture. When no bundle for a given architecture has this set to true, YBA automatically promotes the first bundle as default. Terraform will suppress the resulting true->false drift in the plan.
 
 Read-Only:
 
