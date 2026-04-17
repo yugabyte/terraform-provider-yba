@@ -551,7 +551,7 @@ func isBackupGone(response *http.Response, err error) bool {
 		return true
 	}
 	if response.StatusCode == http.StatusBadRequest {
-		if oErr, ok := err.(client.GenericOpenAPIError); ok {
+		if oErr, ok := err.(*client.GenericOpenAPIError); ok {
 			return strings.Contains(string(oErr.Body()), "Invalid customer or backup UUID")
 		}
 	}
