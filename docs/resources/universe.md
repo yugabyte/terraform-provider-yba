@@ -204,14 +204,15 @@ Optional:
 - `master_http_port` (Number)
 - `master_rpc_port` (Number)
 - `node_exporter_port` (Number)
-- `redis_server_http_port` (Number)
-- `redis_server_rpc_port` (Number)
+- `redis_server_http_port` (Number) Redis (YEDIS) server HTTP port. Cannot be changed after universe creation.
+- `redis_server_rpc_port` (Number) Redis (YEDIS) server RPC port. Cannot be changed after universe creation.
 - `tserver_http_port` (Number)
 - `tserver_rpc_port` (Number)
-- `yql_server_http_port` (Number)
-- `yql_server_rpc_port` (Number)
-- `ysql_server_http_port` (Number)
-- `ysql_server_rpc_port` (Number)
+- `yb_controller_rpc_port` (Number) YB Controller RPC port. Cannot be changed after universe creation.
+- `yql_server_http_port` (Number) YCQL server HTTP port. Cannot be changed after universe creation.
+- `yql_server_rpc_port` (Number) YCQL server RPC port. Cannot be changed after universe creation.
+- `ysql_server_http_port` (Number) YSQL server HTTP port. Cannot be changed after universe creation.
+- `ysql_server_rpc_port` (Number) YSQL server RPC port. Cannot be changed after universe creation.
 
 
 <a id="nestedblock--db_version_upgrade_options"></a>

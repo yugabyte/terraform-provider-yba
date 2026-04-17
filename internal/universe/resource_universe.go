@@ -189,14 +189,16 @@ func ResourceUniverse() *schema.Resource {
 							Computed: true,
 						},
 						"redis_server_http_port": {
-							Type:     schema.TypeInt,
-							Optional: true,
-							Computed: true,
+							Type:        schema.TypeInt,
+							Optional:    true,
+							Computed:    true,
+							Description: "Redis (YEDIS) server HTTP port. Cannot be changed after universe creation.",
 						},
 						"redis_server_rpc_port": {
-							Type:     schema.TypeInt,
-							Optional: true,
-							Computed: true,
+							Type:        schema.TypeInt,
+							Optional:    true,
+							Computed:    true,
+							Description: "Redis (YEDIS) server RPC port. Cannot be changed after universe creation.",
 						},
 						"tserver_http_port": {
 							Type:     schema.TypeInt,
@@ -209,24 +211,34 @@ func ResourceUniverse() *schema.Resource {
 							Computed: true,
 						},
 						"yql_server_http_port": {
-							Type:     schema.TypeInt,
-							Optional: true,
-							Computed: true,
+							Type:        schema.TypeInt,
+							Optional:    true,
+							Computed:    true,
+							Description: "YCQL server HTTP port. Cannot be changed after universe creation.",
 						},
 						"yql_server_rpc_port": {
-							Type:     schema.TypeInt,
-							Optional: true,
-							Computed: true,
+							Type:        schema.TypeInt,
+							Optional:    true,
+							Computed:    true,
+							Description: "YCQL server RPC port. Cannot be changed after universe creation.",
 						},
 						"ysql_server_http_port": {
-							Type:     schema.TypeInt,
-							Optional: true,
-							Computed: true,
+							Type:        schema.TypeInt,
+							Optional:    true,
+							Computed:    true,
+							Description: "YSQL server HTTP port. Cannot be changed after universe creation.",
 						},
 						"ysql_server_rpc_port": {
-							Type:     schema.TypeInt,
-							Optional: true,
-							Computed: true,
+							Type:        schema.TypeInt,
+							Optional:    true,
+							Computed:    true,
+							Description: "YSQL server RPC port. Cannot be changed after universe creation.",
+						},
+						"yb_controller_rpc_port": {
+							Type:        schema.TypeInt,
+							Optional:    true,
+							Computed:    true,
+							Description: "YB Controller RPC port. Cannot be changed after universe creation.",
 						},
 					},
 				},
@@ -1434,6 +1446,52 @@ func resourceUniverseRead(
 	return diags
 }
 
+// restrictedCommPorts lists the ports that cannot be changed after universe creation.
+// YSQL, YCQL, and YEDIS ports require dedicated universe actions to change; the YB
+// Controller port is set at creation time only.
+var restrictedCommPorts = []string{
+	"yql_server_http_port",
+	"yql_server_rpc_port",
+	"ysql_server_http_port",
+	"ysql_server_rpc_port",
+	"redis_server_http_port",
+	"redis_server_rpc_port",
+	"yb_controller_rpc_port",
+}
+
+// validateCommPortsNotRestricted returns an error if any port that cannot be changed
+// after universe creation differs between old and new state.
+func validateCommPortsNotRestricted(d *schema.ResourceData) error {
+	if !d.HasChange("communication_ports") {
+		return nil
+	}
+	oldRaw, newRaw := d.GetChange("communication_ports")
+	oldList, ok1 := oldRaw.([]interface{})
+	newList, ok2 := newRaw.([]interface{})
+	if !ok1 || !ok2 || len(oldList) == 0 || len(newList) == 0 {
+		return nil
+	}
+	oldCP, ok1 := oldList[0].(map[string]interface{})
+	newCP, ok2 := newList[0].(map[string]interface{})
+	if !ok1 || !ok2 {
+		return nil
+	}
+	var changed []string
+	for _, port := range restrictedCommPorts {
+		if oldCP[port] != newCP[port] {
+			changed = append(changed, port)
+		}
+	}
+	if len(changed) > 0 {
+		return fmt.Errorf(
+			"the following communication ports cannot be changed after universe creation: %s. "+
+				"Remove these fields from your configuration or reset them to their current values.",
+			strings.Join(changed, ", "),
+		)
+	}
+	return nil
+}
+
 func editUniverseParameters(ctx context.Context, oldUserIntent client.UserIntent,
 	newUserIntent client.UserIntent) (bool, client.UserIntent) {
 	if !reflect.DeepEqual(oldUserIntent.GetInstanceTags(), newUserIntent.GetInstanceTags()) ||
@@ -1523,6 +1581,11 @@ func resourceUniverseUpdate(
 	defer func() {
 		diags = append(resourceUniverseRead(ctx, d, meta), diags...)
 	}()
+
+	// Reject any attempt to change ports that are immutable after universe creation.
+	if err := validateCommPortsNotRestricted(d); err != nil {
+		return diag.FromErr(err)
+	}
 
 	// Read node_restart_settings once with explicit fallbacks. When the block is absent,
 	// d.Get returns zero values ("" / 0) rather than the schema defaults, so we apply the
@@ -1994,12 +2057,18 @@ func resourceUniverseUpdate(
 					newUserIntent,
 				)
 				if editAllowed || editZoneAllowed {
+					effectiveCommPorts := updateUni.UniverseDetails.CommunicationPorts
+					if d.HasChange("communication_ports") {
+						effectiveCommPorts = buildCommunicationPorts(
+							utils.MapFromSingletonList(
+								d.Get("communication_ports").([]interface{})))
+					}
 					req := client.UniverseConfigureTaskParams{
 						UniverseUUID: utils.GetStringPointer(d.Id()),
 						Clusters:     updateUni.UniverseDetails.Clusters,
 						NodeDetailsSet: buildNodeDetailsRespArrayToNodeDetailsArray(
 							updateUni.UniverseDetails.NodeDetailsSet),
-						CommunicationPorts: updateUni.UniverseDetails.CommunicationPorts,
+						CommunicationPorts: effectiveCommPorts,
 					}
 					if diags := utils.DispatchAndWait(ctx, "Update Primary Cluster", cUUID, c,
 						d.Timeout(schema.TimeoutUpdate),
@@ -2047,17 +2116,23 @@ func resourceUniverseUpdate(
 						" User Intent, ignoring")
 				}
 
-				// Num of nodes, Instance Type, Num of Volumes, Volume Size User Tags changes
+				// Num of nodes, Instance Type, Num of Volumes, Volume Size, User Tags changes
 				var editAllowed bool
 				editAllowed, updateUni.UniverseDetails.Clusters[i].UserIntent = editUniverseParameters(
 					ctx, oldUserIntent, newUserIntent)
 				if editAllowed {
+					effectiveCommPorts := updateUni.UniverseDetails.CommunicationPorts
+					if d.HasChange("communication_ports") {
+						effectiveCommPorts = buildCommunicationPorts(
+							utils.MapFromSingletonList(
+								d.Get("communication_ports").([]interface{})))
+					}
 					req := client.UniverseConfigureTaskParams{
 						UniverseUUID: utils.GetStringPointer(d.Id()),
 						Clusters:     updateUni.UniverseDetails.Clusters,
 						NodeDetailsSet: buildNodeDetailsRespArrayToNodeDetailsArray(
 							updateUni.UniverseDetails.NodeDetailsSet),
-						CommunicationPorts: updateUni.UniverseDetails.CommunicationPorts,
+						CommunicationPorts: effectiveCommPorts,
 					}
 					if diags := utils.DispatchAndWait(ctx, "Update Read Replica Cluster", cUUID, c,
 						d.Timeout(schema.TimeoutUpdate),
@@ -2094,6 +2169,42 @@ func resourceUniverseUpdate(
 			); diagErr != nil {
 				return diagErr
 			}
+		}
+	}
+
+	// Handle editable communication port changes that occurred without any cluster changes.
+	// When clusters also changed, ports are already bundled in the UpdatePrimaryCluster call
+	// above. This path covers the case where ONLY ports changed.
+	if d.HasChange("communication_ports") && !d.HasChange("clusters") {
+		fetchedUni, response, err := c.UniverseManagementAPI.GetUniverse(ctx, cUUID, d.Id()).
+			Execute()
+		if err != nil {
+			errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
+				"Universe", "Update - Fetch universe for port update")
+			return diag.FromErr(errMessage)
+		}
+		newCommPorts := buildCommunicationPorts(
+			utils.MapFromSingletonList(d.Get("communication_ports").([]interface{})))
+		req := client.UniverseConfigureTaskParams{
+			UniverseUUID: utils.GetStringPointer(d.Id()),
+			Clusters:     fetchedUni.UniverseDetails.Clusters,
+			NodeDetailsSet: buildNodeDetailsRespArrayToNodeDetailsArray(
+				fetchedUni.UniverseDetails.NodeDetailsSet),
+			CommunicationPorts: newCommPorts,
+		}
+		if diags := utils.DispatchAndWait(ctx, "Update Communication Ports", cUUID, c,
+			d.Timeout(schema.TimeoutUpdate),
+			utils.ResourceEntity, "Universe", "Update - Communication Ports",
+			func() (string, *http.Response, error) {
+				r, resp, err := c.UniverseClusterMutationsAPI.UpdatePrimaryCluster(
+					ctx, cUUID, d.Id()).UniverseConfigureTaskParams(req).Execute()
+				if err != nil {
+					return "", resp, err
+				}
+				return r.GetTaskUUID(), resp, nil
+			},
+		); diags != nil {
+			return diags
 		}
 	}
 

@@ -37,6 +37,7 @@ func flattenCommunicationPorts(cp *client.CommunicationPorts) []interface{} {
 		"yql_server_rpc_port":    cp.YqlServerRpcPort,
 		"ysql_server_http_port":  cp.YsqlServerHttpPort,
 		"ysql_server_rpc_port":   cp.YsqlServerRpcPort,
+		"yb_controller_rpc_port": cp.YbControllerrRpcPort,
 	}
 	return utils.CreateSingletonList(v)
 }

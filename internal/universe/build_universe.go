@@ -69,7 +69,7 @@ func buildCommunicationPorts(cp map[string]interface{}) *client.CommunicationPor
 	if len(cp) == 0 {
 		return &client.CommunicationPorts{}
 	}
-	return &client.CommunicationPorts{
+	ports := &client.CommunicationPorts{
 		MasterHttpPort:      utils.GetInt32Pointer(int32(cp["master_http_port"].(int))),
 		MasterRpcPort:       utils.GetInt32Pointer(int32(cp["master_rpc_port"].(int))),
 		NodeExporterPort:    utils.GetInt32Pointer(int32(cp["node_exporter_port"].(int))),
@@ -82,6 +82,10 @@ func buildCommunicationPorts(cp map[string]interface{}) *client.CommunicationPor
 		YsqlServerHttpPort:  utils.GetInt32Pointer(int32(cp["ysql_server_http_port"].(int))),
 		YsqlServerRpcPort:   utils.GetInt32Pointer(int32(cp["ysql_server_rpc_port"].(int))),
 	}
+	if v, ok := cp["yb_controller_rpc_port"].(int); ok && v != 0 {
+		ports.YbControllerrRpcPort = utils.GetInt32Pointer(int32(v))
+	}
+	return ports
 }
 
 func buildClusters(clusters []interface{}) (res []client.Cluster) {
