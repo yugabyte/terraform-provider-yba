@@ -1002,6 +1002,37 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 			},
 		),
 
+		// The YBA server only blocks PRIMARY RF changes (unless the enableRFChange
+		// runtime flag is on). Read replica (ASYNC) RF changes are supported and
+		// are handled by UpdateReadOnlyCluster. Block PRIMARY-only here.
+		// Remove this block when PRIMARY RF change is supported by this provider.
+		customdiff.ValidateChange("clusters",
+			func(ctx context.Context, old, new, m interface{}) error {
+				if len(old.([]interface{})) == 0 {
+					return nil
+				}
+				oldClusters := buildClusters(old.([]interface{}))
+				newClusters := buildClusters(new.([]interface{}))
+				for i, oldCl := range oldClusters {
+					if i >= len(newClusters) {
+						continue
+					}
+					newCl := newClusters[i]
+					if oldCl.ClusterType != "PRIMARY" {
+						continue
+					}
+					if oldCl.UserIntent.GetReplicationFactor() !=
+						newCl.UserIntent.GetReplicationFactor() {
+						return errors.New(
+							"replication_factor cannot be changed on the PRIMARY cluster " +
+								"after universe creation: in-place RF change is not " +
+								"supported by this provider version")
+					}
+				}
+				return nil
+			},
+		),
+
 		// YBA EncryptionAtRest API: enable_volume_encryption.
 		// Remove this block when EncryptionAtRest toggle is implemented.
 		customdiff.ValidateChange("clusters",
@@ -1198,6 +1229,7 @@ func editUniverseParameters(ctx context.Context, oldUserIntent client.UserIntent
 	if !reflect.DeepEqual(oldUserIntent.GetInstanceTags(), newUserIntent.GetInstanceTags()) ||
 		!reflect.DeepEqual(oldUserIntent.GetRegionList(), newUserIntent.GetRegionList()) ||
 		oldUserIntent.GetNumNodes() != newUserIntent.GetNumNodes() ||
+		oldUserIntent.GetReplicationFactor() != newUserIntent.GetReplicationFactor() ||
 		oldUserIntent.GetInstanceType() != newUserIntent.GetInstanceType() ||
 		oldUserIntent.DeviceInfo.GetNumVolumes() != newUserIntent.DeviceInfo.GetNumVolumes() ||
 		oldUserIntent.DeviceInfo.GetVolumeSize() != newUserIntent.DeviceInfo.GetVolumeSize() {
