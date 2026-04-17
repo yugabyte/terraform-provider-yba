@@ -115,7 +115,9 @@ func ResourceUniverse() *schema.Resource {
 				},
 				Description: "The UUID of the clientRootCA to be used to generate client" +
 					" certificates and facilitate TLS communication between server and client." +
-					" When not set, YBA creates and assigns a root CA automatically.",
+					" When set to a different value than root_ca, separate certificates are used" +
+					" for node-to-node and client-to-node TLS. When not set, root_ca is reused" +
+					" for client-to-node TLS.",
 			},
 			"arch": {
 				Type:     schema.TypeString,
@@ -1089,6 +1091,214 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 						"client_root_ca cannot be changed after universe creation: " +
 							"cert rotation update support is not yet implemented in " +
 							"this provider version")
+				}
+				return nil
+			},
+		),
+
+		// provider UUID is immutable after universe creation; no migration API exists.
+		// Remove this block when provider migration is supported.
+		customdiff.ValidateChange("clusters",
+			func(ctx context.Context, old, new, m interface{}) error {
+				if len(old.([]interface{})) == 0 {
+					return nil
+				}
+				oldClusters := buildClusters(old.([]interface{}))
+				newClusters := buildClusters(new.([]interface{}))
+				for i, oldCl := range oldClusters {
+					if i >= len(newClusters) {
+						continue
+					}
+					newCl := newClusters[i]
+					if oldCl.UserIntent.GetProvider() != newCl.UserIntent.GetProvider() {
+						return errors.New(
+							"provider cannot be changed after universe creation: " +
+								"provider migration is not supported by this provider version")
+					}
+				}
+				return nil
+			},
+		),
+
+		// assign_public_ip is a create-time networking setting with no update API.
+		// Remove this block when assign_public_ip update is implemented.
+		customdiff.ValidateChange("clusters",
+			func(ctx context.Context, old, new, m interface{}) error {
+				if len(old.([]interface{})) == 0 {
+					return nil
+				}
+				oldClusters := buildClusters(old.([]interface{}))
+				newClusters := buildClusters(new.([]interface{}))
+				for i, oldCl := range oldClusters {
+					if i >= len(newClusters) {
+						continue
+					}
+					newCl := newClusters[i]
+					if oldCl.UserIntent.GetAssignPublicIP() != newCl.UserIntent.GetAssignPublicIP() {
+						return errors.New(
+							"assign_public_ip cannot be changed after universe creation: " +
+								"update support is not yet implemented in this provider version")
+					}
+				}
+				return nil
+			},
+		),
+
+		// assign_static_ip is a create-time networking setting with no update API.
+		// Remove this block when assign_static_ip update is implemented.
+		customdiff.ValidateChange("clusters",
+			func(ctx context.Context, old, new, m interface{}) error {
+				if len(old.([]interface{})) == 0 {
+					return nil
+				}
+				oldClusters := buildClusters(old.([]interface{}))
+				newClusters := buildClusters(new.([]interface{}))
+				for i, oldCl := range oldClusters {
+					if i >= len(newClusters) {
+						continue
+					}
+					newCl := newClusters[i]
+					if oldCl.UserIntent.GetAssignStaticPublicIP() !=
+						newCl.UserIntent.GetAssignStaticPublicIP() {
+						return errors.New(
+							"assign_static_ip cannot be changed after universe creation: " +
+								"update support is not yet implemented in this provider version")
+					}
+				}
+				return nil
+			},
+		),
+
+		// enable_ipv6 is a create-time networking setting; the YBA server rejects
+		// IPv6 changes on VM universes.
+		// Remove this block when enable_ipv6 update is implemented.
+		customdiff.ValidateChange("clusters",
+			func(ctx context.Context, old, new, m interface{}) error {
+				if len(old.([]interface{})) == 0 {
+					return nil
+				}
+				oldClusters := buildClusters(old.([]interface{}))
+				newClusters := buildClusters(new.([]interface{}))
+				for i, oldCl := range oldClusters {
+					if i >= len(newClusters) {
+						continue
+					}
+					newCl := newClusters[i]
+					if oldCl.UserIntent.GetEnableIPV6() != newCl.UserIntent.GetEnableIPV6() {
+						return errors.New(
+							"enable_ipv6 cannot be changed after universe creation: " +
+								"update support is not yet implemented in this provider version")
+					}
+				}
+				return nil
+			},
+		),
+
+		// use_host_name is deprecated in the YBA server and has no update API.
+		// Remove this block when use_host_name update is implemented.
+		customdiff.ValidateChange("clusters",
+			func(ctx context.Context, old, new, m interface{}) error {
+				if len(old.([]interface{})) == 0 {
+					return nil
+				}
+				oldClusters := buildClusters(old.([]interface{}))
+				newClusters := buildClusters(new.([]interface{}))
+				for i, oldCl := range oldClusters {
+					if i >= len(newClusters) {
+						continue
+					}
+					newCl := newClusters[i]
+					if oldCl.UserIntent.GetUseHostname() != newCl.UserIntent.GetUseHostname() {
+						return errors.New(
+							"use_host_name cannot be changed after universe creation: " +
+								"this field is deprecated in the YBA server and has no " +
+								"update path in this provider version")
+					}
+				}
+				return nil
+			},
+		),
+
+		// use_time_sync is a create-time node setting with no update API.
+		// Remove this block when use_time_sync update is implemented.
+		customdiff.ValidateChange("clusters",
+			func(ctx context.Context, old, new, m interface{}) error {
+				if len(old.([]interface{})) == 0 {
+					return nil
+				}
+				oldClusters := buildClusters(old.([]interface{}))
+				newClusters := buildClusters(new.([]interface{}))
+				for i, oldCl := range oldClusters {
+					if i >= len(newClusters) {
+						continue
+					}
+					newCl := newClusters[i]
+					if oldCl.UserIntent.GetUseTimeSync() != newCl.UserIntent.GetUseTimeSync() {
+						return errors.New(
+							"use_time_sync cannot be changed after universe creation: " +
+								"update support is not yet implemented in this provider version")
+					}
+				}
+				return nil
+			},
+		),
+
+		// aws_arn_string changes require a full node replacement in AWS.
+		// Remove this block when aws_arn_string update (or force-replace) is implemented.
+		customdiff.ValidateChange("clusters",
+			func(ctx context.Context, old, new, m interface{}) error {
+				if len(old.([]interface{})) == 0 {
+					return nil
+				}
+				oldClusters := buildClusters(old.([]interface{}))
+				newClusters := buildClusters(new.([]interface{}))
+				for i, oldCl := range oldClusters {
+					if i >= len(newClusters) {
+						continue
+					}
+					newCl := newClusters[i]
+					if oldCl.UserIntent.GetAwsArnString() != newCl.UserIntent.GetAwsArnString() {
+						return errors.New(
+							"aws_arn_string cannot be changed after universe creation: " +
+								"update support is not yet implemented in this provider version")
+					}
+				}
+				return nil
+			},
+		),
+
+		// YBA ConfigureYSQL/ConfigureYCQL APIs: ysql_password, ycql_password.
+		// The provider does not call those APIs, so a password change in config
+		// would be written to state without affecting the live universe.
+		// Remove this block when password-change update is implemented.
+		customdiff.ValidateChange("clusters",
+			func(ctx context.Context, old, new, m interface{}) error {
+				if len(old.([]interface{})) == 0 {
+					return nil
+				}
+				oldClusters := buildClusters(old.([]interface{}))
+				newClusters := buildClusters(new.([]interface{}))
+				for i, oldCl := range oldClusters {
+					if i >= len(newClusters) {
+						continue
+					}
+					newCl := newClusters[i]
+					oldYSQL := oldCl.UserIntent.GetYsqlPassword()
+					newYSQL := newCl.UserIntent.GetYsqlPassword()
+					if oldYSQL != "" && newYSQL != oldYSQL {
+						return errors.New(
+							"ysql_password cannot be changed after universe creation: " +
+								"password update support is not yet implemented in " +
+								"this provider version")
+					}
+					oldYCQL := oldCl.UserIntent.GetYcqlPassword()
+					newYCQL := newCl.UserIntent.GetYcqlPassword()
+					if oldYCQL != "" && newYCQL != oldYCQL {
+						return errors.New(
+							"ycql_password cannot be changed after universe creation: " +
+								"password update support is not yet implemented in " +
+								"this provider version")
+					}
 				}
 				return nil
 			},

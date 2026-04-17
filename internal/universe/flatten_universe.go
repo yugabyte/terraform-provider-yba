@@ -185,7 +185,6 @@ func flattenUserIntent(ui client.UserIntent) []interface{} {
 	v := map[string]interface{}{
 		"assign_static_ip":              ui.AssignStaticPublicIP,
 		"aws_arn_string":                ui.AwsArnString,
-		"enable_exposing_service":       ui.EnableExposingService,
 		"enable_ipv6":                   ui.EnableIPV6,
 		"enable_ycql":                   ui.EnableYCQL,
 		"enable_ycql_auth":              ui.EnableYCQLAuth,

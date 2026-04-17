@@ -67,7 +67,7 @@ The following operations are supported in the Edit universe workflow:
 ### Optional
 
 - `arch` (String) The architecture of the universe nodes. Allowed values are x86_64 and aarch64.
-- `client_root_ca` (String) The UUID of the clientRootCA to be used to generate client certificates and facilitate TLS communication between server and client. When not set, YBA creates and assigns a root CA automatically.
+- `client_root_ca` (String) The UUID of the clientRootCA to be used to generate client certificates and facilitate TLS communication between server and client. When set to a different value than root_ca, separate certificates are used for node-to-node and client-to-node TLS. When not set, root_ca is reused for client-to-node TLS.
 - `communication_ports` (Block List, Max: 1) Communication ports. (see [below for nested schema](#nestedblock--communication_ports))
 - `db_version_upgrade_options` (Block List, Max: 1) Options controlling the DB version upgrade path (UpgradeDBVersion). By default finalize = false pauses the upgrade in PreFinalize state for a monitoring phase; flip to true and re-apply to commit, or set rollback = true to revert to the previous DB version. (see [below for nested schema](#nestedblock--db_version_upgrade_options))
 - `delete_options` (Block List, Max: 1) (see [below for nested schema](#nestedblock--delete_options))
@@ -118,7 +118,6 @@ Optional:
 - `assign_static_ip` (Boolean) Flag indicating whether a static IP should be assigned.
 - `aws_arn_string` (String) IP ARN String.
 - `enable_client_to_node_encrypt` (Boolean) Enable Encryption in Transit - Client to Node encryption. True by default.
-- `enable_exposing_service` (String) Flag to use if we need to deploy a loadbalancer/some kind of exposing service for the cluster.
 - `enable_ipv6` (Boolean) Enable IPv6.
 - `enable_node_to_node_encrypt` (Boolean) Enable Encryption in Transit - Node to Node encryption. True by default.
 - `enable_volume_encryption` (Boolean) Enable Encryption At Rest. False by default.
@@ -154,7 +153,7 @@ Optional:
 
 - `disk_iops` (Number) Disk IOPS.
 - `mount_points` (String) Disk mount points. Required for on-prem cluster nodes. Not allowed for any other provider type.
-- `storage_type` (String) Storage type of volume. AWS: IO1, IO2, GP2, GP3. GCP: Scratch, Persistent, Hyperdisk_Balanced, Hyperdisk_Extreme. Azure: StandardSSD_LRS, Premium_LRS, PremiumV2_LRS, UltraSSD_LRS. Not applicable for on-prem or Kubernetes providers.
+- `storage_type` (String) Storage type of volume. AWS: IO1, IO2, GP2, GP3. GCP: Scratch, Persistent, Hyperdisk_Balanced, Hyperdisk_Extreme. Azure: StandardSSD_LRS, Premium_LRS, PremiumV2_LRS, UltraSSD_LRS. Not applicable for on-prem providers.
 - `throughput` (Number) Disk throughput in MB/s. Required for storage types that support throughput provisioning: GP3, UltraSSD_LRS, PremiumV2_LRS, Hyperdisk_Balanced.
 
 

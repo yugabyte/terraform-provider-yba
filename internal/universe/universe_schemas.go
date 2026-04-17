@@ -125,13 +125,6 @@ func userIntentSchema() *schema.Resource {
 				Default:     "",
 				Description: "IP ARN String.",
 			},
-			"enable_exposing_service": {
-				Type:     schema.TypeString,
-				Optional: true,
-				Computed: true,
-				Description: "Flag to use if we need to deploy a loadbalancer/some kind of " +
-					"exposing service for the cluster.",
-			},
 			"enable_ipv6": {
 				Type:        schema.TypeBool,
 				Optional:    true,
@@ -300,7 +293,7 @@ func userIntentSchema() *schema.Resource {
 							Description: "Storage type of volume. AWS: IO1, IO2, GP2, GP3. " +
 								"GCP: Scratch, Persistent, Hyperdisk_Balanced, Hyperdisk_Extreme. " +
 								"Azure: StandardSSD_LRS, Premium_LRS, PremiumV2_LRS, UltraSSD_LRS. " +
-								"Not applicable for on-prem or Kubernetes providers.",
+								"Not applicable for on-prem providers.",
 						},
 					},
 				},

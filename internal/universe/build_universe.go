@@ -24,11 +24,23 @@ import (
 func buildUniverse(d *schema.ResourceData) client.UniverseConfigureTaskParams {
 	clusters := buildClusters(d.Get("clusters").([]interface{}))
 	enableYbc := true
+	rootCA := d.Get("root_ca").(string)
+	clientRootCA := d.Get("client_root_ca").(string)
+	// rootAndClientRootCASame defaults to true on the YBA server side.  The server's
+	// getClientRootCA() getter returns rootCA (ignoring the clientRootCA field) whenever
+	// rootAndClientRootCASame is true, so a user-supplied client_root_ca that differs from
+	// root_ca would be silently discarded.  Explicitly set the flag to false when the two
+	// UUIDs differ so the server honours the caller-specified clientRootCA.
+	var rootAndClientRootCASame *bool
+	if rootCA != "" && clientRootCA != "" && clientRootCA != rootCA {
+		rootAndClientRootCASame = utils.GetBoolPointer(false)
+	}
 	return client.UniverseConfigureTaskParams{
-		RootCA:       utils.GetStringPointer(d.Get("root_ca").(string)),
-		ClientRootCA: utils.GetStringPointer(d.Get("client_root_ca").(string)),
-		Arch:         utils.GetStringPointer(d.Get("arch").(string)),
-		Clusters:     clusters,
+		RootCA:                  utils.GetStringPointer(rootCA),
+		ClientRootCA:            utils.GetStringPointer(clientRootCA),
+		RootAndClientRootCASame: rootAndClientRootCASame,
+		Arch:                    utils.GetStringPointer(d.Get("arch").(string)),
+		Clusters:                clusters,
 		CommunicationPorts: buildCommunicationPorts(
 			utils.MapFromSingletonList(d.Get("communication_ports").([]interface{}))),
 		EnableYbc: utils.GetBoolPointer(enableYbc),
@@ -36,10 +48,18 @@ func buildUniverse(d *schema.ResourceData) client.UniverseConfigureTaskParams {
 }
 
 func buildUniverseDefinitionTaskParams(d *schema.ResourceData) client.UniverseDefinitionTaskParams {
+	rootCA := d.Get("root_ca").(string)
+	clientRootCA := d.Get("client_root_ca").(string)
+	// See comment in buildUniverse for the rationale behind this flag.
+	var rootAndClientRootCASame *bool
+	if rootCA != "" && clientRootCA != "" && clientRootCA != rootCA {
+		rootAndClientRootCASame = utils.GetBoolPointer(false)
+	}
 	return client.UniverseDefinitionTaskParams{
-		RootCA:       utils.GetStringPointer(d.Get("root_ca").(string)),
-		ClientRootCA: utils.GetStringPointer(d.Get("client_root_ca").(string)),
-		Clusters:     buildClusters(d.Get("clusters").([]interface{})),
+		RootCA:                  utils.GetStringPointer(rootCA),
+		ClientRootCA:            utils.GetStringPointer(clientRootCA),
+		RootAndClientRootCASame: rootAndClientRootCASame,
+		Clusters:                buildClusters(d.Get("clusters").([]interface{})),
 		CommunicationPorts: buildCommunicationPorts(
 			utils.MapFromSingletonList(d.Get("communication_ports").([]interface{}))),
 	}
@@ -136,27 +156,26 @@ func buildAzList(clI interface{}) []client.PlacementAZ {
 
 func buildUserIntent(ui map[string]interface{}) client.UserIntent {
 	return client.UserIntent{
-		AssignStaticPublicIP:  utils.GetBoolPointer(ui["assign_static_ip"].(bool)),
-		AwsArnString:          utils.GetStringPointer(ui["aws_arn_string"].(string)),
-		EnableExposingService: utils.GetStringPointer(ui["enable_exposing_service"].(string)),
-		EnableIPV6:            utils.GetBoolPointer(ui["enable_ipv6"].(bool)),
-		EnableYCQL:            utils.GetBoolPointer(ui["enable_ycql"].(bool)),
-		EnableYCQLAuth:        utils.GetBoolPointer(ui["enable_ycql_auth"].(bool)),
-		EnableYSQLAuth:        utils.GetBoolPointer(ui["enable_ysql_auth"].(bool)),
-		ImageBundleUUID:       utils.GetStringPointer(ui["image_bundle_uuid"].(string)),
-		InstanceTags:          utils.StringMap(ui["instance_tags"].(map[string]interface{})),
-		PreferredRegion:       utils.GetStringPointer(ui["preferred_region"].(string)),
-		UseHostname:           utils.GetBoolPointer(ui["use_host_name"].(bool)),
-		UseSystemd:            utils.GetBoolPointer(ui["use_systemd"].(bool)),
-		YsqlPassword:          utils.GetStringPointer(ui["ysql_password"].(string)),
-		YcqlPassword:          utils.GetStringPointer(ui["ycql_password"].(string)),
-		UniverseName:          utils.GetStringPointer(ui["universe_name"].(string)),
-		ProviderType:          utils.GetStringPointer(ui["provider_type"].(string)),
-		Provider:              utils.GetStringPointer(ui["provider"].(string)),
-		RegionList:            *utils.StringSlice(ui["region_list"].([]interface{})),
-		NumNodes:              utils.GetInt32Pointer(int32(ui["num_nodes"].(int))),
-		ReplicationFactor:     utils.GetInt32Pointer(int32(ui["replication_factor"].(int))),
-		InstanceType:          utils.GetStringPointer(ui["instance_type"].(string)),
+		AssignStaticPublicIP: utils.GetBoolPointer(ui["assign_static_ip"].(bool)),
+		AwsArnString:         utils.GetStringPointer(ui["aws_arn_string"].(string)),
+		EnableIPV6:           utils.GetBoolPointer(ui["enable_ipv6"].(bool)),
+		EnableYCQL:           utils.GetBoolPointer(ui["enable_ycql"].(bool)),
+		EnableYCQLAuth:       utils.GetBoolPointer(ui["enable_ycql_auth"].(bool)),
+		EnableYSQLAuth:       utils.GetBoolPointer(ui["enable_ysql_auth"].(bool)),
+		ImageBundleUUID:      utils.GetStringPointer(ui["image_bundle_uuid"].(string)),
+		InstanceTags:         utils.StringMap(ui["instance_tags"].(map[string]interface{})),
+		PreferredRegion:      utils.GetStringPointer(ui["preferred_region"].(string)),
+		UseHostname:          utils.GetBoolPointer(ui["use_host_name"].(bool)),
+		UseSystemd:           utils.GetBoolPointer(ui["use_systemd"].(bool)),
+		YsqlPassword:         utils.GetStringPointer(ui["ysql_password"].(string)),
+		YcqlPassword:         utils.GetStringPointer(ui["ycql_password"].(string)),
+		UniverseName:         utils.GetStringPointer(ui["universe_name"].(string)),
+		ProviderType:         utils.GetStringPointer(ui["provider_type"].(string)),
+		Provider:             utils.GetStringPointer(ui["provider"].(string)),
+		RegionList:           *utils.StringSlice(ui["region_list"].([]interface{})),
+		NumNodes:             utils.GetInt32Pointer(int32(ui["num_nodes"].(int))),
+		ReplicationFactor:    utils.GetInt32Pointer(int32(ui["replication_factor"].(int))),
+		InstanceType:         utils.GetStringPointer(ui["instance_type"].(string)),
 		DeviceInfo: buildDeviceInfo(
 			utils.MapFromSingletonList(ui["device_info"].([]interface{}))),
 		AssignPublicIP:            utils.GetBoolPointer(ui["assign_public_ip"].(bool)),
