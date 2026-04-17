@@ -28,6 +28,44 @@ import (
 	"github.com/yugabyte/terraform-provider-yba/internal/utils"
 )
 
+// keyspaceDetailsElem returns the schema.Resource used for keyspace_details lists.
+// When includeBackupType is true a backup_type field is added; this is only meaningful
+// for full backup entries where the table type (YQL/PGSQL/REDIS) is available.
+func keyspaceDetailsElem(includeBackupType bool) *schema.Resource {
+	s := map[string]*schema.Schema{
+		"storage_location": {
+			Type:        schema.TypeString,
+			Computed:    true,
+			Description: "Storage location for this keyspace/database backup.",
+		},
+		"keyspace": {
+			Type:        schema.TypeString,
+			Computed:    true,
+			Description: "Keyspace (YCQL) or database (YSQL) name.",
+		},
+		"backup_size_in_bytes": {
+			Type:        schema.TypeInt,
+			Computed:    true,
+			Description: "Size of this keyspace backup in bytes.",
+		},
+		"tables": {
+			Type:        schema.TypeList,
+			Computed:    true,
+			Elem:        &schema.Schema{Type: schema.TypeString},
+			Description: "List of table names backed up in this keyspace. Empty for full keyspace backups.",
+		},
+	}
+	if includeBackupType {
+		s["backup_type"] = &schema.Schema{
+			Type:     schema.TypeString,
+			Computed: true,
+			Description: "Backup type for this entry: " +
+				"YQL_TABLE_TYPE, PGSQL_TABLE_TYPE, or REDIS_TABLE_TYPE.",
+		}
+	}
+	return &schema.Resource{Schema: s}
+}
+
 // Lists fetches backup information by direct UUID lookup or by universe + date filter.
 func Lists() *schema.Resource {
 	return &schema.Resource{
@@ -115,12 +153,78 @@ func Lists() *schema.Resource {
 			"backup_type": {
 				Type:        schema.TypeString,
 				Computed:    true,
-				Description: "Type of the backup: YQL_TABLE_TYPE, PGSQL_TABLE_TYPE, or REDIS_TABLE_TYPE.",
+				Description: "Table type of the backup: YQL_TABLE_TYPE, PGSQL_TABLE_TYPE, or REDIS_TABLE_TYPE.",
 			},
 			"storage_config_uuid": {
 				Type:        schema.TypeString,
 				Computed:    true,
 				Description: "UUID of the storage configuration used for the backup.",
+			},
+			"roles_included": {
+				Type:     schema.TypeBool,
+				Computed: true,
+				Description: "Whether this backup includes YSQL roles and grants. " +
+					"When true, a restore should also restore roles and grants to preserve " +
+					"database access controls.",
+			},
+			"backup_category": {
+				Type:     schema.TypeString,
+				Computed: true,
+				Description: "Category of the backup: \"full\" for a parent backup, " +
+					"\"incremental\" for a backup within an incremental chain. " +
+					"When universe_uuid or universe_name is used this is always \"full\" because " +
+					"only parent backups are listed. " +
+					"When backup_uuid is used this may be \"incremental\" if the UUID refers to " +
+					"an incremental backup.",
+			},
+			"base_backup_uuid": {
+				Type:     schema.TypeString,
+				Computed: true,
+				Description: "UUID of the base (full) backup that this backup belongs to. " +
+					"For a full backup this equals backup_uuid. " +
+					"For an incremental backup this points to the head of the chain.",
+			},
+			"incremental_backup_chain": {
+				Type:     schema.TypeList,
+				Computed: true,
+				Description: "Ordered list of incremental backups that belong to the same chain " +
+					"as this backup. Empty when no incremental backups exist for the chain. " +
+					"Entries are ordered by create_time descending (newest incremental first).",
+				Elem: &schema.Resource{
+					Schema: map[string]*schema.Schema{
+						"backup_uuid": {
+							Type:        schema.TypeString,
+							Computed:    true,
+							Description: "UUID of this incremental backup.",
+						},
+						"state": {
+							Type:        schema.TypeString,
+							Computed:    true,
+							Description: "State of this incremental backup.",
+						},
+						"create_time": {
+							Type:        schema.TypeString,
+							Computed:    true,
+							Description: "Timestamp when this incremental backup was created (RFC3339 UTC).",
+						},
+						"storage_location": {
+							Type:     schema.TypeString,
+							Computed: true,
+							Description: "Storage location of the first keyspace in this incremental backup. " +
+								"For multi-keyspace YCQL backups use keyspace_details to access all locations.",
+						},
+						"keyspace_details": {
+							Type:     schema.TypeList,
+							Computed: true,
+							Description: "Per-keyspace/database details for this incremental backup. " +
+								"For multi-keyspace YCQL backups each entry corresponds to one keyspace " +
+								"with its own storage location. For YSQL, typically one entry per database. " +
+								"Use keyspace_details[N].storage_location when building " +
+								"backup_storage_info blocks for a restore.",
+							Elem: keyspaceDetailsElem(false),
+						},
+					},
+				},
 			},
 			"keyspace_details": {
 				Type:     schema.TypeList,
@@ -130,38 +234,7 @@ func Lists() *schema.Resource {
 					"with its own storage location. For YSQL, typically one entry per database. " +
 					"Use keyspace_details[N].storage_location and keyspace_details[N].backup_type " +
 					"when building backup_storage_info blocks for a restore.",
-				Elem: &schema.Resource{
-					Schema: map[string]*schema.Schema{
-						"storage_location": {
-							Type:        schema.TypeString,
-							Computed:    true,
-							Description: "Storage location for this keyspace/database backup.",
-						},
-						"keyspace": {
-							Type:        schema.TypeString,
-							Computed:    true,
-							Description: "Keyspace (YCQL) or database (YSQL) name.",
-						},
-						"backup_type": {
-							Type:     schema.TypeString,
-							Computed: true,
-							Description: "Backup type for this entry: " +
-								"YQL_TABLE_TYPE, PGSQL_TABLE_TYPE, or REDIS_TABLE_TYPE.",
-						},
-						"backup_size_in_bytes": {
-							Type:        schema.TypeInt,
-							Computed:    true,
-							Description: "Size of this keyspace backup in bytes.",
-						},
-						"tables": {
-							Type:     schema.TypeList,
-							Computed: true,
-							Elem:     &schema.Schema{Type: schema.TypeString},
-							Description: "List of table names backed up in this keyspace. " +
-								"Empty for full keyspace backups.",
-						},
-					},
-				},
+				Elem: keyspaceDetailsElem(true),
 			},
 		},
 	}
@@ -182,6 +255,65 @@ func dataSourceBackupsListRead(
 
 	// Universe filter mode - fetch the most recent backup matching the criteria.
 	return readLatestBackupForUniverse(ctx, d, c, cUUID)
+}
+
+// fetchAndSetIncrementalChain calls ListIncrementalBackups for the given base backup UUID,
+// then populates the incremental_backup_chain field.
+// If the API returns no incrementals, it sets an empty list.
+func fetchAndSetIncrementalChain(
+	ctx context.Context,
+	d *schema.ResourceData,
+	c *client.APIClient,
+	cUUID string,
+	baseBackupUUID string,
+) diag.Diagnostics {
+	chain, response, err := c.BackupsAPI.ListIncrementalBackups(ctx, cUUID, baseBackupUUID).
+		Execute()
+	if err != nil {
+		errMessage := utils.ErrorFromHTTPResponse(response, err, utils.DataSourceEntity,
+			"Backup", "List Incremental Backups")
+		return diag.FromErr(errMessage)
+	}
+
+	entries := make([]map[string]interface{}, 0, len(chain))
+	for _, incr := range chain {
+		// The API returns all backups sharing the base UUID, including the parent backup
+		// itself (where backup_uuid == base_backup_uuid). Exclude it here because the
+		// parent's data is already exposed at the top level of this data source.
+		if incr.GetBackupUUID() == incr.GetBaseBackupUUID() {
+			continue
+		}
+		storageLocation := ""
+		responseList := incr.GetResponseList()
+		if len(responseList) > 0 {
+			storageLocation = responseList[0].DefaultLocation
+		}
+		createTimeStr := ""
+		if incr.HasCreateTime() {
+			createTimeStr = incr.GetCreateTime().UTC().Format(time.RFC3339)
+		}
+		details := make([]map[string]interface{}, 0, len(responseList))
+		for _, entry := range responseList {
+			details = append(details, map[string]interface{}{
+				"storage_location":     entry.DefaultLocation,
+				"keyspace":             entry.Keyspace,
+				"backup_size_in_bytes": int(entry.BackupSizeInBytes),
+				"tables":               entry.TablesList,
+			})
+		}
+		entries = append(entries, map[string]interface{}{
+			"backup_uuid":      incr.GetBackupUUID(),
+			"state":            incr.GetState(),
+			"create_time":      createTimeStr,
+			"storage_location": storageLocation,
+			"keyspace_details": details,
+		})
+	}
+
+	if err := d.Set("incremental_backup_chain", entries); err != nil {
+		return diag.FromErr(err)
+	}
+	return nil
 }
 
 // readBackupByUUID fetches a specific backup by its UUID and populates state.
@@ -221,6 +353,23 @@ func readBackupByUUID(
 		}
 	}
 
+	// base_backup_uuid: present for both full (== backupUUID) and incremental backups.
+	baseBackupUUID := backup.GetBackupUUID() // default to self for full backups
+	if backup.HasBaseBackupUUID() {
+		baseBackupUUID = backup.GetBaseBackupUUID()
+	}
+	if err := d.Set("base_backup_uuid", baseBackupUUID); err != nil {
+		return diag.FromErr(err)
+	}
+
+	backupCategory := "full"
+	if baseBackupUUID != backup.GetBackupUUID() {
+		backupCategory = "incremental"
+	}
+	if err := d.Set("backup_category", backupCategory); err != nil {
+		return diag.FromErr(err)
+	}
+
 	backupInfo := backup.GetBackupInfo()
 	if err := d.Set("universe_uuid", backupInfo.GetUniverseUUID()); err != nil {
 		return diag.FromErr(err)
@@ -229,6 +378,9 @@ func readBackupByUUID(
 		return diag.FromErr(err)
 	}
 	if err := d.Set("backup_type", backupInfo.GetBackupType()); err != nil {
+		return diag.FromErr(err)
+	}
+	if err := d.Set("roles_included", backupInfo.GetUseRoles()); err != nil {
 		return diag.FromErr(err)
 	}
 
@@ -254,6 +406,11 @@ func readBackupByUUID(
 		if err := d.Set("keyspace_details", details); err != nil {
 			return diag.FromErr(err)
 		}
+	}
+
+	// Fetch the incremental backup chain using the base backup UUID.
+	if chainDiags := fetchAndSetIncrementalChain(ctx, d, c, cUUID, baseBackupUUID); chainDiags != nil {
+		diags = append(diags, chainDiags...)
 	}
 
 	d.SetId(backupUUID)
@@ -348,6 +505,27 @@ func readLatestBackupForUniverse(
 	if err := d.Set("universe_uuid", b.UniverseUUID); err != nil {
 		return diag.FromErr(err)
 	}
+	if err := d.Set("roles_included", b.GetUseRoles()); err != nil {
+		return diag.FromErr(err)
+	}
+
+	// base_backup_uuid: for a full backup this equals backup_uuid; for an incremental
+	// backup it points to the head of the chain.
+	baseBackupUUID := info.GetBaseBackupUUID()
+	if baseBackupUUID == "" {
+		baseBackupUUID = info.BackupUUID
+	}
+	if err := d.Set("base_backup_uuid", baseBackupUUID); err != nil {
+		return diag.FromErr(err)
+	}
+
+	backupCategory := "full"
+	if baseBackupUUID != info.BackupUUID {
+		backupCategory = "incremental"
+	}
+	if err := d.Set("backup_category", backupCategory); err != nil {
+		return diag.FromErr(err)
+	}
 
 	responseList := info.ResponseList
 	if len(responseList) > 0 {
@@ -369,6 +547,13 @@ func readLatestBackupForUniverse(
 		if err := d.Set("keyspace_details", details); err != nil {
 			return diag.FromErr(err)
 		}
+	}
+
+	// Fetch the incremental backup chain. For a full backup, ListIncrementalBackups is
+	// called with the full backup UUID itself; for an incremental backup, we use its
+	// base_backup_uuid so the entire chain is returned.
+	if chainDiags := fetchAndSetIncrementalChain(ctx, d, c, cUUID, baseBackupUUID); chainDiags != nil {
+		diags = append(diags, chainDiags...)
 	}
 
 	d.SetId(info.BackupUUID)
