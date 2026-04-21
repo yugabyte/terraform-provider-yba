@@ -150,13 +150,6 @@ func ResourceBackupSchedule() *schema.Resource {
 					"string duration in the standard format <https://pkg.go.dev/time#Duration>. " +
 					"Backups are kept indefinitely if not set.",
 			},
-			"sse": {
-				Type:        schema.TypeBool,
-				Optional:    true,
-				ForceNew:    true,
-				Default:     false,
-				Description: descSSE,
-			},
 			"transactional_backup": {
 				Type:          schema.TypeBool,
 				Optional:      true,
@@ -245,10 +238,12 @@ func ResourceBackupSchedule() *schema.Resource {
 				Type:     schema.TypeInt,
 				Optional: true,
 				ForceNew: true,
-				Description: "Minimum number of backups to retain for this schedule. " +
-					"Must be >= 1 when specified. Omit or set to 0 for no minimum. " +
-					"Note: this value is not returned by the API and cannot be recovered " +
-					"during import; omit it or set it to 0 when importing an existing schedule.",
+				Default:  3,
+				Description: "Minimum number of backups to retain for this schedule, " +
+					"regardless of their expiry time. Set to 0 to allow all expired " +
+					"backups to be deleted. " +
+					"When importing an existing schedule, set this field explicitly " +
+					"if it was configured with a non-default value.",
 			},
 			"table_by_table_backup": {
 				Type:          schema.TypeBool,
@@ -268,9 +263,12 @@ func ResourceBackupSchedule() *schema.Resource {
 				Type:     schema.TypeBool,
 				Optional: true,
 				ForceNew: true,
-				Default:  false,
-				Description: "Use local timezone for cron expression, otherwise use UTC. " +
-					"Defaults to false (UTC).",
+				Default:  true,
+				Description: "Interpret the cron expression using the YBA server's local JVM " +
+					"timezone (true) or UTC (false). " +
+					"Note: this uses the SERVER timezone, not the Terraform client timezone. " +
+					"If the YBA server is deployed in UTC (common for containerized " +
+					"deployments), both values produce the same schedule.",
 			},
 			"enabled": {
 				Type:        schema.TypeBool,
@@ -282,10 +280,11 @@ func ResourceBackupSchedule() *schema.Resource {
 				Type:     schema.TypeBool,
 				Optional: true,
 				Default:  false,
-				Description: "Only applies when re-enabling a previously stopped or paused " +
-					"schedule (i.e. transitioning enabled from false to true). " +
-					"When true, a backup runs immediately instead of waiting for the next " +
-					"scheduled time. Has no effect when creating a new schedule.",
+				Description: "Only applies when enabled transitions from false to true. " +
+					"When true, a full backup runs immediately on resume (if the next " +
+					"scheduled run time has already passed) and then the schedule continues " +
+					"as normal. When false, or when the next run time has not yet passed, " +
+					"the backup runs at its normally scheduled time.",
 			},
 			"status": {
 				Type:        schema.TypeString,
@@ -383,11 +382,10 @@ func resourceBackupDiff() schema.CustomizeDiffFunc {
 				}
 				return nil
 			}),
-		// Validate min_num_backups_to_retain is non-negative (0 = not set, allows imports).
 		customdiff.ValidateValue("min_num_backups_to_retain", func(ctx context.Context, value,
 			meta interface{}) error {
 			if value.(int) < 0 {
-				return errors.New("min_num_backups_to_retain must be non-negative (0 = not set)")
+				return errors.New("min_num_backups_to_retain must be >= 0")
 			}
 			return nil
 		}),
@@ -483,12 +481,22 @@ func resourceBackupsCreate(
 		}
 	}
 
+	// Derive sse from the storage config type, matching UI behaviour:
+	// S3 configs use server-side encryption; all other types do not.
+	storageConfigUUID := d.Get("storage_config_uuid").(string)
+	sse, sseErr := storageConfigIsS3(ctx, c, cUUID, storageConfigUUID)
+	if sseErr != nil {
+		return diag.FromErr(
+			fmt.Errorf("could not determine storage config type for sse: %w", sseErr),
+		)
+	}
+
 	req := client.BackupRequestParams{
-		StorageConfigUUID: d.Get("storage_config_uuid").(string),
+		StorageConfigUUID: storageConfigUUID,
 		CustomerUUID:      &cUUID,
 		TimeBeforeDelete:  utils.GetInt64Pointer(timeBeforeDelete),
 		ExpiryTimeUnit:    utils.GetStringPointer(timeBeforeDeleteUnit),
-		Sse:               utils.GetBoolPointer(d.Get("sse").(bool)),
+		Sse:               utils.GetBoolPointer(sse),
 		BackupType:        utils.GetStringPointer(d.Get("backup_type").(string)),
 		CronExpression: utils.GetStringPointer(
 			d.Get("cron_expression").(string),
@@ -517,9 +525,9 @@ func resourceBackupsCreate(
 	if v := d.Get("parallelism").(int); v > 0 {
 		req.Parallelism = utils.GetInt32Pointer(int32(v))
 	}
-	if v := d.Get("min_num_backups_to_retain").(int); v > 0 {
-		req.MinNumBackupsToRetain = utils.GetInt32Pointer(int32(v))
-	}
+	req.MinNumBackupsToRetain = utils.GetInt32Pointer(
+		int32(d.Get("min_num_backups_to_retain").(int)),
+	)
 	if v := d.Get("parallel_db_backups").(int); v > 0 {
 		req.ParallelDBBackups = utils.GetInt32Pointer(int32(v))
 	}
@@ -725,10 +733,24 @@ func resourceBackupsRead(
 			}
 		}
 	}
-	// min_num_backups_to_retain is not returned by the API. To avoid triggering a
-	// ForceNew replacement on every refresh, do not overwrite the state value here.
-	// After an import the field will be 0 (unknown); users should omit this field
-	// from their configuration or set it to 0 when importing an existing schedule.
+	// min_num_backups_to_retain, kms_config_uuid, and parallel_db_backups are not
+	// returned by the schedule read API. Re-write each field with its current state
+	// value (which on a fresh import evaluates to the schema Default) so the field is
+	// never null in state. This prevents a spurious ForceNew diff after
+	// "terraform import" when the user's config omits the field or leaves it at its
+	// default. If a schedule was originally created with a non-default value for one
+	// of these fields and is then imported, the user must set that value explicitly in
+	// their config -- this is unavoidable because the API does not expose these fields
+	// on the schedule read endpoint.
+	if err = d.Set("min_num_backups_to_retain", d.Get("min_num_backups_to_retain").(int)); err != nil {
+		return diag.FromErr(err)
+	}
+	if err = d.Set("kms_config_uuid", d.Get("kms_config_uuid").(string)); err != nil {
+		return diag.FromErr(err)
+	}
+	if err = d.Set("parallel_db_backups", d.Get("parallel_db_backups").(int)); err != nil {
+		return diag.FromErr(err)
+	}
 
 	// Set time_before_delete if present (convert ms to duration string)
 	if b.BackupInfo.TimeBeforeDelete > 0 {
@@ -989,4 +1011,26 @@ func resourceBackupsDelete(
 
 	d.SetId("")
 	return nil
+}
+
+// storageConfigIsS3 returns true when the given storage config UUID refers to an S3
+// configuration. The YBA API does not embed the config type in the schedule response,
+// so we look it up from the customer config list before creating a schedule. This
+// mirrors the UI behaviour: sse = (storageConfig.name === "S3").
+func storageConfigIsS3(
+	ctx context.Context,
+	c *client.APIClient,
+	cUUID string,
+	storageConfigUUID string,
+) (bool, error) {
+	configs, _, err := c.CustomerConfigurationAPI.GetListOfCustomerConfig(ctx, cUUID).Execute()
+	if err != nil {
+		return false, fmt.Errorf("failed to list customer configs: %w", err)
+	}
+	for _, cfg := range configs {
+		if cfg.GetConfigUUID() == storageConfigUUID {
+			return cfg.GetName() == "S3", nil
+		}
+	}
+	return false, fmt.Errorf("storage config %s not found", storageConfigUUID)
 }

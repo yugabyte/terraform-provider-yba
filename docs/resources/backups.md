@@ -59,17 +59,16 @@ terraform state mv yba_backups.example yba_backup_schedule.example
 - `incremental_backup_frequency` (String) Frequency to take incremental backups. Accepts string duration in the standard format <https://pkg.go.dev/time#Duration>.
 - `keyspaces` (List of String) List of keyspaces (YCQL) or databases (YSQL) to back up on each run. If empty or not specified, a full universe backup is taken. For YSQL each entry is a database name; for YCQL each entry is a keyspace name.
 - `kms_config_uuid` (String) KMS configuration UUID for encrypted backups.
-- `min_num_backups_to_retain` (Number) Minimum number of backups to retain for this schedule. Must be >= 1 when specified. Omit or set to 0 for no minimum. Note: this value is not returned by the API and cannot be recovered during import; omit it or set it to 0 when importing an existing schedule.
+- `min_num_backups_to_retain` (Number) Minimum number of backups to retain for this schedule, regardless of their expiry time. Set to 0 to allow all expired backups to be deleted. When importing an existing schedule, set this field explicitly if it was configured with a non-default value.
 - `parallel_db_backups` (Number) Number of parallel DB backups.
 - `parallelism` (Number) Number of concurrent commands to run on nodes over SSH. When not specified, the server default is used and no diff is planned.
-- `run_backup_on_enable` (Boolean) Only applies when re-enabling a previously stopped or paused schedule (i.e. transitioning enabled from false to true). When true, a backup runs immediately instead of waiting for the next scheduled time. Has no effect when creating a new schedule.
-- `sse` (Boolean) Enable server-side encryption for backups. Defaults to false.
+- `run_backup_on_enable` (Boolean) Only applies when enabled transitions from false to true. When true, a full backup runs immediately on resume (if the next scheduled run time has already passed) and then the schedule continues as normal. When false, or when the next run time has not yet passed, the backup runs at its normally scheduled time.
 - `table_by_table_backup` (Boolean) Take table-by-table backups. Conflicts with transactional_backup.
 - `table_uuid_list` (List of String) List of specific table UUIDs to back up. Allowed for YQL_TABLE_TYPE (YCQL) and REDIS_TABLE_TYPE; requires exactly one keyspace in 'keyspaces'.
 - `time_before_delete` (String) Time before deleting the backup from storage. Accepts string duration in the standard format <https://pkg.go.dev/time#Duration>. Backups are kept indefinitely if not set.
 - `timeouts` (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))
 - `transactional_backup` (Boolean, Deprecated) Deprecated in the YBA API. Use table_by_table_backup instead.
-- `use_local_timezone` (Boolean) Use local timezone for cron expression, otherwise use UTC. Defaults to false (UTC).
+- `use_local_timezone` (Boolean) Interpret the cron expression using the YBA server's local JVM timezone (true) or UTC (false). Note: this uses the SERVER timezone, not the Terraform client timezone. If the YBA server is deployed in UTC (common for containerized deployments), both values produce the same schedule.
 - `use_roles` (Boolean) Backup global YSQL roles and grants. Allowed for PGSQL_TABLE_TYPE (YSQL) backups only.
 - `use_tablespaces` (Boolean) Include tablespace information in the backup. Allowed for PGSQL_TABLE_TYPE (YSQL) backups only.
 
