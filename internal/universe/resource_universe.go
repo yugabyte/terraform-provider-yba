@@ -36,6 +36,42 @@ import (
 	"github.com/yugabyte/terraform-provider-yba/internal/utils"
 )
 
+// storage types that require disk_iops > 0 to be provisioned.
+var storageTypesRequireIops = map[string]bool{
+	"IO1": true, "IO2": true, "GP3": true,
+	"UltraSSD_LRS": true, "PremiumV2_LRS": true,
+	"Hyperdisk_Balanced": true, "Hyperdisk_Extreme": true,
+}
+
+// storage types that require throughput > 0 to be provisioned.
+var storageTypesRequireThroughput = map[string]bool{
+	"GP3": true, "UltraSSD_LRS": true,
+	"PremiumV2_LRS": true, "Hyperdisk_Balanced": true,
+}
+
+// storage types grouped by cloud provider. Cross-cloud storage_type transitions
+// are structurally impossible (the provider UUID cannot change on a universe),
+// so a same-universe storage_type change that crosses groups is always a user
+// error. On-prem and k8s do not use storage_type and are not listed.
+var storageTypesByCloud = map[string][]string{
+	"aws": {"IO1", "IO2", "GP2", "GP3"},
+	"gcp": {"Scratch", "Persistent", "Hyperdisk_Balanced", "Hyperdisk_Extreme"},
+	"azu": {"StandardSSD_LRS", "Premium_LRS", "PremiumV2_LRS", "UltraSSD_LRS"},
+}
+
+// storageTypeCloud returns the cloud code ("aws"|"gcp"|"azu") for a given
+// storage_type, or "" if not recognized (including empty string for on-prem/k8s).
+func storageTypeCloud(st string) string {
+	for cloud, types := range storageTypesByCloud {
+		for _, t := range types {
+			if t == st {
+				return cloud
+			}
+		}
+	}
+	return ""
+}
+
 // ResourceUniverse creates and maintains resource for universes
 func ResourceUniverse() *schema.Resource {
 	return &schema.Resource{
@@ -128,6 +164,21 @@ func ResourceUniverse() *schema.Resource {
 					[]string{"x86_64", "aarch64"}, false),
 				Description: "The architecture of the universe nodes." +
 					" Allowed values are x86_64 and aarch64.",
+			},
+			"allow_full_move": {
+				Type:     schema.TypeBool,
+				Optional: true,
+				Default:  false,
+				Description: "Explicit acknowledgment required to perform operations " +
+					"that trigger a FULL MOVE on the Primary or Read Replica Cluster: " +
+					"volume_size decrease (any instance type); num_volumes change with " +
+					"same instance type; storage_type change (any instance type). Full " +
+					"moves provision new nodes with the new configuration, migrate " +
+					"data from the old nodes, and decommission the old nodes. They " +
+					"require temporary 2x node capacity during migration and take " +
+					"significantly longer than in-place operations. False by default; " +
+					"set to true when the full-move implications have been reviewed and " +
+					"accepted.",
 			},
 			"clusters": {
 				Type:     schema.TypeList,
@@ -426,109 +477,362 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 				return nil
 			},
 		),
-		customdiff.ValidateChange(
-			"clusters",
-			func(ctx context.Context, old, new, m interface{}) error {
-				// if not a new universe, prevent decrease in volume size in primary
-				newClusterSet := buildClusters(new.([]interface{}))
-				if len(old.([]interface{})) != 0 {
-					oldClusterSet := buildClusters(old.([]interface{}))
-					oldPrimaryCluster, isPresent := getClusterByType(oldClusterSet, "PRIMARY")
-					if isPresent {
-						newPrimaryCluster, isNewPresent := getClusterByType(
-							newClusterSet,
-							"PRIMARY",
-						)
-						if isNewPresent {
-							if oldPrimaryCluster.UserIntent.DeviceInfo.GetVolumeSize() >
-								newPrimaryCluster.UserIntent.DeviceInfo.GetVolumeSize() {
-								return errors.New("Cannot decrease Volume Size of nodes in " +
-									"Primary Cluster")
+		customdiff.IfValue("allow_full_move",
+			func(ctx context.Context, value, meta interface{}) bool {
+				return !value.(bool)
+			},
+			customdiff.ValidateChange(
+				"clusters",
+				func(ctx context.Context, old, new, m interface{}) error {
+					// if not a new universe, prevent decrease in volume size in primary
+					// unless allow_full_move = true (outer IfValue gate). Shrink triggers
+					// a FULL MOVE: new nodes are provisioned with
+					// the smaller volume, data is migrated, and old nodes are
+					// decommissioned. Requires 2x capacity and takes significantly
+					// longer than smart resize; the flag is the user's explicit
+					// acknowledgment.
+					newClusterSet := buildClusters(new.([]interface{}))
+					if len(old.([]interface{})) != 0 {
+						oldClusterSet := buildClusters(old.([]interface{}))
+						oldPrimaryCluster, isPresent := getClusterByType(oldClusterSet, "PRIMARY")
+						if isPresent {
+							newPrimaryCluster, isNewPresent := getClusterByType(
+								newClusterSet,
+								"PRIMARY",
+							)
+							if isNewPresent {
+								if oldPrimaryCluster.UserIntent.DeviceInfo.GetVolumeSize() >
+									newPrimaryCluster.UserIntent.DeviceInfo.GetVolumeSize() {
+									return errors.New(
+										"volume_size decrease on the Primary Cluster " +
+											"triggers a FULL MOVE (new nodes provisioned " +
+											"with the smaller volume, data migrated, old " +
+											"nodes decommissioned; requires 2x capacity " +
+											"and takes significantly longer than smart " +
+											"resize). To proceed, set allow_full_move = " +
+											"true on the universe resource to acknowledge " +
+											"these implications.")
+								}
 							}
 						}
 					}
-				}
-				return nil
+					return nil
+				},
+			),
+		),
+		customdiff.IfValue("allow_full_move",
+			func(ctx context.Context, value, meta interface{}) bool {
+				return !value.(bool)
 			},
+			customdiff.ValidateChange(
+				"clusters",
+				func(ctx context.Context, old, new, m interface{}) error {
+					// num_volumes change with same instance type: full move via
+					// UpdatePrimaryCluster or UpdateReadOnlyCluster. Plan-time IfValue
+					// gate on allow_full_move has already enforced user consent for both
+					// PRIMARY and RR paths.
+					newClusterSet := buildClusters(new.([]interface{}))
+					if len(old.([]interface{})) != 0 {
+						oldClusterSet := buildClusters(old.([]interface{}))
+						oldPrimaryCluster, isPresent := getClusterByType(oldClusterSet, "PRIMARY")
+						if isPresent {
+							newPrimaryCluster, isNewPresent := getClusterByType(
+								newClusterSet,
+								"PRIMARY",
+							)
+							if isNewPresent {
+								if (oldPrimaryCluster.UserIntent.GetInstanceType() ==
+									newPrimaryCluster.UserIntent.GetInstanceType()) &&
+									(oldPrimaryCluster.UserIntent.DeviceInfo.GetNumVolumes() !=
+										newPrimaryCluster.UserIntent.DeviceInfo.GetNumVolumes()) {
+									return errors.New(
+										"num_volumes change on the Primary Cluster " +
+											"with same instance type triggers a FULL " +
+											"MOVE (new nodes provisioned with the new " +
+											"volume count, data migrated, old nodes " +
+											"decommissioned; requires 2x capacity and " +
+											"takes significantly longer than in-place " +
+											"operations). To proceed, set " +
+											"allow_full_move = true on the universe " +
+											"resource to acknowledge these implications.")
+								}
+							}
+						}
+					}
+					return nil
+				},
+			),
+		),
+		customdiff.IfValue("allow_full_move",
+			func(ctx context.Context, value, meta interface{}) bool {
+				return !value.(bool)
+			},
+			customdiff.ValidateChange(
+				"clusters",
+				func(ctx context.Context, old, new, m interface{}) error {
+					// PRIMARY storage_type change: YBA handles this via full move
+					// only (no cloud-provider in-place conversion path is wired).
+					// Gated on allow_full_move for the same reasons as volume_size
+					// shrink and num_volumes change.
+					if len(old.([]interface{})) == 0 {
+						return nil
+					}
+					oldClusterSet := buildClusters(old.([]interface{}))
+					newClusterSet := buildClusters(new.([]interface{}))
+					oldPrimary, oldOK := getClusterByType(oldClusterSet, "PRIMARY")
+					newPrimary, newOK := getClusterByType(newClusterSet, "PRIMARY")
+					if !oldOK || !newOK {
+						return nil
+					}
+					oldST := oldPrimary.UserIntent.DeviceInfo.GetStorageType()
+					newST := newPrimary.UserIntent.DeviceInfo.GetStorageType()
+					if oldST == newST {
+						return nil
+					}
+					return fmt.Errorf(
+						"storage_type change from %s to %s on the Primary Cluster "+
+							"triggers a FULL MOVE (new nodes provisioned with the "+
+							"new storage type, data migrated, old nodes "+
+							"decommissioned; requires 2x capacity and takes "+
+							"significantly longer than in-place operations). To "+
+							"proceed, set allow_full_move = true on the universe "+
+							"resource to acknowledge these implications.",
+						oldST, newST)
+				},
+			),
 		),
 		customdiff.ValidateChange(
 			"clusters",
 			func(ctx context.Context, old, new, m interface{}) error {
-				// if not a new universe, prevent change in number of nodes if instance type hasn't
-				// change in Primary
+				// Validate storage_type transitions for shape, independent of
+				// allow_full_move. Always runs because these are config errors that
+				// would fail at YBA anyway, catching them at plan time gives the
+				// user a clearer message than a YBA 400.
+				if len(old.([]interface{})) == 0 {
+					return nil
+				}
+				oldClusterSet := buildClusters(old.([]interface{}))
 				newClusterSet := buildClusters(new.([]interface{}))
-				if len(old.([]interface{})) != 0 {
-					oldClusterSet := buildClusters(old.([]interface{}))
-					oldPrimaryCluster, isPresent := getClusterByType(oldClusterSet, "PRIMARY")
-					if isPresent {
-						newPrimaryCluster, isNewPresent := getClusterByType(
-							newClusterSet,
-							"PRIMARY",
-						)
-						if isNewPresent {
-							if (oldPrimaryCluster.UserIntent.GetInstanceType() ==
-								newPrimaryCluster.UserIntent.GetInstanceType()) &&
-								(oldPrimaryCluster.UserIntent.DeviceInfo.GetNumVolumes() !=
-									newPrimaryCluster.UserIntent.DeviceInfo.GetNumVolumes()) {
-								return errors.New("Cannot change number of volumes per node " +
-									"without change in instance type in Primary Cluster")
-							}
-						}
+				oldPrimary, oldOK := getClusterByType(oldClusterSet, "PRIMARY")
+				newPrimary, newOK := getClusterByType(newClusterSet, "PRIMARY")
+				if !oldOK || !newOK {
+					return nil
+				}
+				oldST := oldPrimary.UserIntent.DeviceInfo.GetStorageType()
+				newST := newPrimary.UserIntent.DeviceInfo.GetStorageType()
+				if oldST == newST {
+					return nil
+				}
+
+				// Reject cross-cloud transitions. Both values must be non-empty;
+				// empty-to-non-empty is legitimate on the create path (no old state).
+				if oldST != "" && newST != "" {
+					oldCloud := storageTypeCloud(oldST)
+					newCloud := storageTypeCloud(newST)
+					if oldCloud != "" && newCloud != "" && oldCloud != newCloud {
+						return fmt.Errorf(
+							"storage_type cannot change from %s (cloud: %s) to %s "+
+								"(cloud: %s) on the Primary Cluster: a universe's "+
+								"provider cannot change after creation, so cross-cloud "+
+								"storage_type transitions are not possible. Check that "+
+								"the new storage_type is valid for the configured "+
+								"provider.",
+							oldST, oldCloud, newST, newCloud)
 					}
+				}
+
+				// Enforce iops/throughput requirements for the new storage_type only.
+				// The old storage_type's requirements don't apply,  we're transitioning
+				// away from them. Example: GP3 to IO2 needs iops (IO2 requires) but
+				// doesn't need throughput (IO2 doesn't use it, even though GP3 did).
+				di := newPrimary.UserIntent.DeviceInfo
+				if storageTypesRequireIops[newST] && di.GetDiskIops() <= 0 {
+					return fmt.Errorf(
+						"disk_iops must be set (> 0) when changing storage_type "+
+							"to %s on the Primary Cluster", newST)
+				}
+				if storageTypesRequireThroughput[newST] && di.GetThroughput() <= 0 {
+					return fmt.Errorf(
+						"throughput must be set (> 0) when changing storage_type "+
+							"to %s on the Primary Cluster", newST)
 				}
 				return nil
 			},
 		),
-		customdiff.ValidateChange(
-			"clusters",
-			func(ctx context.Context, old, new, m interface{}) error {
-				// if not a new universe, prevent decrease in volume size in read replica
-				newClusterSet := buildClusters(new.([]interface{}))
-				if len(old.([]interface{})) != 0 {
-					oldClusterSet := buildClusters(old.([]interface{}))
-					oldPrimaryCluster, isPresent := getClusterByType(oldClusterSet, "ASYNC")
-					if isPresent {
-						newPrimaryCluster, isNewPresent := getClusterByType(newClusterSet, "ASYNC")
-						if isNewPresent {
-							if oldPrimaryCluster.UserIntent.DeviceInfo.GetVolumeSize() >
-								newPrimaryCluster.UserIntent.DeviceInfo.GetVolumeSize() {
-								return errors.New("Cannot decrease Volume Size of nodes in " +
-									"Read Replica Cluster")
-							}
-						}
-					}
-				}
-				return nil
+		customdiff.IfValue("allow_full_move",
+			func(ctx context.Context, value, meta interface{}) bool {
+				return !value.(bool)
 			},
+			customdiff.ValidateChange(
+				"clusters",
+				func(ctx context.Context, old, new, m interface{}) error {
+					// RR storage_type change: YBA handles this via full move only,
+					// routed through UpdateReadOnlyCluster. Gated on allow_full_move,
+					// consistent with PRIMARY storage_type behavior.
+					if len(old.([]interface{})) == 0 {
+						return nil
+					}
+					oldClusterSet := buildClusters(old.([]interface{}))
+					newClusterSet := buildClusters(new.([]interface{}))
+					oldRR, oldOK := getClusterByType(oldClusterSet, "ASYNC")
+					newRR, newOK := getClusterByType(newClusterSet, "ASYNC")
+					if !oldOK || !newOK {
+						return nil
+					}
+					oldST := oldRR.UserIntent.DeviceInfo.GetStorageType()
+					newST := newRR.UserIntent.DeviceInfo.GetStorageType()
+					if oldST == newST {
+						return nil
+					}
+					return fmt.Errorf(
+						"storage_type change from %s to %s on the Read Replica "+
+							"Cluster triggers a FULL MOVE (new nodes provisioned "+
+							"with the new storage type, data migrated, old nodes "+
+							"decommissioned; requires 2x capacity and takes "+
+							"significantly longer than in-place operations). To "+
+							"proceed, set allow_full_move = true on the universe "+
+							"resource to acknowledge these implications.",
+						oldST, newST)
+				},
+			),
 		),
 		customdiff.ValidateChange(
 			"clusters",
 			func(ctx context.Context, old, new, m interface{}) error {
-				// if not a new universe, prevent change in number of nodes if instance type hasn't
-				// change in Read Replica
+				// Validate RR storage_type transitions for shape, independent of
+				// allow_full_move. Same logic as PRIMARY shape validator: reject
+				// cross-cloud transitions and enforce iops/throughput requirements
+				// on the new storage_type.
+				if len(old.([]interface{})) == 0 {
+					return nil
+				}
+				oldClusterSet := buildClusters(old.([]interface{}))
 				newClusterSet := buildClusters(new.([]interface{}))
-				if len(old.([]interface{})) != 0 {
-					oldClusterSet := buildClusters(old.([]interface{}))
-					oldPrimaryCluster, isPresent := getClusterByType(oldClusterSet, "ASYNC")
-					if isPresent {
-						newPrimaryCluster, isNewPresent := getClusterByType(newClusterSet, "ASYNC")
-						if isNewPresent {
-							if (oldPrimaryCluster.UserIntent.GetInstanceType() ==
-								newPrimaryCluster.UserIntent.GetInstanceType()) &&
-								((oldPrimaryCluster.UserIntent.DeviceInfo.GetNumVolumes() !=
-									newPrimaryCluster.UserIntent.DeviceInfo.GetNumVolumes()) ||
-									(oldPrimaryCluster.UserIntent.DeviceInfo.GetVolumeSize() !=
-										newPrimaryCluster.UserIntent.DeviceInfo.GetVolumeSize())) {
-								return errors.New(
-									"Cannot change number of volumes or volume size " +
-										"per node without change in instance type in Read Replica Cluster",
-								)
-							}
-						}
+				oldRR, oldOK := getClusterByType(oldClusterSet, "ASYNC")
+				newRR, newOK := getClusterByType(newClusterSet, "ASYNC")
+				if !oldOK || !newOK {
+					return nil
+				}
+				oldST := oldRR.UserIntent.DeviceInfo.GetStorageType()
+				newST := newRR.UserIntent.DeviceInfo.GetStorageType()
+				if oldST == newST {
+					return nil
+				}
+
+				// Reject cross-cloud transitions.
+				if oldST != "" && newST != "" {
+					oldCloud := storageTypeCloud(oldST)
+					newCloud := storageTypeCloud(newST)
+					if oldCloud != "" && newCloud != "" && oldCloud != newCloud {
+						return fmt.Errorf(
+							"storage_type cannot change from %s (cloud: %s) to %s "+
+								"(cloud: %s) on the Read Replica Cluster: a "+
+								"universe's provider cannot change after creation, "+
+								"so cross-cloud storage_type transitions are not "+
+								"possible.",
+							oldST, oldCloud, newST, newCloud)
 					}
+				}
+
+				// Enforce iops/throughput requirements for the new storage_type.
+				di := newRR.UserIntent.DeviceInfo
+				if storageTypesRequireIops[newST] && di.GetDiskIops() <= 0 {
+					return fmt.Errorf(
+						"disk_iops must be set (> 0) when changing storage_type "+
+							"to %s on the Read Replica Cluster", newST)
+				}
+				if storageTypesRequireThroughput[newST] && di.GetThroughput() <= 0 {
+					return fmt.Errorf(
+						"throughput must be set (> 0) when changing storage_type "+
+							"to %s on the Read Replica Cluster", newST)
 				}
 				return nil
 			},
+		),
+		customdiff.IfValue("allow_full_move",
+			func(ctx context.Context, value, meta interface{}) bool {
+				return !value.(bool)
+			},
+			customdiff.ValidateChange(
+				"clusters",
+				func(ctx context.Context, old, new, m interface{}) error {
+					// RR volume_size decrease triggers a FULL MOVE via
+					// UpdateReadOnlyCluster (YBA's smart resize cannot shrink
+					// volumes). Gated on allow_full_move for the same reasons as
+					// PRIMARY shrink. Fires regardless of instance_type change,
+					// since shrink is always a full move.
+					newClusterSet := buildClusters(new.([]interface{}))
+					if len(old.([]interface{})) == 0 {
+						return nil
+					}
+					oldClusterSet := buildClusters(old.([]interface{}))
+					oldRR, isPresent := getClusterByType(oldClusterSet, "ASYNC")
+					if !isPresent {
+						return nil
+					}
+					newRR, isNewPresent := getClusterByType(newClusterSet, "ASYNC")
+					if !isNewPresent {
+						return nil
+					}
+					if oldRR.UserIntent.DeviceInfo.GetVolumeSize() <=
+						newRR.UserIntent.DeviceInfo.GetVolumeSize() {
+						return nil
+					}
+					return errors.New(
+						"volume_size decrease on the Read Replica Cluster " +
+							"triggers a FULL MOVE (new nodes provisioned with the " +
+							"smaller volume, data migrated from primary, old nodes " +
+							"decommissioned; requires 2x capacity and takes " +
+							"significantly longer than smart resize). To proceed, " +
+							"set allow_full_move = true on the universe resource " +
+							"to acknowledge these implications.")
+				},
+			),
+		),
+		customdiff.IfValue("allow_full_move",
+			func(ctx context.Context, value, meta interface{}) bool {
+				return !value.(bool)
+			},
+			customdiff.ValidateChange(
+				"clusters",
+				func(ctx context.Context, old, new, m interface{}) error {
+					// RR num_volumes change with same instance type triggers a
+					// FULL MOVE via UpdateReadOnlyCluster (no in-place path for
+					// disk count changes). Gated on allow_full_move for the same
+					// reasons as PRIMARY num_volumes change. With instance-type
+					// change, the full move is already happening via the existing
+					// path and this validator does not fire. Volume_size changes
+					// are handled by the dedicated RR volume_size validator above.
+					newClusterSet := buildClusters(new.([]interface{}))
+					if len(old.([]interface{})) == 0 {
+						return nil
+					}
+					oldClusterSet := buildClusters(old.([]interface{}))
+					oldRR, isPresent := getClusterByType(oldClusterSet, "ASYNC")
+					if !isPresent {
+						return nil
+					}
+					newRR, isNewPresent := getClusterByType(newClusterSet, "ASYNC")
+					if !isNewPresent {
+						return nil
+					}
+					if (oldRR.UserIntent.GetInstanceType() ==
+						newRR.UserIntent.GetInstanceType()) &&
+						(oldRR.UserIntent.DeviceInfo.GetNumVolumes() !=
+							newRR.UserIntent.DeviceInfo.GetNumVolumes()) {
+						return errors.New(
+							"num_volumes change on the Read Replica Cluster " +
+								"with same instance type triggers a FULL MOVE " +
+								"(new nodes provisioned with the new volume " +
+								"count, data migrated, old nodes decommissioned; " +
+								"requires 2x capacity and takes significantly " +
+								"longer than in-place operations). To proceed, " +
+								"set allow_full_move = true on the universe " +
+								"resource to acknowledge these implications.")
+					}
+					return nil
+				},
+			),
 		),
 		customdiff.ValidateChange(
 			"clusters",
@@ -742,17 +1046,6 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 		}),
 		customdiff.ValidateValue("clusters", func(ctx context.Context, value,
 			meta interface{}) error {
-			// storage types that require disk_iops to be provisioned
-			iopsRequired := map[string]bool{
-				"IO1": true, "IO2": true, "GP3": true,
-				"UltraSSD_LRS": true, "PremiumV2_LRS": true,
-				"Hyperdisk_Balanced": true, "Hyperdisk_Extreme": true,
-			}
-			// storage types that also require throughput to be provisioned
-			throughputRequired := map[string]bool{
-				"GP3": true, "UltraSSD_LRS": true,
-				"PremiumV2_LRS": true, "Hyperdisk_Balanced": true,
-			}
 			validateDeviceInfo := func(
 				di *client.DeviceInfo,
 				providerType string,
@@ -765,12 +1058,12 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 						"mount_points can only be specified for on-prem provider clusters")
 				}
 				if len(storageType) > 0 {
-					if iopsRequired[storageType] && di.GetDiskIops() <= 0 {
+					if storageTypesRequireIops[storageType] && di.GetDiskIops() <= 0 {
 						errs = append(errs,
 							fmt.Sprintf("disk_iops is required for storage_type %s",
 								storageType))
 					}
-					if throughputRequired[storageType] && di.GetThroughput() <= 0 {
+					if storageTypesRequireThroughput[storageType] && di.GetThroughput() <= 0 {
 						errs = append(errs,
 							fmt.Sprintf("throughput is required for storage_type %s",
 								storageType))
@@ -1559,42 +1852,62 @@ func editUniverseParameters(ctx context.Context, oldUserIntent client.UserIntent
 		oldUserIntent.GetReplicationFactor() != newUserIntent.GetReplicationFactor() ||
 		oldUserIntent.GetInstanceType() != newUserIntent.GetInstanceType() ||
 		oldUserIntent.DeviceInfo.GetNumVolumes() != newUserIntent.DeviceInfo.GetNumVolumes() ||
-		oldUserIntent.DeviceInfo.GetVolumeSize() != newUserIntent.DeviceInfo.GetVolumeSize() {
-		editNumVolume := true
-		editVolumeSize := true // this is only for RR cluster, primary cluster resize is handled
-		// by resize node task
-		numVolumes := oldUserIntent.DeviceInfo.GetNumVolumes()
-		volumeSize := oldUserIntent.DeviceInfo.GetVolumeSize()
+		oldUserIntent.DeviceInfo.GetVolumeSize() != newUserIntent.DeviceInfo.GetVolumeSize() ||
+		oldUserIntent.DeviceInfo.GetStorageType() != newUserIntent.DeviceInfo.GetStorageType() {
+
+		// Full-move warnings. Plan-time allow_full_move gates have already
+		// enforced user consent; these just surface which specific change is
+		// triggering the full move so operators see it in the logs.
 		if (oldUserIntent.DeviceInfo.GetNumVolumes() !=
 			newUserIntent.DeviceInfo.GetNumVolumes()) &&
 			(oldUserIntent.GetInstanceType() == newUserIntent.GetInstanceType()) {
-			tflog.Error(ctx, "Cannot edit Number of Volumes per instance without an edit to"+
-				" Instance Type, Ignoring Change")
-			editNumVolume = false
+			tflog.Warn(ctx, "num_volumes change will trigger a FULL MOVE")
 		}
-		if (oldUserIntent.DeviceInfo.GetVolumeSize() !=
-			newUserIntent.DeviceInfo.GetVolumeSize()) &&
-			(oldUserIntent.GetInstanceType() == newUserIntent.GetInstanceType()) {
-			tflog.Error(ctx, "Cannot edit Volume size per instance without an edit to Instance "+
-				"Type, Ignoring Change for ReadOnly Cluster")
-			tflog.Info(ctx, "Above error is not for Primary Cluster. Node resize applied through"+
-				"a separate task")
-			editVolumeSize = false
-		} else if oldUserIntent.DeviceInfo.GetVolumeSize() > newUserIntent.DeviceInfo.GetVolumeSize() {
-			tflog.Error(ctx, "Cannot decrease volume size per instance, Ignoring Change")
-			editVolumeSize = false
+		if oldUserIntent.DeviceInfo.GetVolumeSize() >
+			newUserIntent.DeviceInfo.GetVolumeSize() {
+			tflog.Warn(ctx, "Volume size decrease will trigger a FULL MOVE")
 		}
-		oldUserIntent = newUserIntent
-		if !editNumVolume {
-			oldUserIntent.DeviceInfo.NumVolumes = &numVolumes
+		if oldUserIntent.DeviceInfo.GetStorageType() !=
+			newUserIntent.DeviceInfo.GetStorageType() {
+			tflog.Warn(ctx, fmt.Sprintf(
+				"Storage type change from %s to %s will trigger a FULL MOVE",
+				oldUserIntent.DeviceInfo.GetStorageType(),
+				newUserIntent.DeviceInfo.GetStorageType()))
+
+			newST := newUserIntent.DeviceInfo.GetStorageType()
+			if !storageTypesRequireIops[newST] &&
+				newUserIntent.DeviceInfo.GetDiskIops() > 0 {
+				tflog.Warn(ctx, fmt.Sprintf(
+					"disk_iops = %d is set but storage_type %s does not use "+
+						"user-provisioned iops; the value will be ignored by YBA.",
+					newUserIntent.DeviceInfo.GetDiskIops(), newST))
+			}
+			if !storageTypesRequireThroughput[newST] &&
+				newUserIntent.DeviceInfo.GetThroughput() > 0 {
+				tflog.Warn(ctx, fmt.Sprintf(
+					"throughput = %d is set but storage_type %s does not use "+
+						"user-provisioned throughput; the value will be ignored by YBA.",
+					newUserIntent.DeviceInfo.GetThroughput(), newST))
+			}
 		}
-		if !editVolumeSize {
-			oldUserIntent.DeviceInfo.VolumeSize = &volumeSize
-		}
+
+		// Field-by-field overwrite onto oldUserIntent (current YBA state). Only
+		// the fields UpdatePrimaryCluster / UpdateReadOnlyCluster (EditUniverse
+		// on the server side) is responsible for are touched.
+		oldUserIntent.InstanceTags = newUserIntent.InstanceTags
+		oldUserIntent.RegionList = newUserIntent.RegionList
+		oldUserIntent.NumNodes = newUserIntent.NumNodes
+		oldUserIntent.ReplicationFactor = newUserIntent.ReplicationFactor
+		oldUserIntent.InstanceType = newUserIntent.InstanceType
+		oldUserIntent.DeviceInfo.NumVolumes = newUserIntent.DeviceInfo.NumVolumes
+		oldUserIntent.DeviceInfo.VolumeSize = newUserIntent.DeviceInfo.VolumeSize
+		oldUserIntent.DeviceInfo.StorageType = newUserIntent.DeviceInfo.StorageType
+		oldUserIntent.DeviceInfo.DiskIops = newUserIntent.DeviceInfo.DiskIops
+		oldUserIntent.DeviceInfo.Throughput = newUserIntent.DeviceInfo.Throughput
+
 		return true, oldUserIntent
 	}
 	return false, oldUserIntent
-
 }
 
 func runFinalizeUpgrade(
@@ -2095,7 +2408,11 @@ func resourceUniverseUpdate(
 							return diags
 						}
 					} else {
-						tflog.Error(ctx, "Volume Size cannot be decreased")
+						// Shrink: ResizeNode cannot shrink volumes. Skip dispatching it and let
+						// UpdatePrimaryCluster (called below via editUniverseParameters) handle
+						// the shrink via full move. Plan-time IfValue gate on allow_full_move
+						// has already enforced user consent.
+						tflog.Info(ctx, "Volume size decrease detected; full move will be performed")
 					}
 				}
 
@@ -2175,7 +2492,67 @@ func resourceUniverseUpdate(
 						" User Intent, ignoring")
 				}
 
-				// Num of nodes, Instance Type, Num of Volumes, Volume Size, User Tags changes
+				// Resize Nodes (Read Replica)
+				// Call ResizeNode only when instance type is same; else YBA's internal
+				// smart-resize routing via UpdateReadOnlyCluster handles the in-place
+				// change. Mirrors the PRIMARY ResizeNode dispatch.
+				if (oldUserIntent.GetInstanceType() == newUserIntent.GetInstanceType()) &&
+					(oldUserIntent.DeviceInfo.GetVolumeSize() !=
+						newUserIntent.DeviceInfo.GetVolumeSize()) {
+					if oldUserIntent.DeviceInfo.GetVolumeSize() <
+						newUserIntent.DeviceInfo.GetVolumeSize() {
+						// Volume size grow on RR: dispatch ResizeNode (smart resize,
+						// in-place, no full move). Only volume size is updated on
+						// the ASYNC cluster here; other deltas flow through
+						// UpdateReadOnlyCluster below.
+						newVolSize := newUserIntent.DeviceInfo.VolumeSize
+						updateUni.UniverseDetails.Clusters[i].UserIntent.DeviceInfo.VolumeSize = newVolSize
+						req := client.ResizeNodeParams{
+							UpgradeOption: "Rolling",
+							Clusters:      updateUni.UniverseDetails.Clusters,
+							NodeDetailsSet: buildNodeDetailsRespArrayToNodeDetailsArray(
+								updateUni.UniverseDetails.NodeDetailsSet,
+							),
+							SleepAfterMasterRestartMillis:  sleepAfterMasterMs,
+							SleepAfterTServerRestartMillis: sleepAfterTServerMs,
+						}
+						if diags := utils.DispatchAndWait(ctx, "Resize Nodes (Read Replica)",
+							cUUID, c, d.Timeout(schema.TimeoutUpdate),
+							utils.ResourceEntity, "Universe",
+							"Update - Resize Nodes (Read Replica)",
+							func() (string, *http.Response, error) {
+								r, resp, err := c.UniverseUpgradesManagementAPI.ResizeNode(
+									ctx, cUUID, d.Id()).ResizeNodeParams(req).Execute()
+								if err != nil {
+									return "", resp, err
+								}
+								return r.GetTaskUUID(), resp, nil
+							},
+						); diags != nil {
+							return diags
+						}
+					} else {
+						// Shrink: ResizeNode cannot shrink volumes. Skip dispatching
+						// it and let UpdateReadOnlyCluster (called below via
+						// editUniverseParameters) handle the shrink via full move.
+						// Plan-time IfValue gate on allow_full_move has already
+						// enforced user consent.
+						tflog.Info(ctx, "Volume size decrease on Read Replica detected; full move will be performed")
+					}
+
+					// Refetch universe after ResizeNode to get the updated volume size
+					// before editUniverseParameters compares user intents.
+					updateUni, response, err = c.UniverseManagementAPI.GetUniverse(
+						ctx, cUUID, d.Id()).Execute()
+					if err != nil {
+						errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
+							"Universe", "Update - Fetch universe")
+						return diag.FromErr(errMessage)
+					}
+					oldUserIntent = updateUni.UniverseDetails.Clusters[i].UserIntent
+				}
+
+				// Num of nodes, Instance Type, Num of Volumes, Volume Size User Tags changes
 				var editAllowed bool
 				editAllowed, updateUni.UniverseDetails.Clusters[i].UserIntent = editUniverseParameters(
 					ctx, oldUserIntent, newUserIntent)
