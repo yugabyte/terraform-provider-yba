@@ -2310,33 +2310,105 @@ func performVMImageUpgrade(
 	)
 }
 
+// unrecoverableFailedTasks are the YBA task names where a failed task leaves the
+// universe in a state that requires force-delete to clean up.
+var unrecoverableFailedTasks = map[string]bool{
+	"CreateUniverse":        true,
+	"ReadOnlyClusterCreate": true,
+}
+
+// isFailedCreate returns true when the universe is stuck after a failed create flow
+// (primary or read replica). Signaled by: no update currently running, last update
+// did not succeed, and the last task was a creation task. In this state a normal
+// delete will typically fail, so escalating to force-delete is safe, there's no
+// data to preserve. This corresponds to the scenario where a user would have
+// marked the resource tainted in Terraform state.
+func isFailedCreate(details *client.UniverseDefinitionTaskParamsResp) bool {
+	if details == nil {
+		return false
+	}
+	return !details.GetUpdateInProgress() &&
+		!details.GetUpdateSucceeded() &&
+		unrecoverableFailedTasks[details.GetUpdatingTask()]
+}
+
 func resourceUniverseDelete(
 	ctx context.Context,
 	d *schema.ResourceData,
 	meta interface{}) diag.Diagnostics {
-	var diags diag.Diagnostics
 
 	c := meta.(*api.APIClient).YugawareClient
 	cUUID := meta.(*api.APIClient).CustomerID
+	universeID := d.Id()
 
-	if diags = utils.DispatchAndWait(ctx, "Delete Universe", cUUID, c,
-		d.Timeout(schema.TimeoutDelete),
-		utils.ResourceEntity, "Universe", "Delete",
-		func() (string, *http.Response, error) {
-			r, resp, err := c.UniverseManagementAPI.DeleteUniverse(ctx, cUUID, d.Id()).
-				IsForceDelete(d.Get("delete_options.0.force_delete").(bool)).
-				IsDeleteBackups(d.Get("delete_options.0.delete_backups").(bool)).
-				IsDeleteAssociatedCerts(d.Get("delete_options.0.delete_certs").(bool)).
-				Execute()
-			if err != nil {
-				return "", resp, err
-			}
-			return r.GetTaskUUID(), resp, nil
-		},
-	); diags != nil {
+	forceDeleteConfig := d.Get("delete_options.0.force_delete").(bool)
+	deleteBackups := d.Get("delete_options.0.delete_backups").(bool)
+	deleteCerts := d.Get("delete_options.0.delete_certs").(bool)
+
+	// runDelete dispatches DeleteUniverse with the given force value and waits for
+	// the task to complete. Returned as a local helper so the escalation path can
+	// call it a second time without duplicating the boilerplate.
+	runDelete := func(force bool) diag.Diagnostics {
+		return utils.DispatchAndWait(ctx, "Delete Universe", cUUID, c,
+			d.Timeout(schema.TimeoutDelete),
+			utils.ResourceEntity, "Universe", "Delete",
+			func() (string, *http.Response, error) {
+				r, resp, err := c.UniverseManagementAPI.DeleteUniverse(ctx, cUUID, universeID).
+					IsForceDelete(force).
+					IsDeleteBackups(deleteBackups).
+					IsDeleteAssociatedCerts(deleteCerts).
+					Execute()
+				if err != nil {
+					return "", resp, err
+				}
+				return r.GetTaskUUID(), resp, nil
+			},
+		)
+	}
+
+	// First attempt: honor the user's force_delete preference as-is. On a healthy
+	// universe this succeeds and we return. On a transient failure (YBA briefly
+	// unreachable, CSP throttling, etc.) this also returns an error, we surface
+	// that to the user rather than masking it, unless the failure looks like the
+	// specific failed-create fingerprint described below.
+	diags := runDelete(forceDeleteConfig)
+	if !diags.HasError() {
+		d.SetId("")
 		return diags
 	}
 
-	d.SetId("")
+	// First attempt failed. If the user already asked for force_delete, there's
+	// nothing further to try, the escalation path would be a no-op.
+	if forceDeleteConfig {
+		return diags
+	}
+
+	// Check whether the universe is in a failed-create state. If yes, retry with
+	// force=true: there is no data to preserve, and a normal delete will never
+	// succeed against this fingerprint (primary or RR create left half-provisioned).
+	// If the fingerprint does not match, return the original error, the user's
+	// force_delete=false preference stands and the failure is treated as legitimate.
+	uni, _, fetchErr := c.UniverseManagementAPI.GetUniverse(ctx, cUUID, universeID).Execute()
+	if fetchErr != nil {
+		tflog.Warn(ctx, fmt.Sprintf(
+			"Universe %s delete failed; could not fetch universe to check for "+
+				"failed-create state (%v). Returning the original delete error "+
+				"without escalating.", universeID, fetchErr))
+		return diags
+	}
+	if uni == nil || !isFailedCreate(uni.UniverseDetails) {
+		return diags
+	}
+
+	tflog.Warn(ctx, fmt.Sprintf(
+		"Universe %s delete failed and the universe is in a failed-create state "+
+			"(updateInProgress=false, updateSucceeded=false, updatingTask=%q); "+
+			"retrying with force_delete=true to clean up half-provisioned resources.",
+		universeID, uni.UniverseDetails.GetUpdatingTask()))
+
+	diags = runDelete(true)
+	if !diags.HasError() {
+		d.SetId("")
+	}
 	return diags
 }
