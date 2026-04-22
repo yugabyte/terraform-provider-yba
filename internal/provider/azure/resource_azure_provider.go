@@ -559,6 +559,20 @@ func resourceAzureProviderUpdate(
 	// Per YBA API: To create/update a self-managed key, send an AccessKey WITHOUT IdKey
 	// and WITH sshPrivateKeyContent. If IdKey is present, YBA treats it as no-op.
 	if d.HasChange("ssh_keypair_name") || d.HasChange("ssh_private_key_content") {
+
+		newKeypairName := d.Get("ssh_keypair_name").(string)
+		if newKeypairName != "" {
+			if err := providerutil.ValidateSSHKeypairNameUnique(
+				p.GetAllAccessKeys(), newKeypairName,
+			); err != nil {
+				utils.RevertFields(d,
+					"ssh_keypair_name", "ssh_private_key_content",
+					"client_secret", "use_managed_identity",
+				)
+				return diag.FromErr(err)
+			}
+		}
+
 		providerReq.SetAllAccessKeys(buildAzureAccessKeys(d))
 	}
 

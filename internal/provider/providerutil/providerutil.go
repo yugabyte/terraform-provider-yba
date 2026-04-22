@@ -139,3 +139,25 @@ func LatestAccessKey(keys []client.AccessKey) *client.AccessKey {
 	}
 	return latest
 }
+
+// ValidateSSHKeypairNameUnique returns an error if newName matches the
+// KeyPairName of any existing access key on the provider. YBA versions keys on
+// every update by appending a timestamp (e.g. "my-key-2026-03-18-10-01-29")
+// when a key with the requested name already exists, so reusing a base name
+// silently produces a renamed version rather than surfacing the conflict.
+// This check fails fast instead.
+func ValidateSSHKeypairNameUnique(existing []client.AccessKey, newName string) error {
+	for _, k := range existing {
+		info := k.GetKeyInfo()
+		if info.GetKeyPairName() == newName {
+			return fmt.Errorf(
+				"ssh_keypair_name %q already exists on this provider; choose "+
+					"a unique name, or omit ssh_keypair_name and "+
+					"ssh_private_key_content to let YugabyteDB Anywhere "+
+					"manage the key pair",
+				newName,
+			)
+		}
+	}
+	return nil
+}

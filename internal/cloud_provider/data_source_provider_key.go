@@ -39,6 +39,12 @@ func ProviderKey() *schema.Resource {
 				Required:    true,
 				Description: "UUID of the provider.",
 			},
+			"available_access_keys": {
+				Type:        schema.TypeList,
+				Computed:    true,
+				Description: "List of all available access key names for this provider.",
+				Elem:        &schema.Schema{Type: schema.TypeString},
+			},
 		},
 	}
 }
@@ -57,6 +63,19 @@ func dataSourceProviderKeyRead(
 		errMessage := utils.ErrorFromHTTPResponse(response, err, utils.DataSourceEntity,
 			"Provider Key", "Read")
 		return diag.FromErr(errMessage)
+	}
+
+	availableKeys := make([]string, 0, len(r))
+	for _, k := range r {
+		info := k.GetKeyInfo()
+		name := info.GetKeyPairName()
+		if name != "" {
+			availableKeys = append(availableKeys, name)
+		}
+	}
+
+	if err := d.Set("available_access_keys", availableKeys); err != nil {
+		return diag.FromErr(err)
 	}
 
 	latest := providerutil.LatestAccessKey(r)
