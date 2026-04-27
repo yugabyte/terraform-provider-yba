@@ -3068,23 +3068,48 @@ func performVMImageUpgrade(
 // unrecoverableFailedTasks are the YBA task names where a failed task leaves the
 // universe in a state that requires force-delete to clean up.
 var unrecoverableFailedTasks = map[string]bool{
-	"CreateUniverse":        true,
-	"ReadOnlyClusterCreate": true,
+	"Create": true,
+	"Delete": true,
+	"Update": true,
 }
 
-// isFailedCreate returns true when the universe is stuck after a failed create flow
-// (primary or read replica). Signaled by: no update currently running, last update
-// did not succeed, and the last task was a creation task. In this state a normal
+// requiresForceDelete returns true when the universe is stuck after a failed create/destroy
+// flow (primary or read replica). Signaled by: no update currently running, last update
+// did not succeed, and the previous task can lead to deletion failure. In this state a normal
 // delete will typically fail, so escalating to force-delete is safe, there's no
 // data to preserve. This corresponds to the scenario where a user would have
 // marked the resource tainted in Terraform state.
-func isFailedCreate(details *client.UniverseDefinitionTaskParamsResp) bool {
+func requiresForceDelete(ctx context.Context,
+	c *client.APIClient,
+	cUUID string, details *client.UniverseDefinitionTaskParamsResp) bool {
 	if details == nil {
 		return false
 	}
-	return !details.GetUpdateInProgress() &&
-		!details.GetUpdateSucceeded() &&
-		unrecoverableFailedTasks[details.GetUpdatingTask()]
+	if details.GetUpdateInProgress() || details.GetUpdateSucceeded() {
+		return false
+	}
+	taskUUID := details.GetUpdatingTaskUUID()
+	if taskUUID == "" {
+		return false
+	}
+	task, _, err := c.CustomerTasksAPI.TaskStatus(ctx, cUUID, taskUUID).Execute()
+	if err != nil {
+		tflog.Warn(ctx, fmt.Sprintf(
+			"could not fetch task %s: %v",
+			taskUUID, err))
+		return false
+	}
+	// 1. Check if Title contains "cluster" or "universe" (case-insensitive)
+	title, _ := task["title"].(string)
+	lowerTitle := strings.ToLower(title)
+	titleMatches := strings.Contains(lowerTitle, "cluster") || strings.Contains(lowerTitle, "universe")
+
+	// 2. Check if Task Type is in the unrecoverable map
+	taskType, _ := task["type"].(string)
+	typeMatches := unrecoverableFailedTasks[taskType]
+
+	// Must satisfy BOTH conditions
+	return titleMatches && typeMatches
 }
 
 func resourceUniverseDelete(
@@ -3125,7 +3150,7 @@ func resourceUniverseDelete(
 	// universe this succeeds and we return. On a transient failure (YBA briefly
 	// unreachable, CSP throttling, etc.) this also returns an error, we surface
 	// that to the user rather than masking it, unless the failure looks like the
-	// specific failed-create fingerprint described below.
+	// specific failed fingerprint described below.
 	diags := runDelete(forceDeleteConfig)
 	if !diags.HasError() {
 		d.SetId("")
@@ -3138,7 +3163,7 @@ func resourceUniverseDelete(
 		return diags
 	}
 
-	// Check whether the universe is in a failed-create state. If yes, retry with
+	// Check whether the universe is in a failed state. If yes, retry with
 	// force=true: there is no data to preserve, and a normal delete will never
 	// succeed against this fingerprint (primary or RR create left half-provisioned).
 	// If the fingerprint does not match, return the original error, the user's
@@ -3147,19 +3172,19 @@ func resourceUniverseDelete(
 	if fetchErr != nil {
 		tflog.Warn(ctx, fmt.Sprintf(
 			"Universe %s delete failed; could not fetch universe to check for "+
-				"failed-create state (%v). Returning the original delete error "+
+				"failed state (%v). Returning the original delete error "+
 				"without escalating.", universeID, fetchErr))
 		return diags
 	}
-	if uni == nil || !isFailedCreate(uni.UniverseDetails) {
+	if uni == nil || !requiresForceDelete(ctx, c, cUUID, uni.UniverseDetails) {
 		return diags
 	}
 
 	tflog.Warn(ctx, fmt.Sprintf(
-		"Universe %s delete failed and the universe is in a failed-create state "+
-			"(updateInProgress=false, updateSucceeded=false, updatingTask=%q); "+
+		"Universe %s delete failed and the universe is in a failed state "+
+			"(updateInProgress=false, updateSucceeded=false, updatingTaskUUID=%q); "+
 			"retrying with force_delete=true to clean up half-provisioned resources.",
-		universeID, uni.UniverseDetails.GetUpdatingTask()))
+		universeID, uni.UniverseDetails.GetUpdatingTaskUUID()))
 
 	diags = runDelete(true)
 	if !diags.HasError() {
