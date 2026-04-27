@@ -165,6 +165,157 @@ func cloudListSchema() *schema.Resource {
 	}
 }
 
+// deviceInfoElemSchema returns the shared inner schema used by both device_info
+// and master_device_info. Extracting it avoids duplicating the storage-type
+// validation list and field definitions.
+func deviceInfoElemSchema() *schema.Resource {
+	return &schema.Resource{
+		Schema: map[string]*schema.Schema{
+			"disk_iops": {
+				Type:        schema.TypeInt,
+				Optional:    true,
+				Description: "Disk IOPS.",
+			},
+			"mount_points": {
+				Type:     schema.TypeString,
+				Optional: true,
+				Default:  "",
+				Description: "Disk mount points. Required for on-prem cluster nodes. " +
+					"Not allowed for any other provider type.",
+			},
+			"throughput": {
+				Type:     schema.TypeInt,
+				Optional: true,
+				Description: "Disk throughput in MB/s. Required for storage types " +
+					"that support throughput provisioning: GP3, UltraSSD_LRS, " +
+					"PremiumV2_LRS, Hyperdisk_Balanced.",
+			},
+			"num_volumes": {
+				Type:        schema.TypeInt,
+				Required:    true,
+				Description: "Number of volumes per node.",
+			},
+			"volume_size": {
+				Type:        schema.TypeInt,
+				Required:    true,
+				Description: "Volume size in GB.",
+			},
+			"storage_type": {
+				Type:     schema.TypeString,
+				Optional: true,
+				ValidateFunc: validation.StringInSlice([]string{
+					"IO1", "IO2", "GP2", "GP3",
+					"Scratch", "Persistent",
+					"Hyperdisk_Balanced", "Hyperdisk_Extreme",
+					"StandardSSD_LRS", "Premium_LRS",
+					"PremiumV2_LRS", "UltraSSD_LRS",
+					"Local",
+				}, false),
+				Description: "Storage type of volume. AWS: IO1, IO2, GP2, GP3. " +
+					"GCP: Scratch, Persistent, Hyperdisk_Balanced, Hyperdisk_Extreme. " +
+					"Azure: StandardSSD_LRS, Premium_LRS, PremiumV2_LRS, UltraSSD_LRS. " +
+					"Not applicable for on-prem providers.",
+			},
+		},
+	}
+}
+
+// masterDeviceInfoElemSchema is the element schema for dedicated_masters.device_info.
+//
+// Inheritance semantics (first apply only):
+//   - All fields are Optional + Computed.
+//   - On the first apply, any field left unset (zero / empty) is automatically
+//     copied from user_intent.device_info (the TServer configuration).
+//
+// Ownership after the first apply:
+//   - Once a dedicated_masters.device_info block is present in config, every
+//     field inside it is owned by this block. Subsequent changes to the
+//     equivalent field in user_intent.device_info do NOT propagate to the
+//     master block automatically.
+//   - To keep a field in sync with the TServer, remove the device_info block
+//     entirely (fall back to user_intent.device_info for all master fields) or
+//     manage the field explicitly in both places.
+//
+// To inherit ALL TServer disk settings, omit device_info entirely:
+//
+//	dedicated_masters {}                  -- inherits everything from TServer
+//	dedicated_masters { device_info {} }  -- same on first apply; fields are
+//	                                         then owned by this block going
+//	                                         forward and will not track TServer
+func masterDeviceInfoElemSchema() *schema.Resource {
+	return &schema.Resource{
+		Schema: map[string]*schema.Schema{
+			"disk_iops": {
+				Type:     schema.TypeInt,
+				Optional: true,
+				Computed: true,
+				Description: "Disk IOPS for master nodes. " +
+					"Inherited from user_intent.device_info on the first apply when unset. " +
+					"Once this device_info block is present in config, this field is no " +
+					"longer updated automatically when user_intent.device_info.disk_iops changes.",
+			},
+			"mount_points": {
+				Type:     schema.TypeString,
+				Optional: true,
+				Computed: true,
+				Description: "Disk mount points for master nodes. Required for on-prem " +
+					"cluster master nodes. " +
+					"Inherited from user_intent.device_info on the first apply when unset. " +
+					"Once this device_info block is present in config, this field is no " +
+					"longer updated automatically when user_intent.device_info.mount_points changes.",
+			},
+			"throughput": {
+				Type:     schema.TypeInt,
+				Optional: true,
+				Computed: true,
+				Description: "Disk throughput in MB/s for master nodes. Required for " +
+					"storage types that support throughput provisioning: GP3, UltraSSD_LRS, " +
+					"PremiumV2_LRS, Hyperdisk_Balanced. " +
+					"Inherited from user_intent.device_info on the first apply when unset. " +
+					"Once this device_info block is present in config, this field is no " +
+					"longer updated automatically when user_intent.device_info.throughput changes.",
+			},
+			"num_volumes": {
+				Type:     schema.TypeInt,
+				Optional: true,
+				Computed: true,
+				Description: "Number of volumes per master node. " +
+					"Inherited from user_intent.device_info on the first apply when unset. " +
+					"Once this device_info block is present in config, this field is no " +
+					"longer updated automatically when user_intent.device_info.num_volumes changes.",
+			},
+			"volume_size": {
+				Type:     schema.TypeInt,
+				Optional: true,
+				Computed: true,
+				Description: "Volume size in GB for master nodes. " +
+					"Inherited from user_intent.device_info on the first apply when unset. " +
+					"Once this device_info block is present in config, this field is no " +
+					"longer updated automatically when user_intent.device_info.volume_size changes.",
+			},
+			"storage_type": {
+				Type:     schema.TypeString,
+				Optional: true,
+				Computed: true,
+				ValidateFunc: validation.StringInSlice([]string{
+					"IO1", "IO2", "GP2", "GP3",
+					"Scratch", "Persistent",
+					"Hyperdisk_Balanced", "Hyperdisk_Extreme",
+					"StandardSSD_LRS", "Premium_LRS",
+					"PremiumV2_LRS", "UltraSSD_LRS",
+					"Local",
+				}, false),
+				Description: "Storage type for master node volumes. AWS: IO1, IO2, GP2, GP3. " +
+					"GCP: Scratch, Persistent, Hyperdisk_Balanced, Hyperdisk_Extreme. " +
+					"Azure: StandardSSD_LRS, Premium_LRS, PremiumV2_LRS, UltraSSD_LRS. " +
+					"Inherited from user_intent.device_info on the first apply when unset. " +
+					"Once this device_info block is present in config, this field is no " +
+					"longer updated automatically when user_intent.device_info.storage_type changes.",
+			},
+		},
+	}
+}
+
 func userIntentSchema() *schema.Resource {
 	return &schema.Resource{
 		Schema: map[string]*schema.Schema{
@@ -305,60 +456,11 @@ func userIntentSchema() *schema.Resource {
 				Description: "Instance type of universe nodes.",
 			},
 			"device_info": {
-				Type:     schema.TypeList,
-				MaxItems: 1,
-				Required: true,
-				Description: "Configuration values associated with the machines used " +
-					"for this universe.",
-				Elem: &schema.Resource{
-					Schema: map[string]*schema.Schema{
-						"disk_iops": {
-							Type:        schema.TypeInt,
-							Optional:    true,
-							Description: "Disk IOPS.",
-						},
-						"mount_points": {
-							Type:     schema.TypeString,
-							Optional: true,
-							Default:  "",
-							Description: "Disk mount points. Required for on-prem cluster nodes. " +
-								"Not allowed for any other provider type.",
-						},
-						"throughput": {
-							Type:     schema.TypeInt,
-							Optional: true,
-							Description: "Disk throughput in MB/s. Required for storage types " +
-								"that support throughput provisioning: GP3, UltraSSD_LRS, " +
-								"PremiumV2_LRS, Hyperdisk_Balanced.",
-						},
-						"num_volumes": {
-							Type:        schema.TypeInt,
-							Required:    true,
-							Description: "Number of volumes per node.",
-						},
-						"volume_size": {
-							Type:        schema.TypeInt,
-							Required:    true,
-							Description: "Volume size in GB.",
-						},
-						"storage_type": {
-							Type:     schema.TypeString,
-							Optional: true,
-							ValidateFunc: validation.StringInSlice([]string{
-								"IO1", "IO2", "GP2", "GP3",
-								"Scratch", "Persistent",
-								"Hyperdisk_Balanced", "Hyperdisk_Extreme",
-								"StandardSSD_LRS", "Premium_LRS",
-								"PremiumV2_LRS", "UltraSSD_LRS",
-								"Local",
-							}, false),
-							Description: "Storage type of volume. AWS: IO1, IO2, GP2, GP3. " +
-								"GCP: Scratch, Persistent, Hyperdisk_Balanced, Hyperdisk_Extreme. " +
-								"Azure: StandardSSD_LRS, Premium_LRS, PremiumV2_LRS, UltraSSD_LRS. " +
-								"Not applicable for on-prem providers.",
-						},
-					},
-				},
+				Type:        schema.TypeList,
+				MaxItems:    1,
+				Required:    true,
+				Description: "Configuration values associated with the machines used for this universe.",
+				Elem:        deviceInfoElemSchema(),
 			},
 			"assign_public_ip": {
 				Type:        schema.TypeBool,
@@ -426,6 +528,57 @@ func userIntentSchema() *schema.Resource {
 				Elem:        schema.TypeString,
 				Optional:    true,
 				Description: "Set of Master GFlags.",
+			},
+			"dedicated_masters": {
+				Type:     schema.TypeList,
+				MaxItems: 1,
+				Optional: true,
+				Description: "When present, master processes run on dedicated nodes separate " +
+					"from TServer processes. " +
+					"Omitting this block runs masters co-located with TServers. " +
+					"Only valid on the PRIMARY cluster; setting it on a Read Replica " +
+					"(ASYNC) cluster is an error. " +
+					"Once set, dedicated mode cannot be toggled off after universe creation. " +
+					"\n\n" +
+					"Inheritance and ownership rules:\n" +
+					"  - An empty block (dedicated_masters {}) runs masters on dedicated " +
+					"nodes using the same instance_type and device_info as the TServer nodes. " +
+					"All master configuration tracks user_intent automatically.\n" +
+					"  - Once instance_type or device_info is explicitly set inside this " +
+					"block, those fields become the sole source of truth for master " +
+					"configuration. Subsequent changes to the TServer fields in user_intent " +
+					"do NOT propagate to the master block automatically; the operator is " +
+					"responsible for keeping them in sync.",
+				Elem: &schema.Resource{
+					Schema: map[string]*schema.Schema{
+						"instance_type": {
+							Type:     schema.TypeString,
+							Optional: true,
+							Default:  "",
+							Description: "Instance type for dedicated master nodes. " +
+								"When omitted (empty string), falls back to " +
+								"user_intent.instance_type and continues to track it on " +
+								"every apply. Once set to a non-empty value this field is " +
+								"owned by this block; changes to user_intent.instance_type " +
+								"no longer affect the master instance type.",
+						},
+						"device_info": {
+							Type:     schema.TypeList,
+							MaxItems: 1,
+							Optional: true,
+							Description: "Disk and volume configuration for dedicated master nodes. " +
+								"When this block is absent, all disk settings fall back to " +
+								"user_intent.device_info and continue to track it automatically. " +
+								"When this block is present, each field is inherited from " +
+								"user_intent.device_info on the first apply when left unset, " +
+								"but subsequent changes to user_intent.device_info fields do " +
+								"NOT propagate automatically -- the operator must update them " +
+								"here explicitly. To return to full automatic tracking, remove " +
+								"this device_info block entirely.",
+							Elem: masterDeviceInfoElemSchema(),
+						},
+					},
+				},
 			},
 		},
 	}

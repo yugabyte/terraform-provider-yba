@@ -722,7 +722,7 @@ func buildAzList(clI interface{}) []client.PlacementAZ {
 }
 
 func buildUserIntent(ui map[string]interface{}) client.UserIntent {
-	return client.UserIntent{
+	intent := client.UserIntent{
 		AssignStaticPublicIP: utils.GetBoolPointer(ui["assign_static_ip"].(bool)),
 		AwsArnString:         utils.GetStringPointer(ui["aws_arn_string"].(string)),
 		EnableIPV6:           utils.GetBoolPointer(ui["enable_ipv6"].(bool)),
@@ -756,6 +756,62 @@ func buildUserIntent(ui map[string]interface{}) client.UserIntent {
 		TserverGFlags:             utils.StringMap(ui["tserver_gflags"].(map[string]interface{})),
 		MasterGFlags:              utils.StringMap(ui["master_gflags"].(map[string]interface{})),
 	}
+	// dedicated_masters block presence drives DedicatedNodes.
+	// An empty block means: dedicated mode, fall back to TServer instance/device.
+	// Terraform SDK v2 may pass []interface{}{nil} for an empty block that has
+	// only optional fields, so guard against a nil first element.
+	dmList, _ := ui["dedicated_masters"].([]interface{})
+	if len(dmList) > 0 {
+		intent.DedicatedNodes = utils.GetBoolPointer(true)
+		var dm map[string]interface{}
+		if dmList[0] != nil {
+			dm = dmList[0].(map[string]interface{})
+		} else {
+			dm = make(map[string]interface{})
+		}
+		// instance_type: explicit override or fall back to TServer instance type.
+		if v, ok := dm["instance_type"].(string); ok && v != "" {
+			intent.MasterInstanceType = utils.GetStringPointer(v)
+		} else {
+			intent.MasterInstanceType = intent.InstanceType
+		}
+		// device_info: start from a copy of the TServer device info so every
+		// field is pre-populated with a sensible default, then overwrite only
+		// the fields the user explicitly provided (non-zero / non-empty values).
+		if diList, ok := dm["device_info"].([]interface{}); ok && len(diList) > 0 {
+			// Shallow-copy the TServer DeviceInfo as the base. Pointer fields
+			// are replaced below, never mutated, so the TServer intent stays clean.
+			mdi := &client.DeviceInfo{}
+			if tdi := intent.DeviceInfo; tdi != nil {
+				*mdi = *tdi
+			}
+			explicit := buildDeviceInfo(utils.MapFromSingletonList(diList))
+			if explicit.GetNumVolumes() != 0 {
+				mdi.NumVolumes = explicit.NumVolumes
+			}
+			if explicit.GetVolumeSize() != 0 {
+				mdi.VolumeSize = explicit.VolumeSize
+			}
+			if explicit.GetStorageType() != "" {
+				mdi.StorageType = explicit.StorageType
+			}
+			if explicit.GetDiskIops() != 0 {
+				mdi.DiskIops = explicit.DiskIops
+			}
+			if explicit.GetThroughput() != 0 {
+				mdi.Throughput = explicit.Throughput
+			}
+			if explicit.GetMountPoints() != "" {
+				mdi.MountPoints = explicit.MountPoints
+			}
+			intent.MasterDeviceInfo = mdi
+		} else {
+			intent.MasterDeviceInfo = intent.DeviceInfo
+		}
+	} else {
+		intent.DedicatedNodes = utils.GetBoolPointer(false)
+	}
+	return intent
 }
 
 func buildDeviceInfo(di map[string]interface{}) *client.DeviceInfo {
@@ -791,6 +847,7 @@ func buildNodeDetailsRespArrayToNodeDetailsArray(
 			AzUuid:                v.AzUuid,
 			CloudInfo:             v.CloudInfo,
 			CronsActive:           v.CronsActive,
+			DedicatedTo:           v.DedicatedTo,
 			DisksAreMountedByUUID: v.DisksAreMountedByUUID,
 			IsMaster:              v.IsMaster,
 			IsRedisServer:         v.IsRedisServer,

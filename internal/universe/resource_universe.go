@@ -49,6 +49,66 @@ var storageTypesRequireThroughput = map[string]bool{
 	"PremiumV2_LRS": true, "Hyperdisk_Balanced": true,
 }
 
+// storageTypeIopsRange is the [min, max] allowed disk_iops per storage type,
+// matching PublicCloudConstants.StorageType in the YBA server.
+// Storage types absent from this map either don't provision iops or are
+// unlimited (no upper bound enforced by YBA).
+var storageTypeIopsRange = map[string][2]int32{
+	"IO1":                {100, 64000},
+	"IO2":                {100, 256000},
+	"GP3":                {3000, 16000},
+	"Hyperdisk_Balanced": {3000, 160000},
+	"Hyperdisk_Extreme":  {2, 350000},
+	"PremiumV2_LRS":      {3000, 80000},
+	"UltraSSD_LRS":       {100, 160000},
+}
+
+// storageTypeThroughputRange is the [min, max] allowed throughput (MB/s) per
+// storage type, matching PublicCloudConstants.StorageType in the YBA server.
+var storageTypeThroughputRange = map[string][2]int32{
+	"GP3":                {125, 1000},
+	"Hyperdisk_Balanced": {250, 2400},
+	"PremiumV2_LRS":      {1, 1200},
+	"UltraSSD_LRS":       {1, 3814},
+}
+
+// storageTypesNoSmartResize are Azure storage types that the ResizeNode API
+// refuses to resize without downtime (ResizeNodeParams.java line 271).
+// Volume size changes on these types are rejected at the apply stage by YBA,
+// so we surface the error at plan time to give a clearer message.
+var storageTypesNoSmartResize = map[string]bool{
+	"UltraSSD_LRS": true, "PremiumV2_LRS": true,
+}
+
+// validateDeviceInfoIopsThroughput checks disk_iops and throughput for
+// presence and range validity against the storage_type constraints.
+// label is a human-readable prefix for error messages (e.g. "PRIMARY cluster device_info").
+func validateDeviceInfoIopsThroughput(st string, iops, throughput int32, label string) []string {
+	var errs []string
+	if storageTypesRequireIops[st] {
+		if iops <= 0 {
+			errs = append(errs, fmt.Sprintf(
+				"%s: disk_iops is required for storage_type %s", label, st))
+		} else if r, ok := storageTypeIopsRange[st]; ok && (iops < r[0] || iops > r[1]) {
+			errs = append(errs, fmt.Sprintf(
+				"%s: disk_iops %d is out of range [%d, %d] for storage_type %s",
+				label, iops, r[0], r[1], st))
+		}
+	}
+	if storageTypesRequireThroughput[st] {
+		if throughput <= 0 {
+			errs = append(errs, fmt.Sprintf(
+				"%s: throughput is required for storage_type %s", label, st))
+		} else if r, ok := storageTypeThroughputRange[st]; ok &&
+			(throughput < r[0] || throughput > r[1]) {
+			errs = append(errs, fmt.Sprintf(
+				"%s: throughput %d is out of range [%d, %d] for storage_type %s",
+				label, throughput, r[0], r[1], st))
+		}
+	}
+	return errs
+}
+
 // storage types grouped by cloud provider. Cross-cloud storage_type transitions
 // are structurally impossible (the provider UUID cannot change on a universe),
 // so a same-universe storage_type change that crosses groups is always a user
@@ -694,20 +754,63 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 					}
 				}
 
-				// Enforce iops/throughput requirements for the new storage_type only.
-				// The old storage_type's requirements don't apply,  we're transitioning
-				// away from them. Example: GP3 to IO2 needs iops (IO2 requires) but
-				// doesn't need throughput (IO2 doesn't use it, even though GP3 did).
+				// Enforce iops/throughput presence and range for the new storage_type.
+				// The old storage_type's requirements don't apply; we're transitioning
+				// away from them.
 				di := newPrimary.UserIntent.DeviceInfo
-				if storageTypesRequireIops[newST] && di.GetDiskIops() <= 0 {
-					return fmt.Errorf(
-						"disk_iops must be set (> 0) when changing storage_type "+
-							"to %s on the Primary Cluster", newST)
+				if errs := validateDeviceInfoIopsThroughput(
+					newST, di.GetDiskIops(), di.GetThroughput(),
+					"Primary Cluster device_info",
+				); len(errs) > 0 {
+					return fmt.Errorf("%s", strings.Join(errs, "; "))
 				}
-				if storageTypesRequireThroughput[newST] && di.GetThroughput() <= 0 {
-					return fmt.Errorf(
-						"throughput must be set (> 0) when changing storage_type "+
-							"to %s on the Primary Cluster", newST)
+				return nil
+			},
+		),
+		customdiff.ValidateChange(
+			"clusters",
+			func(ctx context.Context, old, new, m interface{}) error {
+				// Validate dedicated master storage_type transitions for shape,
+				// independent of allow_full_move. Mirrors the TServer validator above.
+				if len(old.([]interface{})) == 0 {
+					return nil
+				}
+				oldClusters := buildClusters(old.([]interface{}))
+				newClusters := buildClusters(new.([]interface{}))
+				oldPrimary, oldOK := getClusterByType(oldClusters, "PRIMARY")
+				newPrimary, newOK := getClusterByType(newClusters, "PRIMARY")
+				if !oldOK || !newOK || !newPrimary.UserIntent.GetDedicatedNodes() {
+					return nil
+				}
+				oldMDI := oldPrimary.UserIntent.MasterDeviceInfo
+				newMDI := newPrimary.UserIntent.MasterDeviceInfo
+				if oldMDI == nil || newMDI == nil {
+					return nil
+				}
+				oldST := oldMDI.GetStorageType()
+				newST := newMDI.GetStorageType()
+				if oldST == newST {
+					return nil
+				}
+				// Reject cross-cloud transitions on master storage_type.
+				if oldST != "" && newST != "" {
+					oldCloud := storageTypeCloud(oldST)
+					newCloud := storageTypeCloud(newST)
+					if oldCloud != "" && newCloud != "" && oldCloud != newCloud {
+						return fmt.Errorf(
+							"dedicated_masters.device_info.storage_type cannot change "+
+								"from %s (cloud: %s) to %s (cloud: %s): a universe's "+
+								"provider cannot change after creation, so cross-cloud "+
+								"storage_type transitions are not possible.",
+							oldST, oldCloud, newST, newCloud)
+					}
+				}
+				// Enforce iops/throughput presence and range for the new master storage_type.
+				if errs := validateDeviceInfoIopsThroughput(
+					newST, newMDI.GetDiskIops(), newMDI.GetThroughput(),
+					"dedicated_masters.device_info",
+				); len(errs) > 0 {
+					return fmt.Errorf("%s", strings.Join(errs, "; "))
 				}
 				return nil
 			},
@@ -787,17 +890,13 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 					}
 				}
 
-				// Enforce iops/throughput requirements for the new storage_type.
+				// Enforce iops/throughput presence and range for the new storage_type.
 				di := newRR.UserIntent.DeviceInfo
-				if storageTypesRequireIops[newST] && di.GetDiskIops() <= 0 {
-					return fmt.Errorf(
-						"disk_iops must be set (> 0) when changing storage_type "+
-							"to %s on the Read Replica Cluster", newST)
-				}
-				if storageTypesRequireThroughput[newST] && di.GetThroughput() <= 0 {
-					return fmt.Errorf(
-						"throughput must be set (> 0) when changing storage_type "+
-							"to %s on the Read Replica Cluster", newST)
+				if errs := validateDeviceInfoIopsThroughput(
+					newST, di.GetDiskIops(), di.GetThroughput(),
+					"Read Replica Cluster device_info",
+				); len(errs) > 0 {
+					return fmt.Errorf("%s", strings.Join(errs, "; "))
 				}
 				return nil
 			},
@@ -886,6 +985,182 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 					return nil
 				},
 			),
+		),
+		customdiff.IfValue("allow_full_move",
+			func(ctx context.Context, value, meta interface{}) bool {
+				return !value.(bool)
+			},
+			customdiff.ValidateChange(
+				"clusters",
+				func(ctx context.Context, old, new, m interface{}) error {
+					// dedicated_masters volume_size decrease: YBA handles this via a
+					// FULL MOVE on master nodes (same mechanics as TServer volume_size
+					// decrease). Gated on allow_full_move for the same reasons.
+					if len(old.([]interface{})) == 0 {
+						return nil
+					}
+					oldClusters := buildClusters(old.([]interface{}))
+					newClusters := buildClusters(new.([]interface{}))
+					oldPrimary, oldOK := getClusterByType(oldClusters, "PRIMARY")
+					newPrimary, newOK := getClusterByType(newClusters, "PRIMARY")
+					if !oldOK || !newOK {
+						return nil
+					}
+					if !newPrimary.UserIntent.GetDedicatedNodes() {
+						return nil
+					}
+					oldMDI := oldPrimary.UserIntent.MasterDeviceInfo
+					newMDI := newPrimary.UserIntent.MasterDeviceInfo
+					if oldMDI == nil || newMDI == nil {
+						return nil
+					}
+					if oldMDI.GetVolumeSize() > newMDI.GetVolumeSize() {
+						return errors.New(
+							"dedicated_masters.device_info.volume_size decrease " +
+								"triggers a FULL MOVE on master nodes (new master " +
+								"nodes provisioned with the smaller volume, data " +
+								"migrated, old master nodes decommissioned; requires " +
+								"2x capacity and takes significantly longer than smart " +
+								"resize). To proceed, set allow_full_move = true on " +
+								"the universe resource to acknowledge these implications.")
+					}
+					return nil
+				},
+			),
+		),
+		customdiff.IfValue("allow_full_move",
+			func(ctx context.Context, value, meta interface{}) bool {
+				return !value.(bool)
+			},
+			customdiff.ValidateChange(
+				"clusters",
+				func(ctx context.Context, old, new, m interface{}) error {
+					// dedicated_masters num_volumes change with the same master
+					// instance_type triggers a FULL MOVE on master nodes. Gated on
+					// allow_full_move for the same reasons as TServer num_volumes change.
+					if len(old.([]interface{})) == 0 {
+						return nil
+					}
+					oldClusters := buildClusters(old.([]interface{}))
+					newClusters := buildClusters(new.([]interface{}))
+					oldPrimary, oldOK := getClusterByType(oldClusters, "PRIMARY")
+					newPrimary, newOK := getClusterByType(newClusters, "PRIMARY")
+					if !oldOK || !newOK {
+						return nil
+					}
+					if !newPrimary.UserIntent.GetDedicatedNodes() {
+						return nil
+					}
+					oldMDI := oldPrimary.UserIntent.MasterDeviceInfo
+					newMDI := newPrimary.UserIntent.MasterDeviceInfo
+					if oldMDI == nil || newMDI == nil {
+						return nil
+					}
+					if oldMDI.GetNumVolumes() != newMDI.GetNumVolumes() {
+						return errors.New(
+							"dedicated_masters.device_info.num_volumes change " +
+								"triggers a FULL MOVE on master nodes (new master " +
+								"nodes provisioned with the new volume count, data " +
+								"migrated, old master nodes decommissioned; requires " +
+								"2x capacity and takes significantly longer than " +
+								"in-place operations). To proceed, set allow_full_move" +
+								" = true on the universe resource to acknowledge " +
+								"these implications.")
+					}
+					return nil
+				},
+			),
+		),
+		customdiff.IfValue("allow_full_move",
+			func(ctx context.Context, value, meta interface{}) bool {
+				return !value.(bool)
+			},
+			customdiff.ValidateChange(
+				"clusters",
+				func(ctx context.Context, old, new, m interface{}) error {
+					// dedicated_masters storage_type change triggers a FULL MOVE on
+					// master nodes (same mechanics as TServer storage_type change).
+					// Gated on allow_full_move for the same reasons.
+					if len(old.([]interface{})) == 0 {
+						return nil
+					}
+					oldClusters := buildClusters(old.([]interface{}))
+					newClusters := buildClusters(new.([]interface{}))
+					oldPrimary, oldOK := getClusterByType(oldClusters, "PRIMARY")
+					newPrimary, newOK := getClusterByType(newClusters, "PRIMARY")
+					if !oldOK || !newOK {
+						return nil
+					}
+					if !newPrimary.UserIntent.GetDedicatedNodes() {
+						return nil
+					}
+					oldMDI := oldPrimary.UserIntent.MasterDeviceInfo
+					newMDI := newPrimary.UserIntent.MasterDeviceInfo
+					if oldMDI == nil || newMDI == nil {
+						return nil
+					}
+					oldST := oldMDI.GetStorageType()
+					newST := newMDI.GetStorageType()
+					if oldST == newST {
+						return nil
+					}
+					return fmt.Errorf(
+						"dedicated_masters.device_info.storage_type change from %s "+
+							"to %s triggers a FULL MOVE on master nodes (new master "+
+							"nodes provisioned with the new storage type, data "+
+							"migrated, old master nodes decommissioned; requires 2x "+
+							"capacity and takes significantly longer than in-place "+
+							"operations). To proceed, set allow_full_move = true on "+
+							"the universe resource to acknowledge these implications.",
+						oldST, newST)
+				},
+			),
+		),
+		customdiff.ValidateChange(
+			"clusters",
+			func(ctx context.Context, old, new, m interface{}) error {
+				// UltraSSD_LRS and PremiumV2_LRS (Azure) cannot be smart-resized
+				// without downtime. The ResizeNode API rejects volume-size increases
+				// on these types. Surface this at plan time for both TServer and
+				// dedicated master so users get a clear error before apply.
+				if len(old.([]interface{})) == 0 {
+					return nil
+				}
+				oldClusters := buildClusters(old.([]interface{}))
+				newClusters := buildClusters(new.([]interface{}))
+				oldPrimary, oldOK := getClusterByType(oldClusters, "PRIMARY")
+				newPrimary, newOK := getClusterByType(newClusters, "PRIMARY")
+				if !oldOK || !newOK {
+					return nil
+				}
+				// TServer check.
+				tserverST := oldPrimary.UserIntent.DeviceInfo.GetStorageType()
+				if storageTypesNoSmartResize[tserverST] &&
+					oldPrimary.UserIntent.DeviceInfo.GetVolumeSize() <
+						newPrimary.UserIntent.DeviceInfo.GetVolumeSize() {
+					return fmt.Errorf(
+						"storage_type %s does not support online volume resize "+
+							"(Azure limitation). To expand volume size on this "+
+							"storage type, destroy and recreate the universe.",
+						tserverST)
+				}
+				// Dedicated master check.
+				oldMDI := oldPrimary.UserIntent.MasterDeviceInfo
+				newMDI := newPrimary.UserIntent.MasterDeviceInfo
+				if oldMDI != nil && newMDI != nil {
+					masterST := oldMDI.GetStorageType()
+					if storageTypesNoSmartResize[masterST] &&
+						oldMDI.GetVolumeSize() < newMDI.GetVolumeSize() {
+						return fmt.Errorf(
+							"dedicated_masters.device_info.storage_type %s does "+
+								"not support online volume resize (Azure limitation). "+
+								"To expand master volume size on this storage type, "+
+								"destroy and recreate the universe.",
+							masterST)
+					}
+				}
+				return nil
+			},
 		),
 		customdiff.ValidateChange(
 			"clusters",
@@ -1111,16 +1386,8 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 						"mount_points can only be specified for on-prem provider clusters")
 				}
 				if len(storageType) > 0 {
-					if storageTypesRequireIops[storageType] && di.GetDiskIops() <= 0 {
-						errs = append(errs,
-							fmt.Sprintf("disk_iops is required for storage_type %s",
-								storageType))
-					}
-					if storageTypesRequireThroughput[storageType] && di.GetThroughput() <= 0 {
-						errs = append(errs,
-							fmt.Sprintf("throughput is required for storage_type %s",
-								storageType))
-					}
+					errs = append(errs, validateDeviceInfoIopsThroughput(
+						storageType, di.GetDiskIops(), di.GetThroughput(), "")...)
 				}
 				if len(errs) > 0 {
 					return fmt.Errorf("Error in %s cluster device_info: %s",
@@ -1151,8 +1418,109 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 					return err
 				}
 			}
+
 			return nil
 		}),
+		customdiff.ValidateValue("clusters", func(ctx context.Context, value,
+			meta interface{}) error {
+			// dedicated_masters block is only valid on the PRIMARY cluster.
+			// When present on PRIMARY, validate the explicit device_info (if any)
+			// for storage type constraints. The fallback case (empty block) inherits
+			// device_info which was already validated by the tserver validator above.
+			for _, cl := range value.([]interface{}) {
+				clMap, ok := cl.(map[string]interface{})
+				if !ok {
+					continue
+				}
+				clusterType, _ := clMap["cluster_type"].(string)
+				uiList, _ := clMap["user_intent"].([]interface{})
+				if len(uiList) == 0 {
+					continue
+				}
+				uiMap, _ := uiList[0].(map[string]interface{})
+				if uiMap == nil {
+					continue
+				}
+				dmList, _ := uiMap["dedicated_masters"].([]interface{})
+				if len(dmList) == 0 {
+					continue
+				}
+				if clusterType == "ASYNC" {
+					return fmt.Errorf(
+						"cannot set dedicated_masters for a Read Replica cluster")
+				}
+			}
+			clusterSet := buildClusters(value.([]interface{}))
+			primary, isPresent := getClusterByType(clusterSet, "PRIMARY")
+			if !isPresent {
+				return nil
+			}
+			primaryUI := primary.GetUserIntent()
+			if !primaryUI.GetDedicatedNodes() {
+				return nil
+			}
+			// dedicated_masters present: validate dedicated_masters.device_info when
+			// it differs from the TServer device_info (i.e. the user provided an
+			// explicit dedicated_masters.device_info block). The fallback case (empty
+			// block, or no device_info sub-block) copies the TServer device_info pointer
+			// and was already validated by the tserver device_info validator above.
+			if deviceInfoEqual(primaryUI.MasterDeviceInfo, primaryUI.DeviceInfo) {
+				return nil
+			}
+			mdi := primaryUI.MasterDeviceInfo
+			if mdi == nil {
+				return nil
+			}
+			providerType := primaryUI.GetProviderType()
+			var mdiErrs []string
+			masterST := mdi.GetStorageType()
+			if len(mdi.GetMountPoints()) > 0 && providerType != "onprem" {
+				mdiErrs = append(
+					mdiErrs,
+					"dedicated_masters.device_info.mount_points can only be specified for on-prem clusters",
+				)
+			}
+			if len(masterST) > 0 {
+				if providerType == "onprem" {
+					mdiErrs = append(
+						mdiErrs,
+						"dedicated_masters.device_info.storage_type cannot be specified for on-prem clusters",
+					)
+				} else {
+					mdiErrs = append(mdiErrs, validateDeviceInfoIopsThroughput(
+						masterST, mdi.GetDiskIops(), mdi.GetThroughput(),
+						"dedicated_masters.device_info")...)
+				}
+			}
+			if len(mdiErrs) > 0 {
+				return fmt.Errorf("Error in PRIMARY cluster dedicated_masters.device_info: %s",
+					strings.Join(mdiErrs, "; "))
+			}
+			return nil
+		}),
+		customdiff.ValidateChange("clusters",
+			func(ctx context.Context, old, new, m interface{}) error {
+				// Prevent toggling dedicated master mode on an existing universe. The YBA
+				// API does not support changing dedicated mode via smart resize; toggling
+				// it would require a full universe rebuild.
+				if len(old.([]interface{})) == 0 {
+					return nil
+				}
+				oldClusters := buildClusters(old.([]interface{}))
+				newClusters := buildClusters(new.([]interface{}))
+				oldPrimary, oldOK := getClusterByType(oldClusters, "PRIMARY")
+				newPrimary, newOK := getClusterByType(newClusters, "PRIMARY")
+				if !oldOK || !newOK {
+					return nil
+				}
+				if oldPrimary.UserIntent.GetDedicatedNodes() != newPrimary.UserIntent.GetDedicatedNodes() {
+					return fmt.Errorf(
+						"cannot add or remove dedicated_masters after universe creation: " +
+							"smart resize does not support toggling dedicated master mode")
+				}
+				return nil
+			},
+		),
 		customdiff.ValidateChange(
 			"db_version_upgrade_options",
 			func(ctx context.Context, old, new, m interface{}) error {
@@ -2292,8 +2660,66 @@ func validateCommPortsNotRestricted(d *schema.ResourceData) error {
 	return nil
 }
 
+// masterDeviceInfoChanged returns true when any editable master device field
+// differs between old and new intents, assuming both MasterDeviceInfo are non-nil.
+func masterDeviceInfoChanged(old, new client.UserIntent) bool {
+	if old.MasterDeviceInfo == nil || new.MasterDeviceInfo == nil {
+		return false
+	}
+	return old.MasterDeviceInfo.GetNumVolumes() != new.MasterDeviceInfo.GetNumVolumes() ||
+		old.MasterDeviceInfo.GetVolumeSize() != new.MasterDeviceInfo.GetVolumeSize() ||
+		old.MasterDeviceInfo.GetStorageType() != new.MasterDeviceInfo.GetStorageType() ||
+		old.MasterDeviceInfo.GetDiskIops() != new.MasterDeviceInfo.GetDiskIops() ||
+		old.MasterDeviceInfo.GetThroughput() != new.MasterDeviceInfo.GetThroughput()
+}
+
+// applyDedicatedMasterResizeIntent overlays dedicated-master fields that must flow
+// through ResizeNode (smart resize) rather than UpdatePrimaryCluster. Called only
+// when the full set of user-intent changes needs to be simulated (pre-flight and
+// apply); do NOT use in the post-smart-resize re-check that feeds UpdatePrimaryCluster.
+func applyDedicatedMasterResizeIntent(
+	oldUserIntent client.UserIntent,
+	newUserIntent client.UserIntent,
+) (bool, client.UserIntent) {
+	if !newUserIntent.GetDedicatedNodes() {
+		return false, oldUserIntent
+	}
+	changed := false
+	if oldUserIntent.GetMasterInstanceType() != newUserIntent.GetMasterInstanceType() {
+		oldUserIntent.MasterInstanceType = newUserIntent.MasterInstanceType
+		changed = true
+	}
+	return changed, oldUserIntent
+}
+
+// simulateAllUserIntentChanges combines editUniverseParameters and
+// applyDedicatedMasterResizeIntent for call sites that need the full simulation
+// (pre-flight and apply). The two functions are kept separate so that the
+// post-smart-resize re-check can call editUniverseParameters alone and avoid
+// injecting ResizeNode-only fields (e.g. masterInstanceType) into the subsequent
+// UpdatePrimaryCluster request.
+func simulateAllUserIntentChanges(
+	ctx context.Context,
+	oldUserIntent client.UserIntent,
+	newUserIntent client.UserIntent,
+) (bool, client.UserIntent) {
+	changed, intent := editUniverseParameters(ctx, oldUserIntent, newUserIntent)
+	dedicatedChanged, intent := applyDedicatedMasterResizeIntent(intent, newUserIntent)
+	return changed || dedicatedChanged, intent
+}
+
 func editUniverseParameters(ctx context.Context, oldUserIntent client.UserIntent,
 	newUserIntent client.UserIntent) (bool, client.UserIntent) {
+	// masterInstanceType changes are applied via ResizeNode (same API path the
+	// YBA CLI's "resizenode" command uses). They must NOT be included here
+	// because UniverseConfigureOptions validates the new intent against existing
+	// node instance types and rejects a changed masterInstanceType with a 400
+	// ("Instance type X mismatch for node Y, expected Z"). Only device-info
+	// field changes (num_volumes, volume_size, storage_type, etc.) that require
+	// a full move go through UpdatePrimaryCluster.
+	dedicatedMasterChanged := newUserIntent.GetDedicatedNodes() &&
+		masterDeviceInfoChanged(oldUserIntent, newUserIntent)
+
 	if !reflect.DeepEqual(oldUserIntent.GetInstanceTags(), newUserIntent.GetInstanceTags()) ||
 		!reflect.DeepEqual(oldUserIntent.GetRegionList(), newUserIntent.GetRegionList()) ||
 		oldUserIntent.GetNumNodes() != newUserIntent.GetNumNodes() ||
@@ -2301,7 +2727,8 @@ func editUniverseParameters(ctx context.Context, oldUserIntent client.UserIntent
 		oldUserIntent.GetInstanceType() != newUserIntent.GetInstanceType() ||
 		oldUserIntent.DeviceInfo.GetNumVolumes() != newUserIntent.DeviceInfo.GetNumVolumes() ||
 		oldUserIntent.DeviceInfo.GetVolumeSize() != newUserIntent.DeviceInfo.GetVolumeSize() ||
-		oldUserIntent.DeviceInfo.GetStorageType() != newUserIntent.DeviceInfo.GetStorageType() {
+		oldUserIntent.DeviceInfo.GetStorageType() != newUserIntent.DeviceInfo.GetStorageType() ||
+		dedicatedMasterChanged {
 
 		// Full-move warnings. Plan-time allow_full_move gates have already
 		// enforced user consent; these just surface which specific change is
@@ -2313,7 +2740,7 @@ func editUniverseParameters(ctx context.Context, oldUserIntent client.UserIntent
 		}
 		if oldUserIntent.DeviceInfo.GetVolumeSize() >
 			newUserIntent.DeviceInfo.GetVolumeSize() {
-			tflog.Warn(ctx, "Volume size decrease will trigger a FULL MOVE")
+			tflog.Warn(ctx, "TServer volume size decrease will trigger a FULL MOVE")
 		}
 		if oldUserIntent.DeviceInfo.GetStorageType() !=
 			newUserIntent.DeviceInfo.GetStorageType() {
@@ -2338,6 +2765,12 @@ func editUniverseParameters(ctx context.Context, oldUserIntent client.UserIntent
 					newUserIntent.DeviceInfo.GetThroughput(), newST))
 			}
 		}
+		if newUserIntent.GetDedicatedNodes() &&
+			oldUserIntent.MasterDeviceInfo != nil && newUserIntent.MasterDeviceInfo != nil &&
+			oldUserIntent.MasterDeviceInfo.GetVolumeSize() >
+				newUserIntent.MasterDeviceInfo.GetVolumeSize() {
+			tflog.Warn(ctx, "Master volume size decrease will trigger a FULL MOVE")
+		}
 
 		// Field-by-field overwrite onto oldUserIntent (current YBA state). Only
 		// the fields UpdatePrimaryCluster / UpdateReadOnlyCluster (EditUniverse
@@ -2352,6 +2785,18 @@ func editUniverseParameters(ctx context.Context, oldUserIntent client.UserIntent
 		oldUserIntent.DeviceInfo.StorageType = newUserIntent.DeviceInfo.StorageType
 		oldUserIntent.DeviceInfo.DiskIops = newUserIntent.DeviceInfo.DiskIops
 		oldUserIntent.DeviceInfo.Throughput = newUserIntent.DeviceInfo.Throughput
+		// Dedicated master device-info fields (full-move path).
+		// MasterInstanceType is intentionally excluded here: it is applied
+		// via ResizeNode, not UpdatePrimaryCluster.
+		if newUserIntent.GetDedicatedNodes() {
+			if oldUserIntent.MasterDeviceInfo != nil && newUserIntent.MasterDeviceInfo != nil {
+				oldUserIntent.MasterDeviceInfo.NumVolumes = newUserIntent.MasterDeviceInfo.NumVolumes
+				oldUserIntent.MasterDeviceInfo.VolumeSize = newUserIntent.MasterDeviceInfo.VolumeSize
+				oldUserIntent.MasterDeviceInfo.StorageType = newUserIntent.MasterDeviceInfo.StorageType
+				oldUserIntent.MasterDeviceInfo.DiskIops = newUserIntent.MasterDeviceInfo.DiskIops
+				oldUserIntent.MasterDeviceInfo.Throughput = newUserIntent.MasterDeviceInfo.Throughput
+			}
+		}
 
 		return true, oldUserIntent
 	}
@@ -2476,7 +2921,7 @@ func resourceUniverseUpdate(
 			oldUserIntent := preflightUni.UniverseDetails.Clusters[i].UserIntent
 			newUserIntent := newUniForPreflight.Clusters[i].UserIntent
 
-			editAllowed, simulatedIntent := editUniverseParameters(
+			editAllowed, simulatedIntent := simulateAllUserIntentChanges(
 				ctx,
 				oldUserIntent,
 				newUserIntent,
@@ -2774,6 +3219,17 @@ func resourceUniverseUpdate(
 				); diags != nil {
 					return diags
 				}
+				// Re-fetch after deletion so that subsequent cluster operations
+				// (upgrades, resizes, etc.) do not send the deleted ASYNC cluster
+				// in their Clusters payload, which would cause YBA to reject or
+				// mishandle the request.
+				updateUni, response, err = c.UniverseManagementAPI.GetUniverse(
+					ctx, cUUID, d.Id()).Execute()
+				if err != nil {
+					return diag.FromErr(utils.ErrorFromHTTPResponse(response, err,
+						utils.ResourceEntity, "Universe",
+						"Update - Fetch universe after Read Replica deletion"))
+				}
 			}
 		}
 		for i, v := range clusters {
@@ -3024,22 +3480,14 @@ func resourceUniverseUpdate(
 				}
 				oldUserIntent = updateUni.UniverseDetails.Clusters[i].UserIntent
 
-				updateUni, response, err = c.UniverseManagementAPI.GetUniverse(ctx, cUUID, d.Id()).
-					Execute()
-				if err != nil {
-					errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
-						"Universe", "Update - Fetch universe")
-					return diag.FromErr(errMessage)
-				}
-				oldUserIntent = updateUni.UniverseDetails.Clusters[i].UserIntent
-
 				// Num of nodes, Instance Type, Num of Volumes, Volume Size, User Tags changes
 				var editAllowed, editZoneAllowed bool
-				editAllowed, updateUni.UniverseDetails.Clusters[i].UserIntent = editUniverseParameters(
-					ctx,
-					oldUserIntent,
-					newUserIntent,
-				)
+				editAllowed, updateUni.UniverseDetails.Clusters[i].UserIntent =
+					simulateAllUserIntentChanges(
+						ctx,
+						oldUserIntent,
+						newUserIntent,
+					)
 
 				// Placement (cloud_list) changes: update PlacementInfo and mark removed-AZ
 				// nodes as ToBeRemoved so the backend detects the placement diff.
@@ -3157,6 +3605,60 @@ func resourceUniverseUpdate(
 							},
 						); diags != nil {
 							return diags
+						}
+
+						// Re-fetch after smart resize so that the UpdatePrimaryCluster call
+						// below receives an accurate NodeDetailsSet. The rolling resize
+						// updated the nodes in-place on the server, but the in-memory
+						// updateUni.NodeDetailsSet still reflects the pre-resize state (e.g.
+						// old instance types). Without a refresh, YBA interprets the
+						// intent/node mismatch as a full-move trigger: it provisions new
+						// nodes with the new instance type and decommissions the already-
+						// resized ones.
+						updateUni, response, err = c.UniverseManagementAPI.GetUniverse(
+							ctx, cUUID, d.Id()).Execute()
+						if err != nil {
+							return diag.FromErr(utils.ErrorFromHTTPResponse(response, err,
+								utils.ResourceEntity, "Universe",
+								"Update - Fetch universe after smart resize"))
+						}
+						// Re-check whether any user-intent fields still need
+						// UpdatePrimaryCluster after the smart resize has been applied.
+						// If smart resize handled every pending change, suppress UPDATE so
+						// no stale-nodeset UpdatePrimaryCluster request is sent.
+						if hasUpdate {
+							freshOld := updateUni.UniverseDetails.Clusters[i].UserIntent
+							var stillNeeded bool
+							stillNeeded, updateUni.UniverseDetails.Clusters[i].UserIntent =
+								editUniverseParameters(ctx, freshOld, newUserIntent)
+							if !stillNeeded {
+								hasUpdate = false
+							}
+						}
+						// Re-apply the desired PlacementInfo and re-mark removed-AZ nodes
+						// on the freshly fetched NodeDetailsSet (the pre-resize AZ markings
+						// are stale after the universe re-fetch).
+						if editZoneAllowed {
+							resolvedNewPI := newUni.Clusters[i].PlacementInfo
+							if resolvedNewPI != nil && len(resolvedNewPI.CloudList) > 0 {
+								var freshOldCloudList []client.PlacementCloud
+								if updateUni.UniverseDetails.Clusters[i].PlacementInfo != nil {
+									freshOldCloudList =
+										updateUni.UniverseDetails.Clusters[i].PlacementInfo.CloudList
+								}
+								freshOldAZUUIDs := collectAZUUIDs(freshOldCloudList)
+								resolvedAZUUIDs := collectAZUUIDs(resolvedNewPI.CloudList)
+								clusterUUID := updateUni.UniverseDetails.Clusters[i].GetUuid()
+								for j := range updateUni.UniverseDetails.NodeDetailsSet {
+									n := &updateUni.UniverseDetails.NodeDetailsSet[j]
+									if n.GetPlacementUuid() == clusterUUID &&
+										freshOldAZUUIDs[n.GetAzUuid()] &&
+										!resolvedAZUUIDs[n.GetAzUuid()] {
+										n.SetState("ToBeRemoved")
+									}
+								}
+								updateUni.UniverseDetails.Clusters[i].PlacementInfo = resolvedNewPI
+							}
 						}
 					}
 
@@ -3398,6 +3900,48 @@ func resourceUniverseUpdate(
 							},
 						); diags != nil {
 							return diags
+						}
+
+						// Re-fetch after smart resize (same rationale as PRIMARY path):
+						// stale NodeDetailsSet triggers a spurious full-move in the
+						// subsequent UpdateReadOnlyCluster call.
+						updateUni, response, err = c.UniverseManagementAPI.GetUniverse(
+							ctx, cUUID, d.Id()).Execute()
+						if err != nil {
+							return diag.FromErr(utils.ErrorFromHTTPResponse(response, err,
+								utils.ResourceEntity, "Universe",
+								"Update - Fetch universe after smart resize (Read Replica)"))
+						}
+						if hasUpdate {
+							freshOld := updateUni.UniverseDetails.Clusters[i].UserIntent
+							var stillNeeded bool
+							stillNeeded, updateUni.UniverseDetails.Clusters[i].UserIntent =
+								editUniverseParameters(ctx, freshOld, newUserIntent)
+							if !stillNeeded {
+								hasUpdate = false
+							}
+						}
+						if editZoneAllowed {
+							resolvedNewPI := newUni.Clusters[i].PlacementInfo
+							if resolvedNewPI != nil && len(resolvedNewPI.CloudList) > 0 {
+								var freshOldCloudList []client.PlacementCloud
+								if updateUni.UniverseDetails.Clusters[i].PlacementInfo != nil {
+									freshOldCloudList =
+										updateUni.UniverseDetails.Clusters[i].PlacementInfo.CloudList
+								}
+								freshOldAZUUIDs := collectAZUUIDs(freshOldCloudList)
+								resolvedAZUUIDs := collectAZUUIDs(resolvedNewPI.CloudList)
+								clusterUUID := updateUni.UniverseDetails.Clusters[i].GetUuid()
+								for j := range updateUni.UniverseDetails.NodeDetailsSet {
+									n := &updateUni.UniverseDetails.NodeDetailsSet[j]
+									if n.GetPlacementUuid() == clusterUUID &&
+										freshOldAZUUIDs[n.GetAzUuid()] &&
+										!resolvedAZUUIDs[n.GetAzUuid()] {
+										n.SetState("ToBeRemoved")
+									}
+								}
+								updateUni.UniverseDetails.Clusters[i].PlacementInfo = resolvedNewPI
+							}
 						}
 					}
 

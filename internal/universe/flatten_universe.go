@@ -371,8 +371,59 @@ func flattenUserIntent(ui client.UserIntent) []interface{} {
 		"access_key_code":               ui.AccessKeyCode,
 		"tserver_gflags":                ui.GetTserverGFlags(),
 		"master_gflags":                 ui.GetMasterGFlags(),
+		"dedicated_masters":             flattenDedicatedMasters(ui),
 	}
 	return utils.CreateSingletonList(v)
+}
+
+// flattenDedicatedMasters converts dedicated-master fields from the API UserIntent
+// into the dedicated_masters schema block.
+//
+// Returns an empty list when DedicatedNodes is false (block absent in config).
+// When DedicatedNodes is true the block is always present. instance_type and
+// device_info are suppressed (set to their zero values) when they match the
+// TServer values, which is the case when the user wrote "dedicated_masters {}"
+// and the API applied the TServer fallback. This keeps the state consistent
+// with an empty block so no spurious diff appears on subsequent plans.
+func flattenDedicatedMasters(ui client.UserIntent) []interface{} {
+	if !ui.GetDedicatedNodes() {
+		return []interface{}{}
+	}
+	// Suppress instance_type when it equals the TServer instance type (fallback).
+	masterIT := ui.GetMasterInstanceType()
+	if masterIT == ui.GetInstanceType() {
+		masterIT = ""
+	}
+	// Suppress device_info when it equals the TServer device info (fallback).
+	var masterDI []interface{}
+	if ui.MasterDeviceInfo != nil && !deviceInfoEqual(ui.MasterDeviceInfo, ui.DeviceInfo) {
+		masterDI = flattenDeviceInfo(ui.MasterDeviceInfo)
+	} else {
+		masterDI = []interface{}{}
+	}
+	dm := map[string]interface{}{
+		"instance_type": masterIT,
+		"device_info":   masterDI,
+	}
+	return []interface{}{dm}
+}
+
+// deviceInfoEqual returns true when both DeviceInfo pointers represent the
+// same disk configuration. Used to detect whether masterDeviceInfo is the
+// TServer fallback (identical) or an explicit user override.
+func deviceInfoEqual(a, b *client.DeviceInfo) bool {
+	if a == nil && b == nil {
+		return true
+	}
+	if a == nil || b == nil {
+		return false
+	}
+	return a.GetNumVolumes() == b.GetNumVolumes() &&
+		a.GetVolumeSize() == b.GetVolumeSize() &&
+		a.GetStorageType() == b.GetStorageType() &&
+		a.GetDiskIops() == b.GetDiskIops() &&
+		a.GetThroughput() == b.GetThroughput() &&
+		a.GetMountPoints() == b.GetMountPoints()
 }
 
 func flattenDeviceInfo(di *client.DeviceInfo) []interface{} {

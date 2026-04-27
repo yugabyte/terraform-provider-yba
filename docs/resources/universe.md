@@ -35,6 +35,63 @@ resource "yba_universe" "universe_name" {
   }
   communication_ports {}
 }
+
+# Universe with dedicated master nodes: masters run on separate nodes from TServers.
+# Omit instance_type inside dedicated_masters block to use the
+# same instance type as the TServer nodes.
+resource "yba_universe" "dedicated_masters" {
+  clusters {
+    cluster_type = "<cluster-type>"
+    user_intent {
+      universe_name      = "<universe-name>"
+      provider_type      = "<yba_cloud_provider.cloud_provider.code>"
+      provider           = "<yba_cloud_provider.cloud_provider.id>"
+      region_list        = "<yba_cloud_provider.cloud_provider.regions[*].uuid>"
+      num_nodes          = 3
+      replication_factor = 3
+      instance_type      = "<instance-type>"
+      device_info {
+        num_volumes  = 1
+        volume_size  = 375
+        storage_type = "%s"
+      }
+      dedicated_masters {
+        instance_type = "<master-instance-type>"
+      }
+      use_time_sync       = true
+      enable_ysql         = true
+      yb_software_version = "<YBDB-version - data.yba_release_version.release_version.id>"
+      access_key_code     = "<access-key - data.yba_provider_key.cloud_key.id>"
+    }
+  }
+  communication_ports {}
+}
+
+resource "yba_universe" "dedicated_masters" {
+  clusters {
+    cluster_type = "<cluster-type>"
+    user_intent {
+      universe_name      = "<universe-name>"
+      provider_type      = "<yba_cloud_provider.cloud_provider.code>"
+      provider           = "<yba_cloud_provider.cloud_provider.id>"
+      region_list        = "<yba_cloud_provider.cloud_provider.regions[*].uuid>"
+      num_nodes          = 3
+      replication_factor = 3
+      instance_type      = "<instance-type>"
+      device_info {
+        num_volumes  = 1
+        volume_size  = 375
+        storage_type = "%s"
+      }
+      dedicated_masters {} # Use the tserver instance type and device info for dedicated masters
+      use_time_sync       = true
+      enable_ysql         = true
+      yb_software_version = "<YBDB-version - data.yba_release_version.release_version.id>"
+      access_key_code     = "<access-key - data.yba_provider_key.cloud_key.id>"
+    }
+  }
+  communication_ports {}
+}
 ```
 
 The details for configuration are available in the [YugabyteDB Anywhere Create YugabyteDB universe deployments](https://docs.yugabyte.com/preview/yugabyte-platform/create-deployments/) and [YugabyteDB Anywhere Manage YugabyteDB universe deployments](https://docs.yugabyte.com/preview/yugabyte-platform/manage-deployments/).
@@ -118,6 +175,11 @@ Optional:
 - `assign_public_ip` (Boolean) Assign Public IP to universe nodes. True by default.
 - `assign_static_ip` (Boolean) Flag indicating whether a static IP should be assigned.
 - `aws_arn_string` (String) IP ARN String.
+- `dedicated_masters` (Block List, Max: 1) When present, master processes run on dedicated nodes separate from TServer processes. Omitting this block runs masters co-located with TServers. Only valid on the PRIMARY cluster; setting it on a Read Replica (ASYNC) cluster is an error. Once set, dedicated mode cannot be toggled off after universe creation. 
+
+Inheritance and ownership rules:
+  - An empty block (dedicated_masters {}) runs masters on dedicated nodes using the same instance_type and device_info as the TServer nodes. All master configuration tracks user_intent automatically.
+  - Once instance_type or device_info is explicitly set inside this block, those fields become the sole source of truth for master configuration. Subsequent changes to the TServer fields in user_intent do NOT propagate to the master block automatically; the operator is responsible for keeping them in sync. (see [below for nested schema](#nestedblock--clusters--user_intent--dedicated_masters))
 - `enable_client_to_node_encrypt` (Boolean) Enable Encryption in Transit - Client to Node encryption. True by default.
 - `enable_ipv6` (Boolean) Enable IPv6.
 - `enable_node_to_node_encrypt` (Boolean) Enable Encryption in Transit - Node to Node encryption. True by default.
@@ -155,6 +217,28 @@ Optional:
 - `mount_points` (String) Disk mount points. Required for on-prem cluster nodes. Not allowed for any other provider type.
 - `storage_type` (String) Storage type of volume. AWS: IO1, IO2, GP2, GP3. GCP: Scratch, Persistent, Hyperdisk_Balanced, Hyperdisk_Extreme. Azure: StandardSSD_LRS, Premium_LRS, PremiumV2_LRS, UltraSSD_LRS. Not applicable for on-prem providers.
 - `throughput` (Number) Disk throughput in MB/s. Required for storage types that support throughput provisioning: GP3, UltraSSD_LRS, PremiumV2_LRS, Hyperdisk_Balanced.
+
+
+<a id="nestedblock--clusters--user_intent--dedicated_masters"></a>
+### Nested Schema for `clusters.user_intent.dedicated_masters`
+
+Optional:
+
+- `device_info` (Block List, Max: 1) Disk and volume configuration for dedicated master nodes. When this block is absent, all disk settings fall back to user_intent.device_info and continue to track it automatically. When this block is present, each field is inherited from user_intent.device_info on the first apply when left unset, but subsequent changes to user_intent.device_info fields do NOT propagate automatically -- the operator must update them here explicitly. To return to full automatic tracking, remove this device_info block entirely. (see [below for nested schema](#nestedblock--clusters--user_intent--dedicated_masters--device_info))
+- `instance_type` (String) Instance type for dedicated master nodes. When omitted (empty string), falls back to user_intent.instance_type and continues to track it on every apply. Once set to a non-empty value this field is owned by this block; changes to user_intent.instance_type no longer affect the master instance type.
+
+<a id="nestedblock--clusters--user_intent--dedicated_masters--device_info"></a>
+### Nested Schema for `clusters.user_intent.dedicated_masters.device_info`
+
+Optional:
+
+- `disk_iops` (Number) Disk IOPS for master nodes. Inherited from user_intent.device_info on the first apply when unset. Once this device_info block is present in config, this field is no longer updated automatically when user_intent.device_info.disk_iops changes.
+- `mount_points` (String) Disk mount points for master nodes. Required for on-prem cluster master nodes. Inherited from user_intent.device_info on the first apply when unset. Once this device_info block is present in config, this field is no longer updated automatically when user_intent.device_info.mount_points changes.
+- `num_volumes` (Number) Number of volumes per master node. Inherited from user_intent.device_info on the first apply when unset. Once this device_info block is present in config, this field is no longer updated automatically when user_intent.device_info.num_volumes changes.
+- `storage_type` (String) Storage type for master node volumes. AWS: IO1, IO2, GP2, GP3. GCP: Scratch, Persistent, Hyperdisk_Balanced, Hyperdisk_Extreme. Azure: StandardSSD_LRS, Premium_LRS, PremiumV2_LRS, UltraSSD_LRS. Inherited from user_intent.device_info on the first apply when unset. Once this device_info block is present in config, this field is no longer updated automatically when user_intent.device_info.storage_type changes.
+- `throughput` (Number) Disk throughput in MB/s for master nodes. Required for storage types that support throughput provisioning: GP3, UltraSSD_LRS, PremiumV2_LRS, Hyperdisk_Balanced. Inherited from user_intent.device_info on the first apply when unset. Once this device_info block is present in config, this field is no longer updated automatically when user_intent.device_info.throughput changes.
+- `volume_size` (Number) Volume size in GB for master nodes. Inherited from user_intent.device_info on the first apply when unset. Once this device_info block is present in config, this field is no longer updated automatically when user_intent.device_info.volume_size changes.
+
 
 
 
