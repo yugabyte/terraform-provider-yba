@@ -105,6 +105,11 @@ func ImageBundleSchema() *schema.Schema {
 					MaxItems: 1,
 					Elem: &schema.Resource{
 						Schema: map[string]*schema.Schema{
+							"arch": {
+								Type:        schema.TypeString,
+								Computed:    true,
+								Description: "Image bundle architecture. Read-only for GCP (always x86_64).",
+							},
 							"ssh_user": {
 								Type:        schema.TypeString,
 								Required:    true,
