@@ -6,6 +6,8 @@ description: |-
 
 # {{.Name}} ({{.Type}})
 
+~> **Deprecated:** Use [`yba_aws_provider`](aws_provider), [`yba_gcp_provider`](gcp_provider), or [`yba_azure_provider`](azure_provider) instead. This resource is kept through the v1.x line; removal is planned for v2.0.0. See the [Upgrading to v1.0.0](../guides/upgrading-to-v1.0.0) guide for migration steps.
+
 {{ .Description | trimspace }}
 
 The following credentials are required as environment variables (if fields are not set) to configure the corresponding Cloud Providers:
@@ -33,9 +35,55 @@ The following credentials are required as environment variables (if fields are n
 {{ tffile "examples/resources/yba_cloud_provider/resource.tf" }}
 
 
-The details for configuration are available in the [YugabyteDB Anywhere Configure Cloud Provider Documentation](https://docs.yugabyte.com/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/aws/).
+The details for configuration are available in the [YugabyteDB Anywhere Configure Cloud Provider Documentation](https://docs.yugabyte.com/stable/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/aws/).
 
 {{ .SchemaMarkdown | trimspace }}
+
+## Migration to typed provider resources
+
+Per-cloud resources with a flatter schema are replacing the generic `yba_cloud_provider` resource. Migrate to the matching typed resource for your `code`:
+
+| Old `code` | New resource |
+|---|---|
+| `aws` | [`yba_aws_provider`](aws_provider) |
+| `gcp` | [`yba_gcp_provider`](gcp_provider) |
+| `azu` | [`yba_azure_provider`](azure_provider) |
+
+Migration steps for an AWS provider (the GCP and Azure flows are analogous):
+
+1. Replace the `yba_cloud_provider` block with a `yba_aws_provider` block and lift the nested credential block:
+
+    ```hcl
+    # Before (deprecated)
+    resource "yba_cloud_provider" "aws" {
+      code = "aws"
+      name = "aws-provider"
+      aws_config_settings {
+        access_key_id     = "<aws-access-key-id>"
+        secret_access_key = "<aws-secret-access-key>"
+      }
+      regions { ... }
+    }
+
+    # After
+    resource "yba_aws_provider" "aws" {
+      name              = "aws-provider"
+      access_key_id     = "<aws-access-key-id>"
+      secret_access_key = "<aws-secret-access-key>"
+      regions { ... }
+    }
+    ```
+
+2. Move the existing resource state to the new address and re-import (state is not transferable across schemas):
+
+    ```sh
+    terraform state rm yba_cloud_provider.aws
+    terraform import yba_aws_provider.aws <provider-uuid>
+    ```
+
+3. Run `terraform plan` and reconcile any drift. The typed resources drop the `code`, `dest_vpc_id`, `host_vpc_id`, and `host_vpc_region` fields. AWS region blocks use `vpc_id` (was `vnet_name`); GCP zones use `shared_subnet` (was `subnet`); other field names map one-to-one.
+
+See [`yba_aws_provider`](aws_provider), [`yba_gcp_provider`](gcp_provider), and [`yba_azure_provider`](azure_provider) for the full schema of each typed resource.
 
 ## Import
 

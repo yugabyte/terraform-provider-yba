@@ -74,18 +74,20 @@ func ResourceCustomer() *schema.Resource {
 				Description: "Name of the user.",
 			},
 			"password": {
-				Type:        schema.TypeString,
-				Required:    true,
-				ForceNew:    true,
-				Sensitive:   true,
-				Description: "Password for the user. Must meet YBA password requirements.",
+				Type:      schema.TypeString,
+				Required:  true,
+				ForceNew:  true,
+				Sensitive: true,
+				Description: "Password for the user. Must meet YBA password requirements. " +
+					"Stored in Terraform state - use an encrypted backend for security.",
 			},
 			"api_token": {
 				Type:      schema.TypeString,
 				Computed:  true,
 				Sensitive: true,
 				Description: "API token for the customer. This is generated after registration " +
-					"and login. Store securely - it provides full access to YugabyteDB Anywhere.",
+					"and login. " +
+					"Stored in Terraform state - use an encrypted backend for security.",
 			},
 			"cuuid": {
 				Type:        schema.TypeString,

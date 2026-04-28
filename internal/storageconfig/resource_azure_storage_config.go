@@ -62,7 +62,8 @@ func ResourceAzureStorageConfig() *schema.Resource {
 				Required: true,
 				ForceNew: true,
 				Description: "Azure Blob Storage container URI " +
-					"(e.g., https://<account>.blob.core.windows.net/<container>).",
+					"(e.g., https://<account>.blob.core.windows.net/<container>). " +
+					"Changing this value forces resource recreation.",
 			},
 			"sas_token": {
 				Type:          schema.TypeString,
@@ -70,7 +71,8 @@ func ResourceAzureStorageConfig() *schema.Resource {
 				Sensitive:     true,
 				ConflictsWith: []string{"use_azure_iam"},
 				Description: "Azure SAS (Shared Access Signature) token. " +
-					"Required if use_azure_iam is false.",
+					"Required if use_azure_iam is false. " +
+					"Stored in Terraform state - use an encrypted backend for security.",
 			},
 			"use_azure_iam": {
 				Type:          schema.TypeBool,
@@ -98,10 +100,11 @@ func ResourceAzureStorageConfig() *schema.Resource {
 							Description: "Azure Blob Storage URI for this region.",
 						},
 						"sas_token": {
-							Type:        schema.TypeString,
-							Optional:    true,
-							Sensitive:   true,
-							Description: "Azure SAS token for this region (if different from main).",
+							Type:      schema.TypeString,
+							Optional:  true,
+							Sensitive: true,
+							Description: "Azure SAS token for this region (if different from main). " +
+								"Stored in Terraform state - use an encrypted backend for security.",
 						},
 					},
 				},

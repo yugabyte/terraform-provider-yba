@@ -59,17 +59,19 @@ func ResourceGCSStorageConfig() *schema.Resource {
 				Description: "Name of the GCS storage configuration.",
 			},
 			"backup_location": {
-				Type:        schema.TypeString,
-				Required:    true,
-				ForceNew:    true,
-				Description: "GCS bucket URI (e.g., gs://bucket-name/path).",
+				Type:     schema.TypeString,
+				Required: true,
+				ForceNew: true,
+				Description: "GCS bucket URI (e.g., gs://bucket-name/path). " +
+					"Changing this value forces resource recreation.",
 			},
 			"credentials": {
 				Type:          schema.TypeString,
 				Optional:      true,
 				Sensitive:     true,
 				ConflictsWith: []string{"use_gcp_iam"},
-				Description:   "GCP Service Account credentials JSON. Required if use_gcp_iam is false.",
+				Description: "GCP Service Account credentials JSON. Required if use_gcp_iam is false. " +
+					"Stored in Terraform state - use an encrypted backend for security.",
 			},
 			"use_gcp_iam": {
 				Type:          schema.TypeBool,

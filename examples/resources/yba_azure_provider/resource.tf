@@ -135,12 +135,9 @@ resource "yba_azure_provider" "image_bundle_example" {
     name           = "custom-x86-bundle"
     use_as_default = true
     details {
-      arch     = "x86_64"
-      ssh_user = "azureuser"
-      ssh_port = 22
-      region_overrides = {
-        "eastus" = "/subscriptions/<sub-id>/resourceGroups/<rg>/providers/Microsoft.Compute/images/<image-name>"
-      }
+      ssh_user        = "azureuser"
+      ssh_port        = 22
+      global_yb_image = "/subscriptions/<sub-id>/resourceGroups/<rg>/providers/Microsoft.Compute/images/<image-name>"
     }
   }
 

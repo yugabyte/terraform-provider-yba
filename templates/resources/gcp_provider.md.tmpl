@@ -12,7 +12,7 @@ This resource provides a dedicated interface for GCP cloud providers with a simp
 
 ## Credentials
 
-GCP credentials can be provided in two ways:
+You can provide GCP credentials in two ways:
 
 1. **Service Account Credentials**: Set the `credentials` field with the JSON content of your service account key file
 2. **Host Credentials**: Set `use_host_credentials = true` to use the credentials from the YugabyteDB Anywhere host (e.g., GCE metadata service)
@@ -21,7 +21,7 @@ GCP credentials can be provided in two ways:
 
 ## VPC Configuration
 
-GCP VPC can be configured in three ways:
+You can configure the GCP VPC in three ways:
 
 1. **Existing VPC**: Set `network` to an existing VPC name (default behavior)
 2. **Create New VPC**: Set `create_vpc = true` and `network` to the desired new VPC name
@@ -29,13 +29,62 @@ GCP VPC can be configured in three ways:
 
 ## Example Usage
 
-### Basic GCP Provider with Credentials
+### Basic GCP Provider with credentials
 
 {{ tffile "examples/resources/yba_gcp_provider/resource.tf" }}
 
-The details for configuration are available in the [YugabyteDB Anywhere Configure Cloud Provider Documentation](https://docs.yugabyte.com/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/gcp/).
+The details for configuration are available in the [YugabyteDB Anywhere Configure Cloud Provider Documentation](https://docs.yugabyte.com/stable/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/gcp/).
 
 {{ .SchemaMarkdown | trimspace }}
+
+## Migration from `yba_cloud_provider`
+
+If you previously managed GCP providers with the deprecated [`yba_cloud_provider`](cloud_provider) resource, switch the block type, lift `gcp_config_settings.*` to top-level fields, and re-import the state:
+
+```hcl
+# Before (deprecated)
+resource "yba_cloud_provider" "gcp" {
+  code = "gcp"
+  name = "gcp-provider"
+  gcp_config_settings {
+    project_id   = "my-gcp-project"
+    network      = "my-vpc-network"
+    use_host_vpc = false
+    credentials  = "<service-account-json>"
+  }
+  regions {
+    code = "us-west1"
+    zones {
+      subnet = "<gcp-shared-subnet-id>"
+    }
+  }
+}
+
+# After
+resource "yba_gcp_provider" "gcp" {
+  name        = "gcp-provider"
+  project_id  = "my-gcp-project"
+  network     = "my-vpc-network"
+  credentials = "<service-account-json>"
+  regions {
+    code          = "us-west1"
+    shared_subnet = "<gcp-shared-subnet-id>"
+  }
+}
+```
+
+Then re-bind the state to the new address:
+
+```sh
+terraform state rm yba_cloud_provider.gcp
+terraform import yba_gcp_provider.gcp <provider-uuid>
+```
+
+Notable schema differences:
+
+- `gcp_config_settings.{credentials, project_id, network, shared_vpc_project_id, use_host_vpc, use_host_credentials, create_vpc, yb_firewall_tags}` are now top-level fields.
+- Subnets are configured at the region level via `regions.shared_subnet`. GCP zones are computed only (auto-discovered by YBA) and no longer need to be declared in HCL.
+- The top-level `code`, `dest_vpc_id`, `host_vpc_id`, and `host_vpc_region` fields are not used.
 
 ## Import
 
@@ -49,7 +98,20 @@ terraform import yba_gcp_provider.example <provider-uuid>
 
 ### Zone ordering diff
 
-YugabyteDB Anywhere may return availability zones in a different order from the one specified in your configuration. Because `zones` is a `TypeList` (order-sensitive), Terraform can produce a cosmetic plan diff that looks like zones are being swapped or removed even when no real change is intended. **This diff is cosmetic.** The underlying zone configuration is unchanged; only the positional order differs. Applying will not modify any infrastructure. To avoid seeing this diff repeatedly, define your `zones` blocks in the same order that YBA returns them — check the `terraform show` output after the first successful apply and reorder your config to match.
+YugabyteDB Anywhere may return availability zones in a different order from the one specified in your configuration. Because `zones` is a `TypeList` (order-sensitive), Terraform can produce a cosmetic plan diff that looks like zones are being swapped or removed even when no real change is intended:
+
+```
+~ zones {
+    ~ code   = "us-central1-c" -> "us-central1-b"
+      subnet = ...
+  }
+- zones {
+    - code   = "us-central1-b" -> null
+    ...
+  }
+```
+
+**This diff is cosmetic.** The underlying zone configuration is unchanged; only the positional order differs. Applying will not modify any infrastructure. To avoid seeing this diff repeatedly, define your `zones` blocks in the same order that YBA returns them -- check the `terraform show` output after the first successful apply and reorder your config to match.
 
 ### Plan-time warnings for new image bundle attributes
 

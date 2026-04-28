@@ -55,10 +55,11 @@ func ResourceNFSStorageConfig() *schema.Resource {
 				Description: "Name of the NFS storage configuration.",
 			},
 			"backup_location": {
-				Type:        schema.TypeString,
-				Required:    true,
-				ForceNew:    true,
-				Description: "NFS mount path for backups (e.g., /mnt/nfs/backups).",
+				Type:     schema.TypeString,
+				Required: true,
+				ForceNew: true,
+				Description: "NFS mount path for backups (e.g., /mnt/nfs/backups). " +
+					"Changing this value forces resource recreation.",
 			},
 			"nfs_bucket": {
 				Type:        schema.TypeString,

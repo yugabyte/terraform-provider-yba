@@ -2,7 +2,7 @@ data "yba_provider_filter" "all_providers" {
 }
 
 data "yba_provider_filter" "filter_code" {
-  code = "<provider-code>"
+  codes = ["<provider-code>"]
 }
 
 data "yba_provider_filter" "filter_name" {
@@ -10,17 +10,17 @@ data "yba_provider_filter" "filter_name" {
 }
 
 data "yba_provider_filter" "filter_name_and_code" {
-  code = "<provider-code>"
-  name = "<provider-name-substring>"
+  codes = ["<provider-code>"]
+  name  = "<provider-name-substring>"
 }
 
 data "yba_provider_filter" "filter_regions" {
-  code   = "<provider-code>"
-  region = ["region1", "region2"]
+  codes   = ["<provider-code>"]
+  regions = ["<region1>", "<region2>"]
 }
 
 data "yba_provider_filter" "filter_zones" {
-  code   = "<provider-code>"
-  region = ["region1"]
-  zones  = ["zone1", "zone2"]
+  codes   = ["<provider-code>"]
+  regions = ["<region1>"]
+  zones   = ["<zone1>", "<zone2>"]
 }

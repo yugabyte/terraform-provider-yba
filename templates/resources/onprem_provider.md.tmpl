@@ -6,25 +6,30 @@ description: |-
 
 # {{.Name}} ({{.Type}})
 
+~> **Known issues in v1.0.0:** `yba_onprem_provider` is undergoing schema changes in v1.0.0 and has known issues. If you already manage on-premises infrastructure with this resource on the v0.1.x line, we recommend remaining on v0.1.x (pin `version = "~> 0.1"` in your `required_providers` block) until on-prem support in v1.x stabilizes. The example below uses the v1.0.0 schema and is NOT compatible with v0.1.x configurations -- the v0.1.x example for this resource is in the corresponding tag of this repository.
+
 {{ .Description | trimspace }}
 
-For information on configuring on-premises providers, refer to [Create provider configuration](https://docs.yugabyte.com/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises/).
+For information on configuring on-premises providers, refer to [Create provider configuration](https://docs.yugabyte.com/stable/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises/).
 
-~> **Warning:** YugabyteDB Anywhere Terraform Provider currently provides a standalone On-Premises Node Instance (*yba_onprem_node_instance*) resource, and allows Node Instances to be defined in-line in the On-Premises Provider (*yba_onprem_provider*) resource. Currently, you can't use an On-Premises Provider with in-line Node Instances in conjunction with any On-Premises Node Instance resources. Doing so will cause a conflict and might result in removal of nodes managed by the provider.
+~> **Warning:** The YugabyteDB Anywhere Terraform Provider offers a standalone On-Premises Node Instance (*yba_onprem_node_instance*) resource and also lets you declare node instances inline in the On-Premises Provider (*yba_onprem_provider*) resource. You cannot mix the two approaches for the same provider -- doing so causes a conflict and can remove the nodes the provider manages.
 
-## Example Usage
+## Example Usage (v1.0.0 schema)
+
+The following example targets the v1.0.0 schema. Users pinned to `~> 0.1` (per the known-issues
+note above) should refer to the example in the v0.1.x tag of this repository instead.
 
 {{ tffile "examples/resources/yba_onprem_provider/resource.tf" }}
 
 
-To manually provision the nodes to be used in universe creation, set *details.skip_provisioning* to *true* and do one of the following:
+To manually provision the nodes that will host the universe, set *details.skip_provisioning* to *true* and do one of the following:
 
-- Run the pre-provisioning script. The output of the provider would have the field *provision_instance_script* in *details*. Using the script, follow the steps provided in [Manual setup with script](https://docs.yugabyte.com/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises-script/). Command format is as follows:
+- Run the pre-provisioning script. The provider output exposes the *provision_instance_script* field under *details*. Follow the steps in [Manual setup with script](https://docs.yugabyte.com/stable/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises-script/) using the following command format:
   ```sh
   <Output of yba_onprem_provider.onprem.details[0].provision_instance_script> --ip <node instance ip> --mount_points <mount points>
   ```
 
-- Fully manual setup. This is only required if the SSH user does not have sudo access when *skip_provisioning* is *true*. Steps are provided in [Fully manual setup](https://docs.yugabyte.com/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises-manual/).
+- Run a fully manual setup. Use this option only when the SSH user lacks sudo access and *skip_provisioning* is *true*. Follow the steps in [Fully manual setup](https://docs.yugabyte.com/stable/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises-manual/).
 
 {{ .SchemaMarkdown | trimspace }}
 

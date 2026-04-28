@@ -1,5 +1,14 @@
+terraform {
+  required_providers {
+    yba = {
+      source  = "yugabyte/yba"
+      version = "~> 1.0"
+    }
+  }
+}
+
 provider "yba" {
-  // unauthenticated - to use provider for installation of YugabyteDB Anywhere and customer creation  
+  // unauthenticated - to use provider for installation of YugabyteDB Anywhere and customer creation
   alias = "unauthenticated"
   host  = "<host-ip-address>"
 }

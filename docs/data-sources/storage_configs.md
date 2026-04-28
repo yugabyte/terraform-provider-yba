@@ -26,7 +26,7 @@ data "yba_storage_configs" "configs_gcs" {
 
 ### Optional
 
-- `config_name` (String) Accepts name of the storage configuration. The corresponding storage config UUID is stored in ID to be used in *yba_backups* resource.
+- `config_name` (String) Accepts name of the storage configuration. The corresponding storage config UUID is stored in ID to be used in the *yba_backup_schedule* resource.
 
 ### Read-Only
 

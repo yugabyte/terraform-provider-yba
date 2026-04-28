@@ -336,27 +336,32 @@ func ResourceUniverse() *schema.Resource {
 				},
 			},
 			"communication_ports": {
-				Type:        schema.TypeList,
-				Optional:    true,
-				Computed:    true,
-				MaxItems:    1,
-				Description: "Communication ports.",
+				Type:     schema.TypeList,
+				Optional: true,
+				Computed: true,
+				MaxItems: 1,
+				Description: "Communication ports. " +
+					"See the universe edit actions guide for which ports can be changed " +
+					"after creation and which trigger a full move when edited.",
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
 						"master_http_port": {
-							Type:     schema.TypeInt,
-							Optional: true,
-							Computed: true,
+							Type:        schema.TypeInt,
+							Optional:    true,
+							Computed:    true,
+							Description: "Master HTTP port.",
 						},
 						"master_rpc_port": {
-							Type:     schema.TypeInt,
-							Optional: true,
-							Computed: true,
+							Type:        schema.TypeInt,
+							Optional:    true,
+							Computed:    true,
+							Description: "Master RPC port.",
 						},
 						"node_exporter_port": {
-							Type:     schema.TypeInt,
-							Optional: true,
-							Computed: true,
+							Type:        schema.TypeInt,
+							Optional:    true,
+							Computed:    true,
+							Description: "Node exporter port.",
 						},
 						"redis_server_http_port": {
 							Type:        schema.TypeInt,
@@ -371,14 +376,16 @@ func ResourceUniverse() *schema.Resource {
 							Description: "Redis (YEDIS) server RPC port. Cannot be changed after universe creation.",
 						},
 						"tserver_http_port": {
-							Type:     schema.TypeInt,
-							Optional: true,
-							Computed: true,
+							Type:        schema.TypeInt,
+							Optional:    true,
+							Computed:    true,
+							Description: "TServer HTTP port.",
 						},
 						"tserver_rpc_port": {
-							Type:     schema.TypeInt,
-							Optional: true,
-							Computed: true,
+							Type:        schema.TypeInt,
+							Optional:    true,
+							Computed:    true,
+							Description: "TServer RPC port.",
 						},
 						"yql_server_http_port": {
 							Type:        schema.TypeInt,
@@ -2786,7 +2793,7 @@ func resourceUniverseRead(
 	}
 	newClusters := flattenClusters(u.Clusters)
 	oldClusters := d.Get("clusters").([]interface{})
-	restoreRedactedPasswords(ctx, newClusters, oldClusters)
+	diags = append(diags, restoreRedactedPasswords(ctx, newClusters, oldClusters)...)
 	alignClustersCloudList(newClusters, oldClusters)
 	restoreDedicatedMasterFields(newClusters, oldClusters, u.Clusters, d.GetRawConfig())
 	if err = d.Set("clusters", newClusters); err != nil {

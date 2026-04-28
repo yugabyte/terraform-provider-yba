@@ -12,7 +12,7 @@ This resource provides a dedicated interface for AWS cloud providers with a simp
 
 ## Credentials
 
-AWS credentials can be provided in two ways:
+You can provide AWS credentials in two ways:
 
 1. **Access Keys**: Set `access_key_id` and `secret_access_key` fields
 2. **IAM Instance Profile**: Set `use_iam_instance_profile = true` to use the IAM role attached to the YugabyteDB Anywhere host
@@ -25,9 +25,55 @@ AWS credentials can be provided in two ways:
 
 {{ tffile "examples/resources/yba_aws_provider/resource.tf" }}
 
-The details for configuration are available in the [YugabyteDB Anywhere Configure Cloud Provider Documentation](https://docs.yugabyte.com/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/aws/).
+The details for configuration are available in the [YugabyteDB Anywhere Configure Cloud Provider Documentation](https://docs.yugabyte.com/stable/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/aws/).
 
 {{ .SchemaMarkdown | trimspace }}
+
+## Migration from `yba_cloud_provider`
+
+If you previously managed AWS providers with the deprecated [`yba_cloud_provider`](cloud_provider) resource, switch the block type, lift `aws_config_settings.*` to top-level fields, and re-import the state:
+
+```hcl
+# Before (deprecated)
+resource "yba_cloud_provider" "aws" {
+  code = "aws"
+  name = "aws-provider"
+  aws_config_settings {
+    access_key_id     = "<aws-access-key-id>"
+    secret_access_key = "<aws-secret-access-key>"
+  }
+  regions {
+    code      = "us-west-2"
+    vnet_name = "<aws-vpc-id>"
+    # ...
+  }
+}
+
+# After
+resource "yba_aws_provider" "aws" {
+  name              = "aws-provider"
+  access_key_id     = "<aws-access-key-id>"
+  secret_access_key = "<aws-secret-access-key>"
+  regions {
+    code   = "us-west-2"
+    vpc_id = "<aws-vpc-id>"
+    # ...
+  }
+}
+```
+
+Then re-bind the state to the new address:
+
+```sh
+terraform state rm yba_cloud_provider.aws
+terraform import yba_aws_provider.aws <provider-uuid>
+```
+
+Notable schema differences:
+
+- `aws_config_settings.{access_key_id, secret_access_key, use_iam_instance_profile, hosted_zone_id}` are now top-level fields.
+- `regions.vnet_name` is renamed to `regions.vpc_id`.
+- The top-level `code`, `dest_vpc_id`, `host_vpc_id`, and `host_vpc_region` fields are not used.
 
 ## Import
 
@@ -54,7 +100,7 @@ YugabyteDB Anywhere may return availability zones in a different order from the 
   }
 ```
 
-**This diff is cosmetic.** The underlying zone configuration is unchanged; only the positional order differs. Applying will not modify any infrastructure. To avoid seeing this diff repeatedly, define your `zones` blocks in the same order that YBA returns them — check the `terraform show` output after the first successful apply and reorder your config to match.
+**This diff is cosmetic.** The underlying zone configuration is unchanged; only the positional order differs. Applying will not modify any infrastructure. To avoid seeing this diff repeatedly, define your `zones` blocks in the same order that YBA returns them -- check the `terraform show` output after the first successful apply and reorder your config to match.
 
 ### Plan-time warnings for new image bundle attributes
 

@@ -14,13 +14,13 @@ This resource provides a dedicated interface for Azure cloud providers with a si
 
 Azure credentials are provided via a service principal:
 
-- `client_id` — Application (client) ID of the service principal
-- `client_secret` — Client secret value
-- `tenant_id` — Directory (tenant) ID
-- `subscription_id` — Azure subscription ID
-- `resource_group` — Resource group for provider resources
+- `client_id` -- Application (client) ID of the service principal
+- `client_secret` -- Client secret value
+- `tenant_id` -- Directory (tenant) ID
+- `subscription_id` -- Azure subscription ID
+- `resource_group` -- Resource group for provider resources
 
--> **Note:** The service principal must have Contributor access to the subscription or resource group where YugabyteDB nodes will be deployed.
+-> **Note:** The service principal must have Contributor access to the subscription or resource group where you will deploy YugabyteDB nodes.
 
 ## Example Usage
 
@@ -28,9 +28,67 @@ Azure credentials are provided via a service principal:
 
 {{ tffile "examples/resources/yba_azure_provider/resource.tf" }}
 
-The details for configuration are available in the [YugabyteDB Anywhere Configure Cloud Provider Documentation](https://docs.yugabyte.com/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/azure/).
+The details for configuration are available in the [YugabyteDB Anywhere Configure Cloud Provider Documentation](https://docs.yugabyte.com/stable/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/azure/).
 
 {{ .SchemaMarkdown | trimspace }}
+
+## Migration from `yba_cloud_provider`
+
+If you previously managed Azure providers with the deprecated [`yba_cloud_provider`](cloud_provider) resource (`code = "azu"`), switch the block type, lift `azure_config_settings.*` to top-level fields, and re-import the state:
+
+```hcl
+# Before (deprecated)
+resource "yba_cloud_provider" "azure" {
+  code = "azu"
+  name = "azure-provider"
+  azure_config_settings {
+    client_id       = "<azure-client-id>"
+    client_secret   = "<azure-client-secret>"
+    tenant_id       = "<azure-tenant-id>"
+    subscription_id = "<azure-subscription-id>"
+    resource_group  = "<azure-resource-group>"
+  }
+  regions {
+    code      = "eastus"
+    vnet_name = "<vnet-name>"
+    zones {
+      code   = "eastus-1"
+      subnet = "<subnet-name>"
+    }
+  }
+}
+
+# After
+resource "yba_azure_provider" "azure" {
+  name            = "azure-provider"
+  client_id       = "<azure-client-id>"
+  client_secret   = "<azure-client-secret>"
+  tenant_id       = "<azure-tenant-id>"
+  subscription_id = "<azure-subscription-id>"
+  resource_group  = "<azure-resource-group>"
+  regions {
+    code = "eastus"
+    vnet = "<vnet-name>"
+    zones {
+      code   = "eastus-1"
+      subnet = "<subnet-name>"
+    }
+  }
+}
+```
+
+Then re-bind the state to the new address:
+
+```sh
+terraform state rm yba_cloud_provider.azure
+terraform import yba_azure_provider.azure <provider-uuid>
+```
+
+Notable schema differences:
+
+- `azure_config_settings.{client_id, client_secret, tenant_id, subscription_id, resource_group, network_subscription_id, network_resource_group, hosted_zone_id}` are now top-level fields.
+- `regions.vnet_name` is renamed to `regions.vnet`.
+- The top-level `code`, `dest_vpc_id`, `host_vpc_id`, and `host_vpc_region` fields are not used.
 
 ## Import
 
@@ -44,7 +102,20 @@ terraform import yba_azure_provider.example <provider-uuid>
 
 ### Zone ordering diff
 
-YugabyteDB Anywhere may return availability zones in a different order from the one specified in your configuration. Because `zones` is a `TypeList` (order-sensitive), Terraform can produce a cosmetic plan diff that looks like zones are being swapped or removed even when no real change is intended. **This diff is cosmetic.** The underlying zone configuration is unchanged; only the positional order differs. Applying will not modify any infrastructure. To avoid seeing this diff repeatedly, define your `zones` blocks in the same order that YBA returns them — check the `terraform show` output after the first successful apply and reorder your config to match.
+YugabyteDB Anywhere may return availability zones in a different order from the one specified in your configuration. Because `zones` is a `TypeList` (order-sensitive), Terraform can produce a cosmetic plan diff that looks like zones are being swapped or removed even when no real change is intended:
+
+```
+~ zones {
+    ~ code   = "eastus-3" -> "eastus-2"
+      subnet = ...
+  }
+- zones {
+    - code   = "eastus-2" -> null
+    ...
+  }
+```
+
+**This diff is cosmetic.** The underlying zone configuration is unchanged; only the positional order differs. Applying will not modify any infrastructure. To avoid seeing this diff repeatedly, define your `zones` blocks in the same order that YBA returns them -- check the `terraform show` output after the first successful apply and reorder your config to match.
 
 ### Plan-time warnings for new image bundle attributes
 

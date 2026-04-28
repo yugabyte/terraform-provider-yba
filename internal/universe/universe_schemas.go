@@ -514,8 +514,8 @@ func userIntentSchema() *schema.Resource {
 				Type:     schema.TypeString,
 				Optional: true,
 				Description: "Access Key code of provider. Required for cloud providers " +
-					"(aws, gcp, azu). Not required for on-prem providers using node agents " +
-					"(YNP-provisioned / skipProvisioning enabled).",
+					"(aws, gcp, azu). Not required for on-prem providers whose nodes have " +
+					"the YBA node agent installed.",
 			},
 			"tserver_gflags": {
 				Type:        schema.TypeMap,

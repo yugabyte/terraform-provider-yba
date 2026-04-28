@@ -16,7 +16,7 @@ Fetch backup information for use in restore operations. Supports two lookup mode
 
 ```terraform
 data "yba_backup_info" "backup" {
-  universe_uuid = "universe-having-backups-uuid"
+  universe_uuid = "<universe-uuid>"
 }
 
 # The backup_category field tells you whether it is a full or incremental backup.

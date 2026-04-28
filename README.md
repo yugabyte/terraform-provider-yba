@@ -18,7 +18,7 @@ In addition, there are modules included for installing and managing YugabyteDB A
 
 ## Prerequisites
 
-This provider required some API changes that are only available in YugabyteDB versions `>=2.17.3`.
+This provider requires YugabyteDB Anywhere stable version `>=2024.2.0.0-b1` or preview version `>=2.23.1.0-b1`.
 The automated tests in this repository are based on the Alpha channel of yugaware application in Replicated.
 
 ## Installation

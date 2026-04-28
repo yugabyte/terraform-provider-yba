@@ -6,16 +6,21 @@ description: |-
 
 # yba_onprem_provider (Resource)
 
+~> **Known issues in v1.0.0:** `yba_onprem_provider` is undergoing schema changes in v1.0.0 and has known issues. If you already manage on-premises infrastructure with this resource on the v0.1.x line, we recommend remaining on v0.1.x (pin `version = "~> 0.1"` in your `required_providers` block) until on-prem support in v1.x stabilizes. The example below uses the v1.0.0 schema and is NOT compatible with v0.1.x configurations -- the v0.1.x example for this resource is in the corresponding tag of this repository.
+
 On-Premises Provider Resource. Use this resource to create and manage on-premises providers in YugabyteDB Anywhere. To utilize the provider in universes, manage instance types and node instances using instance_types and node_instances blocks.
 
-For information on configuring on-premises providers, refer to [Create provider configuration](https://docs.yugabyte.com/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises/).
+For information on configuring on-premises providers, refer to [Create provider configuration](https://docs.yugabyte.com/stable/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises/).
 
-~> **Warning:** YugabyteDB Anywhere Terraform Provider currently provides a standalone On-Premises Node Instance (*yba_onprem_node_instance*) resource, and allows Node Instances to be defined in-line in the On-Premises Provider (*yba_onprem_provider*) resource. Currently, you can't use an On-Premises Provider with in-line Node Instances in conjunction with any On-Premises Node Instance resources. Doing so will cause a conflict and might result in removal of nodes managed by the provider.
+~> **Warning:** The YugabyteDB Anywhere Terraform Provider offers a standalone On-Premises Node Instance (*yba_onprem_node_instance*) resource and also lets you declare node instances inline in the On-Premises Provider (*yba_onprem_provider*) resource. You cannot mix the two approaches for the same provider -- doing so causes a conflict and can remove the nodes the provider manages.
 
-## Example Usage
+## Example Usage (v1.0.0 schema)
+
+The following example targets the v1.0.0 schema. Users pinned to `~> 0.1` (per the known-issues
+note above) should refer to the example in the v0.1.x tag of this repository instead.
 
 ```terraform
-# Basic On-Premises Provider with manual provisioning
+# Basic On-Premises Provider with pre-provisioned nodes
 resource "yba_onprem_provider" "example" {
   name             = "onprem-provider"
   ssh_user         = "yugabyte"
@@ -49,6 +54,7 @@ resource "yba_onprem_provider" "example" {
     region_name   = "us-west"
     zone_name     = "us-west-az1"
     instance_type = "c5.large"
+    instance_name = "node-1"
   }
 
   node_instances {
@@ -56,45 +62,6 @@ resource "yba_onprem_provider" "example" {
     region_name   = "us-west"
     zone_name     = "us-west-az2"
     instance_type = "c5.large"
-  }
-}
-
-# On-Premises Provider with auto-provisioning
-resource "yba_onprem_provider" "provisioned" {
-  name             = "onprem-auto-provisioned"
-  ssh_user         = "yugabyte"
-  ssh_keypair_name = "my-keypair"
-
-  ssh_private_key_content = file("~/.ssh/my-keypair.pem")
-
-  skip_provisioning        = false
-  passwordless_sudo_access = true
-  install_node_exporter    = true
-  node_exporter_port       = 9300
-
-  regions {
-    code      = "dc1"
-    latitude  = 37.7749
-    longitude = -122.4194
-
-    zones {
-      code = "dc1-rack1"
-    }
-  }
-
-  instance_types {
-    instance_type_code = "large"
-    num_cores          = 4
-    mem_size_gb        = 16
-    volume_size_gb     = 200
-  }
-
-  node_instances {
-    ip            = "192.168.1.10"
-    region_name   = "dc1"
-    zone_name     = "dc1-rack1"
-    instance_type = "large"
-    instance_name = "node-1"
   }
 }
 
@@ -138,14 +105,14 @@ resource "yba_onprem_provider" "multi_region" {
 ```
 
 
-To manually provision the nodes to be used in universe creation, set *details.skip_provisioning* to *true* and do one of the following:
+To manually provision the nodes that will host the universe, set *details.skip_provisioning* to *true* and do one of the following:
 
-- Run the pre-provisioning script. The output of the provider would have the field *provision_instance_script* in *details*. Using the script, follow the steps provided in [Manual setup with script](https://docs.yugabyte.com/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises-script/). Command format is as follows:
+- Run the pre-provisioning script. The provider output exposes the *provision_instance_script* field under *details*. Follow the steps in [Manual setup with script](https://docs.yugabyte.com/stable/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises-script/) using the following command format:
   ```sh
   <Output of yba_onprem_provider.onprem.details[0].provision_instance_script> --ip <node instance ip> --mount_points <mount points>
   ```
 
-- Fully manual setup. This is only required if the SSH user does not have sudo access when *skip_provisioning* is *true*. Steps are provided in [Fully manual setup](https://docs.yugabyte.com/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises-manual/).
+- Run a fully manual setup. Use this option only when the SSH user lacks sudo access and *skip_provisioning* is *true*. Follow the steps in [Fully manual setup](https://docs.yugabyte.com/stable/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises-manual/).
 
 <!-- schema generated by tfplugindocs -->
 ## Schema
@@ -172,7 +139,7 @@ To manually provision the nodes to be used in universe creation, set *details.sk
 - `skip_provisioning` (Boolean) Set to true if YugabyteDB nodes have been prepared manually. Set to false to provision during universe creation. Default is false.
 - `ssh_keypair_name` (String) SSH key pair name to access YugabyteDB nodes. Must be set together with ssh_private_key_content. Required when skip_provisioning is false. YBA versions keys on every update: if a key with this name already exists it appends a timestamp (e.g. 'my-key-2026-03-18-10-01-29'). Use access_key_code to read the actual versioned name that was stored.
 - `ssh_port` (Number) SSH port. Default is 22.
-- `ssh_private_key_content` (String, Sensitive) SSH private key content to access YugabyteDB nodes. Must be set together with ssh_keypair_name. Required when skip_provisioning is false. Not read back from the API (the API does not return key content).
+- `ssh_private_key_content` (String, Sensitive) SSH private key content to access YugabyteDB nodes. Must be set together with ssh_keypair_name. Required when skip_provisioning is false. Not read back from the API (the API does not return key content). Stored in Terraform state - use an encrypted backend for security.
 - `ssh_user` (String) SSH User to access YugabyteDB nodes. Required when skip_provisioning is false.
 - `timeouts` (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))
 - `use_clockbound` (Boolean) Use ClockBound for clock synchronization. Requires ClockBound to be set up on the nodes. Default is false.
@@ -237,7 +204,7 @@ Read-Only:
 Optional:
 
 - `key_pair_name` (String)
-- `ssh_private_key_content` (String, Sensitive)
+- `ssh_private_key_content` (String, Sensitive) Content of the SSH private key. Stored in Terraform state - use an encrypted backend for security.
 - `ssh_private_key_file_path` (String)
 
 Read-Only:

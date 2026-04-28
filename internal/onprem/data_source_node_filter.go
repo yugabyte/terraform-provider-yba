@@ -59,7 +59,7 @@ func NodeInstanceFilter() *schema.Resource {
 			"in_use": {
 				Type:        schema.TypeBool,
 				Optional:    true,
-				Description: "Nodes of the on premises provider used in a universe.",
+				Description: "Nodes of the on-premises provider used in a universe.",
 			},
 			"region": {
 				Type:        schema.TypeString,

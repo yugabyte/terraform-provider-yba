@@ -11,92 +11,105 @@ Universe Resource.
 ## Example Usage
 
 ```terraform
+data "yba_provider_key" "cloud_key" {
+  provider_id = yba_aws_provider.aws.id
+}
+
+data "yba_release_version" "release_version" {
+  depends_on = [yba_aws_provider.aws]
+}
+
 resource "yba_universe" "universe_name" {
   clusters {
-    cluster_type = "<cluster-type>"
+    cluster_type = "PRIMARY"
     user_intent {
       universe_name      = "<universe-name>"
-      provider_type      = "<yba_cloud_provider.cloud_provider.code>"
-      provider           = "<yba_cloud_provider.cloud_provider.id>"
-      region_list        = "<yba_cloud_provider.cloud_provider.regions[*].uuid>"
+      provider           = yba_aws_provider.aws.id
+      region_list        = yba_aws_provider.aws.regions[*].uuid
       num_nodes          = 3
       replication_factor = 3
       instance_type      = "<instance-type>"
       device_info {
         num_volumes  = 1
         volume_size  = 375
-        storage_type = "%s"
+        storage_type = "<storage-type>"
       }
       use_time_sync       = true
       enable_ysql         = true
-      yb_software_version = "<YBDB-version - data.yba_release_version.release_version.id>"
-      access_key_code     = "<access-key - data.yba_provider_key.cloud_key.id>"
+      yb_software_version = data.yba_release_version.release_version.id
+      access_key_code     = data.yba_provider_key.cloud_key.id
     }
   }
   communication_ports {}
 }
 
 # Universe with dedicated master nodes: masters run on separate nodes from TServers.
-# Omit instance_type inside dedicated_masters block to use the
-# same instance type as the TServer nodes.
+# This variant pins a distinct instance_type and device_info for the master nodes.
 resource "yba_universe" "dedicated_masters" {
   clusters {
-    cluster_type = "<cluster-type>"
+    cluster_type = "PRIMARY"
     user_intent {
       universe_name      = "<universe-name>"
-      provider_type      = "<yba_cloud_provider.cloud_provider.code>"
-      provider           = "<yba_cloud_provider.cloud_provider.id>"
-      region_list        = "<yba_cloud_provider.cloud_provider.regions[*].uuid>"
+      provider           = yba_aws_provider.aws.id
+      region_list        = yba_aws_provider.aws.regions[*].uuid
       num_nodes          = 3
       replication_factor = 3
       instance_type      = "<instance-type>"
       device_info {
         num_volumes  = 1
         volume_size  = 375
-        storage_type = "%s"
+        storage_type = "<storage-type>"
       }
       dedicated_masters {
         instance_type = "<master-instance-type>"
+        device_info {
+          num_volumes  = 1
+          volume_size  = 100
+          storage_type = "<storage-type>"
+        }
       }
       use_time_sync       = true
       enable_ysql         = true
-      yb_software_version = "<YBDB-version - data.yba_release_version.release_version.id>"
-      access_key_code     = "<access-key - data.yba_provider_key.cloud_key.id>"
+      yb_software_version = data.yba_release_version.release_version.id
+      access_key_code     = data.yba_provider_key.cloud_key.id
     }
   }
   communication_ports {}
 }
 
-resource "yba_universe" "dedicated_masters" {
+# Same as above but omits instance_type / device_info inside dedicated_masters,
+# so masters inherit the TServer instance type and device info.
+resource "yba_universe" "dedicated_masters_inherit" {
   clusters {
-    cluster_type = "<cluster-type>"
+    cluster_type = "PRIMARY"
     user_intent {
       universe_name      = "<universe-name>"
-      provider_type      = "<yba_cloud_provider.cloud_provider.code>"
-      provider           = "<yba_cloud_provider.cloud_provider.id>"
-      region_list        = "<yba_cloud_provider.cloud_provider.regions[*].uuid>"
+      provider           = yba_aws_provider.aws.id
+      region_list        = yba_aws_provider.aws.regions[*].uuid
       num_nodes          = 3
       replication_factor = 3
       instance_type      = "<instance-type>"
       device_info {
         num_volumes  = 1
         volume_size  = 375
-        storage_type = "%s"
+        storage_type = "<storage-type>"
       }
-      dedicated_masters {} # Use the tserver instance type and device info for dedicated masters
+      dedicated_masters {}
       use_time_sync       = true
       enable_ysql         = true
-      yb_software_version = "<YBDB-version - data.yba_release_version.release_version.id>"
-      access_key_code     = "<access-key - data.yba_provider_key.cloud_key.id>"
+      yb_software_version = data.yba_release_version.release_version.id
+      access_key_code     = data.yba_provider_key.cloud_key.id
     }
   }
   communication_ports {}
 }
 ```
 
-The details for configuration are available in the [YugabyteDB Anywhere Create YugabyteDB universe deployments](https://docs.yugabyte.com/preview/yugabyte-platform/create-deployments/) and [YugabyteDB Anywhere Manage YugabyteDB universe deployments](https://docs.yugabyte.com/preview/yugabyte-platform/manage-deployments/).
+The details for configuration are available in the [YugabyteDB Anywhere Create YugabyteDB universe deployments](https://docs.yugabyte.com/stable/yugabyte-platform/create-deployments/) and [YugabyteDB Anywhere Manage YugabyteDB universe deployments](https://docs.yugabyte.com/stable/yugabyte-platform/manage-deployments/).
 
 ~> **Disclaimer:** Please note that adding read replica clusters after universe creation currently not supported.
+
+~> **Warning:** Read replica (ASYNC cluster) support is not fully documented in this provider. Configuration options for ASYNC clusters may be incomplete or subject to change. Use read replicas with caution and refer to the YugabyteDB Anywhere UI or API documentation for the full set of supported options.
 
 ~> **Disclaimer:** Please note that data move to a different *zone* is currently not supported.
 
@@ -111,8 +124,10 @@ The following operations are supported in the Edit universe workflow:
     1. Number of Nodes
     1. Number of Volumes per instance
     1. Volume Size
-    1. User Tags
+    1. Instance Tags
 1. Delete read replicas (Adding read replica after universe creation currently not supported)
+
+~> **Note:** `clusters[*].user_intent.access_key_code` is listed in the Optional schema group, but it is required when the cluster targets a cloud provider (`aws`, `gcp`, `azu`). It is only optional for on-prem providers whose nodes have the YBA node agent installed. The provider rejects a plan that omits it for a cloud provider at plan time.
 
 <!-- schema generated by tfplugindocs -->
 ## Schema
@@ -125,7 +140,7 @@ The following operations are supported in the Edit universe workflow:
 
 - `arch` (String) The architecture of the universe nodes. Allowed values are x86_64 and aarch64.
 - `client_root_ca` (String) The UUID of the clientRootCA to be used to generate client certificates and facilitate TLS communication between server and client. When set to a different value than root_ca, separate certificates are used for node-to-node and client-to-node TLS. May be set without root_ca (e.g. when node-to-node encryption is disabled but client-to-node encryption is enabled); in that case YBA auto-generates a root CA for node-to-node if needed and uses the provided value for client-to-node. When not set, root_ca is reused for client-to-node TLS.
-- `communication_ports` (Block List, Max: 1) Communication ports. (see [below for nested schema](#nestedblock--communication_ports))
+- `communication_ports` (Block List, Max: 1) Communication ports. See the universe edit actions guide for which ports can be changed after creation and which trigger a full move when edited. (see [below for nested schema](#nestedblock--communication_ports))
 - `db_version_upgrade_options` (Block List, Max: 1) Options controlling the DB version upgrade path (UpgradeDBVersion). By default finalize = false pauses the upgrade in PreFinalize state for a monitoring phase; flip to true and re-apply to commit, or set rollback = true to revert to the previous DB version. (see [below for nested schema](#nestedblock--db_version_upgrade_options))
 - `delete_options` (Block List, Max: 1) (see [below for nested schema](#nestedblock--delete_options))
 - `full_move` (Block List, Max: 1) Block controlling whether and how full-move-triggering edits are permitted. A full move provisions new nodes with the new configuration, migrates data from the old nodes, and decommissions the old nodes; it requires temporary 2x node capacity during migration and takes significantly longer than in-place operations. (see [below for nested schema](#nestedblock--full_move))
@@ -171,7 +186,7 @@ Required:
 
 Optional:
 
-- `access_key_code` (String) Access Key code of provider. Required for cloud providers (aws, gcp, azu). Not required for on-prem providers using node agents (YNP-provisioned / skipProvisioning enabled).
+- `access_key_code` (String) Access Key code of provider. Required for cloud providers (aws, gcp, azu). Not required for on-prem providers whose nodes have the YBA node agent installed.
 - `assign_public_ip` (Boolean) Assign Public IP to universe nodes. True by default.
 - `assign_static_ip` (Boolean) Flag indicating whether a static IP should be assigned.
 - `aws_arn_string` (String) IP ARN String.
@@ -302,13 +317,13 @@ Read-Only:
 
 Optional:
 
-- `master_http_port` (Number)
-- `master_rpc_port` (Number)
-- `node_exporter_port` (Number)
+- `master_http_port` (Number) Master HTTP port.
+- `master_rpc_port` (Number) Master RPC port.
+- `node_exporter_port` (Number) Node exporter port.
 - `redis_server_http_port` (Number) Redis (YEDIS) server HTTP port. Cannot be changed after universe creation.
 - `redis_server_rpc_port` (Number) Redis (YEDIS) server RPC port. Cannot be changed after universe creation.
-- `tserver_http_port` (Number)
-- `tserver_rpc_port` (Number)
+- `tserver_http_port` (Number) TServer HTTP port.
+- `tserver_rpc_port` (Number) TServer RPC port.
 - `yb_controller_rpc_port` (Number) YB Controller RPC port. Cannot be changed after universe creation.
 - `yql_server_http_port` (Number) YCQL server HTTP port. Cannot be changed after universe creation.
 - `yql_server_rpc_port` (Number) YCQL server RPC port. Cannot be changed after universe creation.
@@ -427,6 +442,34 @@ Read-Only:
 - `subnet_id` (String)
 - `use_time_sync` (Boolean)
 
+## Operation timeouts
+
+The `timeouts` block accepts `create`, `update`, and `delete` durations and uses these defaults
+when omitted:
+
+| Operation | Default |
+|---|---|
+| `create` | `60m` |
+| `update` | `60m` |
+| `delete` | `30m` |
+
+Large universes (many nodes, large volumes, or full-move edits) can exceed these defaults.
+Raise them per-resource when needed:
+
+```terraform
+resource "yba_universe" "example" {
+  timeouts {
+    create = "120m"
+    update = "120m"
+    delete = "45m"
+  }
+  # ... other fields ...
+}
+```
+
+Hitting a timeout aborts the Terraform-side wait but does not cancel the YBA task. Re-running
+`terraform apply` after the YBA task finishes will reconcile state.
+
 ## Known Issues
 
 ### Fields sourced from data sources show as "(known after apply)" during provider edits
@@ -462,3 +505,32 @@ Universes can be imported using `universe uuid`:
 ```sh
 terraform import yba_universe.universe_name <universe-uuid>
 ```
+
+### Sensitive fields are not imported
+
+`terraform import` reads universe state from the YugabyteDB Anywhere API, which does not return plaintext secrets. For the following `clusters.user_intent` fields, the API returns the literal string `REDACTED`, and that sentinel is what lands in your state file after import:
+
+- `ysql_password`
+- `ycql_password`
+
+On the next plan Terraform sees a diff from `REDACTED` to the value in your configuration, and the universe update guard rejects the apply (you cannot change passwords after universe creation).
+
+Choose one of the following to resolve this:
+
+1. **Ignore the field in your configuration** (recommended when the password is managed outside Terraform):
+
+    ```hcl
+    resource "yba_universe" "universe_name" {
+      # ...
+      lifecycle {
+        ignore_changes = [
+          clusters[0].user_intent[0].ysql_password,
+          clusters[0].user_intent[0].ycql_password,
+        ]
+      }
+    }
+    ```
+
+    State will continue to hold `REDACTED` for these fields; this is expected and does not affect universe operation.
+
+2. **Patch the state with the real secret value** so Terraform sees it as unchanged. This requires the current password and direct state edits (`terraform state pull` / `terraform state push`, or `terraform state rm` plus re-import after manual seeding); only use it when you intend to keep managing the password through Terraform.

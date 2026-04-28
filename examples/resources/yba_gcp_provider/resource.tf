@@ -135,12 +135,9 @@ resource "yba_gcp_provider" "image_bundle_example" {
     name           = "custom-x86-bundle"
     use_as_default = true
     details {
-      arch     = "x86_64"
-      ssh_user = "centos"
-      ssh_port = 22
-      region_overrides = {
-        "us-west1" = "projects/my-project/global/images/my-custom-image"
-      }
+      ssh_user        = "centos"
+      ssh_port        = 22
+      global_yb_image = "projects/my-project/global/images/my-custom-image"
     }
   }
 

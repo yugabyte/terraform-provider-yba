@@ -12,7 +12,7 @@ Trigger pre-flight check for list of nodes of the onprem provider.
 
 ```terraform
 data "yba_onprem_preflight" "preflight_check" {
-  provider_id = "example-onprem-provider-uuid"
+  provider_id = "<onprem-provider-uuid>"
 }
 ```
 

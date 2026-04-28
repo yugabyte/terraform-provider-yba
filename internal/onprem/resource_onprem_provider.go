@@ -110,7 +110,8 @@ func onpremProviderSchema() map[string]*schema.Schema {
 			Description: "SSH private key content to access YugabyteDB nodes. " +
 				"Must be set together with ssh_keypair_name. " +
 				"Required when skip_provisioning is false. " +
-				"Not read back from the API (the API does not return key content).",
+				"Not read back from the API (the API does not return key content). " +
+				"Stored in Terraform state - use an encrypted backend for security.",
 		},
 
 		// Provisioning settings (yba-cli flags)
@@ -423,6 +424,8 @@ func deprecatedAccessKeysSchema() *schema.Schema {
 								Type:      schema.TypeString,
 								Optional:  true,
 								Sensitive: true,
+								Description: "Content of the SSH private key. " +
+									"Stored in Terraform state - use an encrypted backend for security.",
 							},
 							"air_gap_install":          {Type: schema.TypeBool, Computed: true},
 							"install_node_exporter":    {Type: schema.TypeBool, Computed: true},

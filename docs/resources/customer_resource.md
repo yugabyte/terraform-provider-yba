@@ -11,11 +11,16 @@ Customer Resource. Registers a new customer/user in YugabyteDB Anywhere.
 
 ~> **Security Note:** The `api_token` and `password` are stored in the Terraform state file (marked as sensitive). Use a secure backend (e.g., S3 with encryption, Terraform Cloud) and restrict access to your state files.
 
-The following credential is required as environment variable before creation:
+You must supply the `password` field in the resource configuration. The provider marks it
+sensitive and Terraform stores it in state -- use an [encrypted state backend](https://developer.hashicorp.com/terraform/language/state/sensitive-data)
+and avoid checking the value into source control. For example, set it from a TF_VAR environment
+variable bound to a `sensitive = true` variable, or read it from a secret manager via a data
+source.
 
-|Requirement|Environment Variable|
-|-------|--------|
-|[Customer Password](https://docs.yugabyte.com/preview/yugabyte-platform/configure-yugabyte-platform/create-admin-user/)|`YB_CUSTOMER_PASSWORD`|
+~> **Note:** `terraform destroy` on `yba_customer_resource` is a no-op. YBA does not currently
+support deleting a customer through the API, so the provider only removes the resource from
+Terraform state. The customer (and any associated universes, providers, and storage configs)
+remain in YBA and reappear on the next `terraform import`.
 
 ## Example Usage
 
@@ -25,12 +30,18 @@ provider "yba" {
   host  = "<host-ip-address>"
 }
 
+variable "customer_password" {
+  type      = string
+  sensitive = true
+}
+
 resource "yba_customer_resource" "customer" {
-  // use unauthenticcated provider to create customer
+  // use unauthenticated provider to create customer
   provider = yba.unauthenticated
   code     = "<code>"
   email    = "<email-id>"
   name     = "<customer-name>"
+  password = var.customer_password
 }
 ```
 
@@ -41,7 +52,7 @@ resource "yba_customer_resource" "customer" {
 
 - `email` (String) Email for the user, which is used for login on the YugabyteDB Anywhere portal.
 - `name` (String) Name of the user.
-- `password` (String, Sensitive) Password for the user. Must meet YBA password requirements.
+- `password` (String, Sensitive) Password for the user. Must meet YBA password requirements. Stored in Terraform state - use an encrypted backend for security.
 
 ### Optional
 
@@ -50,7 +61,7 @@ resource "yba_customer_resource" "customer" {
 
 ### Read-Only
 
-- `api_token` (String, Sensitive) API token for the customer. This is generated after registration and login. Store securely - it provides full access to YugabyteDB Anywhere.
+- `api_token` (String, Sensitive) API token for the customer. This is generated after registration and login. Stored in Terraform state - use an encrypted backend for security.
 - `cuuid` (String) Customer UUID.
 - `id` (String) The ID of this resource.
 

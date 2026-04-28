@@ -112,7 +112,8 @@ func ResourceBackupSchedule() *schema.Resource {
 					return oldFrequency == newFrequency
 				},
 				Description: "Frequency to run the backup.  Accepts string duration in the " +
-					"standard format <https://pkg.go.dev/time#Duration>.",
+					"standard format <https://pkg.go.dev/time#Duration>. " +
+					"Must be at least 1 hour (\"1h\").",
 			},
 			"keyspaces": {
 				Type:     schema.TypeList,
@@ -205,7 +206,10 @@ func ResourceBackupSchedule() *schema.Resource {
 					return oldDuration == newDuration
 				},
 				Description: "Frequency to take incremental backups. " +
-					"Accepts string duration in the standard format <https://pkg.go.dev/time#Duration>.",
+					"Accepts string duration in the standard format <https://pkg.go.dev/time#Duration>. " +
+					"Must be at most 1 day (\"24h\"). " +
+					"Adding this field to an existing schedule forces resource recreation, " +
+					"and once set it cannot be removed from the schedule.",
 			},
 			"kms_config_uuid": {
 				Type:        schema.TypeString,
@@ -214,11 +218,12 @@ func ResourceBackupSchedule() *schema.Resource {
 				Description: descKMSConfigUUID,
 			},
 			"enable_point_in_time_restore": {
-				Type:        schema.TypeBool,
-				Optional:    true,
-				ForceNew:    true,
-				Default:     false,
-				Description: "Enable Point-In-Time-Restore capability. Only for YBC-enabled universes.",
+				Type:     schema.TypeBool,
+				Optional: true,
+				ForceNew: true,
+				Default:  false,
+				Description: "Enable Point-In-Time-Restore capability. Only for YBC-enabled universes. " +
+					"Requires incremental_backup_frequency to be set.",
 			},
 			"use_tablespaces": {
 				Type:        schema.TypeBool,
@@ -297,10 +302,13 @@ func ResourceBackupSchedule() *schema.Resource {
 
 // ResourceBackupsDeprecated returns the deprecated yba_backups resource.
 // Deprecated: Use ResourceBackupSchedule (yba_backup_schedule) instead.
+// Kept through the v1.x line; removal is planned for v2.0.0.
 func ResourceBackupsDeprecated() *schema.Resource {
 	r := ResourceBackupSchedule()
 	r.DeprecationMessage = "yba_backups is deprecated. Use yba_backup_schedule instead. " +
-		"To migrate existing state, run: terraform state mv yba_backups.<name> yba_backup_schedule.<name>"
+		"To migrate existing state, run: " +
+		"terraform state mv yba_backups.<name> yba_backup_schedule.<name>. " +
+		"Kept through the v1.x line; removal is planned for v2.0.0."
 	return r
 }
 

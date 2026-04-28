@@ -1,3 +1,8 @@
+# Deprecated: yba_cloud_provider remains supported through the v1.x line and
+# is scheduled for removal in v2.0.0. For new configurations, prefer the
+# cloud-specific resources: yba_aws_provider, yba_gcp_provider, yba_azure_provider.
+# See the "Upgrading to v1.0.0" guide for migration steps.
+
 resource "yba_cloud_provider" "cloud_provider" {
   code        = "<code>"
   dest_vpc_id = "<vpc-network>"

@@ -1,0 +1,58 @@
+---
+page_title: "{{.Name}} {{.Type}} - {{.RenderedProviderName}}"
+description: |-
+{{ .Description | plainmarkdown | trimspace | prefixlines "  " }}
+---
+
+# {{.Name}} ({{.Type}})
+
+{{ .Description | trimspace }}
+
+The `yba_backup`, `yba_backup_schedule`, and `yba_restore` resources reference storage
+configurations via the `storage_config_uuid` attribute.
+
+For more details, see the [YugabyteDB Anywhere Configure Storage documentation](https://docs.yugabyte.com/stable/yugabyte-platform/back-up-restore-universes/configure-backup-storage/).
+
+## Example Usage
+
+{{ tffile "examples/resources/yba_azure_storage_config/resource.tf" }}
+
+{{ .SchemaMarkdown | trimspace }}
+
+## Migration from `yba_storage_config_resource`
+
+If you previously managed Azure Blob storage configurations with the deprecated [`yba_storage_config_resource`](storage_config_resource) (`name = "AZ"`), switch the block type, lift `azure_credentials.sas_token` to the top level, rename `config_name` to `name`, and re-import the state:
+
+```hcl
+# Before (deprecated)
+resource "yba_storage_config_resource" "azure" {
+  name            = "AZ"
+  config_name     = "my-azure-config"
+  backup_location = "https://<account>.blob.core.windows.net/<container>"
+  azure_credentials {
+    sas_token = "<azure-sas-token>"
+  }
+}
+
+# After
+resource "yba_azure_storage_config" "azure" {
+  name            = "my-azure-config"
+  backup_location = "https://<account>.blob.core.windows.net/<container>"
+  sas_token       = "<azure-sas-token>"
+}
+```
+
+Then re-bind the state to the new address:
+
+```sh
+terraform state rm yba_storage_config_resource.azure
+terraform import yba_azure_storage_config.azure <config-uuid>
+```
+
+## Import
+
+Azure storage configurations can be imported using the configuration UUID:
+
+```sh
+terraform import yba_azure_storage_config.example <config-uuid>
+```

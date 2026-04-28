@@ -1,24 +1,64 @@
-## v1.0.0 (June 2024)
+## v1.0.0 (May 2026)
 
-The following version of YugabyteDB Anywhere Terraform Provider includes support for:
+The first major release of the YugabyteDB Anywhere Terraform Provider. It introduces typed, simplified replacements for the generic resources that shipped in the v0.1.x line, and removes two unsupported resources. The deprecated v0.1.x resources continue to work throughout v1.x; their planned removal is v2.0.0.
+
+See the [Upgrading to v1.0.0](docs/guides/upgrading-to-v1.0.0.md) guide for migration steps.
 
 ### Breaking changes
 
-- Introduction of `create_vpc` boolean in GCP cloud provider configuration and difference from `use_host_vpc` for network settings. Set `use_host_vpc` to false (`network` field is required for this setting)  to use existing VPC in GCP providers.
-- Switching GCP `application_credentials` input (Map of strings) to `credentials` (String) in yba_cloud_provider
+- The provider now requires YugabyteDB Anywhere stable `2024.2.0.0` or later, or preview `2.23.1.0` or later.
+- `yba_releases` resource removed. Manage YBDB releases through the YBA UI or API. The `yba_release_version` data source is unchanged.
+- `yba_installation` resource (Replicated-based installer) removed. Use `yba_installer` for new YBA deployments.
+- `yba_universe`: `universe_name` is now immutable post-create.
+- `yba_universe`: access key rotation post-create is blocked; rotate keys through the cloud provider resource.
+- `yba_universe`: full-move-triggering edits (volume_size decrease, num_volumes change, storage_type change) require an explicit `full_move { allow = true }` acknowledgment.
+- `yba_universe`: `communication_ports` changes that would trigger a full move require the same acknowledgment.
+- `yba_cloud_provider` (deprecated, still available): GCP `application_credentials` (Map of strings) replaced by `credentials` (String). The same field on the new `yba_gcp_provider` is `credentials` (String).
+- `yba_cloud_provider` (deprecated, still available): GCP `create_vpc` boolean introduced and is now distinct from `use_host_vpc`. Set `use_host_vpc = false` and supply `network` to use an existing VPC. The same fields are present on `yba_gcp_provider`.
+- Image-bundle-based provisioning replaces per-region `ssh_port`, `ssh_user`, and `yb_image` on the new typed providers; configure VM images through `image_bundles` blocks.
+- The `dest_vpc_id`, `host_vpc_id`, and `host_vpc_region` fields on `yba_cloud_provider` are not carried over to the new typed providers; cloud-specific network settings live on each typed resource.
 
-### Notes
+### Deprecations (kept through v1.x, planned removal in v2.0.0)
 
-- S3 and GCS release import paths have been deprecated in favour of HTTP path in yba_releases and will be removed in the next major release
-- Destination VPC ID, Host VPC ID and Host VPC Regions have been deprecated in favour of cloud specific settings in yba_cloud_provider and will be removed in the next major release
-- SSH Port, SSH User and YB Image (in Regions) have been deprecated in favour of image bundle support in yba_cloud_provider and will be removed in the next major release
+- `yba_cloud_provider` -> use `yba_aws_provider`, `yba_gcp_provider`, or `yba_azure_provider`.
+- `yba_storage_config_resource` -> use `yba_s3_storage_config`, `yba_gcs_storage_config`, `yba_azure_storage_config`, or `yba_nfs_storage_config`.
+- `yba_backups` -> use `yba_backup_schedule`. HCL fields changed (notably `keyspace` -> `keyspaces`); migrate via `terraform state rm` + re-import on `yba_backup_schedule`.
+- Provider env vars `YB_HOST` / `YB_API_KEY` / `YB_ENABLE_HTTPS` are now fallbacks for `YBA_HOST` / `YBA_API_TOKEN` / `YBA_ENABLE_HTTPS`.
+
+### New resources
+
+- `yba_aws_provider`, `yba_gcp_provider`, `yba_azure_provider` - typed cloud provider resources with flat schemas.
+- `yba_s3_storage_config`, `yba_gcs_storage_config`, `yba_azure_storage_config`, `yba_nfs_storage_config` - typed storage configuration resources.
+- `yba_backup` - on-demand (non-scheduled) backup resource.
+- `yba_backup_schedule` - replaces `yba_backups`.
+
+### New data sources
+
+- `yba_provider_image_bundles` - list image bundles for a provider.
+- `yba_universe_schema` - inspect namespaces and tables on a universe.
 
 ### Enhancements
 
-- Support Instance templates in GCP cloud provider regions in yba_cloud_provider
-- Provide universe node details in yba_universe
-- Support Image Bundles in yba_cloud_provider
+- `yba_universe`: smart-resize support when YBA reports it as an option (in-place rolling update for eligible edits).
+- `yba_universe`: support for rollback and finalize during DB version upgrades; new `db_version_upgrade_options` block.
+- `yba_universe`: support for OS upgrade via `image_bundle_uuid`.
+- `yba_universe`: dedicated master placement, including device_info import.
+- `yba_universe`: per-AZ replication factor placement on multi-AZ clusters.
+- `yba_universe`: validate that `client_root_ca` works independently from `root_ca`.
+- `yba_universe`: clearer plan-time validation for cloud_list and user_intent fields.
+- `yba_universe`: node details (IP, state, AZ placement) are exposed on the resource for downstream consumption.
+- `yba_restore`: prevent parallel restores on the same universe.
+- `yba_backup_info`: incremental backups are now reported by the data source.
+- `yba_cloud_provider`: support per-region `instance_template` for GCP regions.
 
+### Documentation
+
+- New "Upgrading to v1.0.0" guide consolidating breaking changes and migration steps.
+- New "Universe edit actions" guide documenting which configuration changes map to which YBA tasks.
+- All `Sensitive` schema fields now carry a consistent state-encryption note recommending an encrypted Terraform backend.
+- Per-resource migration sections on each typed provider and storage config page.
+- Universe import documentation now calls out that `ysql_password` and `ycql_password` are not imported, with the `lifecycle.ignore_changes` workaround.
+- Provider index documents the `terraform plan -detailed-exitcode` CI pattern for managing drift from out-of-band UI / API changes.
 
 ## v0.1.11 (March 2024)
 

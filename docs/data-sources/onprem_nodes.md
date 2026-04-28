@@ -12,7 +12,7 @@ Filter list of nodes handled in the onprem provider.
 
 ```terraform
 data "yba_onprem_nodes" "nodes" {
-  provider_id = "example-onprem-provider-uuid"
+  provider_id = "<onprem-provider-uuid>"
 }
 ```
 
@@ -25,7 +25,7 @@ data "yba_onprem_nodes" "nodes" {
 
 ### Optional
 
-- `in_use` (Boolean) Nodes of the on premises provider used in a universe.
+- `in_use` (Boolean) Nodes of the on-premises provider used in a universe.
 - `instance_name` (String) Nodes with instance names containing given filter string.
 - `instance_type` (String) Nodes with instance types containing given filter string.
 - `ip` (String) Nodes with IP addresses containing given filter string. For example, setting ip = "10.1.2" may return nodes with IPs "10.1.20.3" and "10.10.1.23".

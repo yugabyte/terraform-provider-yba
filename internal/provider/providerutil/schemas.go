@@ -347,10 +347,11 @@ func AccessKeySchema() *schema.Schema {
 					Description: "Name of the SSH key pair.",
 				},
 				"ssh_private_key_content": {
-					Type:        schema.TypeString,
-					Optional:    true,
-					Sensitive:   true,
-					Description: "Content of the SSH private key.",
+					Type:      schema.TypeString,
+					Optional:  true,
+					Sensitive: true,
+					Description: "Content of the SSH private key. " +
+						"Stored in Terraform state - use an encrypted backend for security.",
 				},
 				"skip_key_validation": {
 					Type:     schema.TypeBool,

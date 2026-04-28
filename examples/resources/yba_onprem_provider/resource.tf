@@ -1,4 +1,4 @@
-# Basic On-Premises Provider with manual provisioning
+# Basic On-Premises Provider with pre-provisioned nodes
 resource "yba_onprem_provider" "example" {
   name             = "onprem-provider"
   ssh_user         = "yugabyte"
@@ -32,6 +32,7 @@ resource "yba_onprem_provider" "example" {
     region_name   = "us-west"
     zone_name     = "us-west-az1"
     instance_type = "c5.large"
+    instance_name = "node-1"
   }
 
   node_instances {
@@ -39,45 +40,6 @@ resource "yba_onprem_provider" "example" {
     region_name   = "us-west"
     zone_name     = "us-west-az2"
     instance_type = "c5.large"
-  }
-}
-
-# On-Premises Provider with auto-provisioning
-resource "yba_onprem_provider" "provisioned" {
-  name             = "onprem-auto-provisioned"
-  ssh_user         = "yugabyte"
-  ssh_keypair_name = "my-keypair"
-
-  ssh_private_key_content = file("~/.ssh/my-keypair.pem")
-
-  skip_provisioning        = false
-  passwordless_sudo_access = true
-  install_node_exporter    = true
-  node_exporter_port       = 9300
-
-  regions {
-    code      = "dc1"
-    latitude  = 37.7749
-    longitude = -122.4194
-
-    zones {
-      code = "dc1-rack1"
-    }
-  }
-
-  instance_types {
-    instance_type_code = "large"
-    num_cores          = 4
-    mem_size_gb        = 16
-    volume_size_gb     = 200
-  }
-
-  node_instances {
-    ip            = "192.168.1.10"
-    region_name   = "dc1"
-    zone_name     = "dc1-rack1"
-    instance_type = "large"
-    instance_name = "node-1"
   }
 }
 

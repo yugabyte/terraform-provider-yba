@@ -12,9 +12,11 @@ description: |-
 
 {{ tffile "examples/resources/yba_universe/resource.tf" }}
 
-The details for configuration are available in the [YugabyteDB Anywhere Create YugabyteDB universe deployments](https://docs.yugabyte.com/preview/yugabyte-platform/create-deployments/) and [YugabyteDB Anywhere Manage YugabyteDB universe deployments](https://docs.yugabyte.com/preview/yugabyte-platform/manage-deployments/).
+The details for configuration are available in the [YugabyteDB Anywhere Create YugabyteDB universe deployments](https://docs.yugabyte.com/stable/yugabyte-platform/create-deployments/) and [YugabyteDB Anywhere Manage YugabyteDB universe deployments](https://docs.yugabyte.com/stable/yugabyte-platform/manage-deployments/).
 
 ~> **Disclaimer:** Please note that adding read replica clusters after universe creation currently not supported.
+
+~> **Warning:** Read replica (ASYNC cluster) support is not fully documented in this provider. Configuration options for ASYNC clusters may be incomplete or subject to change. Use read replicas with caution and refer to the YugabyteDB Anywhere UI or API documentation for the full set of supported options.
 
 ~> **Disclaimer:** Please note that data move to a different *zone* is currently not supported.
 
@@ -29,10 +31,40 @@ The following operations are supported in the Edit universe workflow:
     1. Number of Nodes
     1. Number of Volumes per instance
     1. Volume Size
-    1. User Tags
+    1. Instance Tags
 1. Delete read replicas (Adding read replica after universe creation currently not supported)
 
+~> **Note:** `clusters[*].user_intent.access_key_code` is listed in the Optional schema group, but it is required when the cluster targets a cloud provider (`aws`, `gcp`, `azu`). It is only optional for on-prem providers whose nodes have the YBA node agent installed. The provider rejects a plan that omits it for a cloud provider at plan time.
+
 {{ .SchemaMarkdown | trimspace }}
+
+## Operation timeouts
+
+The `timeouts` block accepts `create`, `update`, and `delete` durations and uses these defaults
+when omitted:
+
+| Operation | Default |
+|---|---|
+| `create` | `60m` |
+| `update` | `60m` |
+| `delete` | `30m` |
+
+Large universes (many nodes, large volumes, or full-move edits) can exceed these defaults.
+Raise them per-resource when needed:
+
+```terraform
+resource "yba_universe" "example" {
+  timeouts {
+    create = "120m"
+    update = "120m"
+    delete = "45m"
+  }
+  # ... other fields ...
+}
+```
+
+Hitting a timeout aborts the Terraform-side wait but does not cancel the YBA task. Re-running
+`terraform apply` after the YBA task finishes will reconcile state.
 
 ## Known Issues
 
@@ -69,3 +101,32 @@ Universes can be imported using `universe uuid`:
 ```sh
 terraform import yba_universe.universe_name <universe-uuid>
 ```
+
+### Sensitive fields are not imported
+
+`terraform import` reads universe state from the YugabyteDB Anywhere API, which does not return plaintext secrets. For the following `clusters.user_intent` fields, the API returns the literal string `REDACTED`, and that sentinel is what lands in your state file after import:
+
+- `ysql_password`
+- `ycql_password`
+
+On the next plan Terraform sees a diff from `REDACTED` to the value in your configuration, and the universe update guard rejects the apply (you cannot change passwords after universe creation).
+
+Choose one of the following to resolve this:
+
+1. **Ignore the field in your configuration** (recommended when the password is managed outside Terraform):
+
+    ```hcl
+    resource "yba_universe" "universe_name" {
+      # ...
+      lifecycle {
+        ignore_changes = [
+          clusters[0].user_intent[0].ysql_password,
+          clusters[0].user_intent[0].ycql_password,
+        ]
+      }
+    }
+    ```
+
+    State will continue to hold `REDACTED` for these fields; this is expected and does not affect universe operation.
+
+2. **Patch the state with the real secret value** so Terraform sees it as unchanged. This requires the current password and direct state edits (`terraform state pull` / `terraform state push`, or `terraform state rm` plus re-import after manual seeding); only use it when you intend to keep managing the password through Terraform.

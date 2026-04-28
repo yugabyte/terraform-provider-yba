@@ -6,7 +6,7 @@ description: |-
 
 # {{.Name}} ({{.Type}})
 
-~> **Deprecated:** Use [`yba_backup_schedule`](backup_schedule) instead. This resource will be removed in a future version.
+~> **Deprecated:** Use [`yba_backup_schedule`](backup_schedule) instead. This resource is kept through the v1.x line; removal is planned for v2.0.0. See the [Upgrading to v1.0.0](../guides/upgrading-to-v1.0.0) guide for migration steps.
 
 {{ .Description | trimspace }}
 
@@ -34,9 +34,17 @@ resource "yba_backup_schedule" "full_backup" {
 }
 ```
 
-Then run:
+The HCL schema changed (`keyspace` -> `keyspaces`), so a `terraform state mv` does not work cleanly across the rename. Drop the old resource from state on v0.1.x, upgrade the provider, write the new `yba_backup_schedule` HCL, and re-import using the existing schedule UUID:
+
 ```sh
-terraform state mv yba_backups.example yba_backup_schedule.example
+# On v0.1.x, before upgrading:
+terraform state rm yba_backups.example
+
+# After upgrading to v1.0.0:
+terraform import yba_backup_schedule.example <schedule-uuid>
+terraform plan
 ```
+
+See the [Upgrading to v1.0.0](../guides/upgrading-to-v1.0.0) guide for the full workflow.
 
 {{ .SchemaMarkdown | trimspace }}

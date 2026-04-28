@@ -1,0 +1,60 @@
+---
+page_title: "{{.Name}} {{.Type}} - {{.RenderedProviderName}}"
+description: |-
+{{ .Description | plainmarkdown | trimspace | prefixlines "  " }}
+---
+
+# {{.Name}} ({{.Type}})
+
+{{ .Description | trimspace }}
+
+The `yba_backup`, `yba_backup_schedule`, and `yba_restore` resources reference storage
+configurations via the `storage_config_uuid` attribute.
+
+For more details, see the [YugabyteDB Anywhere Configure Storage documentation](https://docs.yugabyte.com/stable/yugabyte-platform/back-up-restore-universes/configure-backup-storage/).
+
+## Example Usage
+
+{{ tffile "examples/resources/yba_s3_storage_config/resource.tf" }}
+
+{{ .SchemaMarkdown | trimspace }}
+
+## Migration from `yba_storage_config_resource`
+
+If you previously managed S3 storage configurations with the deprecated [`yba_storage_config_resource`](storage_config_resource), switch the block type, lift `s3_credentials.*` to top-level fields, rename `config_name` to `name`, and re-import the state:
+
+```hcl
+# Before (deprecated)
+resource "yba_storage_config_resource" "s3" {
+  name            = "S3"
+  config_name     = "my-s3-config"
+  backup_location = "s3://my-bucket/yugabyte-backups"
+  s3_credentials {
+    access_key_id     = "<aws-access-key-id>"
+    secret_access_key = "<aws-secret-access-key>"
+  }
+}
+
+# After
+resource "yba_s3_storage_config" "s3" {
+  name              = "my-s3-config"
+  backup_location   = "s3://my-bucket/yugabyte-backups"
+  access_key_id     = "<aws-access-key-id>"
+  secret_access_key = "<aws-secret-access-key>"
+}
+```
+
+Then re-bind the state to the new address:
+
+```sh
+terraform state rm yba_storage_config_resource.s3
+terraform import yba_s3_storage_config.s3 <config-uuid>
+```
+
+## Import
+
+S3 storage configurations can be imported using the configuration UUID:
+
+```sh
+terraform import yba_s3_storage_config.example <config-uuid>
+```

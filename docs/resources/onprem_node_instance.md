@@ -8,11 +8,11 @@ description: |-
 
 Resource to add node instances to an on-premises provider.
 
-For information on adding node instances to on-premises providers, refer to [Add instances to on-premises providers](https://docs.yugabyte.com/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises/#add-instances).
+For information on adding node instances to on-premises providers, refer to [Add instances to on-premises providers](https://docs.yugabyte.com/stable/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises/#add-instances).
 
-~> **Warning:** YugabyteDB Anywhere Terraform Provider currently provides a standalone On-Premises Node Instance (*yba_onprem_node_instance*) resource, and allows Node Instances to be defined in-line in the On-Premises Provider (*yba_onprem_provider*) resource. Currently, you can't use an On-Premises Provider with in-line Node Instances in conjunction with any On-Premises Node Instance resources. Doing so will cause a conflict and might result in removal of nodes managed by the provider.
+~> **Warning:** The YugabyteDB Anywhere Terraform Provider offers a standalone On-Premises Node Instance (*yba_onprem_node_instance*) resource and also lets you declare node instances inline in the On-Premises Provider (*yba_onprem_provider*) resource. You cannot mix the two approaches for the same provider -- doing so causes a conflict and can remove the nodes the provider manages.
 
-~> **Warning:** On-premises nodes are automatically deleted when their provider is deleted. The following error is thrown by the *yba_onprem_node_instance* resource when its provider is deleted:
+~> **Warning:** YBA automatically deletes on-premises nodes when you delete their provider. After the provider is gone, the *yba_onprem_node_instance* resource raises the following error:
 ```
 Error: Resource: Onprem Node Instance, Operation: Get - 400 Bad Request: Invalid node UUID: <node-uuid>
 ```
@@ -20,7 +20,7 @@ Error: Resource: Onprem Node Instance, Operation: Get - 400 Bad Request: Invalid
 ## Example Usage
 
 ```terraform
-resource "yba_onprem_node_instance" "onprem" {
+resource "yba_onprem_node_instance" "onprem_by_uuid" {
   provider_uuid = "<onprem-provider-uuid>"
   instance_type = "<instance-type-name>"
   ip            = "<node-ip-instance>"
@@ -28,7 +28,7 @@ resource "yba_onprem_node_instance" "onprem" {
   zone          = "<zone-name>"
 }
 
-resource "yba_onprem_node_instance" "onprem" {
+resource "yba_onprem_node_instance" "onprem_by_name" {
   provider_name = "<onprem-provider-name>"
   instance_type = "<instance-type-name>"
   ip            = "<node-ip-instance>"

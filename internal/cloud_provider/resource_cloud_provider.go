@@ -36,11 +36,12 @@ import (
 // ResourceCloudProvider creates and maintains resource for cloud providers
 //
 // Deprecated: Use yba_aws_provider, yba_gcp_provider, or yba_azure_provider instead.
-// This resource will be removed in a future version.
+// Kept through the v1.x line; removal is planned for v2.0.0.
 func ResourceCloudProvider() *schema.Resource {
 	return &schema.Resource{
 		Description: "Cloud Provider Resource.\n\n" +
-			"~> **Deprecated:** This resource is deprecated and will be removed in a future version. " +
+			"~> **Deprecated:** This resource is deprecated and will be removed in v2.0.0. " +
+			"It remains available throughout the v1.x line. " +
 			"Please use the cloud-specific provider resources instead:\n" +
 			"  - `yba_aws_provider` for AWS\n" +
 			"  - `yba_gcp_provider` for GCP\n" +
@@ -48,7 +49,7 @@ func ResourceCloudProvider() *schema.Resource {
 
 		DeprecationMessage: "yba_cloud_provider is deprecated. " +
 			"Use yba_aws_provider, yba_gcp_provider, or yba_azure_provider instead. " +
-			"This resource will be removed in a future version.",
+			"Kept through the v1.x line; removal is planned for v2.0.0.",
 
 		CreateContext: resourceCloudProviderCreate,
 		ReadContext:   resourceCloudProviderRead,

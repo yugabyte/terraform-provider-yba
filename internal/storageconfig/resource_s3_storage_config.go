@@ -70,10 +70,11 @@ func ResourceS3StorageConfig() *schema.Resource {
 				Description: "Name of the S3 storage configuration.",
 			},
 			"backup_location": {
-				Type:        schema.TypeString,
-				Required:    true,
-				ForceNew:    true,
-				Description: "S3 bucket URI (e.g., s3://bucket-name/path).",
+				Type:     schema.TypeString,
+				Required: true,
+				ForceNew: true,
+				Description: "S3 bucket URI (e.g., s3://bucket-name/path). " +
+					"Changing this value forces resource recreation.",
 			},
 			"access_key_id": {
 				Type:          schema.TypeString,
@@ -82,7 +83,8 @@ func ResourceS3StorageConfig() *schema.Resource {
 				ConflictsWith: []string{"use_iam_instance_profile"},
 				RequiredWith:  []string{"secret_access_key"},
 				Description: "AWS Access Key ID. Required with secret_access_key " +
-					"when use_iam_instance_profile is false.",
+					"when use_iam_instance_profile is false. " +
+					"Stored in Terraform state - use an encrypted backend for security.",
 			},
 			"secret_access_key": {
 				Type:          schema.TypeString,
@@ -91,7 +93,8 @@ func ResourceS3StorageConfig() *schema.Resource {
 				ConflictsWith: []string{"use_iam_instance_profile"},
 				RequiredWith:  []string{"access_key_id"},
 				Description: "AWS Secret Access Key. Required with access_key_id " +
-					"when use_iam_instance_profile is false.",
+					"when use_iam_instance_profile is false. " +
+					"Stored in Terraform state - use an encrypted backend for security.",
 			},
 			"use_iam_instance_profile": {
 				Type:          schema.TypeBool,

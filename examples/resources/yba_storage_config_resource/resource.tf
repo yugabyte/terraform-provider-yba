@@ -1,3 +1,9 @@
+# Deprecated: yba_storage_config_resource remains supported through the v1.x line
+# and is scheduled for removal in v2.0.0. For new configurations, prefer the
+# per-backend resources: yba_s3_storage_config, yba_gcs_storage_config,
+# yba_azure_storage_config, yba_nfs_storage_config.
+# See the "Upgrading to v1.0.0" guide for migration steps.
+
 resource "yba_storage_config_resource" "storage_config" {
   name            = "<storage-config-code>"
   backup_location = "<storage-location/bucket-location>"

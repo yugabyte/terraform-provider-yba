@@ -7,11 +7,11 @@ description: |-
 
 # Restoring Backups
 
-Data backed up by *yba_backup* (on-demand) or *yba_backup_schedule* (scheduled) can be restored to universes using the *yba_restore* resource. This operation triggers the restore and waits for completion.
+Use the *yba_restore* resource to restore data captured by *yba_backup* (on-demand) or *yba_backup_schedule* (scheduled) to a universe. This operation triggers the restore and waits for completion.
 
-~> **Note:** You should remove the *yba_restore* resource from your configuration after the operation is complete, as restores are one-time operations.
+~> **Note:** Remove the *yba_restore* resource from your configuration after the operation completes, since restores are one-time operations.
 
-You can fetch the list of backups for a universe using the *yba_backup_info* data source, which can be used in restore operations, as shown in the following example.
+You can fetch the list of backups for a universe using the *yba_backup_info* data source, then reference it in restore operations as shown in the following example.
 
 ```terraform
 data "yba_backup_info" "backup" {
@@ -57,7 +57,7 @@ resource "yba_restore" "restore_ycql_multi" {
 
 ## Restoring from On-Demand Backups
 
-After creating a backup using the *yba_backup* resource, the backup's per-keyspace storage locations are available directly on the resource via the *keyspace_details* attribute — no separate data source lookup is needed.
+After creating a backup using the *yba_backup* resource, the backup's per-keyspace storage locations are available directly on the resource via the *keyspace_details* attribute -- no separate data source lookup is needed.
 
 ```terraform
 # Create a backup

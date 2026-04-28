@@ -1,0 +1,58 @@
+---
+page_title: "{{.Name}} {{.Type}} - {{.RenderedProviderName}}"
+description: |-
+{{ .Description | plainmarkdown | trimspace | prefixlines "  " }}
+---
+
+# {{.Name}} ({{.Type}})
+
+{{ .Description | trimspace }}
+
+The `yba_backup`, `yba_backup_schedule`, and `yba_restore` resources reference storage
+configurations via the `storage_config_uuid` attribute.
+
+For more details, see the [YugabyteDB Anywhere Configure Storage documentation](https://docs.yugabyte.com/stable/yugabyte-platform/back-up-restore-universes/configure-backup-storage/).
+
+## Example Usage
+
+{{ tffile "examples/resources/yba_gcs_storage_config/resource.tf" }}
+
+{{ .SchemaMarkdown | trimspace }}
+
+## Migration from `yba_storage_config_resource`
+
+If you previously managed GCS storage configurations with the deprecated [`yba_storage_config_resource`](storage_config_resource), switch the block type, lift `gcs_credentials.application_credentials` to the top-level `credentials` field, rename `config_name` to `name`, and re-import the state:
+
+```hcl
+# Before (deprecated)
+resource "yba_storage_config_resource" "gcs" {
+  name            = "GCS"
+  config_name     = "my-gcs-config"
+  backup_location = "gs://my-bucket/yugabyte-backups"
+  gcs_credentials {
+    application_credentials = file("~/.gcp/service-account.json")
+  }
+}
+
+# After
+resource "yba_gcs_storage_config" "gcs" {
+  name            = "my-gcs-config"
+  backup_location = "gs://my-bucket/yugabyte-backups"
+  credentials     = file("~/.gcp/service-account.json")
+}
+```
+
+Then re-bind the state to the new address:
+
+```sh
+terraform state rm yba_storage_config_resource.gcs
+terraform import yba_gcs_storage_config.gcs <config-uuid>
+```
+
+## Import
+
+GCS storage configurations can be imported using the configuration UUID:
+
+```sh
+terraform import yba_gcs_storage_config.example <config-uuid>
+```

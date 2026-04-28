@@ -1,0 +1,57 @@
+---
+page_title: "{{.Name}} {{.Type}} - {{.RenderedProviderName}}"
+description: |-
+{{ .Description | plainmarkdown | trimspace | prefixlines "  " }}
+---
+
+# {{.Name}} ({{.Type}})
+
+{{ .Description | trimspace }}
+
+The `yba_backup`, `yba_backup_schedule`, and `yba_restore` resources reference storage
+configurations via the `storage_config_uuid` attribute.
+
+-> **Note:** The NFS mount path must be accessible from both the YugabyteDB Anywhere host and all
+universe nodes. The path must exist and be writable before creating this configuration.
+
+For more details, see the [YugabyteDB Anywhere Configure Storage documentation](https://docs.yugabyte.com/stable/yugabyte-platform/back-up-restore-universes/configure-backup-storage/).
+
+## Example Usage
+
+{{ tffile "examples/resources/yba_nfs_storage_config/resource.tf" }}
+
+{{ .SchemaMarkdown | trimspace }}
+
+## Migration from `yba_storage_config_resource`
+
+If you previously managed NFS storage configurations with the deprecated [`yba_storage_config_resource`](storage_config_resource) (`name = "NFS"`), switch the block type, rename `config_name` to `name`, and re-import the state:
+
+```hcl
+# Before (deprecated)
+resource "yba_storage_config_resource" "nfs" {
+  name            = "NFS"
+  config_name     = "my-nfs-config"
+  backup_location = "/mnt/nfs/yugabyte-backups"
+}
+
+# After
+resource "yba_nfs_storage_config" "nfs" {
+  name            = "my-nfs-config"
+  backup_location = "/mnt/nfs/yugabyte-backups"
+}
+```
+
+Then re-bind the state to the new address:
+
+```sh
+terraform state rm yba_storage_config_resource.nfs
+terraform import yba_nfs_storage_config.nfs <config-uuid>
+```
+
+## Import
+
+NFS storage configurations can be imported using the configuration UUID:
+
+```sh
+terraform import yba_nfs_storage_config.example <config-uuid>
+```

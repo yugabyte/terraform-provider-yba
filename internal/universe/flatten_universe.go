@@ -17,10 +17,12 @@ package universe
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/hashicorp/go-cty/cty"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	client "github.com/yugabyte/platform-go-client"
 	"github.com/yugabyte/terraform-provider-yba/internal/utils"
 )
@@ -69,12 +71,19 @@ func flattenClusters(clusters []client.Cluster) (res []map[string]interface{}) {
 //   - UUID-based: used on normal refresh where old state already has UUIDs.
 //   - Index-based fallback: used on the initial Create->Read where the config
 //     clusters have no UUIDs yet (they are assigned by YBA during creation).
+//
+// Returns Warning diagnostics for any redacted field that could not be
+// restored from prior state - typically the import-bootstrap case, where the
+// "REDACTED" sentinel ends up in state and the operator needs to use
+// lifecycle.ignore_changes or hand-patch state. See the Import section of
+// the universe resource docs.
 func restoreRedactedPasswords(
 	ctx context.Context,
 	newClusters []map[string]interface{},
 	oldClusters []interface{},
-) {
+) diag.Diagnostics {
 	const redacted = "REDACTED"
+	var diags diag.Diagnostics
 
 	oldByUUID := make(map[string]map[string]interface{}, len(oldClusters))
 	for _, oc := range oldClusters {
@@ -106,19 +115,12 @@ func restoreRedactedPasswords(
 				map[string]interface{}{"index": i, "uuid": uuid})
 		}
 
-		if oldCluster == nil {
-			tflog.Debug(ctx, "restoreRedactedPasswords: no old cluster found, skipping",
-				map[string]interface{}{"index": i, "uuid": uuid})
-			continue
-		}
-
-		oldUIList, ok := oldCluster["user_intent"].([]interface{})
-		if !ok || len(oldUIList) == 0 {
-			continue
-		}
-		oldUIMap, ok := oldUIList[0].(map[string]interface{})
-		if !ok {
-			continue
+		var oldUIMap map[string]interface{}
+		if oldCluster != nil {
+			if oldUIList, ok := oldCluster["user_intent"].([]interface{}); ok &&
+				len(oldUIList) > 0 {
+				oldUIMap, _ = oldUIList[0].(map[string]interface{})
+			}
 		}
 
 		newUIList, ok := nc["user_intent"].([]interface{})
@@ -132,19 +134,47 @@ func restoreRedactedPasswords(
 
 		for _, field := range []string{"ysql_password", "ycql_password"} {
 			p, ok := newUIMap[field].(*string)
-			if ok && p != nil && *p == redacted {
-				oldVal, _ := oldUIMap[field].(string)
+			if !ok || p == nil || *p != redacted {
+				continue
+			}
+			var oldVal string
+			if oldUIMap != nil {
+				oldVal, _ = oldUIMap[field].(string)
+			}
+			if oldVal != "" {
 				tflog.Debug(ctx, "restoreRedactedPasswords: restoring redacted field",
 					map[string]interface{}{
-						"index":         i,
-						"uuid":          uuid,
-						"field":         field,
-						"has_old_value": oldVal != "",
+						"index": i, "uuid": uuid, "field": field,
 					})
 				newUIMap[field] = oldVal
+				continue
 			}
+			// No prior value to restore - the literal "REDACTED" sentinel
+			// will land in state. This is the import-bootstrap case.
+			tflog.Warn(ctx, "restoreRedactedPasswords: no prior value for redacted field",
+				map[string]interface{}{
+					"index": i, "uuid": uuid, "field": field,
+				})
+			diags = append(diags, diag.Diagnostic{
+				Severity: diag.Warning,
+				Summary: fmt.Sprintf(
+					"%s could not be populated from YBA on read; state contains the sentinel \"REDACTED\"",
+					field,
+				),
+				Detail: fmt.Sprintf(
+					"YBA does not return plaintext passwords. After import (or any refresh "+
+						"with no prior state for this field), state holds \"REDACTED\" for "+
+						"clusters[%d].user_intent[0].%s. The next plan will show a diff "+
+						"from \"REDACTED\" to your configured value, and the update will "+
+						"be rejected because passwords cannot be changed after universe "+
+						"creation. Add a lifecycle.ignore_changes block for this field or "+
+						"patch state with the real value. See the Import section of the "+
+						"yba_universe docs.",
+					i, field),
+			})
 		}
 	}
+	return diags
 }
 
 // flattenCloudList converts the API placement cloud list to schema format,

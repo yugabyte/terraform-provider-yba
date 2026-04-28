@@ -1,0 +1,18 @@
+---
+page_title: "{{.Name}} {{.Type}} - {{.RenderedProviderName}}"
+description: |-
+{{ .Description | plainmarkdown | trimspace | prefixlines "  " }}
+---
+
+# {{.Name}} ({{.Type}})
+
+{{ .Description | trimspace }}
+
+Use this data source to discover the image bundle UUID needed by the `image_bundle_uuid` field
+on `yba_universe`, or to verify that the expected image bundle is registered for a provider.
+
+## Example Usage
+
+{{ tffile "examples/data-sources/yba_provider_image_bundles/data-source.tf" }}
+
+{{ .SchemaMarkdown | trimspace }}

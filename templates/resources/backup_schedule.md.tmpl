@@ -12,7 +12,20 @@ description: |-
 
 {{ tffile "examples/resources/yba_backup_schedule/resource.tf" }}
 
-For more details, see the [YugabyteDB Anywhere Schedule Data Backups](https://docs.yugabyte.com/preview/yugabyte-platform/back-up-restore-universes/schedule-data-backups/ysql/) documentation.
+For more details, see the [YugabyteDB Anywhere Schedule Data Backups](https://docs.yugabyte.com/stable/yugabyte-platform/back-up-restore-universes/schedule-data-backups/ysql/) documentation.
+
+## Frequency and PITR constraints
+
+The provider validates the following at plan time before any task is dispatched. Failing any
+of these returns a plan-time error.
+
+- `frequency` must be at least `1h`. Sub-hourly schedules are rejected.
+- `incremental_backup_frequency` must be at most `24h`.
+- `enable_point_in_time_restore = true` requires `incremental_backup_frequency` to be set.
+- Adding `incremental_backup_frequency` to an existing schedule forces resource recreation
+  (YBA does not support enabling incremental backups on an existing schedule in place).
+- Removing `incremental_backup_frequency` from an existing schedule is rejected; incremental
+  backups cannot be disabled once enabled.
 
 {{ .SchemaMarkdown | trimspace }}
 

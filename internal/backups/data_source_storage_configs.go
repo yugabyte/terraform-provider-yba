@@ -42,7 +42,7 @@ func StorageConfigs() *schema.Resource {
 				Type:     schema.TypeString,
 				Optional: true,
 				Description: "Accepts name of the storage configuration. The corresponding " +
-					"storage config UUID is stored in ID to be used in *yba_backups* resource.",
+					"storage config UUID is stored in ID to be used in the *yba_backup_schedule* resource.",
 			},
 		},
 	}

@@ -1,0 +1,18 @@
+---
+page_title: "{{.Name}} {{.Type}} - {{.RenderedProviderName}}"
+description: |-
+{{ .Description | plainmarkdown | trimspace | prefixlines "  " }}
+---
+
+# {{.Name}} ({{.Type}})
+
+{{ .Description | trimspace }}
+
+This is particularly useful for dynamically backing up all databases without hardcoding
+their names, or for locating specific table UUIDs for table-level backups.
+
+## Example Usage
+
+{{ tffile "examples/data-sources/yba_universe_schema/data-source.tf" }}
+
+{{ .SchemaMarkdown | trimspace }}

@@ -144,7 +144,8 @@ func azureProviderSchema() map[string]*schema.Schema {
 		Description: "SSH private key content to access YugabyteDB nodes. " +
 			"Must be set together with ssh_keypair_name (self-managed mode). " +
 			"If both fields are omitted, YugabyteDB Anywhere generates and manages " +
-			"the key pair (YBA-managed mode).",
+			"the key pair (YBA-managed mode). " +
+			"Stored in Terraform state - use an encrypted backend for security.",
 	}
 
 	// Common read-only fields
