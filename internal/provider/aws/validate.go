@@ -43,12 +43,28 @@ func validateNoDuplicateRegionsOrZones(
 	d *schema.ResourceDiff,
 	meta interface{},
 ) error {
+	// Collect the set of currently configured region codes so that
+	// HasImageBundleRealChange can ignore region_overrides entries for regions
+	// that are no longer in the provider. d.GetChange returns raw config values
+	// (DiffSuppressFunc is not applied), so without this filter a stale
+	// region_overrides entry would be seen as a real change and cause a
+	// perpetual version bump even though the plan display shows no difference.
+	regionsRaw, _ := d.Get("regions").([]interface{})
+	activeRegions := make(map[string]bool, len(regionsRaw))
+	for _, r := range regionsRaw {
+		if regionMap, ok := r.(map[string]interface{}); ok {
+			if code, _ := regionMap["code"].(string); code != "" {
+				activeRegions[code] = true
+			}
+		}
+	}
 	if err := providerutil.MarkVersionComputedIfChanged(ctx, d,
 		[]string{
 			"access_key_id", "secret_access_key", "use_iam_instance_profile",
 			"hosted_zone_id", "skip_ssh_keypair_validation",
 		},
 		regionsContentChanged,
+		activeRegions,
 	); err != nil {
 		return err
 	}
@@ -68,8 +84,6 @@ func validateNoDuplicateRegionsOrZones(
 	if err := providerutil.ValidateNewBundlesNotDefault(d); err != nil {
 		return err
 	}
-
-	regionsRaw, _ := d.Get("regions").([]interface{})
 
 	regionCodes := make(map[string]bool)
 

@@ -43,6 +43,7 @@ func validateNoDuplicateRegions(
 			"yb_firewall_tags",
 		},
 		regionsContentChanged,
+		nil, // GCP image bundles have no region_overrides; no region filtering needed
 	); err != nil {
 		return err
 	}

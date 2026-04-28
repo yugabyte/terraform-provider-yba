@@ -36,6 +36,7 @@ func validateAzureProvider(
 			"network_resource_group",
 		},
 		regionsContentChanged,
+		nil, // Azure image bundles have no region_overrides; no region filtering needed
 	); err != nil {
 		return err
 	}

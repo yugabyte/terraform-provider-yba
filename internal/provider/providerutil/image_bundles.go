@@ -591,6 +591,69 @@ func BundleContentChanged(old, new map[string]interface{}) bool {
 	return false
 }
 
+// filterActiveOverrides returns a copy of overrides containing only entries whose
+// key is present in activeRegions. When activeRegions is nil all entries are kept.
+func filterActiveOverrides(
+	overrides map[string]interface{},
+	activeRegions map[string]bool,
+) map[string]interface{} {
+	if activeRegions == nil {
+		return overrides
+	}
+	filtered := make(map[string]interface{}, len(overrides))
+	for k, v := range overrides {
+		if activeRegions[k] {
+			filtered[k] = v
+		}
+	}
+	return filtered
+}
+
+// bundleContentChangedFiltered is identical to BundleContentChanged but filters
+// region_overrides to only active regions before comparing. This replicates the
+// suppressInactiveRegionOverride DiffSuppressFunc logic for the HasImageBundleRealChange
+// path where d.GetChange returns raw config values that bypass DiffSuppressFunc.
+func bundleContentChangedFiltered(
+	old, new map[string]interface{},
+	activeRegions map[string]bool,
+) bool {
+	oldDefault, _ := old["use_as_default"].(bool)
+	newDefault, _ := new["use_as_default"].(bool)
+	if oldDefault != newDefault {
+		return true
+	}
+
+	oldDetails := GetBundleDetails(old)
+	newDetails := GetBundleDetails(new)
+
+	if oldDetails["arch"] != newDetails["arch"] ||
+		oldDetails["ssh_user"] != newDetails["ssh_user"] ||
+		oldDetails["ssh_port"] != newDetails["ssh_port"] ||
+		oldDetails["global_yb_image"] != newDetails["global_yb_image"] ||
+		oldDetails["use_imds_v2"] != newDetails["use_imds_v2"] {
+		return true
+	}
+
+	oldOverrides, _ := oldDetails["region_overrides"].(map[string]interface{})
+	newOverrides, _ := newDetails["region_overrides"].(map[string]interface{})
+
+	// Filter to active regions only before comparing, so that stale entries in
+	// config for removed regions (which suppressInactiveRegionOverride hides from
+	// plan display) do not trigger a spurious version bump.
+	oldOverrides = filterActiveOverrides(oldOverrides, activeRegions)
+	newOverrides = filterActiveOverrides(newOverrides, activeRegions)
+
+	if len(oldOverrides) != len(newOverrides) {
+		return true
+	}
+	for k, v := range oldOverrides {
+		if newOverrides[k] != v {
+			return true
+		}
+	}
+	return false
+}
+
 // CollectYBAManagedNames finds all YBA-managed bundle names from state
 func CollectYBAManagedNames(bundlesRaw interface{}) map[string]bool {
 	ybaManagedNames := make(map[string]bool)
@@ -646,7 +709,14 @@ func ExtractUserBundlesMap(
 
 // HasImageBundleRealChange checks if user actually changed
 // image_bundles or yba_managed_image_bundles.
-func HasImageBundleRealChange(d *schema.ResourceDiff) bool {
+//
+// IMPORTANT: d.GetChange on *schema.ResourceDiff returns raw config values --
+// DiffSuppressFunc is NOT applied. Suppression logic for drift patterns must be
+// replicated inline here (same pattern as the use_as_default handling below).
+func HasImageBundleRealChange(
+	d *schema.ResourceDiff,
+	activeRegions map[string]bool,
+) bool {
 	// Check custom bundles
 	if d.HasChange("image_bundles") {
 		oldRaw, newRaw := d.GetChange("image_bundles")
@@ -694,7 +764,12 @@ func HasImageBundleRealChange(d *schema.ResourceDiff) bool {
 				return true
 			}
 
-			if BundleContentChanged(oldBundle, newBundle) {
+			// BundleContentChanged compares region_overrides using raw d.GetChange
+			// values where suppressInactiveRegionOverride has NOT been applied.
+			// Pass activeRegions so that entries for removed regions are filtered
+			// out before comparison, replicating suppressInactiveRegionOverride
+			// inline (same pattern as use_as_default handling above).
+			if bundleContentChangedFiltered(oldBundle, newBundle, activeRegions) {
 				return true
 			}
 		}
@@ -862,11 +937,16 @@ var commonVersionFields = []string{
 // when any user-editable field has changed. cloudFields contains the provider-specific
 // fields beyond the common set. regionsContentChanged is the provider's own function
 // that determines whether region changes are meaningful (ignoring pure reorders).
+// activeRegions is the set of region codes currently configured in the provider;
+// when non-nil, region_overrides entries for regions not in this set are excluded from
+// bundle change detection (mirrors suppressInactiveRegionOverride which only applies
+// to plan display, not to d.GetChange). Pass nil for providers without region_overrides.
 func MarkVersionComputedIfChanged(
 	ctx context.Context,
 	d *schema.ResourceDiff,
 	cloudFields []string,
 	regionsContentChanged func(interface{}, interface{}) bool,
+	activeRegions map[string]bool,
 ) error {
 	if d.Id() == "" {
 		return nil
@@ -888,7 +968,7 @@ func MarkVersionComputedIfChanged(
 		}
 	}
 
-	if !hasRealChange && HasImageBundleRealChange(d) {
+	if !hasRealChange && HasImageBundleRealChange(d, activeRegions) {
 		hasRealChange = true
 	}
 

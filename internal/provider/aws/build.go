@@ -147,11 +147,21 @@ func buildAWSZones(zones []interface{}) []client.AvailabilityZone {
 	return result
 }
 
-// flattenAWSRegions converts API regions to schema format
+// flattenAWSRegions converts API regions to schema format.
+// Regions explicitly deactivated by YBA (Active=false) are excluded so that
+// removing a region from config does not produce a perpetual diff: YBA keeps
+// returning deactivated regions in GET responses, and including them in state
+// would cause regionsContentChanged to fire on every subsequent plan.
 func flattenAWSRegions(regions []client.Region) []map[string]interface{} {
 	result := make([]map[string]interface{}, 0)
 
 	for _, region := range regions {
+		// Skip regions that were explicitly deactivated (removed from provider).
+		// Use HasActive to distinguish "explicitly false" from "nil/unset" (active).
+		if region.HasActive() && !region.GetActive() {
+			continue
+		}
+
 		r := map[string]interface{}{
 			"uuid":  region.GetUuid(),
 			"code":  region.GetCode(),
@@ -172,11 +182,19 @@ func flattenAWSRegions(regions []client.Region) []map[string]interface{} {
 	return result
 }
 
-// flattenAWSZones converts API zones to schema format
+// flattenAWSZones converts API zones to schema format.
+// Zones explicitly deactivated by YBA (Active=false) are excluded for the same
+// reason as flattenAWSRegions: including them in state causes perpetual diffs
+// when zones are removed from config.
 func flattenAWSZones(zones []client.AvailabilityZone) []map[string]interface{} {
 	result := make([]map[string]interface{}, 0)
 
 	for _, zone := range zones {
+		// Skip zones explicitly deactivated (removed from provider).
+		if zone.HasActive() && !zone.GetActive() {
+			continue
+		}
+
 		z := map[string]interface{}{
 			"uuid":             zone.GetUuid(),
 			"code":             zone.GetCode(),
