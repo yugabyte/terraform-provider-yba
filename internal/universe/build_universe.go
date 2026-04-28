@@ -208,7 +208,7 @@ func buildCloudList(clI interface{}) (res []client.PlacementCloud) {
 	for _, v := range cl {
 		c := v.(map[string]interface{})
 		pc := client.PlacementCloud{
-			Uuid:       utils.GetStringPointer(c["uuid"].(string)),
+			Uuid:       utils.GetStringPointer(c["provider"].(string)),
 			Code:       utils.GetStringPointer(c["code"].(string)),
 			RegionList: buildRegionList(c["region_list"].([]interface{})),
 		}

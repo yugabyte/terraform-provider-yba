@@ -152,7 +152,7 @@ func restoreRedactedPasswords(
 func flattenCloudList(cl []client.PlacementCloud) (res []interface{}) {
 	for _, c := range cl {
 		pc := map[string]interface{}{
-			"uuid":        c.Uuid,
+			"provider":    c.Uuid,
 			"code":        c.Code,
 			"region_list": flattenRegionList(c.RegionList),
 		}

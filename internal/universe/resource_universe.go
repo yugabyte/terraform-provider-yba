@@ -1812,75 +1812,48 @@ func resolveCloudListUUIDs(
 			continue
 		}
 
-		// Determine which provider to look up.  Prefer cloud_list.uuid (the
-		// provider UUID the user explicitly wired in), fall back to
-		// user_intent.provider.
-		providerUUID := ""
-		for _, pcRaw := range cloudList {
-			pc, ok := pcRaw.(map[string]interface{})
-			if !ok {
-				continue
-			}
-			if u, ok := pc["uuid"].(string); ok && u != "" {
-				providerUUID = u
-				break
-			}
-		}
-		if providerUUID == "" {
-			uiRaw, ok := cl["user_intent"].([]interface{})
-			if ok && len(uiRaw) > 0 {
-				if ui, ok := uiRaw[0].(map[string]interface{}); ok {
-					providerUUID, _ = ui["provider"].(string)
-				}
-			}
-		}
-		if providerUUID == "" {
-			continue
-		}
-
-		p, err := providerutil.GetProvider(ctx, c, cUUID, providerUUID)
-		if err != nil {
-			return err
-		}
-
-		// Build lookup maps keyed by AZ/region code.
+		// uuid is Required in the schema so always present per cloud entry.
+		// Still call GetProvider to resolve region/AZ UUIDs and backfill code.
 		type azAttrs struct {
 			uuid            string
 			subnet          string
 			secondarySubnet string
 		}
-		regionUUIDByCode := make(map[string]string)
-		azByCode := make(map[string]azAttrs)
-		for _, region := range p.GetRegions() {
-			if region.GetCode() != "" && region.GetUuid() != "" {
-				regionUUIDByCode[region.GetCode()] = region.GetUuid()
-			}
-			for _, az := range region.GetZones() {
-				if az.GetCode() != "" && az.GetUuid() != "" {
-					azByCode[az.GetCode()] = azAttrs{
-						uuid:            az.GetUuid(),
-						subnet:          az.GetSubnet(),
-						secondarySubnet: az.GetSecondarySubnet(),
-					}
-				}
-			}
-		}
-
-		providerCode := p.GetCode()
-
-		// Patch UUIDs and codes in-place inside the deserialized cloud_list.
 		for _, pcRaw := range cloudList {
 			pc, ok := pcRaw.(map[string]interface{})
 			if !ok {
 				continue
 			}
-			// code must be set on the cloud entry: UpdatePlacementInfo.mapToCloudInfoPB
-			// reads placementCloud.code directly and passes it to setPlacementCloud(),
-			// which throws NullPointerException when the field is null/empty.
-			if cur, _ := pc["code"].(string); cur == "" && providerCode != "" {
-				pc["code"] = providerCode
-				changed = true
+
+			p, err := providerutil.GetProvider(ctx, c, cUUID, pc["provider"].(string))
+			if err != nil {
+				return err
 			}
+
+			regionUUIDByCode := make(map[string]string)
+			azByCode := make(map[string]azAttrs)
+			for _, region := range p.GetRegions() {
+				if region.GetCode() != "" && region.GetUuid() != "" {
+					regionUUIDByCode[region.GetCode()] = region.GetUuid()
+				}
+				for _, az := range region.GetZones() {
+					if az.GetCode() != "" && az.GetUuid() != "" {
+						azByCode[az.GetCode()] = azAttrs{
+							uuid:            az.GetUuid(),
+							subnet:          az.GetSubnet(),
+							secondarySubnet: az.GetSecondarySubnet(),
+						}
+					}
+				}
+			}
+
+			if cur, _ := pc["code"].(string); cur == "" {
+				if providerCode := p.GetCode(); providerCode != "" {
+					pc["code"] = providerCode
+					changed = true
+				}
+			}
+
 			regionList, ok := pc["region_list"].([]interface{})
 			if !ok {
 				continue
@@ -1909,8 +1882,6 @@ func resolveCloudListUUIDs(
 					}
 					paz["uuid"] = attrs.uuid
 					changed = true
-					// Fill subnet and secondary_subnet from the provider zone
-					// when the practitioner has not set them explicitly.
 					if cur, _ := paz["subnet"].(string); cur == "" && attrs.subnet != "" {
 						paz["subnet"] = attrs.subnet
 					}

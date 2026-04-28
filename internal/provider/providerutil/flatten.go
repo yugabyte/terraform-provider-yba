@@ -78,7 +78,6 @@ func FlattenYBADefaultImageBundles(bundles []client.ImageBundle) []map[string]in
 
 func flattenImageBundleDetails(details client.ImageBundleDetails) []map[string]interface{} {
 	d := map[string]interface{}{
-		"arch":            details.GetArch(),
 		"ssh_user":        details.GetSshUser(),
 		"ssh_port":        details.GetSshPort(),
 		"global_yb_image": details.GetGlobalYbImage(),

@@ -161,11 +161,17 @@ Optional:
 <a id="nestedblock--clusters--cloud_list"></a>
 ### Nested Schema for `clusters.cloud_list`
 
+Required:
+
+- `provider` (String) YBA provider UUID. Use the same value as user_intent.provider.
+
 Optional:
 
-- `code` (String) Cloud provider code (e.g. aws, gcp, azu, onprem).
 - `region_list` (Block List) Regions participating in placement for this cloud provider. (see [below for nested schema](#nestedblock--clusters--cloud_list--region_list))
-- `uuid` (String) YBA cloud provider UUID.
+
+Read-Only:
+
+- `code` (String) Cloud provider code (e.g. aws, gcp, azu, onprem). Derived from the provider UUID.
 
 <a id="nestedblock--clusters--cloud_list--region_list"></a>
 ### Nested Schema for `clusters.cloud_list.region_list`

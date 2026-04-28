@@ -23,17 +23,16 @@ import (
 func cloudListSchema() *schema.Resource {
 	return &schema.Resource{
 		Schema: map[string]*schema.Schema{
-			"uuid": {
+			"provider": {
 				Type:        schema.TypeString,
-				Optional:    true,
-				Computed:    true,
-				Description: "YBA cloud provider UUID.",
+				Required:    true,
+				Description: "YBA provider UUID. Use the same value as user_intent.provider.",
 			},
 			"code": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				Computed:    true,
-				Description: "Cloud provider code (e.g. aws, gcp, azu, onprem).",
+				Type:     schema.TypeString,
+				Computed: true,
+				Description: "Cloud provider code (e.g. aws, gcp, azu, onprem). " +
+					"Derived from the provider UUID.",
 			},
 			"region_list": {
 				Type:        schema.TypeList,
