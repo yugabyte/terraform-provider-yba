@@ -3102,7 +3102,8 @@ func requiresForceDelete(ctx context.Context,
 	// 1. Check if Title contains "cluster" or "universe" (case-insensitive)
 	title, _ := task["title"].(string)
 	lowerTitle := strings.ToLower(title)
-	titleMatches := strings.Contains(lowerTitle, "cluster") || strings.Contains(lowerTitle, "universe")
+	titleMatches := strings.Contains(lowerTitle, "cluster") ||
+		strings.Contains(lowerTitle, "universe")
 
 	// 2. Check if Task Type is in the unrecoverable map
 	taskType, _ := task["type"].(string)

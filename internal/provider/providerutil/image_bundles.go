@@ -530,7 +530,11 @@ func GetBundleDetails(bundle map[string]interface{}) map[string]interface{} {
 // bundleDetailsOnlyChanged compares the details fields of two bundles, excluding
 // use_as_default. Used in the drift-suppress path of HasImageBundleRealChange where
 // use_as_default has already been identified as drift and must not be re-evaluated.
-func bundleDetailsOnlyChanged(old, new map[string]interface{}) bool {
+//
+// activeRegions filters region_overrides the same way bundleContentChangedFiltered
+// does: entries for removed regions are ignored, because d.GetChange returns raw
+// config values where suppressInactiveRegionOverride has not been applied.
+func bundleDetailsOnlyChanged(old, new map[string]interface{}, activeRegions map[string]bool) bool {
 	oldDetails := GetBundleDetails(old)
 	newDetails := GetBundleDetails(new)
 
@@ -544,6 +548,8 @@ func bundleDetailsOnlyChanged(old, new map[string]interface{}) bool {
 
 	oldOverrides, _ := oldDetails["region_overrides"].(map[string]interface{})
 	newOverrides, _ := newDetails["region_overrides"].(map[string]interface{})
+	oldOverrides = filterActiveOverrides(oldOverrides, activeRegions)
+	newOverrides = filterActiveOverrides(newOverrides, activeRegions)
 	if len(oldOverrides) != len(newOverrides) {
 		return true
 	}
@@ -755,7 +761,7 @@ func HasImageBundleRealChange(
 						// use_as_default diff is suppressed drift; check only the
 						// bundle details fields -- NOT use_as_default again, since
 						// BundleContentChanged also compares it and would fire.
-						if bundleDetailsOnlyChanged(oldBundle, newBundle) {
+						if bundleDetailsOnlyChanged(oldBundle, newBundle, activeRegions) {
 							return true
 						}
 						continue
