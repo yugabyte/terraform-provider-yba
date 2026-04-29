@@ -10,6 +10,15 @@ description: |-
 
 Manages the installation of YugabyteDB Anywhere on an existing virtual machine using YBA Installer.
 
+### Supported Versions
+
+Both GA releases and pre-release CI builds are supported.
+
+| Version format        | Example           |
+| --------------------- | ----------------- |
+| GA release (`20YY.x`) | `2025.2.2.2-b11`  |
+| Pre-release (`2.xx`)  | `2.31.0.0-b14`    |
+
 ## Example Usage
 
 ```terraform
