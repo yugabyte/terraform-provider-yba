@@ -1787,8 +1787,8 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 			},
 		),
 		// --- END PENDING UPDATE SUPPORT ---
-		// When cloud_list is present, validate that the per-AZ sums are consistent
-		// with the corresponding user_intent totals.
+		// When cloud_list is explicitly changed by the practitioner, validate that
+		// the per-AZ sums are consistent with the corresponding user_intent totals.
 		//
 		// num_nodes: YBA ignores user_intent.num_nodes when userAZSelected=true and
 		// derives the total from the AZ sum. A mismatch will not cause an API error
@@ -1802,79 +1802,93 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 		// Both checks are skipped for any AZ whose value is 0 (Computed, not yet
 		// known) to avoid false positives on first create when some fields are
 		// not yet set by the practitioner.
-		customdiff.ValidateValue("clusters",
-			func(ctx context.Context, value, meta interface{}) error {
-				for _, clRaw := range value.([]interface{}) {
-					cl, ok := clRaw.(map[string]interface{})
-					if !ok {
-						continue
-					}
-					cloudList, ok := cl["cloud_list"].([]interface{})
-					if !ok || len(cloudList) == 0 {
-						continue
-					}
-					uiRaw, ok := cl["user_intent"].([]interface{})
-					if !ok || len(uiRaw) == 0 {
-						continue
-					}
-					ui, ok := uiRaw[0].(map[string]interface{})
-					if !ok {
-						continue
-					}
-					wantNodes := ui["num_nodes"].(int)
-					wantRF := ui["replication_factor"].(int)
+		//
+		// IMPORTANT: We use schema.ResourceDiff (not customdiff.ValidateValue) so
+		// that we can call d.HasChange per cluster. When cloud_list is Optional+Computed
+		// and the practitioner has NOT configured it, its planned value comes from
+		// state (old per-AZ counts). If we validated against that stale planned value
+		// while only num_nodes changed, the plan would be wrongly rejected even though
+		// the practitioner never touched cloud_list. Skipping validation when
+		// cloud_list has not changed avoids this false positive.
+		func(ctx context.Context, d *schema.ResourceDiff, meta interface{}) error {
+			clusters := d.Get("clusters").([]interface{})
+			for i, clRaw := range clusters {
+				// Only validate when the practitioner is explicitly modifying
+				// cloud_list for this cluster. When cloud_list is Computed (not in
+				// config) and only num_nodes changed, HasChange returns false and we
+				// skip, letting YBA redistribute nodes automatically.
+				if !d.HasChange(fmt.Sprintf("clusters.%d.cloud_list", i)) {
+					continue
+				}
+				cl, ok := clRaw.(map[string]interface{})
+				if !ok {
+					continue
+				}
+				cloudList, ok := cl["cloud_list"].([]interface{})
+				if !ok || len(cloudList) == 0 {
+					continue
+				}
+				uiRaw, ok := cl["user_intent"].([]interface{})
+				if !ok || len(uiRaw) == 0 {
+					continue
+				}
+				ui, ok := uiRaw[0].(map[string]interface{})
+				if !ok {
+					continue
+				}
+				wantNodes := ui["num_nodes"].(int)
+				wantRF := ui["replication_factor"].(int)
 
-					var sumNodes, sumRF int
-					allNodesKnown, allRFKnown := true, true
-					for _, pcRaw := range cloudList {
-						pc, ok := pcRaw.(map[string]interface{})
+				var sumNodes, sumRF int
+				allNodesKnown, allRFKnown := true, true
+				for _, pcRaw := range cloudList {
+					pc, ok := pcRaw.(map[string]interface{})
+					if !ok {
+						continue
+					}
+					for _, prRaw := range pc["region_list"].([]interface{}) {
+						pr, ok := prRaw.(map[string]interface{})
 						if !ok {
 							continue
 						}
-						for _, prRaw := range pc["region_list"].([]interface{}) {
-							pr, ok := prRaw.(map[string]interface{})
+						for _, pazRaw := range pr["az_list"].([]interface{}) {
+							paz, ok := pazRaw.(map[string]interface{})
 							if !ok {
 								continue
 							}
-							for _, pazRaw := range pr["az_list"].([]interface{}) {
-								paz, ok := pazRaw.(map[string]interface{})
-								if !ok {
-									continue
-								}
-								n := paz["num_nodes"].(int)
-								r := paz["replication_factor"].(int)
-								if n == 0 {
-									allNodesKnown = false
-								} else {
-									sumNodes += n
-								}
-								if r == 0 {
-									allRFKnown = false
-								} else {
-									sumRF += r
-								}
+							n := paz["num_nodes"].(int)
+							r := paz["replication_factor"].(int)
+							if n == 0 {
+								allNodesKnown = false
+							} else {
+								sumNodes += n
+							}
+							if r == 0 {
+								allRFKnown = false
+							} else {
+								sumRF += r
 							}
 						}
 					}
-
-					if allNodesKnown && sumNodes > 0 && wantNodes != sumNodes {
-						return fmt.Errorf(
-							"user_intent.num_nodes (%d) must equal the sum of "+
-								"cloud_list az_list num_nodes (%d): "+
-								"when cloud_list is set, YBA ignores user_intent.num_nodes "+
-								"and uses the AZ sum as the authoritative node count",
-							wantNodes, sumNodes)
-					}
-					if allRFKnown && sumRF > 0 && wantRF != sumRF {
-						return fmt.Errorf(
-							"user_intent.replication_factor (%d) must equal the sum of "+
-								"cloud_list az_list replication_factor (%d)",
-							wantRF, sumRF)
-					}
 				}
-				return nil
-			},
-		),
+
+				if allNodesKnown && sumNodes > 0 && wantNodes != sumNodes {
+					return fmt.Errorf(
+						"user_intent.num_nodes (%d) must equal the sum of "+
+							"cloud_list az_list num_nodes (%d): "+
+							"when cloud_list is set, YBA ignores user_intent.num_nodes "+
+							"and uses the AZ sum as the authoritative node count",
+						wantNodes, sumNodes)
+				}
+				if allRFKnown && sumRF > 0 && wantRF != sumRF {
+					return fmt.Errorf(
+						"user_intent.replication_factor (%d) must equal the sum of "+
+							"cloud_list az_list replication_factor (%d)",
+						wantRF, sumRF)
+				}
+			}
+			return nil
+		},
 		// --- END PENDING UPDATE SUPPORT ---
 	)
 }
