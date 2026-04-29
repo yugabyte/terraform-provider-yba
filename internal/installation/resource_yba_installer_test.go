@@ -16,8 +16,12 @@
 package installation
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 )
 
 func TestIsGAVersion(t *testing.T) {
@@ -350,6 +354,129 @@ func TestGetUpgradeCommandsSkipPreflight(t *testing.T) {
 	last := cmds[len(cmds)-1]
 	if !strings.Contains(last, "-s diskAvailability,memoryAvailability") {
 		t.Errorf("upgrade command should contain joined skip flags, got %q", last)
+	}
+}
+
+// newInstallerResourceData builds a *schema.ResourceData using the live
+// yba_installer schema and a map of attribute values. It is the
+// standard pattern in the Terraform SDK for unit-testing schema
+// helpers without spinning up a full provider.
+func newInstallerResourceData(t *testing.T, raw map[string]interface{}) *schema.ResourceData {
+	t.Helper()
+	res := ResourceYBAInstaller()
+	d := schema.TestResourceDataRaw(t, res.Schema, raw)
+	return d
+}
+
+func TestResolveInstallerInputContent(t *testing.T) {
+	d := newInstallerResourceData(t, map[string]interface{}{
+		"ssh_host_ip":          "1.2.3.4",
+		"ssh_user":             "user",
+		"ssh_private_key":      "ssh-key-content",
+		"yba_license":          "license-content",
+		"yba_version":          "2024.1.0.0-b1",
+		"tls_certificate":      "cert-content",
+		"tls_key":              "key-content",
+		"application_settings": "settings: yes\n",
+	})
+
+	cases := []struct {
+		spec     installerFileSpec
+		expected string
+	}{
+		{sshPrivateKeySpec, "ssh-key-content"},
+		{licenseSpec, "license-content"},
+		{tlsCertificateSpec, "cert-content"},
+		{tlsKeySpec, "key-content"},
+		{applicationSettingsSpec, "settings: yes\n"},
+	}
+	for _, tc := range cases {
+		got, err := resolveInstallerInput(d, tc.spec)
+		if err != nil {
+			t.Fatalf("%s: unexpected error: %v", tc.spec.contentAttr, err)
+		}
+		if got != tc.expected {
+			t.Errorf("%s: got %q, expected %q", tc.spec.contentAttr, got, tc.expected)
+		}
+	}
+}
+
+func TestResolveInstallerInputFromFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "license.lic")
+	if err := os.WriteFile(path, []byte("from-file"), 0o600); err != nil {
+		t.Fatalf("write tmp file: %v", err)
+	}
+
+	d := newInstallerResourceData(t, map[string]interface{}{
+		"ssh_host_ip":               "1.2.3.4",
+		"ssh_user":                  "user",
+		"ssh_private_key_file_path": path,
+		"yba_license_file":          path,
+		"yba_version":               "2024.1.0.0-b1",
+	})
+
+	got, err := resolveInstallerInput(d, licenseSpec)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != "from-file" {
+		t.Errorf("expected file contents, got %q", got)
+	}
+
+	got, err = resolveInstallerInput(d, sshPrivateKeySpec)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != "from-file" {
+		t.Errorf("expected file contents from ssh path, got %q", got)
+	}
+}
+
+func TestResolveInstallerInputUnset(t *testing.T) {
+	d := newInstallerResourceData(t, map[string]interface{}{
+		"ssh_host_ip":     "1.2.3.4",
+		"ssh_user":        "user",
+		"ssh_private_key": "k",
+		"yba_license":     "l",
+		"yba_version":     "2024.1.0.0-b1",
+	})
+	got, err := resolveInstallerInput(d, tlsCertificateSpec)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != "" {
+		t.Errorf("expected empty string for unset spec, got %q", got)
+	}
+}
+
+func TestInstallerInputProvided(t *testing.T) {
+	d := newInstallerResourceData(t, map[string]interface{}{
+		"ssh_host_ip":     "1.2.3.4",
+		"ssh_user":        "user",
+		"ssh_private_key": "key",
+		"yba_license":     "lic",
+		"yba_version":     "2024.1.0.0-b1",
+	})
+	if !installerInputProvided(d, sshPrivateKeySpec) {
+		t.Error("expected ssh_private_key to be reported as provided")
+	}
+	if !installerInputProvided(d, licenseSpec) {
+		t.Error("expected yba_license to be reported as provided")
+	}
+	if installerInputProvided(d, tlsCertificateSpec) {
+		t.Error("expected tls_certificate to be reported as not provided")
+	}
+}
+
+func TestResolveSSHPrivateKeyRequiresInput(t *testing.T) {
+	// Schema validation prevents this in practice (ExactlyOneOf), but
+	// the helper itself should still surface a clear error if called
+	// against an empty resource (e.g. during legacy state migration).
+	res := ResourceYBAInstaller()
+	d := schema.TestResourceDataRaw(t, res.Schema, map[string]interface{}{})
+	if _, err := resolveSSHPrivateKey(d); err == nil {
+		t.Fatal("expected error when neither ssh_private_key nor file path is set")
 	}
 }
 

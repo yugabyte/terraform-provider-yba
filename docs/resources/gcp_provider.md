@@ -331,6 +331,10 @@ Optional:
 - `global_yb_image` (String) Global YB image for the bundle.
 - `ssh_port` (Number) SSH port for the image. Default is 22.
 
+Read-Only:
+
+- `arch` (String) Image bundle architecture. Read-only for GCP (always x86_64).
+
 
 
 <a id="nestedblock--timeouts"></a>

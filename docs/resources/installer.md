@@ -27,7 +27,25 @@ provider "yba" {
   host  = "<host ip address>"
 }
 
+# Pass values that are already strings inside Terraform directly to the
+# resource - no temporary files are required on the local filesystem.
 resource "yba_installer" "install" {
+  provider    = yba.unauthenticated
+  ssh_host_ip = "<ip-of-yba-node-for-ssh-commands>"
+  ssh_user    = "<ssh-user>"
+
+  ssh_private_key      = var.ssh_private_key
+  yba_license          = var.yba_license_content
+  application_settings = local.yba_ctl_yaml
+  tls_certificate      = tls_self_signed_cert.yba.cert_pem
+  tls_key              = tls_private_key.yba.private_key_pem
+
+  yba_version = "<YugabyteDB Anywhere-version-with-build-number>"
+}
+
+# Alternatively, point each attribute at a local file. The file-based
+# attributes remain supported for backward compatibility.
+resource "yba_installer" "install_from_files" {
   provider                  = yba.unauthenticated
   ssh_host_ip               = "<ip-of-yba-node-for-ssh-commands>"
   ssh_user                  = "<ssh-user>"
@@ -38,19 +56,25 @@ resource "yba_installer" "install" {
 }
 ```
 
+### Inline content vs. file paths
+
+Each input can be supplied either as an inline string or as a path to a local file. Inline (content-based) attributes are marked sensitive and are mutually exclusive with their file-based counterparts.
+
+| Inline content       | File path                   |
+| -------------------- | --------------------------- |
+| `ssh_private_key`    | `ssh_private_key_file_path` |
+| `application_settings` | `application_settings_file` |
+| `yba_license`        | `yba_license_file`          |
+| `tls_certificate`    | `tls_certificate_file`      |
+| `tls_key`            | `tls_key_file`              |
+
+Use the inline form when the value is already available inside Terraform (for example as the output of a `tls_private_key` resource or a Terraform variable). This avoids the need to materialise temporary files via `local_sensitive_file` just to satisfy the provider, and keeps sensitive material off the local filesystem.
+
 To upgrade YugabyteDB Anywhere version, change *yba_version* to the desired version and run *terraform apply*. In case the upgarde fails mid-way, taint the resource in the *terraform.tfstate* file and rerun the *apply* command.
 
--> **Note:** If modifications are made in the configuration file contents, set *reconfigure* to *true* for the changes to be acknowledged.
+-> **Note:** Changes to the inline `application_settings`, `tls_certificate`, or `tls_key` attributes (or their file-based equivalents) automatically trigger a reconfiguration on the next apply. The `reconfigure = true` flag is only needed when forcing reconfiguration without any tracked input change.
 
 -> **Note:** The paths for server certs and keys on the YugabyteDB Anywhere host are **/tmp/server.crt** and **/tmp/server.key** respectively, which need to be set in the configuration file before installation for proper usage.
-
-To change any of the following file contents -
-
-1. License File (yba_license_file)
-2. TLS Certificate File (tls_certificate_file)
-3. TLS Key File (tls_key_file)
-
-Change the path on the corresponding resource field and run *terraform apply* for the new files to be uploaded.
 
 For further details on configuration and host requirements, refer to [Install YBA software using YBA Installer](https://docs.yugabyte.com/preview/yugabyte-platform/install-yugabyte-platform/install-software/installer/).
 
@@ -60,21 +84,26 @@ For further details on configuration and host requirements, refer to [Install YB
 ### Required
 
 - `ssh_host_ip` (String) IP address of VM for SSH. Typically same as public_ip or private_ip.
-- `ssh_private_key_file_path` (String) Path to file containing the private key to use for ssh commands.
 - `ssh_user` (String) User with sudo access to use for ssh commands.
-- `yba_license_file` (String) YugabyteDB Anywhere license file used for installation using YBA installer.
 - `yba_version` (String) Version of YugabyteDB Anywhere to be installed.
 
 ### Optional
 
-- `application_settings_file` (String) Application settings file to configure YugabyteDB Anywhere. If left empty, the [default configuration](https://github.com/yugabyte/terraform-provider-yba/tree/main/modules/resources/yba-ctl.yml) would be used for the application.
+- `application_settings` (String, Sensitive) Inline application settings contents used to configure YugabyteDB Anywhere. If left empty, the [default configuration](https://github.com/yugabyte/terraform-provider-yba/tree/main/modules/resources/yba-ctl.yml) would be used.
+- `application_settings_file` (String) Path to an application settings file to configure YugabyteDB Anywhere. If left empty, the [default configuration](https://github.com/yugabyte/terraform-provider-yba/tree/main/modules/resources/yba-ctl.yml) would be used. Conflicts with `application_settings`.
 - `host_architecture` (String) Architecture of the host Virtual Machine. Default is x86_64.
 - `host_os` (String) Operating System of the host Virtual Machine. Default is linux.
-- `reconfigure` (Boolean) Set to true for reconfiguration (If the contents of application_settings_file have been modified).
+- `reconfigure` (Boolean) Force a reconfiguration on the next apply, even when no other tracked attribute has changed. Content changes to `application_settings`, `tls_certificate`, or `tls_key` already trigger reconfiguration automatically.
 - `skip_preflight_checks` (List of String) Check names to be skipped during preflight check.
+- `ssh_private_key` (String, Sensitive) Contents of the private key to use for ssh commands. Use this instead of `ssh_private_key_file_path` to pass the key directly without writing it to a local file.
+- `ssh_private_key_file_path` (String) Path to file containing the private key to use for ssh commands. Conflicts with `ssh_private_key`.
 - `timeouts` (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))
-- `tls_certificate_file` (String) TLS certificate used to configure HTTPS. Ensure yba_application_settings file has *server_cert_path* set to /tmp/server.crt
-- `tls_key_file` (String) TLS key used to configure HTTPS. Ensure yba_application_settings file has *server_key_path* set to /tmp/server.key
+- `tls_certificate` (String, Sensitive) Inline TLS certificate contents used to configure HTTPS. Ensure the application settings have *server_cert_path* set to /tmp/server.crt.
+- `tls_certificate_file` (String) Path to a TLS certificate file used to configure HTTPS. Ensure the application settings have *server_cert_path* set to /tmp/server.crt. Conflicts with `tls_certificate`.
+- `tls_key` (String, Sensitive) Inline TLS key contents used to configure HTTPS. Ensure the application settings have *server_key_path* set to /tmp/server.key.
+- `tls_key_file` (String) Path to a TLS key file used to configure HTTPS. Ensure the application settings have *server_key_path* set to /tmp/server.key. Conflicts with `tls_key`.
+- `yba_license` (String, Sensitive) Inline YugabyteDB Anywhere license contents used for installation. Use this instead of `yba_license_file` to pass the license without writing it to a local file.
+- `yba_license_file` (String) Path to a YugabyteDB Anywhere license file used for installation. Conflicts with `yba_license`.
 
 ### Read-Only
 

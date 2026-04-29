@@ -23,19 +23,25 @@ Both GA releases and pre-release CI builds are supported.
 
 {{ tffile "examples/resources/yba_installer/resource.tf" }}
 
+### Inline content vs. file paths
+
+Each input can be supplied either as an inline string or as a path to a local file. Inline (content-based) attributes are marked sensitive and are mutually exclusive with their file-based counterparts.
+
+| Inline content       | File path                   |
+| -------------------- | --------------------------- |
+| `ssh_private_key`    | `ssh_private_key_file_path` |
+| `application_settings` | `application_settings_file` |
+| `yba_license`        | `yba_license_file`          |
+| `tls_certificate`    | `tls_certificate_file`      |
+| `tls_key`            | `tls_key_file`              |
+
+Use the inline form when the value is already available inside Terraform (for example as the output of a `tls_private_key` resource or a Terraform variable). This avoids the need to materialise temporary files via `local_sensitive_file` just to satisfy the provider, and keeps sensitive material off the local filesystem.
+
 To upgrade YugabyteDB Anywhere version, change *yba_version* to the desired version and run *terraform apply*. In case the upgarde fails mid-way, taint the resource in the *terraform.tfstate* file and rerun the *apply* command.
 
--> **Note:** If modifications are made in the configuration file contents, set *reconfigure* to *true* for the changes to be acknowledged.
+-> **Note:** Changes to the inline `application_settings`, `tls_certificate`, or `tls_key` attributes (or their file-based equivalents) automatically trigger a reconfiguration on the next apply. The `reconfigure = true` flag is only needed when forcing reconfiguration without any tracked input change.
 
 -> **Note:** The paths for server certs and keys on the YugabyteDB Anywhere host are **/tmp/server.crt** and **/tmp/server.key** respectively, which need to be set in the configuration file before installation for proper usage.
-
-To change any of the following file contents -
-
-1. License File (yba_license_file)
-2. TLS Certificate File (tls_certificate_file)
-3. TLS Key File (tls_key_file)
-
-Change the path on the corresponding resource field and run *terraform apply* for the new files to be uploaded.
 
 For further details on configuration and host requirements, refer to [Install YBA software using YBA Installer](https://docs.yugabyte.com/preview/yugabyte-platform/install-yugabyte-platform/install-software/installer/).
 
