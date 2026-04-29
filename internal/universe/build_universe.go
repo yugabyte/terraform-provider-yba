@@ -16,6 +16,10 @@
 package universe
 
 import (
+	"context"
+	"fmt"
+
+	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	client "github.com/yugabyte/platform-go-client"
 	"github.com/yugabyte/terraform-provider-yba/internal/utils"
@@ -117,10 +121,17 @@ func hasExplicitCloudList(clusters []client.Cluster) bool {
 // This leads to incorrect ToBeRemoved node marking and wrong placement sent to
 // the API.
 //
-// The fix mirrors the mergeZoneUUIDs pattern used in the AWS/GCP/on-prem
-// provider resources: look up UUIDs by the user-authored identifier (code for
-// regions, name for AZs) rather than trusting the index-matched state value.
-func resolveAZUUIDs(newPI *client.PlacementInfo, oldCloudList []client.PlacementCloud) {
+// When a new AZ or region is introduced that was never part of the prior
+// placement (e.g. moving a node from AZ1 to AZ2), oldCloudList has no entry
+// for it and the UUID in Terraform state is stale (it still holds the old AZ's
+// UUID). fallbackByRegionCode and fallbackByAZCode, built from the provider's
+// full region/zone list, are used in that case.
+func resolveAZUUIDs(
+	newPI *client.PlacementInfo,
+	oldCloudList []client.PlacementCloud,
+	fallbackByRegionCode map[string]string,
+	fallbackByAZCode map[string]string,
+) {
 	if newPI == nil {
 		return
 	}
@@ -140,21 +151,88 @@ func resolveAZUUIDs(newPI *client.PlacementInfo, oldCloudList []client.Placement
 		}
 	}
 	// Overwrite each region's and AZ's UUID in the new placement with the
-	// resolved value from the live API state.
+	// resolved value from the live API state, falling back to the full
+	// provider zone list for AZs/regions not present in the current placement.
 	for ci := range newPI.CloudList {
 		for ri := range newPI.CloudList[ci].RegionList {
 			region := &newPI.CloudList[ci].RegionList[ri]
 			if uuid, ok := uuidByRegionCode[region.GetCode()]; ok {
 				region.Uuid = utils.GetStringPointer(uuid)
+			} else if fallbackByRegionCode != nil {
+				if uuid, ok := fallbackByRegionCode[region.GetCode()]; ok {
+					region.Uuid = utils.GetStringPointer(uuid)
+				}
 			}
 			for ai := range region.AzList {
 				az := &region.AzList[ai]
 				if uuid, ok := uuidByAZName[az.GetName()]; ok {
 					az.Uuid = utils.GetStringPointer(uuid)
+				} else if fallbackByAZCode != nil {
+					if uuid, ok := fallbackByAZCode[az.GetName()]; ok {
+						az.Uuid = utils.GetStringPointer(uuid)
+					}
 				}
 			}
 		}
 	}
+}
+
+// buildProviderZoneFallback constructs code->UUID lookup maps for all regions
+// and zones returned by the provider's region list API. These are used as a
+// fallback in resolveAZUUIDs for AZs that do not appear in the current live
+// placement (e.g. when moving a node to a new AZ within the same region).
+// Multiple calls merge into the same maps, so callers can accumulate results
+// from several providers (multi-cloud universes).
+func buildProviderZoneFallback(
+	regions []client.Region,
+	byRegionCode map[string]string,
+	byAZCode map[string]string,
+) {
+	for _, r := range regions {
+		if r.GetCode() != "" && r.GetUuid() != "" {
+			byRegionCode[r.GetCode()] = r.GetUuid()
+		}
+		for _, az := range r.GetZones() {
+			// AvailabilityZone.Name is the zone code (e.g. "us-west-2a").
+			if az.GetName() != "" && az.GetUuid() != "" {
+				byAZCode[az.GetName()] = az.GetUuid()
+			}
+		}
+	}
+}
+
+// fetchProviderZoneFallback fetches the full region/zone list for every
+// distinct provider UUID found in oldCloudList (the live placement) and
+// merges the results into a single pair of code->UUID lookup maps.
+// Using oldCloudList (live state) rather than the desired config ensures we
+// query the correct provider even if the user's config has an incorrect or
+// changed provider UUID. All clouds in a multi-cloud universe are covered.
+func fetchProviderZoneFallback(
+	ctx context.Context,
+	c *client.APIClient,
+	cUUID string,
+	oldCloudList []client.PlacementCloud,
+) (byRegionCode map[string]string, byAZCode map[string]string) {
+	byRegionCode = make(map[string]string)
+	byAZCode = make(map[string]string)
+	seen := make(map[string]bool)
+	for _, cloud := range oldCloudList {
+		providerUUID := cloud.GetUuid()
+		if providerUUID == "" || seen[providerUUID] {
+			continue
+		}
+		seen[providerUUID] = true
+		provRegions, _, err := c.RegionManagementAPI.GetRegion(ctx, cUUID, providerUUID).Execute()
+		if err != nil {
+			tflog.Warn(ctx, fmt.Sprintf(
+				"could not fetch provider regions for UUID %s: %v; "+
+					"AZ UUID resolution will use current placement only",
+				providerUUID, err))
+			continue
+		}
+		buildProviderZoneFallback(provRegions, byRegionCode, byAZCode)
+	}
+	return byRegionCode, byAZCode
 }
 
 func buildCommunicationPorts(cp map[string]interface{}) *client.CommunicationPorts {

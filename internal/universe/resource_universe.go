@@ -2727,11 +2727,20 @@ func resourceUniverseUpdate(
 						if updateUni.UniverseDetails.Clusters[i].PlacementInfo != nil {
 							oldCloudList = updateUni.UniverseDetails.Clusters[i].PlacementInfo.CloudList
 						}
+						// Build a fallback UUID map from each provider's full zone
+						// list, keyed from the live placement (oldCloudList) rather
+						// than the desired config. This handles accidental provider
+						// UUID changes in the config and covers all clouds in a
+						// multi-cloud universe. oldCloudList only contains AZs
+						// already in placement; new AZs (e.g. moving a node from
+						// AZ1 to AZ2) are resolved via this fallback instead.
+						fallbackByRegion, fallbackByAZ := fetchProviderZoneFallback(
+							ctx, c, cUUID, oldCloudList)
 						// Resolve AZ UUIDs by name from the live API state before
 						// computing the diff. TypeList index-matching can assign a
 						// removed AZ's UUID to a kept AZ; resolveAZUUIDs corrects
 						// this by looking up each AZ's UUID by its name.
-						resolveAZUUIDs(newPI, oldCloudList)
+						resolveAZUUIDs(newPI, oldCloudList, fallbackByRegion, fallbackByAZ)
 						oldAZUUIDs := collectAZUUIDs(oldCloudList)
 						newAZUUIDs := collectAZUUIDs(newPI.CloudList)
 						clusterUUID := updateUni.UniverseDetails.Clusters[i].GetUuid()
@@ -2761,8 +2770,14 @@ func resourceUniverseUpdate(
 						Clusters:           updateUni.UniverseDetails.Clusters,
 						NodeDetailsSet: buildNodeDetailsRespArrayToNodeDetailsArray(
 							updateUni.UniverseDetails.NodeDetailsSet),
-						CommunicationPorts: effectiveCommPorts,
-						UserAZSelected:     utils.GetBoolPointer(userAZExplicit),
+						CommunicationPorts:      effectiveCommPorts,
+						UserAZSelected:          utils.GetBoolPointer(userAZExplicit),
+						AllowInsecure:           updateUni.UniverseDetails.AllowInsecure,
+						RootAndClientRootCASame: updateUni.UniverseDetails.RootAndClientRootCASame,
+						RootCA:                  updateUni.UniverseDetails.RootCA,
+						ClientRootCA:            updateUni.UniverseDetails.ClientRootCA,
+						NodePrefix:              updateUni.UniverseDetails.NodePrefix,
+						XclusterInfo:            updateUni.UniverseDetails.XclusterInfo,
 					}
 					if diags := utils.DispatchAndWait(ctx, "Update Primary Cluster", cUUID, c,
 						d.Timeout(schema.TimeoutUpdate),
@@ -2885,8 +2900,13 @@ func resourceUniverseUpdate(
 						if updateUni.UniverseDetails.Clusters[i].PlacementInfo != nil {
 							oldCloudList = updateUni.UniverseDetails.Clusters[i].PlacementInfo.CloudList
 						}
-						// Resolve AZ UUIDs by name from the live API state.
-						resolveAZUUIDs(newPI, oldCloudList)
+						// Same fallback strategy as the PRIMARY path: use live
+						// placement (oldCloudList) as the source of provider UUIDs
+						// so accidental config changes and multi-cloud universes
+						// are handled correctly.
+						rrFallbackByRegion, rrFallbackByAZ := fetchProviderZoneFallback(
+							ctx, c, cUUID, oldCloudList)
+						resolveAZUUIDs(newPI, oldCloudList, rrFallbackByRegion, rrFallbackByAZ)
 						oldAZUUIDs := collectAZUUIDs(oldCloudList)
 						newAZUUIDs := collectAZUUIDs(newPI.CloudList)
 						clusterUUID := updateUni.UniverseDetails.Clusters[i].GetUuid()
@@ -2916,8 +2936,14 @@ func resourceUniverseUpdate(
 						Clusters:           updateUni.UniverseDetails.Clusters,
 						NodeDetailsSet: buildNodeDetailsRespArrayToNodeDetailsArray(
 							updateUni.UniverseDetails.NodeDetailsSet),
-						CommunicationPorts: effectiveCommPorts,
-						UserAZSelected:     utils.GetBoolPointer(userAZExplicit),
+						CommunicationPorts:      effectiveCommPorts,
+						UserAZSelected:          utils.GetBoolPointer(userAZExplicit),
+						AllowInsecure:           updateUni.UniverseDetails.AllowInsecure,
+						RootAndClientRootCASame: updateUni.UniverseDetails.RootAndClientRootCASame,
+						RootCA:                  updateUni.UniverseDetails.RootCA,
+						ClientRootCA:            updateUni.UniverseDetails.ClientRootCA,
+						NodePrefix:              updateUni.UniverseDetails.NodePrefix,
+						XclusterInfo:            updateUni.UniverseDetails.XclusterInfo,
 					}
 					if diags := utils.DispatchAndWait(ctx, "Update Read Replica Cluster", cUUID, c,
 						d.Timeout(schema.TimeoutUpdate),
@@ -2975,7 +3001,13 @@ func resourceUniverseUpdate(
 			Clusters:     fetchedUni.UniverseDetails.Clusters,
 			NodeDetailsSet: buildNodeDetailsRespArrayToNodeDetailsArray(
 				fetchedUni.UniverseDetails.NodeDetailsSet),
-			CommunicationPorts: newCommPorts,
+			CommunicationPorts:      newCommPorts,
+			AllowInsecure:           fetchedUni.UniverseDetails.AllowInsecure,
+			RootAndClientRootCASame: fetchedUni.UniverseDetails.RootAndClientRootCASame,
+			RootCA:                  fetchedUni.UniverseDetails.RootCA,
+			ClientRootCA:            fetchedUni.UniverseDetails.ClientRootCA,
+			NodePrefix:              fetchedUni.UniverseDetails.NodePrefix,
+			XclusterInfo:            fetchedUni.UniverseDetails.XclusterInfo,
 		}
 		if diags := utils.DispatchAndWait(ctx, "Update Communication Ports", cUUID, c,
 			d.Timeout(schema.TimeoutUpdate),
