@@ -1452,6 +1452,98 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 			},
 		),
 
+		// root_ca requires enable_node_to_node_encrypt=true; client_root_ca requires
+		// enable_client_to_node_encrypt=true.  Setting a CA when the corresponding
+		// TLS mode is off is silently ignored by YBA, causing perpetual plan drift
+		// (YBA never stores the value, so state stays empty and the plan never
+		// converges).
+		//
+		// Two detection paths are needed:
+		//   1. Known UUID in config: d.HasChange + d.GetChange catches it because
+		//      the SDK v2 surfaces the string value directly.
+		//   2. Deferred reference (known after apply): d.GetChange returns "" for
+		//      the new side when the value is cty.UnknownVal, so we must inspect
+		//      d.GetRawConfig() which preserves the unknown marker.
+		func(ctx context.Context, d *schema.ResourceDiff, m interface{}) error {
+			// Extract encryption flags from the PRIMARY cluster's user_intent.
+			// Default to true to match the schema Default values; only override
+			// when we find an explicit value set by the user.
+			n2nEnabled := true
+			c2nEnabled := true
+			for _, clRaw := range d.Get("clusters").([]interface{}) {
+				cl, ok := clRaw.(map[string]interface{})
+				if !ok {
+					continue
+				}
+				if cl["cluster_type"] != "PRIMARY" {
+					continue
+				}
+				uiRaw, ok := cl["user_intent"].([]interface{})
+				if !ok || len(uiRaw) == 0 {
+					continue
+				}
+				ui, ok := uiRaw[0].(map[string]interface{})
+				if !ok {
+					continue
+				}
+				if v, ok := ui["enable_node_to_node_encrypt"].(bool); ok {
+					n2nEnabled = v
+				}
+				if v, ok := ui["enable_client_to_node_encrypt"].(bool); ok {
+					c2nEnabled = v
+				}
+				break
+			}
+
+			// Path 1: known UUID -- d.GetChange returns the real string.
+			if d.HasChange("root_ca") {
+				_, newVal := d.GetChange("root_ca")
+				if newVal.(string) != "" && !n2nEnabled {
+					return errors.New(
+						"root_ca cannot be set when enable_node_to_node_encrypt is false: " +
+							"YBA ignores root_ca when node-to-node encryption is disabled")
+				}
+			}
+			if d.HasChange("client_root_ca") {
+				_, newVal := d.GetChange("client_root_ca")
+				if newVal.(string) != "" && !c2nEnabled {
+					return errors.New(
+						"client_root_ca cannot be set when enable_client_to_node_encrypt is false: " +
+							"YBA ignores client_root_ca when client-to-node encryption is disabled",
+					)
+				}
+			}
+
+			// Path 2: deferred reference (known after apply) -- rawConfig preserves
+			// cty.UnknownVal so we can detect that the field is being set even
+			// though the final UUID is not resolved yet.
+			rawConfig := d.GetRawConfig()
+			if rawConfig == cty.NilVal || !rawConfig.IsKnown() || rawConfig.IsNull() {
+				return nil
+			}
+			checkUnknown := func(attr string, enabled bool, flag string) error {
+				val := rawConfig.GetAttr(attr)
+				// Null means the user did not set the field in config at all.
+				// Known means it was already evaluated by path 1 above.
+				if val.IsNull() || val.IsKnown() {
+					return nil
+				}
+				// Unknown (cty.UnknownVal): user wired a reference whose value is
+				// deferred. The CA is being set regardless of the final UUID.
+				if !enabled {
+					return fmt.Errorf(
+						"%s cannot be set when %s is false: "+
+							"YBA ignores %s when the corresponding encryption is disabled",
+						attr, flag, attr)
+				}
+				return nil
+			}
+			if err := checkUnknown("root_ca", n2nEnabled, "enable_node_to_node_encrypt"); err != nil {
+				return err
+			}
+			return checkUnknown("client_root_ca", c2nEnabled, "enable_client_to_node_encrypt")
+		},
+
 		// YBA cert rotation API: root_ca, client_root_ca.
 		// Remove this block when cert rotation is implemented.
 		customdiff.ValidateChange("root_ca",
