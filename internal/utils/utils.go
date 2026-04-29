@@ -561,6 +561,17 @@ func FileExist(filePath string) error {
 	return nil
 }
 
+// ReadFileContents returns the contents of a local file as a string,
+// wrapping the underlying error with a clearer message that mentions
+// the file path.
+func ReadFileContents(filePath string) (string, error) {
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return "", fmt.Errorf("failed reading data from %s: %s", filePath, err)
+	}
+	return string(data), nil
+}
+
 // GetUniversesForProvider fetches the list of universes corresponding to a particular
 // provider. Currently edit operations are blocked if universes exists. For the current
 // scenario, only on prem providers are editable, but to accomodate future changes to
