@@ -147,6 +147,14 @@ func providerConfigure(ctx context.Context, d *schema.ResourceData) (interface{}
 		return nil, diag.FromErr(err)
 	}
 
+	// Unauthenticated bootstrap mode: when no api_token is set, the
+	// provider is being used to install YBA via yba_installer on a host
+	// where YBA is not yet running. Skip the version check — resources
+	// that require it (cloud providers, etc.) need an api_token anyway.
+	if apiKey == "" {
+		return c, diags
+	}
+
 	// Enforce minimum YBA version requirement
 	// The Terraform provider requires YBA >= 2024.2.0.0-b1
 	if err := utils.CheckMinimumYBAVersion(ctx, c.YugawareClient); err != nil {
