@@ -2300,6 +2300,114 @@ func resourceUniverseUpdate(
 		return diag.FromErr(err)
 	}
 
+	// =========================================================================
+	// --- PRE-FLIGHT CHECK FOR FULL MOVE ---
+	// We run a simulation of the cluster edits before executing ANY mutating operations
+	// (like Rollbacks, Upgrades, or Toggles) to prevent partial applies if a Full Move
+	// is required but not authorized.
+	// =========================================================================
+	clusterUpdateOpts := make(map[int][]string) // Cache to avoid redundant API calls below
+
+	if d.HasChange("clusters") {
+		preflightUni, response, err := c.UniverseManagementAPI.GetUniverse(ctx, cUUID, d.Id()).Execute()
+		if err != nil {
+			errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
+				"Universe", "Update - Fetch universe for pre-flight check")
+			return diag.FromErr(errMessage)
+		}
+		newUniForPreflight := buildUniverse(d)
+		vc := meta.(*api.APIClient).VanillaClient
+		token := meta.(*api.APIClient).APIKey
+
+		for i, v := range d.Get("clusters").([]interface{}) {
+			if !d.HasChange(fmt.Sprintf("clusters.%d", i)) {
+				continue
+			}
+			cluster := v.(map[string]interface{})
+			clusterType := cluster["cluster_type"].(string)
+
+			// Safely skip if indices don't align (e.g. invalid state or mid-creation)
+			if i >= len(preflightUni.UniverseDetails.Clusters) || i >= len(newUniForPreflight.Clusters) {
+				continue
+			}
+
+			oldUserIntent := preflightUni.UniverseDetails.Clusters[i].UserIntent
+			newUserIntent := newUniForPreflight.Clusters[i].UserIntent
+
+			editAllowed, simulatedIntent := editUniverseParameters(ctx, oldUserIntent, newUserIntent)
+			preflightUni.UniverseDetails.Clusters[i].UserIntent = simulatedIntent
+
+			var userAZExplicit bool
+			editZoneAllowed := false
+			if d.HasChange(fmt.Sprintf("clusters.%d.cloud_list", i)) {
+				newPI := newUniForPreflight.Clusters[i].PlacementInfo
+				if newPI != nil && len(newPI.CloudList) > 0 {
+					var oldCloudList []client.PlacementCloud
+					if preflightUni.UniverseDetails.Clusters[i].PlacementInfo != nil {
+						oldCloudList = preflightUni.UniverseDetails.Clusters[i].PlacementInfo.CloudList
+					}
+					fallbackByRegion, fallbackByAZ := fetchProviderZoneFallback(ctx, c, cUUID, oldCloudList)
+					resolveAZUUIDs(newPI, oldCloudList, fallbackByRegion, fallbackByAZ)
+					oldAZUUIDs := collectAZUUIDs(oldCloudList)
+					newAZUUIDs := collectAZUUIDs(newPI.CloudList)
+					clusterUUID := preflightUni.UniverseDetails.Clusters[i].GetUuid()
+					for j := range preflightUni.UniverseDetails.NodeDetailsSet {
+						n := &preflightUni.UniverseDetails.NodeDetailsSet[j]
+						if n.GetPlacementUuid() == clusterUUID && oldAZUUIDs[n.GetAzUuid()] && !newAZUUIDs[n.GetAzUuid()] {
+							n.SetState("ToBeRemoved")
+						}
+					}
+					preflightUni.UniverseDetails.Clusters[i].PlacementInfo = newPI
+					userAZExplicit = true
+					editZoneAllowed = true
+				}
+			}
+
+			if editAllowed || editZoneAllowed {
+				effectiveCommPorts := preflightUni.UniverseDetails.CommunicationPorts
+				if d.HasChange("communication_ports") {
+					effectiveCommPorts = buildCommunicationPorts(utils.MapFromSingletonList(d.Get("communication_ports").([]interface{})))
+				}
+
+				configureTaskParams := client.UniverseConfigureTaskParams{
+					UniverseUUID:            utils.GetStringPointer(d.Id()),
+					ClusterOperation:        utils.GetStringPointer("EDIT"),
+					CurrentClusterType:      utils.GetStringPointer(clusterType),
+					Clusters:                preflightUni.UniverseDetails.Clusters,
+					NodeDetailsSet:          buildNodeDetailsRespArrayToNodeDetailsArray(preflightUni.UniverseDetails.NodeDetailsSet),
+					CommunicationPorts:      effectiveCommPorts,
+					UserAZSelected:          utils.GetBoolPointer(userAZExplicit),
+					AllowInsecure:           preflightUni.UniverseDetails.AllowInsecure,
+					RootAndClientRootCASame: preflightUni.UniverseDetails.RootAndClientRootCASame,
+					RootCA:                  preflightUni.UniverseDetails.RootCA,
+					ClientRootCA:            preflightUni.UniverseDetails.ClientRootCA,
+					NodePrefix:              preflightUni.UniverseDetails.NodePrefix,
+					XclusterInfo:            preflightUni.UniverseDetails.XclusterInfo,
+				}
+
+				opts, err := vc.UniverseUpdateOptions(ctx, cUUID, configureTaskParams, token)
+				if err != nil {
+					return diag.FromErr(err)
+				}
+
+				// Cache the options for this cluster index so we don't have to fetch them again later
+				clusterUpdateOpts[i] = opts
+
+				isOnlyFullMove := len(opts) == 1 && opts[0] == "FULL_MOVE"
+				if isOnlyFullMove && !d.Get("allow_full_move").(bool) {
+					return diag.Errorf(
+						"Pre-flight safety check: YBA determined the planned edit on the %s Cluster "+
+							"requires a FULL MOVE (updateOptions=[\"FULL_MOVE\"]). "+
+							"To proceed, set allow_full_move = true on the universe resource. "+
+							"Execution aborted before any changes were made.", clusterType)
+				}
+			}
+		}
+	}
+	// =========================================================================
+	// --- END PRE-FLIGHT CHECK ---
+	// =========================================================================
+
 	// Read node_restart_settings once with explicit fallbacks. When the block is absent,
 	// d.Get returns zero values ("" / 0) rather than the schema defaults, so we apply the
 	// YBA platform defaults here: Rolling strategy, 180000 ms sleep (3 minutes).
@@ -2743,54 +2851,6 @@ func resourceUniverseUpdate(
 				}
 				oldUserIntent = updateUni.UniverseDetails.Clusters[i].UserIntent
 
-				// Resize Nodes
-				// Call separate task only when instance type is same, else will be handled in
-				// UpdatePrimaryCluster
-				if (oldUserIntent.GetInstanceType() == newUserIntent.GetInstanceType()) &&
-					(oldUserIntent.DeviceInfo.GetVolumeSize() !=
-						newUserIntent.DeviceInfo.GetVolumeSize()) {
-					if oldUserIntent.DeviceInfo.GetVolumeSize() <
-						newUserIntent.DeviceInfo.GetVolumeSize() {
-						// Only volume size should be changed to do smart resize,
-						// other changes handled in UpgradeCluster
-						newVolSize := newUserIntent.DeviceInfo.VolumeSize
-						updateUni.UniverseDetails.Clusters[i].UserIntent.DeviceInfo.VolumeSize = newVolSize
-						req := client.ResizeNodeParams{
-							UpgradeOption: "Rolling",
-							Clusters:      updateUni.UniverseDetails.Clusters,
-							NodeDetailsSet: buildNodeDetailsRespArrayToNodeDetailsArray(
-								updateUni.UniverseDetails.NodeDetailsSet,
-							),
-							SleepAfterMasterRestartMillis: int32(
-								sleepAfterMasterMs,
-							),
-							SleepAfterTServerRestartMillis: int32(
-								sleepAfterTServerMs,
-							),
-						}
-						if diags := utils.DispatchAndWait(ctx, "Resize Nodes", cUUID, c,
-							d.Timeout(schema.TimeoutUpdate),
-							utils.ResourceEntity, "Universe", "Update - Resize Nodes",
-							func() (string, *http.Response, error) {
-								r, resp, err := c.UniverseUpgradesManagementAPI.ResizeNode(
-									ctx, cUUID, d.Id()).ResizeNodeParams(req).Execute()
-								if err != nil {
-									return "", resp, err
-								}
-								return r.GetTaskUUID(), resp, nil
-							},
-						); diags != nil {
-							return diags
-						}
-					} else {
-						// Shrink: ResizeNode cannot shrink volumes. Skip dispatching it and let
-						// UpdatePrimaryCluster (called below via editUniverseParameters) handle
-						// the shrink via full move. Plan-time IfValue gate on allow_full_move
-						// has already enforced user consent.
-						tflog.Info(ctx, "Volume size decrease detected; full move will be performed")
-					}
-				}
-
 				updateUni, response, err = c.UniverseManagementAPI.GetUniverse(ctx, cUUID, d.Id()).
 					Execute()
 				if err != nil {
@@ -2870,34 +2930,86 @@ func resourceUniverseUpdate(
 							utils.MapFromSingletonList(
 								d.Get("communication_ports").([]interface{})))
 					}
-					req := client.UniverseConfigureTaskParams{
-						UniverseUUID:       utils.GetStringPointer(d.Id()),
-						CurrentClusterType: utils.GetStringPointer("PRIMARY"),
-						Clusters:           updateUni.UniverseDetails.Clusters,
-						NodeDetailsSet: buildNodeDetailsRespArrayToNodeDetailsArray(
-							updateUni.UniverseDetails.NodeDetailsSet),
-						CommunicationPorts:      effectiveCommPorts,
-						UserAZSelected:          utils.GetBoolPointer(userAZExplicit),
-						AllowInsecure:           updateUni.UniverseDetails.AllowInsecure,
-						RootAndClientRootCASame: updateUni.UniverseDetails.RootAndClientRootCASame,
-						RootCA:                  updateUni.UniverseDetails.RootCA,
-						ClientRootCA:            updateUni.UniverseDetails.ClientRootCA,
-						NodePrefix:              updateUni.UniverseDetails.NodePrefix,
-						XclusterInfo:            updateUni.UniverseDetails.XclusterInfo,
+
+					// Retrieve the cached options from our pre-flight check! No API call needed.
+					opts := clusterUpdateOpts[i]
+
+					smartResize := false
+					smartResizeOption := "Rolling"
+					hasUpdate := false
+					isOnlyFullMove := len(opts) == 1 && opts[0] == "FULL_MOVE"
+
+					for _, o := range opts {
+						if o == "SMART_RESIZE_NON_RESTART" || o == "SMART_RESIZE" {
+							smartResize = true
+						}
+						if o == "UPDATE" {
+							hasUpdate = true
+						}
 					}
-					if diags := utils.DispatchAndWait(ctx, "Update Primary Cluster", cUUID, c,
-						d.Timeout(schema.TimeoutUpdate),
-						utils.ResourceEntity, "Universe", "Update - Primary Cluster",
-						func() (string, *http.Response, error) {
-							r, resp, err := c.UniverseClusterMutationsAPI.UpdatePrimaryCluster(
-								ctx, cUUID, d.Id()).UniverseConfigureTaskParams(req).Execute()
-							if err != nil {
-								return "", resp, err
-							}
-							return r.GetTaskUUID(), resp, nil
-						},
-					); diags != nil {
-						return diags
+
+					// 1. Execute Smart Resize if flagged
+					if smartResize {
+						resizeReq := client.ResizeNodeParams{
+							UpgradeOption: smartResizeOption,
+							Clusters:      updateUni.UniverseDetails.Clusters,
+							NodeDetailsSet: buildNodeDetailsRespArrayToNodeDetailsArray(
+								updateUni.UniverseDetails.NodeDetailsSet),
+							SleepAfterMasterRestartMillis:  sleepAfterMasterMs,
+							SleepAfterTServerRestartMillis: sleepAfterTServerMs,
+						}
+						if diags := utils.DispatchAndWait(ctx, "Resize Nodes", cUUID, c,
+							d.Timeout(schema.TimeoutUpdate),
+							utils.ResourceEntity, "Universe", "Update - Resize Nodes",
+							func() (string, *http.Response, error) {
+								r, resp, err := c.UniverseUpgradesManagementAPI.ResizeNode(
+									ctx, cUUID, d.Id()).ResizeNodeParams(resizeReq).Execute()
+								if err != nil {
+									return "", resp, err
+								}
+								return r.GetTaskUUID(), resp, nil
+							},
+						); diags != nil {
+							return diags
+						}
+					}
+
+					// 2. Execute Update if flagged (or if minor config changes with empty opts)
+					if isOnlyFullMove || hasUpdate || len(opts) == 0 {
+						req := client.UniverseConfigureTaskParams{
+							UniverseUUID:            utils.GetStringPointer(d.Id()),
+							CurrentClusterType:      utils.GetStringPointer("PRIMARY"),
+							Clusters:                updateUni.UniverseDetails.Clusters,
+							NodeDetailsSet:          buildNodeDetailsRespArrayToNodeDetailsArray(updateUni.UniverseDetails.NodeDetailsSet),
+							CommunicationPorts:      effectiveCommPorts,
+							UserAZSelected:          utils.GetBoolPointer(userAZExplicit),
+							AllowInsecure:           updateUni.UniverseDetails.AllowInsecure,
+							RootAndClientRootCASame: updateUni.UniverseDetails.RootAndClientRootCASame,
+							RootCA:                  updateUni.UniverseDetails.RootCA,
+							ClientRootCA:            updateUni.UniverseDetails.ClientRootCA,
+							NodePrefix:              updateUni.UniverseDetails.NodePrefix,
+							XclusterInfo:            updateUni.UniverseDetails.XclusterInfo,
+						}
+
+						if diags := utils.DispatchAndWait(ctx, "Update Primary Cluster", cUUID, c,
+							d.Timeout(schema.TimeoutUpdate),
+							utils.ResourceEntity, "Universe", "Update - Primary Cluster",
+							func() (string, *http.Response, error) {
+								r, resp, err := c.UniverseClusterMutationsAPI.UpdatePrimaryCluster(
+									ctx, cUUID, d.Id()).UniverseConfigureTaskParams(req).Execute()
+								if err != nil {
+									return "", resp, err
+								}
+								return r.GetTaskUUID(), resp, nil
+							},
+						); diags != nil {
+							return diags
+						}
+					} else if !smartResize {
+						// 3. Fallback abort: Only trigger if NO valid action was taken across both blocks
+						return diag.Errorf(
+							"Safety abort: YBA returned unexpected update options %v for the planned edit. "+
+								"Execution aborted.", opts)
 					}
 				}
 
@@ -2929,66 +3041,6 @@ func resourceUniverseUpdate(
 					oldUserIntent.GetEnableNodeToNodeEncrypt() != newUserIntent.GetEnableNodeToNodeEncrypt() {
 					tflog.Info(ctx, "TLS Toggle is applied only via change in Primary Cluster"+
 						" User Intent, ignoring")
-				}
-
-				// Resize Nodes (Read Replica)
-				// Call ResizeNode only when instance type is same; else YBA's internal
-				// smart-resize routing via UpdateReadOnlyCluster handles the in-place
-				// change. Mirrors the PRIMARY ResizeNode dispatch.
-				if (oldUserIntent.GetInstanceType() == newUserIntent.GetInstanceType()) &&
-					(oldUserIntent.DeviceInfo.GetVolumeSize() !=
-						newUserIntent.DeviceInfo.GetVolumeSize()) {
-					if oldUserIntent.DeviceInfo.GetVolumeSize() <
-						newUserIntent.DeviceInfo.GetVolumeSize() {
-						// Volume size grow on RR: dispatch ResizeNode (smart resize,
-						// in-place, no full move). Only volume size is updated on
-						// the ASYNC cluster here; other deltas flow through
-						// UpdateReadOnlyCluster below.
-						newVolSize := newUserIntent.DeviceInfo.VolumeSize
-						updateUni.UniverseDetails.Clusters[i].UserIntent.DeviceInfo.VolumeSize = newVolSize
-						req := client.ResizeNodeParams{
-							UpgradeOption: "Rolling",
-							Clusters:      updateUni.UniverseDetails.Clusters,
-							NodeDetailsSet: buildNodeDetailsRespArrayToNodeDetailsArray(
-								updateUni.UniverseDetails.NodeDetailsSet,
-							),
-							SleepAfterMasterRestartMillis:  sleepAfterMasterMs,
-							SleepAfterTServerRestartMillis: sleepAfterTServerMs,
-						}
-						if diags := utils.DispatchAndWait(ctx, "Resize Nodes (Read Replica)",
-							cUUID, c, d.Timeout(schema.TimeoutUpdate),
-							utils.ResourceEntity, "Universe",
-							"Update - Resize Nodes (Read Replica)",
-							func() (string, *http.Response, error) {
-								r, resp, err := c.UniverseUpgradesManagementAPI.ResizeNode(
-									ctx, cUUID, d.Id()).ResizeNodeParams(req).Execute()
-								if err != nil {
-									return "", resp, err
-								}
-								return r.GetTaskUUID(), resp, nil
-							},
-						); diags != nil {
-							return diags
-						}
-					} else {
-						// Shrink: ResizeNode cannot shrink volumes. Skip dispatching
-						// it and let UpdateReadOnlyCluster (called below via
-						// editUniverseParameters) handle the shrink via full move.
-						// Plan-time IfValue gate on allow_full_move has already
-						// enforced user consent.
-						tflog.Info(ctx, "Volume size decrease on Read Replica detected; full move will be performed")
-					}
-
-					// Refetch universe after ResizeNode to get the updated volume size
-					// before editUniverseParameters compares user intents.
-					updateUni, response, err = c.UniverseManagementAPI.GetUniverse(
-						ctx, cUUID, d.Id()).Execute()
-					if err != nil {
-						errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
-							"Universe", "Update - Fetch universe")
-						return diag.FromErr(errMessage)
-					}
-					oldUserIntent = updateUni.UniverseDetails.Clusters[i].UserIntent
 				}
 
 				// Num of nodes, Instance Type, Num of Volumes, Volume Size User Tags changes
@@ -3036,34 +3088,86 @@ func resourceUniverseUpdate(
 							utils.MapFromSingletonList(
 								d.Get("communication_ports").([]interface{})))
 					}
-					req := client.UniverseConfigureTaskParams{
-						UniverseUUID:       utils.GetStringPointer(d.Id()),
-						CurrentClusterType: utils.GetStringPointer("ASYNC"),
-						Clusters:           updateUni.UniverseDetails.Clusters,
-						NodeDetailsSet: buildNodeDetailsRespArrayToNodeDetailsArray(
-							updateUni.UniverseDetails.NodeDetailsSet),
-						CommunicationPorts:      effectiveCommPorts,
-						UserAZSelected:          utils.GetBoolPointer(userAZExplicit),
-						AllowInsecure:           updateUni.UniverseDetails.AllowInsecure,
-						RootAndClientRootCASame: updateUni.UniverseDetails.RootAndClientRootCASame,
-						RootCA:                  updateUni.UniverseDetails.RootCA,
-						ClientRootCA:            updateUni.UniverseDetails.ClientRootCA,
-						NodePrefix:              updateUni.UniverseDetails.NodePrefix,
-						XclusterInfo:            updateUni.UniverseDetails.XclusterInfo,
+
+					// Retrieve the cached options from our pre-flight check! No API call needed.
+					opts := clusterUpdateOpts[i]
+
+					smartResize := false
+					smartResizeOption := "Rolling"
+					hasUpdate := false
+					isOnlyFullMove := len(opts) == 1 && opts[0] == "FULL_MOVE"
+
+					for _, o := range opts {
+						if o == "SMART_RESIZE_NON_RESTART" || o == "SMART_RESIZE" {
+							smartResize = true
+						}
+						if o == "UPDATE" {
+							hasUpdate = true
+						}
 					}
-					if diags := utils.DispatchAndWait(ctx, "Update Read Replica Cluster", cUUID, c,
-						d.Timeout(schema.TimeoutUpdate),
-						utils.ResourceEntity, "Universe", "Update - Read Replica Cluster",
-						func() (string, *http.Response, error) {
-							r, resp, err := c.UniverseClusterMutationsAPI.UpdateReadOnlyCluster(
-								ctx, cUUID, d.Id()).UniverseConfigureTaskParams(req).Execute()
-							if err != nil {
-								return "", resp, err
-							}
-							return r.GetTaskUUID(), resp, nil
-						},
-					); diags != nil {
-						return diags
+
+					// 1. Execute Smart Resize if flagged
+					if smartResize {
+						resizeReq := client.ResizeNodeParams{
+							UpgradeOption: smartResizeOption,
+							Clusters:      updateUni.UniverseDetails.Clusters,
+							NodeDetailsSet: buildNodeDetailsRespArrayToNodeDetailsArray(
+								updateUni.UniverseDetails.NodeDetailsSet),
+							SleepAfterMasterRestartMillis:  sleepAfterMasterMs,
+							SleepAfterTServerRestartMillis: sleepAfterTServerMs,
+						}
+						if diags := utils.DispatchAndWait(ctx, "Resize Nodes (Read Replica)", cUUID, c,
+							d.Timeout(schema.TimeoutUpdate),
+							utils.ResourceEntity, "Universe", "Update - Resize Nodes (Read Replica)",
+							func() (string, *http.Response, error) {
+								r, resp, err := c.UniverseUpgradesManagementAPI.ResizeNode(
+									ctx, cUUID, d.Id()).ResizeNodeParams(resizeReq).Execute()
+								if err != nil {
+									return "", resp, err
+								}
+								return r.GetTaskUUID(), resp, nil
+							},
+						); diags != nil {
+							return diags
+						}
+					}
+
+					// 2. Execute Update if flagged (or if minor config changes with empty opts)
+					if isOnlyFullMove || hasUpdate || len(opts) == 0 {
+						req := client.UniverseConfigureTaskParams{
+							UniverseUUID:            utils.GetStringPointer(d.Id()),
+							CurrentClusterType:      utils.GetStringPointer("ASYNC"), // Read Replica cluster type
+							Clusters:                updateUni.UniverseDetails.Clusters,
+							NodeDetailsSet:          buildNodeDetailsRespArrayToNodeDetailsArray(updateUni.UniverseDetails.NodeDetailsSet),
+							CommunicationPorts:      effectiveCommPorts,
+							UserAZSelected:          utils.GetBoolPointer(userAZExplicit),
+							AllowInsecure:           updateUni.UniverseDetails.AllowInsecure,
+							RootAndClientRootCASame: updateUni.UniverseDetails.RootAndClientRootCASame,
+							RootCA:                  updateUni.UniverseDetails.RootCA,
+							ClientRootCA:            updateUni.UniverseDetails.ClientRootCA,
+							NodePrefix:              updateUni.UniverseDetails.NodePrefix,
+							XclusterInfo:            updateUni.UniverseDetails.XclusterInfo,
+						}
+
+						if diags := utils.DispatchAndWait(ctx, "Update Read Replica Cluster", cUUID, c,
+							d.Timeout(schema.TimeoutUpdate),
+							utils.ResourceEntity, "Universe", "Update - Read Replica Cluster",
+							func() (string, *http.Response, error) {
+								r, resp, err := c.UniverseClusterMutationsAPI.UpdateReadOnlyCluster(
+									ctx, cUUID, d.Id()).UniverseConfigureTaskParams(req).Execute()
+								if err != nil {
+									return "", resp, err
+								}
+								return r.GetTaskUUID(), resp, nil
+							},
+						); diags != nil {
+							return diags
+						}
+					} else if !smartResize {
+						// 3. Fallback abort: Only trigger if NO valid action was taken across both blocks
+						return diag.Errorf(
+							"Safety abort: YBA returned unexpected update options %v for the planned edit on the Read Replica Cluster. "+
+								"Execution aborted.", opts)
 					}
 				}
 			}
