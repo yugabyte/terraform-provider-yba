@@ -25,7 +25,7 @@ resource "yba_universe_telemetry_config" "main" {
     exporter {
       exporter_uuid = yba_telemetry_provider.datadog.id
       additional_tags = {
-        query_logs_key = "mchidambaram"
+        query_logs_key = yba_universe.main.name
       }
     }
   }

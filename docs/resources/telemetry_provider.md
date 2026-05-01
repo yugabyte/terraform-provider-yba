@@ -1,16 +1,16 @@
 ---
 page_title: "yba_telemetry_provider Resource - YugabyteDB Anywhere"
 description: |-
-  Telemetry Provider Resource. Defines a reusable export destination (Datadog, OTLP, AWS CloudWatch, GCP Cloud Monitoring, Splunk, Loki, Dynatrace) that universes can use to export audit logs, query logs, and metrics.
-  ~> Note: YBA does not allow editing a telemetry provider in place. Any change to a config field forces a recreate.
+  Telemetry Provider Resource. Defines a reusable export destination (Datadog, OTLP, AWS CloudWatch, GCP Cloud Monitoring, Splunk, Loki, Dynatrace, S3) that universes can use to export audit logs, query logs, and metrics.
+  ~> Note: YBA does not allow editing a telemetry provider in place. Any change to a config field forces Terraform to destroy and recreate the resource. YBA also refuses to delete a provider that is still referenced by a universe's telemetry config, so the destroy step first enumerates every universe whose audit / query / metrics exporter list references this provider and rewrites that list with the provider removed (via a rolling-upgrade task on each universe). Once every detach task reaches a terminal state, the provider itself is deleted. The universes themselves are never destroyed — only their OpenTelemetry collector configuration is updated.
   ~> Security Note: Credentials such as API keys, tokens, and secret access keys are stored in the Terraform state file (marked sensitive). Use a secure backend and restrict access to your state files.
 ---
 
 # yba_telemetry_provider (Resource)
 
-Telemetry Provider Resource. Defines a reusable export destination (Datadog, OTLP, AWS CloudWatch, GCP Cloud Monitoring, Splunk, Loki, Dynatrace) that universes can use to export audit logs, query logs, and metrics.
+Telemetry Provider Resource. Defines a reusable export destination (Datadog, OTLP, AWS CloudWatch, GCP Cloud Monitoring, Splunk, Loki, Dynatrace, S3) that universes can use to export audit logs, query logs, and metrics.
 
-~> **Note:** YBA does not allow editing a telemetry provider in place. Any change to a config field forces a recreate.
+~> **Note:** YBA does not allow editing a telemetry provider in place. Any change to a config field forces Terraform to destroy and recreate the resource. YBA also refuses to delete a provider that is still referenced by a universe's telemetry config, so the destroy step first enumerates every universe whose audit / query / metrics exporter list references this provider and rewrites that list with the provider removed (via a rolling-upgrade task on each universe). Once every detach task reaches a terminal state, the provider itself is deleted. The universes themselves are never destroyed — only their OpenTelemetry collector configuration is updated.
 
 ~> **Security Note:** Credentials such as API keys, tokens, and secret access keys are stored in the Terraform state file (marked sensitive). Use a secure backend and restrict access to your state files.
 
@@ -19,7 +19,7 @@ Telemetry Provider Resource. Defines a reusable export destination (Datadog, OTL
 ```terraform
 # Datadog destination
 resource "yba_telemetry_provider" "datadog" {
-  name = "kroger_datadog"
+  name = "datadog"
 
   data_dog {
     site    = "datadoghq.com"
@@ -31,9 +31,15 @@ resource "yba_telemetry_provider" "datadog" {
   }
 }
 
-# Generic OTLP destination (e.g. Prometheus, Tempo, Loki w/ OTLP receiver)
+# Generic OTLP destination (e.g. Prometheus, Tempo, Loki w/ OTLP receiver).
+#
+# When this resource is replaced (any config change forces a recreate),
+# Terraform first rewrites every universe whose telemetry config
+# references this provider to drop the exporter (rolling upgrade), then
+# deletes the old provider and creates the replacement. The universe
+# itself is never destroyed.
 resource "yba_telemetry_provider" "prometheus" {
-  name = "kroger_prometheus"
+  name = "prometheus"
 
   otlp {
     endpoint        = "http://10.242.32.5:9091/api/v1/otlp/v1/metrics"
@@ -46,7 +52,7 @@ resource "yba_telemetry_provider" "prometheus" {
 
 # AWS CloudWatch destination
 resource "yba_telemetry_provider" "cw" {
-  name = "kroger_cloudwatch"
+  name = "cloudwatch"
 
   aws_cloud_watch {
     log_group  = "yba/audit"
@@ -54,6 +60,21 @@ resource "yba_telemetry_provider" "cw" {
     region     = "us-west-2"
     access_key = var.aws_access_key
     secret_key = var.aws_secret_key
+  }
+}
+
+# S3 archival destination (long-term log storage)
+resource "yba_telemetry_provider" "audit_archive" {
+  name = "audit-archive"
+
+  s3 {
+    bucket           = "yba-audit-logs"
+    region           = "us-west-2"
+    access_key       = var.aws_access_key
+    secret_key       = var.aws_secret_key
+    directory_prefix = "yb-logs"
+
+    include_universe_and_node_in_prefix = true
   }
 }
 ```
@@ -73,13 +94,13 @@ resource "yba_telemetry_provider" "cw" {
 - `gcp_cloud_monitoring` (Block List, Max: 1) Google Cloud Monitoring/Logging destination configuration. (see [below for nested schema](#nestedblock--gcp_cloud_monitoring))
 - `loki` (Block List, Max: 1) Grafana Loki destination configuration. (see [below for nested schema](#nestedblock--loki))
 - `otlp` (Block List, Max: 1) Generic OTLP (OpenTelemetry Protocol) destination configuration. (see [below for nested schema](#nestedblock--otlp))
+- `s3` (Block List, Max: 1) Amazon S3 destination configuration. Useful for long-term archival of audit and query logs. (see [below for nested schema](#nestedblock--s3))
 - `splunk` (Block List, Max: 1) Splunk HTTP Event Collector destination configuration. (see [below for nested schema](#nestedblock--splunk))
 - `tags` (Map of String) Optional string tags associated with the configuration.
 - `timeouts` (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))
 
 ### Read-Only
 
-- `customer_uuid` (String) Customer UUID this telemetry provider belongs to.
 - `id` (String) The ID of this resource.
 - `type` (String) Telemetry provider type, derived from the configured block.
 
@@ -166,6 +187,29 @@ Optional:
 - `timeout_seconds` (Number) Timeout in seconds for the OTLP exporter.
 
 
+<a id="nestedblock--s3"></a>
+### Nested Schema for `s3`
+
+Required:
+
+- `access_key` (String, Sensitive) AWS access key with bucket write permissions.
+- `bucket` (String) S3 bucket name.
+- `region` (String) AWS region of the bucket.
+- `secret_key` (String, Sensitive) AWS secret key for the access key.
+
+Optional:
+
+- `directory_prefix` (String) S3 prefix (root directory inside the bucket) to write objects under.
+- `disable_ssl` (Boolean) Disable SSL when talking to the S3 endpoint.
+- `endpoint` (String) Optional override endpoint URL (e.g. for VPC endpoints or S3-compatible stores).
+- `file_prefix` (String) Optional file-name prefix prepended to every object.
+- `force_path_style` (Boolean) Force path-style addressing instead of the default virtual-hosted style.
+- `include_universe_and_node_in_prefix` (Boolean) Append `<universe-uuid>/<node-name>` to the directory prefix when writing objects.
+- `marshaler` (String) Optional marshaler used to serialize records (defaults to YBA's choice).
+- `partition` (String) Optional AWS partition (e.g. aws, aws-us-gov, aws-cn).
+- `role_arn` (String) Optional IAM role ARN to assume.
+
+
 <a id="nestedblock--splunk"></a>
 ### Nested Schema for `splunk`
 
@@ -189,6 +233,32 @@ Optional:
 - `create` (String)
 - `delete` (String)
 - `read` (String)
+
+## Replacing an in-use provider
+
+YBA does not support editing a telemetry provider — any change to a config
+field forces Terraform to destroy-and-recreate the resource. YBA also
+rejects delete requests for a provider that is still referenced by a
+universe's telemetry configuration:
+
+```
+Cannot delete Telemetry Provider '...', as it is in use.
+```
+
+The destroy step handles this proactively: before issuing the YBA delete
+it enumerates every universe whose telemetry config references the
+provider and rewrites each universe's config with the provider filtered
+out of the audit/query/metrics exporter lists (through the unified
+`/api/v2/customers/{c}/universes/{u}/export-telemetry-configs` endpoint).
+It waits for every resulting rolling-upgrade task to reach a terminal
+state, and only then issues the YBA delete. The detach step is therefore
+the canonical "detach, then mutate" workflow — destroy-and-recreate
+plans, plain `terraform destroy`, and any `yba_universe_telemetry_config`
+update planned in the same `terraform apply` (which is then applied with
+the new provider UUID) all go through it.
+
+The universes themselves are never destroyed — only their OpenTelemetry
+collector configuration is updated.
 
 ## Import
 

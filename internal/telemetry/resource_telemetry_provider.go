@@ -17,7 +17,9 @@ package telemetry
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-log/tflog"
@@ -36,6 +38,7 @@ const (
 	typeSplunk          = "SPLUNK"
 	typeLoki            = "LOKI"
 	typeDynatrace       = "DYNATRACE"
+	typeS3              = "S3"
 )
 
 // telemetryConfigBlocks lists every nested block that maps to a YBA
@@ -49,6 +52,7 @@ var telemetryConfigBlocks = []string{
 	"splunk",
 	"loki",
 	"dynatrace",
+	"s3",
 }
 
 // ResourceTelemetryProvider exposes the YBA telemetry provider as a Terraform
@@ -59,10 +63,18 @@ func ResourceTelemetryProvider() *schema.Resource {
 	return &schema.Resource{
 		Description: "Telemetry Provider Resource. Defines a reusable export destination " +
 			"(Datadog, OTLP, AWS CloudWatch, GCP Cloud Monitoring, Splunk, Loki, " +
-			"Dynatrace) that universes can use to export audit logs, query logs, " +
-			"and metrics.\n\n" +
+			"Dynatrace, S3) that universes can use to export audit logs, query " +
+			"logs, and metrics.\n\n" +
 			"~> **Note:** YBA does not allow editing a telemetry provider in place. " +
-			"Any change to a config field forces a recreate.\n\n" +
+			"Any change to a config field forces Terraform to destroy and recreate " +
+			"the resource. YBA also refuses to delete a provider that is still " +
+			"referenced by a universe's telemetry config, so the destroy step first " +
+			"enumerates every universe whose audit / query / metrics exporter list " +
+			"references this provider and rewrites that list with the provider " +
+			"removed (via a rolling-upgrade task on each universe). Once every " +
+			"detach task reaches a terminal state, the provider itself is deleted. " +
+			"The universes themselves are never destroyed — only their " +
+			"OpenTelemetry collector configuration is updated.\n\n" +
 			"~> **Security Note:** Credentials such as API keys, tokens, and secret " +
 			"access keys are stored in the Terraform state file (marked sensitive). " +
 			"Use a secure backend and restrict access to your state files.",
@@ -78,7 +90,10 @@ func ResourceTelemetryProvider() *schema.Resource {
 		Timeouts: &schema.ResourceTimeout{
 			Create: schema.DefaultTimeout(5 * time.Minute),
 			Read:   schema.DefaultTimeout(5 * time.Minute),
-			Delete: schema.DefaultTimeout(5 * time.Minute),
+			// Delete may have to wait for one rolling-upgrade task per
+			// universe currently referencing this provider. See
+			// telemetryUpgradeTimeout for the rationale.
+			Delete: schema.DefaultTimeout(telemetryUpgradeTimeout),
 		},
 
 		Schema: map[string]*schema.Schema{
@@ -100,11 +115,6 @@ func ResourceTelemetryProvider() *schema.Resource {
 				Type:        schema.TypeString,
 				Computed:    true,
 				Description: "Telemetry provider type, derived from the configured block.",
-			},
-			"customer_uuid": {
-				Type:        schema.TypeString,
-				Computed:    true,
-				Description: "Customer UUID this telemetry provider belongs to.",
 			},
 			// Polymorphic config blocks. Exactly one must be set.
 			"data_dog": {
@@ -423,6 +433,108 @@ func ResourceTelemetryProvider() *schema.Resource {
 					},
 				},
 			},
+			"s3": {
+				Type:         schema.TypeList,
+				Optional:     true,
+				ForceNew:     true,
+				MaxItems:     1,
+				ExactlyOneOf: telemetryConfigBlocks,
+				Description: "Amazon S3 destination configuration. Useful for " +
+					"long-term archival of audit and query logs.",
+				Elem: &schema.Resource{
+					Schema: map[string]*schema.Schema{
+						"bucket": {
+							Type:        schema.TypeString,
+							Required:    true,
+							ForceNew:    true,
+							Description: "S3 bucket name.",
+						},
+						"region": {
+							Type:        schema.TypeString,
+							Required:    true,
+							ForceNew:    true,
+							Description: "AWS region of the bucket.",
+						},
+						"access_key": {
+							Type:        schema.TypeString,
+							Required:    true,
+							ForceNew:    true,
+							Sensitive:   true,
+							Description: "AWS access key with bucket write permissions.",
+						},
+						"secret_key": {
+							Type:        schema.TypeString,
+							Required:    true,
+							ForceNew:    true,
+							Sensitive:   true,
+							Description: "AWS secret key for the access key.",
+						},
+						"directory_prefix": {
+							Type:     schema.TypeString,
+							Optional: true,
+							ForceNew: true,
+							Description: "S3 prefix (root directory inside the bucket) " +
+								"to write objects under.",
+						},
+						"file_prefix": {
+							Type:        schema.TypeString,
+							Optional:    true,
+							ForceNew:    true,
+							Description: "Optional file-name prefix prepended to every object.",
+						},
+						"endpoint": {
+							Type:     schema.TypeString,
+							Optional: true,
+							ForceNew: true,
+							Description: "Optional override endpoint URL " +
+								"(e.g. for VPC endpoints or S3-compatible stores).",
+						},
+						"role_arn": {
+							Type:        schema.TypeString,
+							Optional:    true,
+							ForceNew:    true,
+							Description: "Optional IAM role ARN to assume.",
+						},
+						"partition": {
+							Type:     schema.TypeString,
+							Optional: true,
+							ForceNew: true,
+							Description: "Optional AWS partition " +
+								"(e.g. aws, aws-us-gov, aws-cn).",
+						},
+						"marshaler": {
+							Type:     schema.TypeString,
+							Optional: true,
+							ForceNew: true,
+							Description: "Optional marshaler used to serialize " +
+								"records (defaults to YBA's choice).",
+						},
+						"disable_ssl": {
+							Type:        schema.TypeBool,
+							Optional:    true,
+							ForceNew:    true,
+							Default:     false,
+							Description: "Disable SSL when talking to the S3 endpoint.",
+						},
+						"force_path_style": {
+							Type:     schema.TypeBool,
+							Optional: true,
+							ForceNew: true,
+							Default:  false,
+							Description: "Force path-style addressing instead of the " +
+								"default virtual-hosted style.",
+						},
+						"include_universe_and_node_in_prefix": {
+							Type:     schema.TypeBool,
+							Optional: true,
+							ForceNew: true,
+							Default:  false,
+							Description: "Append `<universe-uuid>/<node-name>` to the " +
+								"directory prefix when writing objects.",
+						},
+					},
+				},
+			},
 		},
 	}
 }
@@ -449,6 +561,8 @@ func telemetryProviderType(d *schema.ResourceData) (string, error) {
 					return typeLoki, nil
 				case "dynatrace":
 					return typeDynatrace, nil
+				case "s3":
+					return typeS3, nil
 				}
 			}
 		}
@@ -546,6 +660,39 @@ func buildTelemetryProviderConfig(d *schema.ResourceData) (map[string]interface{
 		c := firstMap(d.Get("dynatrace"))
 		out["endpoint"] = c["endpoint"]
 		out["apiToken"] = c["api_token"]
+	case typeS3:
+		c := firstMap(d.Get("s3"))
+		out["bucket"] = c["bucket"]
+		out["region"] = c["region"]
+		out["accessKey"] = c["access_key"]
+		out["secretKey"] = c["secret_key"]
+		if v, ok := c["directory_prefix"].(string); ok && v != "" {
+			out["directoryPrefix"] = v
+		}
+		if v, ok := c["file_prefix"].(string); ok && v != "" {
+			out["filePrefix"] = v
+		}
+		if v, ok := c["endpoint"].(string); ok && v != "" {
+			out["endpoint"] = v
+		}
+		if v, ok := c["role_arn"].(string); ok && v != "" {
+			out["roleArn"] = v
+		}
+		if v, ok := c["partition"].(string); ok && v != "" {
+			out["partition"] = v
+		}
+		if v, ok := c["marshaler"].(string); ok && v != "" {
+			out["marshaler"] = v
+		}
+		if v, ok := c["disable_ssl"].(bool); ok && v {
+			out["disableSSL"] = v
+		}
+		if v, ok := c["force_path_style"].(bool); ok && v {
+			out["forcePathStyle"] = v
+		}
+		if v, ok := c["include_universe_and_node_in_prefix"].(bool); ok && v {
+			out["includeUniverseAndNodeInPrefix"] = v
+		}
 	}
 	return out, nil
 }
@@ -590,24 +737,21 @@ func resourceTelemetryProviderRead(
 	ctx context.Context, d *schema.ResourceData, meta interface{},
 ) diag.Diagnostics {
 	apiClient := meta.(*api.APIClient)
-	provider, resp, err := apiClient.VanillaClient.GetTelemetryProvider(
+	provider, _, err := apiClient.VanillaClient.GetTelemetryProvider(
 		ctx, apiClient.CustomerID, d.Id(), apiClient.APIKey)
 	if err != nil {
+		// Resource was deleted out-of-band (or YBA reports it as missing
+		// via one of its non-404 shapes); drop from state so Terraform
+		// re-plans a recreate on the next apply.
+		if errors.Is(err, api.ErrTelemetryProviderMissing) {
+			tflog.Warn(ctx, fmt.Sprintf(
+				"telemetry provider %q not found, removing from state", d.Id()))
+			d.SetId("")
+			return nil
+		}
 		return diag.FromErr(err)
-	}
-	if provider == nil {
-		// 404 - resource was deleted out-of-band; signal Terraform to
-		// recreate it on the next apply.
-		tflog.Warn(ctx, fmt.Sprintf(
-			"telemetry provider %q not found (HTTP %d), removing from state",
-			d.Id(), resp.StatusCode))
-		d.SetId("")
-		return nil
 	}
 	if err := d.Set("name", provider.Name); err != nil {
-		return diag.FromErr(err)
-	}
-	if err := d.Set("customer_uuid", provider.CustomerUUID); err != nil {
 		return diag.FromErr(err)
 	}
 	if err := d.Set("tags", provider.Tags); err != nil {
@@ -621,16 +765,107 @@ func resourceTelemetryProviderRead(
 	return nil
 }
 
+// resourceTelemetryProviderDelete tears down a telemetry provider.
+//
+// YBA refuses to delete a provider that is still wired into any universe's
+// audit / query / metrics exporter list ("Cannot delete Telemetry Provider
+// 'X', as it is in use."). Because YBA does not support editing a provider
+// in place, ANY change to a `yba_telemetry_provider` config field becomes a
+// destroy-and-recreate plan; if that provider is still attached to a
+// universe Terraform's destroy step would fail before the create + universe
+// re-attach steps even get a chance to run.
+//
+// To make destroy-and-recreate (and plain destroys) reliable we proactively
+// detach the provider from every referencing universe BEFORE issuing the
+// YBA delete. The detach goes through the unified
+// `/api/v2/.../export-telemetry-configs` endpoint and triggers one rolling
+// upgrade per affected universe; the function blocks until each task
+// completes. The universes themselves are never destroyed — only their
+// OpenTelemetry collector config is updated.
+//
+// If YBA still rejects the delete after a successful detach (an external
+// actor must have re-attached the provider in the brief gap between our
+// detach and our delete) we re-list universes once more and, if any
+// references remain, repeat the detach + delete cycle exactly one more
+// time. This avoids substring-matching YBA's "as it is in use" error
+// message and instead trusts our own preemptive view of universe state.
 func resourceTelemetryProviderDelete(
 	ctx context.Context, d *schema.ResourceData, meta interface{},
 ) diag.Diagnostics {
 	apiClient := meta.(*api.APIClient)
+	providerUUID := d.Id()
+	timeout := d.Timeout(schema.TimeoutDelete)
+
+	detached, err := detachTelemetryProviderFromUniverses(
+		ctx, apiClient, providerUUID, timeout)
+	if err != nil {
+		return diag.FromErr(fmt.Errorf(
+			"detach of telemetry provider %s failed after detaching "+
+				"from %d universe(s) (%s): %w",
+			providerUUID, len(detached), formatUniverseRefs(detached), err))
+	}
+	if len(detached) > 0 {
+		tflog.Info(ctx, fmt.Sprintf(
+			"Detached telemetry provider %s from %d universe(s) before "+
+				"delete: %s",
+			providerUUID, len(detached), formatUniverseRefs(detached)))
+	}
+
+	deleteErr := apiClient.VanillaClient.DeleteTelemetryProvider(
+		ctx, apiClient.CustomerID, providerUUID, apiClient.APIKey)
+	if deleteErr == nil {
+		d.SetId("")
+		return nil
+	}
+
+	// YBA still rejected the delete. Verify by re-listing whether any
+	// universe references this provider before assuming it is the
+	// "in use" race we know how to recover from. If no universe still
+	// references it, surface the original error untouched — it is
+	// something else entirely (permission revoked, YBA outage, …).
+	retryDetached, retryErr := detachTelemetryProviderFromUniverses(
+		ctx, apiClient, providerUUID, timeout)
+	if retryErr != nil {
+		return diag.FromErr(fmt.Errorf(
+			"telemetry provider %s could not be deleted (%v); subsequent "+
+				"detach attempt also failed after detaching from %d "+
+				"universe(s) (%s): %w",
+			providerUUID, deleteErr, len(retryDetached),
+			formatUniverseRefs(retryDetached), retryErr))
+	}
+	if len(retryDetached) == 0 {
+		// Nothing to detach this time round — the original delete
+		// failure is unrelated to the in-use race. Surface verbatim.
+		return diag.FromErr(deleteErr)
+	}
+	tflog.Warn(ctx, fmt.Sprintf(
+		"telemetry provider %s was re-attached between detach and delete "+
+			"(detached %d universe(s) on second pass: %s); retrying delete",
+		providerUUID, len(retryDetached), formatUniverseRefs(retryDetached)))
 	if err := apiClient.VanillaClient.DeleteTelemetryProvider(
-		ctx, apiClient.CustomerID, d.Id(), apiClient.APIKey); err != nil {
-		return diag.FromErr(err)
+		ctx, apiClient.CustomerID, providerUUID, apiClient.APIKey); err != nil {
+		return diag.FromErr(fmt.Errorf(
+			"telemetry provider %s still could not be deleted after "+
+				"detaching from %d universe(s) total (%s): %w",
+			providerUUID, len(detached)+len(retryDetached),
+			formatUniverseRefs(append(detached, retryDetached...)), err))
 	}
 	d.SetId("")
 	return nil
+}
+
+// formatUniverseRefs renders a slice of universeRef as a human-readable
+// "name (uuid), name (uuid)" string for inclusion in error messages and
+// log lines.
+func formatUniverseRefs(refs []universeRef) string {
+	if len(refs) == 0 {
+		return "(none)"
+	}
+	parts := make([]string, 0, len(refs))
+	for _, r := range refs {
+		parts = append(parts, fmt.Sprintf("%s (%s)", r.Name, r.UUID))
+	}
+	return strings.Join(parts, ", ")
 }
 
 // firstMap returns the first map element from a TypeList of MaxItems=1 nested

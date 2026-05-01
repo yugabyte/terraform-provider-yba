@@ -14,6 +14,8 @@ Universe Telemetry Config Resource. Attaches audit log, query log, and metrics e
 
 ~> **Note:** This resource does not currently support importing an existing universe-level configuration; recreate the resource by applying the desired state.
 
+~> **Dependency Note:** When `exporter_uuid` is wired through a reference like `yba_telemetry_provider.x.id`, Terraform's dependency graph automatically orders create / replace / destroy of the provider before this resource — there is **no need to add an explicit `depends_on`**. The provider's own destroy step also proactively detaches itself from every referencing universe before deletion, so a plan that destroys-and-recreates a provider in the same apply is safe.
+
 ## Example Usage
 
 ```terraform
@@ -44,7 +46,7 @@ resource "yba_universe_telemetry_config" "main" {
     exporter {
       exporter_uuid = yba_telemetry_provider.datadog.id
       additional_tags = {
-        query_logs_key = "mchidambaram"
+        query_logs_key = yba_universe.main.name
       }
     }
   }
@@ -117,7 +119,9 @@ resource "yba_universe_telemetry_config" "main" {
 - `metrics` (Block List, Max: 1) Metric export configuration. Omit to disable metric export. (see [below for nested schema](#nestedblock--metrics))
 - `query_logs` (Block List, Max: 1) Query log export configuration. Omit to disable query log export. (see [below for nested schema](#nestedblock--query_logs))
 - `timeouts` (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))
-- `upgrade_options` (Block List, Max: 1) Optional rolling-restart options applied while reconfiguring the universe. (see [below for nested schema](#nestedblock--upgrade_options))
+- `upgrade_options` (Block List, Max: 1) Optional rolling-restart options applied while reconfiguring the universe.
+
+  ~> **Performance Note:** The `sleep_after_*_restart_millis` defaults of 180000 (3 minutes) are applied per node. A 9-node universe therefore spends ~27 minutes just sleeping between restarts on top of the actual restart work. Lower these values for faster reconfigures on healthy clusters, or raise them for clusters under heavy traffic. (see [below for nested schema](#nestedblock--upgrade_options))
 
 ### Read-Only
 
@@ -267,5 +271,5 @@ Optional:
 Optional:
 
 - `rolling_upgrade` (Boolean) Perform a rolling restart (default true). Set to false to restart all nodes at once.
-- `sleep_after_master_restart_millis` (Number) Sleep between master restarts (ms). Defaults to 180000.
-- `sleep_after_tserver_restart_millis` (Number) Sleep between tserver restarts (ms). Defaults to 180000.
+- `sleep_after_master_restart_millis` (Number) Sleep between master restarts (ms). Defaults to 180000 (3 minutes).
+- `sleep_after_tserver_restart_millis` (Number) Sleep between tserver restarts (ms). Defaults to 180000 (3 minutes).

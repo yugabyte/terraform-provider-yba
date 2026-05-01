@@ -18,6 +18,7 @@ package telemetry
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-log/tflog"
@@ -75,7 +76,15 @@ func ResourceUniverseTelemetryConfig() *schema.Resource {
 			"`yba_runtime_config` resource.\n\n" +
 			"~> **Note:** This resource does not currently support importing an " +
 			"existing universe-level configuration; recreate the resource by " +
-			"applying the desired state.",
+			"applying the desired state.\n\n" +
+			"~> **Dependency Note:** When `exporter_uuid` is wired through a " +
+			"reference like `yba_telemetry_provider.x.id`, Terraform's dependency " +
+			"graph automatically orders create / replace / destroy of the provider " +
+			"before this resource — there is **no need to add an explicit " +
+			"`depends_on`**. The provider's own destroy step also proactively " +
+			"detaches itself from every referencing universe before deletion, so " +
+			"a plan that destroys-and-recreates a provider in the same apply is " +
+			"safe.",
 
 		CreateContext: resourceUniverseTelemetryConfigCreate,
 		ReadContext:   resourceUniverseTelemetryConfigRead,
@@ -83,9 +92,9 @@ func ResourceUniverseTelemetryConfig() *schema.Resource {
 		DeleteContext: resourceUniverseTelemetryConfigDelete,
 
 		Timeouts: &schema.ResourceTimeout{
-			Create: schema.DefaultTimeout(2 * time.Hour),
-			Update: schema.DefaultTimeout(2 * time.Hour),
-			Delete: schema.DefaultTimeout(2 * time.Hour),
+			Create: schema.DefaultTimeout(telemetryUpgradeTimeout),
+			Update: schema.DefaultTimeout(telemetryUpgradeTimeout),
+			Delete: schema.DefaultTimeout(telemetryUpgradeTimeout),
 			Read:   schema.DefaultTimeout(15 * time.Minute),
 		},
 
@@ -100,29 +109,38 @@ func ResourceUniverseTelemetryConfig() *schema.Resource {
 			"query_logs": queryLogsSchema(),
 			"metrics":    metricsSchema(),
 			"upgrade_options": {
-				Type:        schema.TypeList,
-				Optional:    true,
-				MaxItems:    1,
-				Description: "Optional rolling-restart options applied while reconfiguring the universe.",
+				Type:     schema.TypeList,
+				Optional: true,
+				MaxItems: 1,
+				Description: "Optional rolling-restart options applied while reconfiguring " +
+					"the universe.\n\n" +
+					"~> **Performance Note:** The `sleep_after_*_restart_millis` defaults " +
+					"of 180000 (3 minutes) are applied per node. A 9-node universe " +
+					"therefore spends ~27 minutes just sleeping between restarts on top " +
+					"of the actual restart work. Lower these values for faster reconfigures " +
+					"on healthy clusters, or raise them for clusters under heavy traffic.",
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
 						"rolling_upgrade": {
-							Type:        schema.TypeBool,
-							Optional:    true,
-							Default:     true,
-							Description: "Perform a rolling restart (default true). Set to false to restart all nodes at once.",
+							Type:     schema.TypeBool,
+							Optional: true,
+							Default:  true,
+							Description: "Perform a rolling restart (default true). " +
+								"Set to false to restart all nodes at once.",
 						},
 						"sleep_after_master_restart_millis": {
-							Type:        schema.TypeInt,
-							Optional:    true,
-							Default:     180000,
-							Description: "Sleep between master restarts (ms). Defaults to 180000.",
+							Type:     schema.TypeInt,
+							Optional: true,
+							Default:  180000,
+							Description: "Sleep between master restarts (ms). Defaults to " +
+								"180000 (3 minutes).",
 						},
 						"sleep_after_tserver_restart_millis": {
-							Type:        schema.TypeInt,
-							Optional:    true,
-							Default:     180000,
-							Description: "Sleep between tserver restarts (ms). Defaults to 180000.",
+							Type:     schema.TypeInt,
+							Optional: true,
+							Default:  180000,
+							Description: "Sleep between tserver restarts (ms). Defaults to " +
+								"180000 (3 minutes).",
 						},
 					},
 				},
@@ -397,9 +415,9 @@ func buildMetrics(in interface{}) *clientv2.MetricsTelemetrySpec {
 		return nil
 	}
 	out := &clientv2.MetricsTelemetrySpec{
-		ScrapeIntervalSeconds: int32Ptr(intValue(m["scrape_interval_seconds"])),
-		ScrapeTimeoutSeconds:  int32Ptr(intValue(m["scrape_timeout_seconds"])),
-		CollectionLevel:       stringPtr(stringValue(m["collection_level"])),
+		ScrapeIntervalSeconds: utils.GetInt32Pointer(int32(intValue(m["scrape_interval_seconds"]))),
+		ScrapeTimeoutSeconds:  utils.GetInt32Pointer(int32(intValue(m["scrape_timeout_seconds"]))),
+		CollectionLevel:       utils.GetStringPointer(stringValue(m["collection_level"])),
 		Exporters:             buildBatchedExporters(m["exporter"], true /* withMetricsPrefix */),
 	}
 	for _, t := range stringList(m["scrape_config_targets"]) {
@@ -505,43 +523,46 @@ func buildBatchedExporters(in interface{}, withMetricsPrefix bool) []clientv2.Te
 		}
 		entry := clientv2.TelemetryExporterEntry{
 			ExporterUuid:                    stringValue(m["exporter_uuid"]),
-			SendBatchMaxSize:                int32PtrFromInterface(m["send_batch_max_size"]),
-			SendBatchSize:                   int32PtrFromInterface(m["send_batch_size"]),
-			SendBatchTimeoutSeconds:         int32PtrFromInterface(m["send_batch_timeout_seconds"]),
-			MemoryLimitMib:                  int32PtrFromInterface(m["memory_limit_mib"]),
-			MemoryLimitCheckIntervalSeconds: int32PtrFromInterface(m["memory_limit_check_interval_seconds"]),
+			SendBatchMaxSize:                utils.GetInt32Pointer(int32(intValue(m["send_batch_max_size"]))),
+			SendBatchSize:                   utils.GetInt32Pointer(int32(intValue(m["send_batch_size"]))),
+			SendBatchTimeoutSeconds:         utils.GetInt32Pointer(int32(intValue(m["send_batch_timeout_seconds"]))),
+			MemoryLimitMib:                  utils.GetInt32Pointer(int32(intValue(m["memory_limit_mib"]))),
+			MemoryLimitCheckIntervalSeconds: utils.GetInt32Pointer(int32(intValue(m["memory_limit_check_interval_seconds"]))),
 		}
 		if tags := stringMap(m["additional_tags"]); len(tags) > 0 {
 			entry.AdditionalTags = &tags
 		}
 		if withMetricsPrefix {
-			if v, ok := m["metrics_prefix"].(string); ok && v != "" {
-				entry.MetricsPrefix = &v
-			}
+			entry.MetricsPrefix = utils.GetStringPointer(stringValue(m["metrics_prefix"]))
 		}
 		out = append(out, entry)
 	}
 	return out
 }
 
+// buildUpgradeOptions translates the optional `upgrade_options` block into
+// the clientv2 type. When the block is absent we send only RollingUpgrade
+// (defaulting to true) and let YBA pick its own restart-sleep defaults
+// rather than hard-coding values here. The schema also exposes Default
+// values for the sleep fields, so when the user does specify
+// `upgrade_options { ... }` the schema layer fills any omitted fields with
+// the documented defaults before this function runs.
 func buildUpgradeOptions(in interface{}) clientv2.ExportTelemetryUpgradeOptions {
 	out := clientv2.ExportTelemetryUpgradeOptions{
-		RollingUpgrade:                 boolPtr(true),
-		SleepAfterMasterRestartMillis:  int32Ptr(180000),
-		SleepAfterTserverRestartMillis: int32Ptr(180000),
+		RollingUpgrade: utils.GetBoolPointer(true),
 	}
 	m := firstMap(in)
 	if len(m) == 0 {
 		return out
 	}
 	if v, ok := m["rolling_upgrade"].(bool); ok {
-		out.RollingUpgrade = &v
+		out.RollingUpgrade = utils.GetBoolPointer(v)
 	}
 	if v, ok := m["sleep_after_master_restart_millis"].(int); ok && v > 0 {
-		out.SleepAfterMasterRestartMillis = int32Ptr(v)
+		out.SleepAfterMasterRestartMillis = utils.GetInt32Pointer(int32(v))
 	}
 	if v, ok := m["sleep_after_tserver_restart_millis"].(int); ok && v > 0 {
-		out.SleepAfterTserverRestartMillis = int32Ptr(v)
+		out.SleepAfterTserverRestartMillis = utils.GetInt32Pointer(int32(v))
 	}
 	return out
 }
@@ -551,23 +572,14 @@ func resourceUniverseTelemetryConfigCreate(
 ) diag.Diagnostics {
 	apiClient := meta.(*api.APIClient)
 	universeUUID := d.Get("universe_uuid").(string)
-
 	spec := buildExportTelemetryConfigSpec(d)
 	tflog.Info(ctx, fmt.Sprintf(
 		"Configuring universe export telemetry config for universe %s", universeUUID))
 
-	task, response, err := apiClient.YugawareClientV2.UniverseAPI.
-		ConfigureExportTelemetryConfig(ctx, apiClient.CustomerID, universeUUID).
-		ExportTelemetryConfigSpec(spec).Execute()
-	if err != nil {
-		return diag.FromErr(utils.ErrorFromHTTPResponse(response, err,
-			utils.ResourceEntity, "Universe Telemetry Config", "Create"))
-	}
-	if task != nil && task.TaskUuid != nil && *task.TaskUuid != "" {
-		if waitErr := utils.WaitForTask(ctx, *task.TaskUuid, apiClient.CustomerID,
-			apiClient.YugawareClient, d.Timeout(schema.TimeoutCreate)); waitErr != nil {
-			return diag.FromErr(waitErr)
-		}
+	if diags := dispatchExportTelemetryConfig(
+		ctx, apiClient, universeUUID, spec,
+		d.Timeout(schema.TimeoutCreate), "Create"); diags != nil {
+		return diags
 	}
 	d.SetId(universeUUID)
 	return resourceUniverseTelemetryConfigRead(ctx, d, meta)
@@ -578,45 +590,85 @@ func resourceUniverseTelemetryConfigUpdate(
 ) diag.Diagnostics {
 	apiClient := meta.(*api.APIClient)
 	spec := buildExportTelemetryConfigSpec(d)
-	task, response, err := apiClient.YugawareClientV2.UniverseAPI.
-		ConfigureExportTelemetryConfig(ctx, apiClient.CustomerID, d.Id()).
-		ExportTelemetryConfigSpec(spec).Execute()
-	if err != nil {
-		return diag.FromErr(utils.ErrorFromHTTPResponse(response, err,
-			utils.ResourceEntity, "Universe Telemetry Config", "Update"))
-	}
-	if task != nil && task.TaskUuid != nil && *task.TaskUuid != "" {
-		if waitErr := utils.WaitForTask(ctx, *task.TaskUuid, apiClient.CustomerID,
-			apiClient.YugawareClient, d.Timeout(schema.TimeoutUpdate)); waitErr != nil {
-			return diag.FromErr(waitErr)
-		}
+	if diags := dispatchExportTelemetryConfig(
+		ctx, apiClient, d.Id(), spec,
+		d.Timeout(schema.TimeoutUpdate), "Update"); diags != nil {
+		return diags
 	}
 	return resourceUniverseTelemetryConfigRead(ctx, d, meta)
 }
 
+// resourceUniverseTelemetryConfigDelete asks YBA to disable every exporter
+// on the universe by POSTing an empty `telemetry_config: {}` body. If the
+// universe has already been deleted out-of-band the API returns a 404; we
+// preflight a GetUniverse call to detect that case and remove the resource
+// from state cleanly. Every other error is surfaced verbatim so genuine
+// failures (permission revoked, task failures, transient outages) cannot
+// silently corrupt state.
 func resourceUniverseTelemetryConfigDelete(
 	ctx context.Context, d *schema.ResourceData, meta interface{},
 ) diag.Diagnostics {
 	apiClient := meta.(*api.APIClient)
-	spec := buildDisableSpec(d)
-	task, response, err := apiClient.YugawareClientV2.UniverseAPI.
-		ConfigureExportTelemetryConfig(ctx, apiClient.CustomerID, d.Id()).
-		ExportTelemetryConfigSpec(spec).Execute()
+
+	// Preflight: if the universe is already gone, there is nothing to
+	// disable — return cleanly.
+	_, response, err := apiClient.YugawareClient.UniverseManagementAPI.
+		GetUniverse(ctx, apiClient.CustomerID, d.Id()).Execute()
 	if err != nil {
-		// If the universe was already deleted out-of-band, the API will
-		// return a 4xx; surface it but still remove the resource so the
-		// user can move on.
-		tflog.Warn(ctx, fmt.Sprintf(
-			"failed to disable telemetry config for universe %s: %s", d.Id(),
-			utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
-				"Universe Telemetry Config", "Delete")))
+		if utils.IsHTTPNotFound(response) {
+			tflog.Warn(ctx, fmt.Sprintf(
+				"universe %s not found during telemetry disable; "+
+					"removing from state", d.Id()))
+			d.SetId("")
+			return nil
+		}
+		return diag.FromErr(utils.ErrorFromHTTPResponse(response, err,
+			utils.ResourceEntity, "Universe Telemetry Config",
+			"Delete - Get Universe"))
 	}
-	if task != nil && task.TaskUuid != nil && *task.TaskUuid != "" {
-		_ = utils.WaitForTask(ctx, *task.TaskUuid, apiClient.CustomerID,
-			apiClient.YugawareClient, d.Timeout(schema.TimeoutDelete))
+
+	spec := buildDisableSpec(d)
+	if diags := dispatchExportTelemetryConfig(
+		ctx, apiClient, d.Id(), spec,
+		d.Timeout(schema.TimeoutDelete), "Delete"); diags != nil {
+		return diags
 	}
 	d.SetId("")
 	return nil
+}
+
+// dispatchExportTelemetryConfig submits the unified export-telemetry-configs
+// request through utils.DispatchAndWait so all three (Create / Update /
+// Delete) call sites share identical conflict-retry, error-formatting, and
+// task-waiting behaviour. The closure captures the latest HTTP response so
+// the Delete caller can recognise an out-of-band universe deletion (HTTP
+// 404) and remove the resource from state instead of erroring.
+func dispatchExportTelemetryConfig(
+	ctx context.Context,
+	apiClient *api.APIClient,
+	universeUUID string,
+	spec clientv2.ExportTelemetryConfigSpec,
+	timeout time.Duration,
+	operation string,
+) diag.Diagnostics {
+	label := fmt.Sprintf("Configure Telemetry on Universe %s (%s)",
+		universeUUID, operation)
+	return utils.DispatchAndWait(ctx, label,
+		apiClient.CustomerID, apiClient.YugawareClient, timeout,
+		utils.ResourceEntity, "Universe Telemetry Config", operation,
+		func() (string, *http.Response, error) {
+			task, resp, err := apiClient.YugawareClientV2.UniverseAPI.
+				ConfigureExportTelemetryConfig(
+					ctx, apiClient.CustomerID, universeUUID).
+				ExportTelemetryConfigSpec(spec).Execute()
+			if err != nil {
+				return "", resp, err
+			}
+			if task != nil && task.TaskUuid != nil {
+				return *task.TaskUuid, resp, nil
+			}
+			return "", resp, nil
+		})
 }
 
 // resourceUniverseTelemetryConfigRead reads the universe details and
@@ -711,27 +763,3 @@ func boolValue(in interface{}) bool {
 func int32Value(in interface{}) int32 {
 	return int32(intValue(in))
 }
-
-// int32Ptr returns a pointer to v (truncated to int32). Used when the
-// generated v2 SDK requires an *int32 pointer.
-func int32Ptr(v int) *int32 {
-	x := int32(v)
-	return &x
-}
-
-// int32PtrFromInterface converts a Terraform int field into an *int32 pointer
-// suitable for the v2 SDK structs, returning nil when the value is missing.
-func int32PtrFromInterface(in interface{}) *int32 {
-	v, ok := in.(int)
-	if !ok {
-		return nil
-	}
-	x := int32(v)
-	return &x
-}
-
-// boolPtr returns a pointer to v.
-func boolPtr(v bool) *bool { return &v }
-
-// stringPtr returns a pointer to v.
-func stringPtr(v string) *string { return &v }
