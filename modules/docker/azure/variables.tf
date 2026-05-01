@@ -56,3 +56,9 @@ variable "security_group" {
   description = "Security group for the VM"
   type        = string
 }
+
+
+variable "runner_ip" {
+  description = "IP of the runners to be ablee to connect to the instances"
+  type = string
+}
