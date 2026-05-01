@@ -34,6 +34,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	client "github.com/yugabyte/platform-go-client"
+	clientv2 "github.com/yugabyte/platform-go-client/v2"
 )
 
 // YbaStructuredError is a structure mimicking YBPError, with error being an interface{}
@@ -721,20 +722,30 @@ func CheckHTTPError(resp *http.Response, operation string) error {
 //     locked state."
 //     (universe.updateInProgress is true while a task holds the universe lock)
 //
-// The generated platform-go-client returns errors as *GenericOpenAPIError (pointer),
-// so we use errors.As rather than a direct type assertion. err.Error() only returns
-// the HTTP status line ("409 Conflict"), not the body, so we always inspect Body().
+// err.Error() on either client only returns the HTTP status line ("409 Conflict"),
+// not the body, so we always inspect the body via OpenAPIErrorBody.
 func IsUniverseTaskConflict(response *http.Response, err error) bool {
 	if response == nil || response.StatusCode != http.StatusConflict {
 		return false
 	}
-	var oErr *client.GenericOpenAPIError
-	if errors.As(err, &oErr) {
-		body := string(oErr.Body())
-		return strings.Contains(body, "cannot be queued") ||
-			strings.Contains(body, "currently in a locked state")
+	body := OpenAPIErrorBody(err)
+	return strings.Contains(body, "cannot be queued") ||
+		strings.Contains(body, "currently in a locked state")
+}
+
+// OpenAPIErrorBody walks the error chain and returns the response body of the
+// first *GenericOpenAPIError from either generated client (platform-go-client
+// or platform-go-client/v2). Returns "" if no such error is present.
+func OpenAPIErrorBody(err error) string {
+	var v1Err *client.GenericOpenAPIError
+	if errors.As(err, &v1Err) {
+		return string(v1Err.Body())
 	}
-	return false
+	var v2Err *clientv2.GenericOpenAPIError
+	if errors.As(err, &v2Err) {
+		return string(v2Err.Body())
+	}
+	return ""
 }
 
 // RetryOnUniverseTaskConflict calls fn repeatedly whenever YBA returns a 409 Conflict

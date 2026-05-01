@@ -26,16 +26,18 @@ import (
 	"time"
 
 	client "github.com/yugabyte/platform-go-client"
+	clientv2 "github.com/yugabyte/platform-go-client/v2"
 	"github.com/yugabyte/terraform-provider-yba/internal/utils"
 )
 
 // APIClient struct to handle API calls
 type APIClient struct {
-	VanillaClient  *VanillaClient
-	YugawareClient *client.APIClient
-	APIKey         string
-	CustomerID     string
-	UserID         string // UUID of the logged-in user (API token holder)
+	VanillaClient    *VanillaClient
+	YugawareClient   *client.APIClient
+	YugawareClientV2 *clientv2.APIClient
+	APIKey           string
+	CustomerID       string
+	UserID           string // UUID of the logged-in user (API token holder)
 }
 
 // NewAPIClient creates a wrapper for public and non-public APIs
@@ -45,20 +47,28 @@ func NewAPIClient(enableHTTPS bool, host, apiKey string) (*APIClient, error) {
 	host = strings.TrimPrefix(host, "http://")
 	host = strings.TrimSuffix(host, "/")
 
-	// create swagger go client
+	// create swagger go client (v1)
 	cfg := client.NewConfiguration()
 	cfg.Host = host
+	// create v2 swagger go client (separate Go module, separate config)
+	cfgV2 := clientv2.NewConfiguration()
+	cfgV2.Host = host
 	if enableHTTPS {
-		cfg.Scheme = "https"
 		tr := &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
+		cfg.Scheme = "https"
 		cfg.HTTPClient = &http.Client{Transport: tr}
+		cfgV2.Scheme = "https"
+		cfgV2.HTTPClient = &http.Client{Transport: tr}
 	} else {
 		cfg.Scheme = "http"
+		cfgV2.Scheme = "http"
 	}
 	if apiKey != "" {
 		cfg.DefaultHeader = map[string]string{"X-AUTH-YW-API-TOKEN": apiKey}
+		cfgV2.DefaultHeader = map[string]string{"X-AUTH-YW-API-TOKEN": apiKey}
 	}
 	ywc := client.NewAPIClient(cfg)
+	ywcV2 := clientv2.NewAPIClient(cfgV2)
 
 	// create vanilla client for non-public APIs
 	vc := &VanillaClient{
@@ -69,9 +79,10 @@ func NewAPIClient(enableHTTPS bool, host, apiKey string) (*APIClient, error) {
 
 	// create wrapper client
 	c := &APIClient{
-		VanillaClient:  vc,
-		YugawareClient: ywc,
-		APIKey:         apiKey,
+		VanillaClient:    vc,
+		YugawareClient:   ywc,
+		YugawareClientV2: ywcV2,
+		APIKey:           apiKey,
 	}
 
 	// authenticate if api token is provided
