@@ -377,12 +377,10 @@ github.com/vmihailenco/tagparser v0.1.2/go.mod h1:OeAg3pn3UbLjkWt+rN9oFYB6u/cQgq
 github.com/xanzy/ssh-agent v0.3.0/go.mod h1:3s9xbODqPuuhK9JV1R321M/FlMZSBvE5aY6eAcqrDh0=
 github.com/xanzy/ssh-agent v0.3.3 h1:+/15pJfg/RsTxqYcX6fHqOXZwwMP+2VyYWJeWM2qQFM=
 github.com/xanzy/ssh-agent v0.3.3/go.mod h1:6dzNDKs0J9rVPHPhaGCukekBHKqfl+L3KghI1Bc68Uw=
-github.com/yugabyte/platform-go-client v0.0.0-20260107051432-4a58e3685ab4 h1:8E0wkeV2N+ds+V31ZVVytJymwaynhw5G46SacEPEfTU=
-github.com/yugabyte/platform-go-client v0.0.0-20260107051432-4a58e3685ab4/go.mod h1:8a2ONsBR0hUTroy6MRrMHaSmxD/peQNQOznL5EIw5no=
-github.com/yugabyte/platform-go-client v0.0.0-20260313052809-c38a3fb4883f h1:JclNFC2rhFYab1vNuccz8RVfoBVA4CckIug1T/Q0Gy4=
-github.com/yugabyte/platform-go-client v0.0.0-20260313052809-c38a3fb4883f/go.mod h1:8a2ONsBR0hUTroy6MRrMHaSmxD/peQNQOznL5EIw5no=
-github.com/yugabyte/platform-go-client/v2 v2.0.0-20260313052809-c38a3fb4883f h1:u0zMbc5r4MQeeDlu7u2YiSEbKl0JqexJm1yryCxr7lM=
-github.com/yugabyte/platform-go-client/v2 v2.0.0-20260313052809-c38a3fb4883f/go.mod h1:d4Q0DnaoMs61ZufxsPrdd1P3WHV7qvwmh3Qi0huyFvk=
+github.com/yugabyte/platform-go-client v0.0.0-20260424070128-33f8cf839dd2 h1:AG1wa5kUOXVcv5wWxtdRhEOdszHJcCRBOLypfz3igRI=
+github.com/yugabyte/platform-go-client v0.0.0-20260424070128-33f8cf839dd2/go.mod h1:8a2ONsBR0hUTroy6MRrMHaSmxD/peQNQOznL5EIw5no=
+github.com/yugabyte/platform-go-client/v2 v2.0.0-20260424070128-33f8cf839dd2 h1:RU0JxVxTWljafk8LpweB3UBF3Sj5mCiy16MLpi7739Y=
+github.com/yugabyte/platform-go-client/v2 v2.0.0-20260424070128-33f8cf839dd2/go.mod h1:d4Q0DnaoMs61ZufxsPrdd1P3WHV7qvwmh3Qi0huyFvk=
 github.com/yuin/goldmark v1.1.25/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9decYSb74=
 github.com/yuin/goldmark v1.1.27/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9decYSb74=
 github.com/yuin/goldmark v1.1.32/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9decYSb74=
