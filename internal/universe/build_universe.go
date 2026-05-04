@@ -18,6 +18,7 @@ package universe
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
@@ -110,32 +111,106 @@ func hasExplicitCloudList(clusters []client.Cluster) bool {
 	return false
 }
 
+// validateCloudListAZCodes returns an error if any AZ code in cloudList does
+// not exist in the provider's zone list. Uses RegionManagementAPI.GetRegion
+// (same source as fetchProviderZoneFallback) for authoritative zone data.
+// Provider UUIDs are deduplicated so each provider is fetched at most once.
+func validateCloudListAZCodes(
+	ctx context.Context,
+	c *client.APIClient,
+	cUUID string,
+	cloudList []interface{},
+) error {
+	seenProvider := make(map[string][]client.Region)
+	for _, pcRaw := range cloudList {
+		pc, ok := pcRaw.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		provUUID, _ := pc["provider"].(string)
+		if provUUID == "" {
+			continue
+		}
+		if _, fetched := seenProvider[provUUID]; !fetched {
+			regions, _, err := c.RegionManagementAPI.GetRegion(ctx, cUUID, provUUID).Execute()
+			if err != nil {
+				seenProvider[provUUID] = nil
+				continue
+			}
+			seenProvider[provUUID] = regions
+		}
+		provRegions := seenProvider[provUUID]
+		if provRegions == nil {
+			continue
+		}
+		validByRegion := make(map[string]map[string]bool)
+		for _, r := range provRegions {
+			zones := make(map[string]bool)
+			for _, az := range r.GetZones() {
+				zones[az.GetName()] = true
+				if az.GetCode() != "" {
+					zones[az.GetCode()] = true
+				}
+			}
+			validByRegion[r.GetCode()] = zones
+		}
+		for _, rRaw := range pc["region_list"].([]interface{}) {
+			r, ok := rRaw.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			regionCode, _ := r["code"].(string)
+			validZones := validByRegion[regionCode]
+			for _, azRaw := range r["az_list"].([]interface{}) {
+				az, ok := azRaw.(map[string]interface{})
+				if !ok {
+					continue
+				}
+				azCode, _ := az["code"].(string)
+				if azCode == "" || validZones == nil {
+					continue
+				}
+				if !validZones[azCode] {
+					var valid []string
+					for z := range validZones {
+						valid = append(valid, z)
+					}
+					return fmt.Errorf(
+						"zone %q in region %q does not exist for "+
+							"provider %s; valid zones: %s",
+						azCode, regionCode, provUUID,
+						strings.Join(valid, ", "))
+				}
+			}
+		}
+	}
+	return nil
+}
+
+// azFallbackAttrs holds provider-fetched UUID and subnet for an AZ, used to
+// backfill both fields when a new AZ is introduced in a placement edit.
+type azFallbackAttrs struct {
+	uuid            string
+	subnet          string
+	secondarySubnet string
+}
+
 // resolveAZUUIDs fixes the UUID on every PlacementRegion and PlacementAZ in
-// newPI by matching on Code (for regions) and Name (for AZs) against the live
-// cloud list fetched from the YBA API (oldCloudList).
-//
-// The problem it solves: region_list and az_list are TypeLists in the schema,
-// so Terraform matches elements by index position. When the practitioner
-// removes a region or AZ from the middle of the list, subsequent elements shift
-// down one index and inherit the wrong state UUID (the removed element's UUID).
-// This leads to incorrect ToBeRemoved node marking and wrong placement sent to
-// the API.
-//
-// When a new AZ or region is introduced that was never part of the prior
-// placement (e.g. moving a node from AZ1 to AZ2), oldCloudList has no entry
-// for it and the UUID in Terraform state is stale (it still holds the old AZ's
-// UUID). fallbackByRegionCode and fallbackByAZCode, built from the provider's
-// full region/zone list, are used in that case.
+// newPI by matching on Code/Name against oldCloudList (live API state).
+// TypeList index-shifting can assign a removed element's UUID to a kept one;
+// this corrects it by code/name lookup. For AZs not present in the live
+// placement (new AZ, new region, or new provider), the fallback maps built
+// from the provider's zone list are used to supply the correct UUID and subnet.
 func resolveAZUUIDs(
 	newPI *client.PlacementInfo,
 	oldCloudList []client.PlacementCloud,
 	fallbackByRegionCode map[string]string,
 	fallbackByAZCode map[string]string,
+	fallbackByAZAttrs map[string]azFallbackAttrs,
 ) {
 	if newPI == nil {
 		return
 	}
-	// Build lookup maps from the live API state (correct, stable UUIDs).
 	uuidByRegionCode := make(map[string]string)
 	uuidByAZName := make(map[string]string)
 	for _, cloud := range oldCloudList {
@@ -150,9 +225,6 @@ func resolveAZUUIDs(
 			}
 		}
 	}
-	// Overwrite each region's and AZ's UUID in the new placement with the
-	// resolved value from the live API state, falling back to the full
-	// provider zone list for AZs/regions not present in the current placement.
 	for ci := range newPI.CloudList {
 		for ri := range newPI.CloudList[ci].RegionList {
 			region := &newPI.CloudList[ci].RegionList[ri]
@@ -169,7 +241,19 @@ func resolveAZUUIDs(
 					az.Uuid = utils.GetStringPointer(uuid)
 				} else if fallbackByAZCode != nil {
 					if uuid, ok := fallbackByAZCode[az.GetName()]; ok {
+						// New AZ: override UUID and subnet from provider data.
+						// State values at this TypeList index belong to the old AZ.
 						az.Uuid = utils.GetStringPointer(uuid)
+						if fallbackByAZAttrs != nil {
+							if attrs, ok := fallbackByAZAttrs[az.GetName()]; ok {
+								if attrs.subnet != "" {
+									az.Subnet = utils.GetStringPointer(attrs.subnet)
+								}
+								if attrs.secondarySubnet != "" {
+									az.SecondarySubnet = utils.GetStringPointer(attrs.secondarySubnet)
+								}
+							}
+						}
 					}
 				}
 			}
@@ -177,16 +261,13 @@ func resolveAZUUIDs(
 	}
 }
 
-// buildProviderZoneFallback constructs code->UUID lookup maps for all regions
-// and zones returned by the provider's region list API. These are used as a
-// fallback in resolveAZUUIDs for AZs that do not appear in the current live
-// placement (e.g. when moving a node to a new AZ within the same region).
-// Multiple calls merge into the same maps, so callers can accumulate results
-// from several providers (multi-cloud universes).
+// buildProviderZoneFallback populates region/AZ code->UUID maps and subnet
+// attrs from a provider's region list. Multiple calls merge into the same maps.
 func buildProviderZoneFallback(
 	regions []client.Region,
 	byRegionCode map[string]string,
 	byAZCode map[string]string,
+	byAZAttrs map[string]azFallbackAttrs,
 ) {
 	for _, r := range regions {
 		if r.GetCode() != "" && r.GetUuid() != "" {
@@ -196,27 +277,36 @@ func buildProviderZoneFallback(
 			// AvailabilityZone.Name is the zone code (e.g. "us-west-2a").
 			if az.GetName() != "" && az.GetUuid() != "" {
 				byAZCode[az.GetName()] = az.GetUuid()
+				if byAZAttrs != nil {
+					byAZAttrs[az.GetName()] = azFallbackAttrs{
+						uuid:            az.GetUuid(),
+						subnet:          az.GetSubnet(),
+						secondarySubnet: az.GetSecondarySubnet(),
+					}
+				}
 			}
 		}
 	}
 }
 
-// fetchProviderZoneFallback fetches the full region/zone list for every
-// distinct provider UUID found in oldCloudList (the live placement) and
-// merges the results into a single pair of code->UUID lookup maps.
-// Using oldCloudList (live state) rather than the desired config ensures we
-// query the correct provider even if the user's config has an incorrect or
-// changed provider UUID. All clouds in a multi-cloud universe are covered.
+// fetchProviderZoneFallback fetches region/zone data for every distinct
+// provider UUID across both oldCloudList (live placement) and newCloudList
+// (desired config). Including newCloudList handles a changed cloud_list.provider
+// whose zones would not appear in oldCloudList at all. Provider UUIDs are
+// deduplicated so each provider is fetched at most once.
 func fetchProviderZoneFallback(
 	ctx context.Context,
 	c *client.APIClient,
 	cUUID string,
 	oldCloudList []client.PlacementCloud,
-) (byRegionCode map[string]string, byAZCode map[string]string) {
+	newCloudList []client.PlacementCloud,
+) (byRegionCode map[string]string, byAZCode map[string]string,
+	byAZAttrs map[string]azFallbackAttrs) {
 	byRegionCode = make(map[string]string)
 	byAZCode = make(map[string]string)
+	byAZAttrs = make(map[string]azFallbackAttrs)
 	seen := make(map[string]bool)
-	for _, cloud := range oldCloudList {
+	for _, cloud := range append(oldCloudList, newCloudList...) {
 		providerUUID := cloud.GetUuid()
 		if providerUUID == "" || seen[providerUUID] {
 			continue
@@ -230,9 +320,9 @@ func fetchProviderZoneFallback(
 				providerUUID, err))
 			continue
 		}
-		buildProviderZoneFallback(provRegions, byRegionCode, byAZCode)
+		buildProviderZoneFallback(provRegions, byRegionCode, byAZCode, byAZAttrs)
 	}
-	return byRegionCode, byAZCode
+	return byRegionCode, byAZCode, byAZAttrs
 }
 
 func buildCommunicationPorts(cp map[string]interface{}) *client.CommunicationPorts {

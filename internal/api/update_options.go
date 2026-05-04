@@ -49,7 +49,11 @@ func (vc *VanillaClient) UniverseUpdateOptions(
 		UpdateOptions []string `json:"updateOptions"`
 	}
 	if err := json.Unmarshal(body, &configureResp); err != nil {
-		return nil, fmt.Errorf("error parsing universe_configure response (status %d): %w", res.StatusCode, err)
+		return nil, fmt.Errorf(
+			"error parsing universe_configure response (status %d): %w",
+			res.StatusCode,
+			err,
+		)
 	}
 
 	return configureResp.UpdateOptions, nil

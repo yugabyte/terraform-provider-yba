@@ -1313,7 +1313,24 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 							"in the %s cluster", label)
 				}
 
-				// Check 3: cloud provider with no image_bundle_uuid must have a
+				// Check 3: when image_bundle_uuid is explicitly set for a cloud
+				// provider, its arch must match the universe arch field.
+				if cloudProviders[code] && ui.GetImageBundleUUID() != "" {
+					bundleUUID := ui.GetImageBundleUUID()
+					for _, b := range p.GetImageBundles() {
+						if b.GetUuid() == bundleUUID {
+							if bArch := b.Details.GetArch(); bArch != "" && bArch != arch {
+								return fmt.Errorf(
+									"image_bundle_uuid %q has arch %q but universe arch is %q "+
+										"in the %s cluster; choose a bundle whose arch matches",
+									bundleUUID, bArch, arch, label)
+							}
+							break
+						}
+					}
+				}
+
+				// Check 4: cloud provider with no image_bundle_uuid must have a
 				// default bundle for the configured arch so API auto-resolution works.
 				if cloudProviders[code] && ui.GetImageBundleUUID() == "" {
 					for _, b := range p.GetImageBundles() {
@@ -1339,6 +1356,27 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 			}
 			if readOnly, ok := getClusterByType(clusterSet, "ASYNC"); ok {
 				if err := checkCluster(readOnly, "ASYNC", "read replica"); err != nil {
+					return err
+				}
+			}
+			return nil
+		},
+		// Validate cloud_list AZ codes at plan time for new resources only.
+		// For updates the same check runs in resourceUniverseUpdate (apply time),
+		// which guarantees it never fires during terraform destroy.
+		func(ctx context.Context, d *schema.ResourceDiff, meta interface{}) error {
+			if d.Id() != "" {
+				return nil // existing resource: validated at apply time in resourceUniverseUpdate
+			}
+			c := meta.(*api.APIClient).YugawareClient
+			cUUID := meta.(*api.APIClient).CustomerID
+			for _, clRaw := range d.Get("clusters").([]interface{}) {
+				cl, ok := clRaw.(map[string]interface{})
+				if !ok {
+					continue
+				}
+				if err := validateCloudListAZCodes(
+					ctx, c, cUUID, cl["cloud_list"].([]interface{})); err != nil {
 					return err
 				}
 			}
@@ -2300,6 +2338,25 @@ func resourceUniverseUpdate(
 		return diag.FromErr(err)
 	}
 
+	// Validate cloud_list AZ codes before any API mutations. This check is
+	// skipped in CustomizeDiff for existing resources to avoid firing during
+	// terraform destroy; it runs here instead (apply time, update path only).
+	if d.HasChange("clusters") {
+		for i, clRaw := range d.Get("clusters").([]interface{}) {
+			if !d.HasChange(fmt.Sprintf("clusters.%d.cloud_list", i)) {
+				continue
+			}
+			cl, ok := clRaw.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			if err := validateCloudListAZCodes(
+				ctx, c, cUUID, cl["cloud_list"].([]interface{})); err != nil {
+				return diag.FromErr(err)
+			}
+		}
+	}
+
 	// =========================================================================
 	// --- PRE-FLIGHT CHECK FOR FULL MOVE ---
 	// We run a simulation of the cluster edits before executing ANY mutating operations
@@ -2309,7 +2366,8 @@ func resourceUniverseUpdate(
 	clusterUpdateOpts := make(map[int][]string) // Cache to avoid redundant API calls below
 
 	if d.HasChange("clusters") {
-		preflightUni, response, err := c.UniverseManagementAPI.GetUniverse(ctx, cUUID, d.Id()).Execute()
+		preflightUni, response, err := c.UniverseManagementAPI.GetUniverse(ctx, cUUID, d.Id()).
+			Execute()
 		if err != nil {
 			errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
 				"Universe", "Update - Fetch universe for pre-flight check")
@@ -2327,14 +2385,19 @@ func resourceUniverseUpdate(
 			clusterType := cluster["cluster_type"].(string)
 
 			// Safely skip if indices don't align (e.g. invalid state or mid-creation)
-			if i >= len(preflightUni.UniverseDetails.Clusters) || i >= len(newUniForPreflight.Clusters) {
+			if i >= len(preflightUni.UniverseDetails.Clusters) ||
+				i >= len(newUniForPreflight.Clusters) {
 				continue
 			}
 
 			oldUserIntent := preflightUni.UniverseDetails.Clusters[i].UserIntent
 			newUserIntent := newUniForPreflight.Clusters[i].UserIntent
 
-			editAllowed, simulatedIntent := editUniverseParameters(ctx, oldUserIntent, newUserIntent)
+			editAllowed, simulatedIntent := editUniverseParameters(
+				ctx,
+				oldUserIntent,
+				newUserIntent,
+			)
 			preflightUni.UniverseDetails.Clusters[i].UserIntent = simulatedIntent
 
 			var userAZExplicit bool
@@ -2346,14 +2409,22 @@ func resourceUniverseUpdate(
 					if preflightUni.UniverseDetails.Clusters[i].PlacementInfo != nil {
 						oldCloudList = preflightUni.UniverseDetails.Clusters[i].PlacementInfo.CloudList
 					}
-					fallbackByRegion, fallbackByAZ := fetchProviderZoneFallback(ctx, c, cUUID, oldCloudList)
-					resolveAZUUIDs(newPI, oldCloudList, fallbackByRegion, fallbackByAZ)
+					fallbackByRegion, fallbackByAZ, fallbackByAZAttrs :=
+						fetchProviderZoneFallback(ctx, c, cUUID, oldCloudList, newPI.CloudList)
+					resolveAZUUIDs(
+						newPI,
+						oldCloudList,
+						fallbackByRegion,
+						fallbackByAZ,
+						fallbackByAZAttrs,
+					)
 					oldAZUUIDs := collectAZUUIDs(oldCloudList)
 					newAZUUIDs := collectAZUUIDs(newPI.CloudList)
 					clusterUUID := preflightUni.UniverseDetails.Clusters[i].GetUuid()
 					for j := range preflightUni.UniverseDetails.NodeDetailsSet {
 						n := &preflightUni.UniverseDetails.NodeDetailsSet[j]
-						if n.GetPlacementUuid() == clusterUUID && oldAZUUIDs[n.GetAzUuid()] && !newAZUUIDs[n.GetAzUuid()] {
+						if n.GetPlacementUuid() == clusterUUID && oldAZUUIDs[n.GetAzUuid()] &&
+							!newAZUUIDs[n.GetAzUuid()] {
 							n.SetState("ToBeRemoved")
 						}
 					}
@@ -2366,15 +2437,19 @@ func resourceUniverseUpdate(
 			if editAllowed || editZoneAllowed {
 				effectiveCommPorts := preflightUni.UniverseDetails.CommunicationPorts
 				if d.HasChange("communication_ports") {
-					effectiveCommPorts = buildCommunicationPorts(utils.MapFromSingletonList(d.Get("communication_ports").([]interface{})))
+					effectiveCommPorts = buildCommunicationPorts(
+						utils.MapFromSingletonList(d.Get("communication_ports").([]interface{})),
+					)
 				}
 
 				configureTaskParams := client.UniverseConfigureTaskParams{
-					UniverseUUID:            utils.GetStringPointer(d.Id()),
-					ClusterOperation:        utils.GetStringPointer("EDIT"),
-					CurrentClusterType:      utils.GetStringPointer(clusterType),
-					Clusters:                preflightUni.UniverseDetails.Clusters,
-					NodeDetailsSet:          buildNodeDetailsRespArrayToNodeDetailsArray(preflightUni.UniverseDetails.NodeDetailsSet),
+					UniverseUUID:       utils.GetStringPointer(d.Id()),
+					ClusterOperation:   utils.GetStringPointer("EDIT"),
+					CurrentClusterType: utils.GetStringPointer(clusterType),
+					Clusters:           preflightUni.UniverseDetails.Clusters,
+					NodeDetailsSet: buildNodeDetailsRespArrayToNodeDetailsArray(
+						preflightUni.UniverseDetails.NodeDetailsSet,
+					),
 					CommunicationPorts:      effectiveCommPorts,
 					UserAZSelected:          utils.GetBoolPointer(userAZExplicit),
 					AllowInsecure:           preflightUni.UniverseDetails.AllowInsecure,
@@ -2399,7 +2474,9 @@ func resourceUniverseUpdate(
 						"Pre-flight safety check: YBA determined the planned edit on the %s Cluster "+
 							"requires a FULL MOVE (updateOptions=[\"FULL_MOVE\"]). "+
 							"To proceed, set allow_full_move = true on the universe resource. "+
-							"Execution aborted before any changes were made.", clusterType)
+							"Execution aborted before any changes were made.",
+						clusterType,
+					)
 				}
 			}
 		}
@@ -2893,20 +2970,20 @@ func resourceUniverseUpdate(
 						if updateUni.UniverseDetails.Clusters[i].PlacementInfo != nil {
 							oldCloudList = updateUni.UniverseDetails.Clusters[i].PlacementInfo.CloudList
 						}
-						// Build a fallback UUID map from each provider's full zone
-						// list, keyed from the live placement (oldCloudList) rather
-						// than the desired config. This handles accidental provider
-						// UUID changes in the config and covers all clouds in a
-						// multi-cloud universe. oldCloudList only contains AZs
-						// already in placement; new AZs (e.g. moving a node from
-						// AZ1 to AZ2) are resolved via this fallback instead.
-						fallbackByRegion, fallbackByAZ := fetchProviderZoneFallback(
-							ctx, c, cUUID, oldCloudList)
-						// Resolve AZ UUIDs by name from the live API state before
-						// computing the diff. TypeList index-matching can assign a
-						// removed AZ's UUID to a kept AZ; resolveAZUUIDs corrects
-						// this by looking up each AZ's UUID by its name.
-						resolveAZUUIDs(newPI, oldCloudList, fallbackByRegion, fallbackByAZ)
+						fallbackByRegion, fallbackByAZ, fallbackByAZAttrs := fetchProviderZoneFallback(
+							ctx,
+							c,
+							cUUID,
+							oldCloudList,
+							newPI.CloudList,
+						)
+						resolveAZUUIDs(
+							newPI,
+							oldCloudList,
+							fallbackByRegion,
+							fallbackByAZ,
+							fallbackByAZAttrs,
+						)
 						oldAZUUIDs := collectAZUUIDs(oldCloudList)
 						newAZUUIDs := collectAZUUIDs(newPI.CloudList)
 						clusterUUID := updateUni.UniverseDetails.Clusters[i].GetUuid()
@@ -2977,10 +3054,12 @@ func resourceUniverseUpdate(
 					// 2. Execute Update if flagged (or if minor config changes with empty opts)
 					if isOnlyFullMove || hasUpdate || len(opts) == 0 {
 						req := client.UniverseConfigureTaskParams{
-							UniverseUUID:            utils.GetStringPointer(d.Id()),
-							CurrentClusterType:      utils.GetStringPointer("PRIMARY"),
-							Clusters:                updateUni.UniverseDetails.Clusters,
-							NodeDetailsSet:          buildNodeDetailsRespArrayToNodeDetailsArray(updateUni.UniverseDetails.NodeDetailsSet),
+							UniverseUUID:       utils.GetStringPointer(d.Id()),
+							CurrentClusterType: utils.GetStringPointer("PRIMARY"),
+							Clusters:           updateUni.UniverseDetails.Clusters,
+							NodeDetailsSet: buildNodeDetailsRespArrayToNodeDetailsArray(
+								updateUni.UniverseDetails.NodeDetailsSet,
+							),
 							CommunicationPorts:      effectiveCommPorts,
 							UserAZSelected:          utils.GetBoolPointer(userAZExplicit),
 							AllowInsecure:           updateUni.UniverseDetails.AllowInsecure,
@@ -3062,9 +3141,9 @@ func resourceUniverseUpdate(
 						// placement (oldCloudList) as the source of provider UUIDs
 						// so accidental config changes and multi-cloud universes
 						// are handled correctly.
-						rrFallbackByRegion, rrFallbackByAZ := fetchProviderZoneFallback(
-							ctx, c, cUUID, oldCloudList)
-						resolveAZUUIDs(newPI, oldCloudList, rrFallbackByRegion, rrFallbackByAZ)
+						rrFallbackByRegion, rrFallbackByAZ, rrFallbackByAZAttrs := fetchProviderZoneFallback(
+							ctx, c, cUUID, oldCloudList, newPI.CloudList)
+						resolveAZUUIDs(newPI, oldCloudList, rrFallbackByRegion, rrFallbackByAZ, rrFallbackByAZAttrs)
 						oldAZUUIDs := collectAZUUIDs(oldCloudList)
 						newAZUUIDs := collectAZUUIDs(newPI.CloudList)
 						clusterUUID := updateUni.UniverseDetails.Clusters[i].GetUuid()
