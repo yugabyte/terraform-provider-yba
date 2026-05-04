@@ -134,6 +134,7 @@ func New() *schema.Provider {
 			// Telemetry / observability export resources for log and metric pipelines.
 			"yba_telemetry_provider":        telemetry.ResourceTelemetryProvider(),
 			"yba_universe_telemetry_config": telemetry.ResourceUniverseTelemetryConfig(),
+			"yba_runtime_config":            telemetry.ResourceRuntimeConfig(),
 		},
 		ConfigureContextFunc: providerConfigure,
 	}
