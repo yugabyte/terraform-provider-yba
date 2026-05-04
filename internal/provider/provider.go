@@ -132,7 +132,9 @@ func New() *schema.Provider {
 			"yba_nfs_storage_config":   storageconfig.ResourceNFSStorageConfig(),
 
 			// Telemetry / observability export resources for log and metric pipelines.
-			"yba_runtime_config": telemetry.ResourceRuntimeConfig(),
+			"yba_telemetry_provider":        telemetry.ResourceTelemetryProvider(),
+			"yba_universe_telemetry_config": telemetry.ResourceUniverseTelemetryConfig(),
+			"yba_runtime_config":            telemetry.ResourceRuntimeConfig(),
 		},
 		ConfigureContextFunc: providerConfigure,
 	}

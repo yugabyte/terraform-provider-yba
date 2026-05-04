@@ -1,0 +1,49 @@
+---
+page_title: "{{.Name}} {{.Type}} - {{.RenderedProviderName}}"
+description: |-
+{{ .Description | plainmarkdown | trimspace | prefixlines "  " }}
+---
+
+# {{.Name}} ({{.Type}})
+
+{{ .Description | trimspace }}
+
+## Example Usage
+
+{{ tffile "examples/resources/yba_telemetry_provider/resource.tf" }}
+
+{{ .SchemaMarkdown | trimspace }}
+
+## Replacing an in-use provider
+
+YBA does not support editing a telemetry provider — any change to a config
+field forces Terraform to destroy-and-recreate the resource. YBA also
+rejects delete requests for a provider that is still referenced by a
+universe's telemetry configuration:
+
+```
+Cannot delete Telemetry Provider '...', as it is in use.
+```
+
+The destroy step handles this proactively: before issuing the YBA delete
+it enumerates every universe whose telemetry config references the
+provider and rewrites each universe's config with the provider filtered
+out of the audit/query/metrics exporter lists (through the unified
+`/api/v2/customers/{c}/universes/{u}/export-telemetry-configs` endpoint).
+It waits for every resulting rolling-upgrade task to reach a terminal
+state, and only then issues the YBA delete. The detach step is therefore
+the canonical "detach, then mutate" workflow — destroy-and-recreate
+plans, plain `terraform destroy`, and any `yba_universe_telemetry_config`
+update planned in the same `terraform apply` (which is then applied with
+the new provider UUID) all go through it.
+
+The universes themselves are never destroyed — only their OpenTelemetry
+collector configuration is updated.
+
+## Import
+
+Telemetry providers can be imported using their UUID:
+
+```sh
+terraform import yba_telemetry_provider.datadog <telemetry-provider-uuid>
+```
