@@ -164,9 +164,9 @@ func flattenCloudList(cl []client.PlacementCloud) (res []interface{}) {
 func flattenRegionList(cl []client.PlacementRegion) (res []interface{}) {
 	for _, r := range cl {
 		pr := map[string]interface{}{
-			"uuid":    r.Uuid,
-			"code":    r.Code,
-			"name":    r.Name,
+			"uuid":    r.GetUuid(),
+			"code":    r.GetCode(),
+			"name":    r.GetName(),
 			"az_list": flattenAzList(r.AzList),
 		}
 		res = append(res, pr)
@@ -177,14 +177,14 @@ func flattenRegionList(cl []client.PlacementRegion) (res []interface{}) {
 func flattenAzList(cl []client.PlacementAZ) (res []interface{}) {
 	for _, az := range cl {
 		paz := map[string]interface{}{
-			"uuid":               az.Uuid,
-			"code":               az.Name,
-			"is_affinitized":     az.IsAffinitized,
-			"leader_preference":  az.LeaderPreference,
-			"num_nodes":          az.NumNodesInAZ,
-			"replication_factor": az.ReplicationFactor,
-			"secondary_subnet":   az.SecondarySubnet,
-			"subnet":             az.Subnet,
+			"uuid":               az.GetUuid(),
+			"code":               az.GetName(),
+			"is_affinitized":     az.GetIsAffinitized(),
+			"leader_preference":  az.GetLeaderPreference(),
+			"num_nodes":          az.GetNumNodesInAZ(),
+			"replication_factor": az.GetReplicationFactor(),
+			"secondary_subnet":   az.GetSecondarySubnet(),
+			"subnet":             az.GetSubnet(),
 		}
 		res = append(res, paz)
 	}

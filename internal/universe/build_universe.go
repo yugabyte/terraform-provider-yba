@@ -111,6 +111,228 @@ func hasExplicitCloudList(clusters []client.Cluster) bool {
 	return false
 }
 
+// cloudListWithoutLeaderPreference returns a deep copy of a cloud_list
+// ([]interface{}) with the leader_preference field zeroed out in every az_list
+// entry. The copy is used to determine whether leader_preference is the ONLY
+// differing field between two cloud lists: if stripping it makes them
+// reflect.DeepEqual, nothing else changed.
+func cloudListWithoutLeaderPreference(cloudList []interface{}) []interface{} {
+	out := make([]interface{}, 0, len(cloudList))
+	for _, pcRaw := range cloudList {
+		pc, ok := pcRaw.(map[string]interface{})
+		if !ok {
+			out = append(out, pcRaw)
+			continue
+		}
+		pcCopy := make(map[string]interface{}, len(pc))
+		for k, v := range pc {
+			pcCopy[k] = v
+		}
+		rlRaw, _ := pc["region_list"].([]interface{})
+		rlCopy := make([]interface{}, 0, len(rlRaw))
+		for _, prRaw := range rlRaw {
+			pr, ok := prRaw.(map[string]interface{})
+			if !ok {
+				rlCopy = append(rlCopy, prRaw)
+				continue
+			}
+			prCopy := make(map[string]interface{}, len(pr))
+			for k, v := range pr {
+				prCopy[k] = v
+			}
+			azRaw, _ := pr["az_list"].([]interface{})
+			azCopy := make([]interface{}, 0, len(azRaw))
+			for _, azItemRaw := range azRaw {
+				az, ok := azItemRaw.(map[string]interface{})
+				if !ok {
+					azCopy = append(azCopy, azItemRaw)
+					continue
+				}
+				azMap := make(map[string]interface{}, len(az))
+				for k, v := range az {
+					azMap[k] = v
+				}
+				azMap["leader_preference"] = 0
+				azCopy = append(azCopy, azMap)
+			}
+			prCopy["az_list"] = azCopy
+			rlCopy = append(rlCopy, prCopy)
+		}
+		pcCopy["region_list"] = rlCopy
+		out = append(out, pcCopy)
+	}
+	return out
+}
+
+// validateCloudListDuplicates returns an error if any region code appears more
+// than once within a cloud entry's region_list, or if any AZ code appears more
+// than once within a region's az_list. Duplicates trigger a cryptic BE error:
+// "Duplicate key <uuid> (attempted merging values N and M)".
+func validateCloudListDuplicates(clusters []interface{}) error {
+	for ci, clRaw := range clusters {
+		cl, ok := clRaw.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		cloudList, _ := cl["cloud_list"].([]interface{})
+		for pi, pcRaw := range cloudList {
+			pc, ok := pcRaw.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			seenRegion := make(map[string]bool)
+			regionList, _ := pc["region_list"].([]interface{})
+			for _, prRaw := range regionList {
+				pr, ok := prRaw.(map[string]interface{})
+				if !ok {
+					continue
+				}
+				regionCode, _ := pr["code"].(string)
+				if regionCode == "" {
+					continue
+				}
+				if seenRegion[regionCode] {
+					return fmt.Errorf(
+						"clusters[%d].cloud_list[%d].region_list: "+
+							"duplicate region code %q; "+
+							"each region may appear at most once per cloud entry",
+						ci, pi, regionCode)
+				}
+				seenRegion[regionCode] = true
+
+				seenAZ := make(map[string]bool)
+				azList, _ := pr["az_list"].([]interface{})
+				for _, azRaw := range azList {
+					az, ok := azRaw.(map[string]interface{})
+					if !ok {
+						continue
+					}
+					azCode, _ := az["code"].(string)
+					if azCode == "" {
+						continue
+					}
+					if seenAZ[azCode] {
+						return fmt.Errorf(
+							"clusters[%d].cloud_list[%d].region_list"+
+								"[region %q].az_list: "+
+								"duplicate zone code %q; "+
+								"each zone may appear at most once per region",
+							ci, pi, regionCode, azCode)
+					}
+					seenAZ[azCode] = true
+				}
+			}
+		}
+	}
+	return nil
+}
+
+// validateCloudListRegionsInUserIntent returns an error when a region listed in
+// cloud_list.region_list cannot be found in the corresponding cluster's
+// user_intent.region_list. The cloud_list uses region codes (e.g. "us-east-1")
+// while user_intent.region_list holds UUIDs; the function fetches the provider
+// to map codes to UUIDs before comparing. Provider UUIDs are deduplicated.
+//
+// Catching this mismatch at plan time replaces the opaque BE error
+// "Unable to place replicas, no zones available."
+func validateCloudListRegionsInUserIntent(
+	ctx context.Context,
+	c *client.APIClient,
+	cUUID string,
+	clusters []interface{},
+) error {
+	for ci, clRaw := range clusters {
+		cl, ok := clRaw.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		cloudList, _ := cl["cloud_list"].([]interface{})
+		if len(cloudList) == 0 {
+			continue
+		}
+
+		uiList, _ := cl["user_intent"].([]interface{})
+		if len(uiList) == 0 {
+			continue
+		}
+		ui, ok := uiList[0].(map[string]interface{})
+		if !ok {
+			continue
+		}
+		uiRegionRaw, _ := ui["region_list"].([]interface{})
+		uiRegionSet := make(map[string]bool, len(uiRegionRaw))
+		for _, v := range uiRegionRaw {
+			if s, ok := v.(string); ok && s != "" {
+				uiRegionSet[s] = true
+			}
+		}
+		// If every UUID in user_intent.region_list is still unknown at plan time
+		// (e.g. referencing a concurrently-created provider's computed region UUIDs),
+		// the set is empty and we cannot perform the cross-check. Skip rather than
+		// produce a false-positive error.
+		if len(uiRegionSet) == 0 {
+			continue
+		}
+
+		seenProvider := make(map[string]map[string]string)
+		for pi, pcRaw := range cloudList {
+			pc, ok := pcRaw.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			provUUID, _ := pc["provider"].(string)
+			if provUUID == "" {
+				continue
+			}
+			if _, fetched := seenProvider[provUUID]; !fetched {
+				regions, _, err := c.RegionManagementAPI.GetRegion(
+					ctx, cUUID, provUUID).Execute()
+				if err != nil {
+					seenProvider[provUUID] = nil
+					continue
+				}
+				codeToUUID := make(map[string]string, len(regions))
+				for _, r := range regions {
+					if r.GetCode() != "" && r.GetUuid() != "" {
+						codeToUUID[r.GetCode()] = r.GetUuid()
+					}
+				}
+				seenProvider[provUUID] = codeToUUID
+			}
+			codeToUUID := seenProvider[provUUID]
+			if codeToUUID == nil {
+				continue
+			}
+
+			regionList, _ := pc["region_list"].([]interface{})
+			for _, prRaw := range regionList {
+				pr, ok := prRaw.(map[string]interface{})
+				if !ok {
+					continue
+				}
+				regionCode, _ := pr["code"].(string)
+				if regionCode == "" {
+					continue
+				}
+				regionUUID, known := codeToUUID[regionCode]
+				if !known {
+					// unknown code is caught by validateCloudListAZCodes; skip here
+					continue
+				}
+				if !uiRegionSet[regionUUID] {
+					return fmt.Errorf(
+						"clusters[%d].cloud_list[%d].region_list: "+
+							"region %q (UUID %s) is not listed in "+
+							"clusters[%d].user_intent.region_list; "+
+							"add %s to user_intent.region_list",
+						ci, pi, regionCode, regionUUID, ci, regionUUID)
+				}
+			}
+		}
+	}
+	return nil
+}
+
 // validateCloudListAZCodes returns an error if any AZ code in cloudList does
 // not exist in the provider's zone list. Uses RegionManagementAPI.GetRegion
 // (same source as fetchProviderZoneFallback) for authoritative zone data.

@@ -91,30 +91,50 @@ func cloudListSchema() *schema.Resource {
 											"to nodes in this zone first.",
 									},
 									"leader_preference": {
-										Type:     schema.TypeInt,
-										Optional: true,
-										Computed: true,
-										Description: "Leader placement priority for this zone. " +
+										Type:         schema.TypeInt,
+										Optional:     true,
+										Computed:     true,
+										ValidateFunc: validation.IntAtLeast(0),
+										Description: "Master leader placement priority for this zone. " +
 											"Zero means no preference. A lower non-zero value " +
-											"indicates higher priority. Multiple zones may share " +
-											"the same value. Must be non-negative contiguous " +
-											"integers when used.",
+											"indicates higher priority (e.g. 1 is preferred over 2). " +
+											"Multiple zones may share the same value. " +
+											"When any zone has a non-zero value, all unique non-zero " +
+											"priority values across zones must form a contiguous " +
+											"sequence with no gaps (e.g. 1,2,3 is valid; 1,3 is not). " +
+											"YBA enforces this and rejects requests with gaps. " +
+											"Must be non-negative. " +
+											"This setting is most effective with replication_factor >= 3, " +
+											"where the YBA load balancer can move leaders between zones " +
+											"without data migration. " +
+											"For replication_factor = 1 (single master) the setting is " +
+											"effectively a no-op: there are no follower replicas in other " +
+											"zones to promote, so leader placement cannot be changed " +
+											"without physically migrating tablet data.",
 									},
 									"num_nodes": {
-										Type:     schema.TypeInt,
-										Optional: true,
-										Computed: true,
+										Type:         schema.TypeInt,
+										Optional:     true,
+										Computed:     true,
+										ValidateFunc: validation.IntAtLeast(0),
 										Description: "Number of nodes to place in this zone. " +
 											"When cloud_list is set, these per-AZ counts are " +
 											"the authoritative source of truth: YBA derives " +
 											"the total node count from their sum and " +
-											"user_intent.num_nodes is ignored.",
+											"user_intent.num_nodes is ignored. " +
+											"YBA removes any AZ whose node count reaches 0 " +
+											"from the placement; do not set this to 0 unless " +
+											"the intent is to remove the zone.",
 									},
 									"replication_factor": {
-										Type:        schema.TypeInt,
-										Optional:    true,
-										Computed:    true,
-										Description: "Replication factor for this zone.",
+										Type:         schema.TypeInt,
+										Optional:     true,
+										Computed:     true,
+										ValidateFunc: validation.IntAtLeast(0),
+										Description: "Minimum number of replicas (min_num_replicas) " +
+											"for this zone. YBA allows 0 to indicate no minimum " +
+											"guarantee for this zone. The sum of per-AZ values " +
+											"must not exceed user_intent.replication_factor.",
 									},
 									"subnet": {
 										Type:        schema.TypeString,
@@ -254,8 +274,9 @@ func userIntentSchema() *schema.Resource {
 				Description: "List of regions for node placement.",
 			},
 			"num_nodes": {
-				Type:     schema.TypeInt,
-				Required: true,
+				Type:         schema.TypeInt,
+				Required:     true,
+				ValidateFunc: validation.IntAtLeast(1),
 				Description: "Desired total number of nodes for this universe. " +
 					"When cloud_list is also set, this value is ignored by YBA: " +
 					"the actual node count is determined by the sum of " +
@@ -264,9 +285,10 @@ func userIntentSchema() *schema.Resource {
 					"avoid plan drift on subsequent applies.",
 			},
 			"replication_factor": {
-				Type:        schema.TypeInt,
-				Required:    true,
-				Description: "Replication factor for this universe.",
+				Type:         schema.TypeInt,
+				Required:     true,
+				ValidateFunc: validation.IntAtLeast(1),
+				Description:  "Replication factor for this universe.",
 			},
 			"instance_type": {
 				Type:        schema.TypeString,

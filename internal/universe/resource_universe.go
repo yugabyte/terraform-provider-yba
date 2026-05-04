@@ -1361,16 +1361,29 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 			}
 			return nil
 		},
-		// Validate cloud_list AZ codes at plan time for new resources only.
-		// For updates the same check runs in resourceUniverseUpdate (apply time),
-		// which guarantees it never fires during terraform destroy.
+		// Validate cloud_list for duplicate region/AZ codes at plan time.
+		// Duplicate codes produce the cryptic BE error:
+		// "Duplicate key <uuid> (attempted merging values N and M)".
+		// This check is purely structural (no API call) so it runs for both
+		// new and existing resources.
+		customdiff.ValidateValue("clusters",
+			func(ctx context.Context, value, meta interface{}) error {
+				return validateCloudListDuplicates(value.([]interface{}))
+			},
+		),
+		// Validate cloud_list AZ codes and region cross-reference at plan time
+		// for new resources only. For updates the same checks run in
+		// resourceUniverseUpdate (apply time), which guarantees they never fire
+		// during terraform destroy.
 		func(ctx context.Context, d *schema.ResourceDiff, meta interface{}) error {
 			if d.Id() != "" {
 				return nil // existing resource: validated at apply time in resourceUniverseUpdate
 			}
 			c := meta.(*api.APIClient).YugawareClient
 			cUUID := meta.(*api.APIClient).CustomerID
-			for _, clRaw := range d.Get("clusters").([]interface{}) {
+			clusters := d.Get("clusters").([]interface{})
+			// Validate that every AZ code belongs to the region it is listed under.
+			for _, clRaw := range clusters {
 				cl, ok := clRaw.(map[string]interface{})
 				if !ok {
 					continue
@@ -1380,8 +1393,56 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 					return err
 				}
 			}
+			// Validate that every region in cloud_list is also in user_intent.region_list.
+			if err := validateCloudListRegionsInUserIntent(
+				ctx, c, cUUID, clusters); err != nil {
+				return err
+			}
 			return nil
 		},
+		// Validate that preferred_region, when set, is listed in region_list.
+		// Neither YBA nor the provider previously enforced this; a universe can
+		// be created with preferred_region pointing to a region outside the
+		// placement, which silently has no effect.
+		customdiff.ValidateValue("clusters",
+			func(ctx context.Context, value, meta interface{}) error {
+				for i, clRaw := range value.([]interface{}) {
+					cl, ok := clRaw.(map[string]interface{})
+					if !ok {
+						continue
+					}
+					uiList, _ := cl["user_intent"].([]interface{})
+					if len(uiList) == 0 {
+						continue
+					}
+					ui, ok := uiList[0].(map[string]interface{})
+					if !ok {
+						continue
+					}
+					preferred, _ := ui["preferred_region"].(string)
+					if preferred == "" {
+						continue
+					}
+					// preferred_region and region_list both hold region UUIDs.
+					inList := false
+					for _, v := range ui["region_list"].([]interface{}) {
+						if s, ok := v.(string); ok && s == preferred {
+							inList = true
+							break
+						}
+					}
+					if !inList {
+						return fmt.Errorf(
+							"clusters[%d].user_intent.preferred_region %q "+
+								"is not present in clusters[%d].user_intent.region_list; "+
+								"the preferred region must be one of the regions "+
+								"used for placement",
+							i, preferred, i)
+					}
+				}
+				return nil
+			},
+		),
 		// --- PENDING UPDATE SUPPORT ---
 		// The validators in this block prevent in-place changes to fields that
 		// are present in the schema and have a corresponding YBA API update path
@@ -1918,11 +1979,19 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 							"and uses the AZ sum as the authoritative node count",
 						wantNodes, sumNodes)
 				}
-				if allRFKnown && sumRF > 0 && wantRF != sumRF {
+				// az_list.replication_factor is min_num_replicas in YBA: the minimum
+				// replicas guaranteed in that zone. The sum of per-AZ minimums may be
+				// less than the cluster RF (YBA freely places the remaining replicas).
+				// Only reject when the sum EXCEEDS the cluster RF, which would require
+				// more committed replicas than the total RF allows.
+				if allRFKnown && sumRF > 0 && sumRF > wantRF {
 					return fmt.Errorf(
-						"user_intent.replication_factor (%d) must equal the sum of "+
-							"cloud_list az_list replication_factor (%d)",
-						wantRF, sumRF)
+						"sum of cloud_list az_list replication_factor (%d) exceeds "+
+							"user_intent.replication_factor (%d): "+
+							"az_list.replication_factor is the minimum replicas per zone "+
+							"(min_num_replicas) and the total cannot exceed the cluster "+
+							"replication_factor",
+						sumRF, wantRF)
 				}
 			}
 			return nil
@@ -2338,11 +2407,18 @@ func resourceUniverseUpdate(
 		return diag.FromErr(err)
 	}
 
-	// Validate cloud_list AZ codes before any API mutations. This check is
-	// skipped in CustomizeDiff for existing resources to avoid firing during
-	// terraform destroy; it runs here instead (apply time, update path only).
+	// Validate cloud_list before any API mutations. These checks are skipped in
+	// CustomizeDiff for existing resources to avoid firing during terraform
+	// destroy; they run here instead (apply time, update path only).
 	if d.HasChange("clusters") {
-		for i, clRaw := range d.Get("clusters").([]interface{}) {
+		clusters := d.Get("clusters").([]interface{})
+
+		// Structural duplicate check (no API call needed).
+		if err := validateCloudListDuplicates(clusters); err != nil {
+			return diag.FromErr(err)
+		}
+
+		for i, clRaw := range clusters {
 			if !d.HasChange(fmt.Sprintf("clusters.%d.cloud_list", i)) {
 				continue
 			}
@@ -2350,10 +2426,17 @@ func resourceUniverseUpdate(
 			if !ok {
 				continue
 			}
+			// Validate that every AZ code belongs to the region it is listed under.
 			if err := validateCloudListAZCodes(
 				ctx, c, cUUID, cl["cloud_list"].([]interface{})); err != nil {
 				return diag.FromErr(err)
 			}
+		}
+
+		// Validate that every region in cloud_list is also in user_intent.region_list.
+		if err := validateCloudListRegionsInUserIntent(
+			ctx, c, cUUID, clusters); err != nil {
+			return diag.FromErr(err)
 		}
 	}
 
@@ -3051,7 +3134,39 @@ func resourceUniverseUpdate(
 						}
 					}
 
-					// 2. Execute Update if flagged (or if minor config changes with empty opts)
+					// 2. Execute Update if flagged (or if minor config changes with empty opts).
+					// Guard: when editZoneAllowed is the only reason we are here (no user
+					// intent change) and the pre-flight returned no update options, the
+					// cloud_list diff was not recognized as actionable by YBA. This can
+					// happen for a leader_preference-only change: YBA's isSamePlacement
+					// includes leaderPreference in its AZInfo model but uses a broken
+					// type comparison (AZInfo vs PlacementAZ) that currently makes it
+					// always return false. If/when that bug is fixed, isSamePlacement
+					// will correctly detect the change and this guard will become a
+					// no-op. Until then, surface a clear diagnostic instead of letting
+					// the request through and receiving the opaque BE error.
+					if !editAllowed && editZoneAllowed && !hasUpdate && !isOnlyFullMove &&
+						!smartResize {
+						if d.HasChange(fmt.Sprintf("clusters.%d.cloud_list", i)) {
+							oldCLRaw, newCLRaw := d.GetChange(
+								fmt.Sprintf("clusters.%d.cloud_list", i))
+							oldCL, _ := oldCLRaw.([]interface{})
+							newCL, _ := newCLRaw.([]interface{})
+							if reflect.DeepEqual(
+								cloudListWithoutLeaderPreference(oldCL),
+								cloudListWithoutLeaderPreference(newCL),
+							) {
+								return diag.Errorf(
+									"clusters[%d]: the only cloud_list change is "+
+										"leader_preference but YBA returned no update options "+
+										"for this edit (pre-flight options: %v). "+
+										"To apply, combine the leader_preference change with "+
+										"another placement field (e.g. replication_factor or "+
+										"num_nodes) in the same apply",
+									i, opts)
+							}
+						}
+					}
 					if isOnlyFullMove || hasUpdate || len(opts) == 0 {
 						req := client.UniverseConfigureTaskParams{
 							UniverseUUID:       utils.GetStringPointer(d.Id()),
