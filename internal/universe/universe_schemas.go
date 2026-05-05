@@ -134,7 +134,16 @@ func cloudListSchema() *schema.Resource {
 										Description: "Minimum number of replicas (min_num_replicas) " +
 											"for this zone. YBA allows 0 to indicate no minimum " +
 											"guarantee for this zone. The sum of per-AZ values " +
-											"must not exceed user_intent.replication_factor.",
+											"must not exceed user_intent.replication_factor. " +
+											"NOTE: for symmetric placements where the number of " +
+											"AZs equals the cluster replication_factor (e.g. " +
+											"3 AZs with RF=3), YBA normalises replication_factor=0 " +
+											"back to 1 for every AZ because each AZ is required " +
+											"for fault tolerance. Setting 0 is therefore a no-op " +
+											"for that topology and will cause an error unless " +
+											"combined with a node-count or other structural change " +
+											"that YBA recognises as actionable. The 2-AZ RF=3 " +
+											"case is an exception that YBA explicitly supports.",
 									},
 									"subnet": {
 										Type:        schema.TypeString,

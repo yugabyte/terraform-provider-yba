@@ -163,10 +163,17 @@ func flattenCloudList(cl []client.PlacementCloud) (res []interface{}) {
 
 func flattenRegionList(cl []client.PlacementRegion) (res []interface{}) {
 	for _, r := range cl {
+		// The placement API does not always populate the region Name field
+		// (it can be absent for regions being edited). Fall back to Code so
+		// that "terraform plan" never shows name = null in the diff.
+		name := r.GetName()
+		if name == "" {
+			name = r.GetCode()
+		}
 		pr := map[string]interface{}{
 			"uuid":    r.GetUuid(),
 			"code":    r.GetCode(),
-			"name":    r.GetName(),
+			"name":    name,
 			"az_list": flattenAzList(r.AzList),
 		}
 		res = append(res, pr)

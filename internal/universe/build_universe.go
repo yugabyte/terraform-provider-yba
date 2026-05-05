@@ -111,6 +111,60 @@ func hasExplicitCloudList(clusters []client.Cluster) bool {
 	return false
 }
 
+// cloudListWithoutLeaderPreferenceAndRF returns a deep copy of a cloud_list
+// with both leader_preference and replication_factor zeroed out in every
+// az_list entry. It is used to determine whether the only differing fields
+// between two cloud lists are leader_preference and/or replication_factor:
+// if stripping both makes the lists reflect.DeepEqual, nothing else changed.
+func cloudListWithoutLeaderPreferenceAndRF(cloudList []interface{}) []interface{} {
+	out := make([]interface{}, 0, len(cloudList))
+	for _, pcRaw := range cloudList {
+		pc, ok := pcRaw.(map[string]interface{})
+		if !ok {
+			out = append(out, pcRaw)
+			continue
+		}
+		pcCopy := make(map[string]interface{}, len(pc))
+		for k, v := range pc {
+			pcCopy[k] = v
+		}
+		rlRaw, _ := pc["region_list"].([]interface{})
+		rlCopy := make([]interface{}, 0, len(rlRaw))
+		for _, prRaw := range rlRaw {
+			pr, ok := prRaw.(map[string]interface{})
+			if !ok {
+				rlCopy = append(rlCopy, prRaw)
+				continue
+			}
+			prCopy := make(map[string]interface{}, len(pr))
+			for k, v := range pr {
+				prCopy[k] = v
+			}
+			azRaw, _ := pr["az_list"].([]interface{})
+			azCopy := make([]interface{}, 0, len(azRaw))
+			for _, azItemRaw := range azRaw {
+				az, ok := azItemRaw.(map[string]interface{})
+				if !ok {
+					azCopy = append(azCopy, azItemRaw)
+					continue
+				}
+				azMap := make(map[string]interface{}, len(az))
+				for k, v := range az {
+					azMap[k] = v
+				}
+				azMap["leader_preference"] = 0
+				azMap["replication_factor"] = 0
+				azCopy = append(azCopy, azMap)
+			}
+			prCopy["az_list"] = azCopy
+			rlCopy = append(rlCopy, prCopy)
+		}
+		pcCopy["region_list"] = rlCopy
+		out = append(out, pcCopy)
+	}
+	return out
+}
+
 // cloudListWithoutLeaderPreference returns a deep copy of a cloud_list
 // ([]interface{}) with the leader_preference field zeroed out in every az_list
 // entry. The copy is used to determine whether leader_preference is the ONLY
@@ -333,10 +387,18 @@ func validateCloudListRegionsInUserIntent(
 	return nil
 }
 
-// validateCloudListAZCodes returns an error if any AZ code in cloudList does
-// not exist in the provider's zone list. Uses RegionManagementAPI.GetRegion
-// (same source as fetchProviderZoneFallback) for authoritative zone data.
-// Provider UUIDs are deduplicated so each provider is fetched at most once.
+// validateCloudListAZCodes returns an error if any region code or AZ code in
+// cloudList does not exist in the provider's zone list. Catches two classes of
+// mistakes that otherwise produce the cryptic BE error
+// "Unable to place replicas, no zones available.":
+//  1. A region code listed under cloud_list.region_list that does not exist for
+//     the specified provider (e.g. a typo or a region not imported into YBA).
+//  2. An AZ code listed under az_list that does not belong to the declared
+//     parent region (e.g. us-east-1a placed inside a us-west-2 block).
+//
+// Uses RegionManagementAPI.GetRegion (same source as fetchProviderZoneFallback)
+// for authoritative zone data. Provider UUIDs are deduplicated so each
+// provider is fetched at most once.
 func validateCloudListAZCodes(
 	ctx context.Context,
 	c *client.APIClient,
@@ -382,14 +444,28 @@ func validateCloudListAZCodes(
 				continue
 			}
 			regionCode, _ := r["code"].(string)
-			validZones := validByRegion[regionCode]
+			if regionCode == "" {
+				continue
+			}
+			validZones, regionKnown := validByRegion[regionCode]
+			if !regionKnown {
+				var validRegions []string
+				for rc := range validByRegion {
+					validRegions = append(validRegions, rc)
+				}
+				return fmt.Errorf(
+					"region %q does not exist for provider %s; "+
+						"valid regions: %s",
+					regionCode, provUUID,
+					strings.Join(validRegions, ", "))
+			}
 			for _, azRaw := range r["az_list"].([]interface{}) {
 				az, ok := azRaw.(map[string]interface{})
 				if !ok {
 					continue
 				}
 				azCode, _ := az["code"].(string)
-				if azCode == "" || validZones == nil {
+				if azCode == "" {
 					continue
 				}
 				if !validZones[azCode] {
@@ -398,8 +474,8 @@ func validateCloudListAZCodes(
 						valid = append(valid, z)
 					}
 					return fmt.Errorf(
-						"zone %q in region %q does not exist for "+
-							"provider %s; valid zones: %s",
+						"zone %q does not exist in region %q for "+
+							"provider %s; valid zones in that region: %s",
 						azCode, regionCode, provUUID,
 						strings.Join(valid, ", "))
 				}
