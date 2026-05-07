@@ -438,6 +438,120 @@ func flattenDeviceInfo(di *client.DeviceInfo) []interface{} {
 	return utils.CreateSingletonList(v)
 }
 
+// restoreDedicatedMasterDeviceInfo corrects a suppression edge case: when the
+// user explicitly wrote a dedicated_masters.device_info block whose values happen
+// to equal the TServer device_info, flattenDedicatedMasters suppresses it to []
+// (because it cannot distinguish "user omitted it" from "user wrote identical
+// values"). That produces a permanent plan diff: config has device_info, state
+// has [].
+//
+// This function restores the actual API-returned master device_info values
+// whenever the prior Terraform state already held a non-empty device_info list,
+// indicating the user deliberately tracked those values. Clusters that had
+// device_info: [] in prior state are left untouched -- their suppression is
+// intentional (user omitted the block and relies on TServer inheritance).
+//
+// Cluster matching mirrors restoreRedactedPasswords: UUID-first, then index.
+func restoreDedicatedMasterDeviceInfo(
+	newClusters []map[string]interface{},
+	oldClusters []interface{},
+	apiClusters []client.Cluster,
+) {
+	oldByUUID := make(map[string]map[string]interface{}, len(oldClusters))
+	for _, oc := range oldClusters {
+		ocm, ok := oc.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		uuid, _ := ocm["uuid"].(string)
+		if uuid != "" {
+			oldByUUID[uuid] = ocm
+		}
+	}
+	apiByUUID := make(map[string]client.Cluster, len(apiClusters))
+	for _, ac := range apiClusters {
+		if ac.GetUuid() != "" {
+			apiByUUID[ac.GetUuid()] = ac
+		}
+	}
+
+	for i, nc := range newClusters {
+		uuid, _ := nc["uuid"].(string)
+
+		var oldCluster map[string]interface{}
+		if uuid != "" {
+			oldCluster = oldByUUID[uuid]
+		}
+		if oldCluster == nil && i < len(oldClusters) {
+			oldCluster, _ = oldClusters[i].(map[string]interface{})
+		}
+		if oldCluster == nil {
+			continue
+		}
+
+		// Locate the prior dedicated_masters.device_info in old state.
+		oldUIList, ok := oldCluster["user_intent"].([]interface{})
+		if !ok || len(oldUIList) == 0 {
+			continue
+		}
+		oldUI, ok := oldUIList[0].(map[string]interface{})
+		if !ok {
+			continue
+		}
+		oldDMList, _ := oldUI["dedicated_masters"].([]interface{})
+		if len(oldDMList) == 0 {
+			continue
+		}
+		oldDM, ok := oldDMList[0].(map[string]interface{})
+		if !ok {
+			continue
+		}
+		oldDIList, _ := oldDM["device_info"].([]interface{})
+		if len(oldDIList) == 0 {
+			// Prior state had no explicit device_info -- suppression is correct.
+			continue
+		}
+
+		// Prior state had explicit device_info. If the flattener suppressed it
+		// to [] in newClusters, restore actual API master device_info values.
+		newUIList, ok := nc["user_intent"].([]interface{})
+		if !ok || len(newUIList) == 0 {
+			continue
+		}
+		newUI, ok := newUIList[0].(map[string]interface{})
+		if !ok {
+			continue
+		}
+		newDMList, _ := newUI["dedicated_masters"].([]interface{})
+		if len(newDMList) == 0 {
+			continue
+		}
+		newDM, ok := newDMList[0].(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if diList, _ := newDM["device_info"].([]interface{}); len(diList) > 0 {
+			// Flattener already wrote values -- nothing to restore.
+			continue
+		}
+
+		// Find the matching API cluster to get the live MasterDeviceInfo.
+		var apiCluster client.Cluster
+		var found bool
+		if uuid != "" {
+			apiCluster, found = apiByUUID[uuid]
+		}
+		if !found && i < len(apiClusters) {
+			apiCluster = apiClusters[i]
+			found = true
+		}
+		if !found || apiCluster.UserIntent.MasterDeviceInfo == nil {
+			continue
+		}
+		newDM["device_info"] = flattenDeviceInfo(apiCluster.UserIntent.MasterDeviceInfo)
+	}
+}
+
 // alignClustersCloudList reorders the cloud_list, region_list, and az_list
 // within each flattened cluster to match the order held in the prior Terraform
 // state. This prevents spurious TypeList index-shift diffs after every read.

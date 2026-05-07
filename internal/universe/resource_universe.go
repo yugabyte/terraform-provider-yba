@@ -2597,6 +2597,7 @@ func resourceUniverseRead(
 	oldClusters := d.Get("clusters").([]interface{})
 	restoreRedactedPasswords(ctx, newClusters, oldClusters)
 	alignClustersCloudList(newClusters, oldClusters)
+	restoreDedicatedMasterDeviceInfo(newClusters, oldClusters, u.Clusters)
 	if err = d.Set("clusters", newClusters); err != nil {
 		return diag.FromErr(err)
 	}
@@ -2961,16 +2962,29 @@ func resourceUniverseUpdate(
 					editZoneAllowed = true
 				}
 			}
-			// When cloud_list is configured but unchanged, still assert UserAZSelected=true
-			// so that YBA honours the existing PlacementInfo during a FULL_MOVE instead
-			// of re-deriving placement from the user_intent.region_list alone. Without
-			// this, edits that do not touch cloud_list (instance type change, disk resize,
-			// num_volumes, storage class, communication ports) would send
-			// UserAZSelected=false and allow YBA to spread new nodes across unintended
-			// regions when the edit requires a FULL_MOVE.
+			// When cloud_list is configured but unchanged, assert UserAZSelected=true AND
+			// overwrite the live cluster PlacementInfo with the user-specified cloud_list.
+			//
+			// Setting UserAZSelected=true alone is not sufficient: the live PlacementInfo
+			// (from the API fetch) may differ from the user's desired placement if a
+			// previous FULL_MOVE placed nodes in the wrong regions. Sending the live
+			// PlacementInfo with UserAZSelected=true would tell YBA to honour THAT
+			// (incorrect) placement. Instead we must send the user's cloud_list-derived
+			// PlacementInfo so that FULL_MOVE new nodes land in the correct AZs.
+			//
+			// AZ UUIDs are resolved from the live state (same logic as the cloud_list
+			// changed path) to ensure the placement UUIDs are valid for this universe.
 			if !userAZExplicit {
 				if pi := newUniForPreflight.Clusters[i].PlacementInfo; pi != nil &&
 					len(pi.CloudList) > 0 {
+					var oldCL []client.PlacementCloud
+					if preflightUni.UniverseDetails.Clusters[i].PlacementInfo != nil {
+						oldCL = preflightUni.UniverseDetails.Clusters[i].PlacementInfo.CloudList
+					}
+					fbr, fba, fbaa := fetchProviderZoneFallback(
+						ctx, c, cUUID, oldCL, pi.CloudList)
+					resolveAZUUIDs(pi, oldCL, fbr, fba, fbaa)
+					preflightUni.UniverseDetails.Clusters[i].PlacementInfo = pi
 					userAZExplicit = true
 				}
 			}
@@ -3543,16 +3557,23 @@ func resourceUniverseUpdate(
 						editZoneAllowed = true
 					}
 				}
-				// When cloud_list is configured but unchanged, still assert UserAZSelected=true
-				// so that YBA honours the existing PlacementInfo during a FULL_MOVE instead
-				// of re-deriving placement from the user_intent.region_list alone. Without
-				// this, edits that do not touch cloud_list (instance type change, disk resize,
-				// num_volumes, storage class, communication ports) would send
-				// UserAZSelected=false and allow YBA to spread new nodes across unintended
-				// regions when the edit requires a FULL_MOVE.
+				// When cloud_list is configured but unchanged, assert UserAZSelected=true AND
+				// overwrite the live cluster PlacementInfo with the user-specified cloud_list.
+				// See the identical block in the pre-flight path above for the full rationale:
+				// sending the live PlacementInfo alone is not sufficient because a previous
+				// bad FULL_MOVE may have left nodes in the wrong regions. Overwriting ensures
+				// the UpdatePrimaryCluster request contains the user's intended placement.
 				if !userAZExplicit {
 					if pi := newUni.Clusters[i].PlacementInfo; pi != nil &&
 						len(pi.CloudList) > 0 {
+						var oldCL []client.PlacementCloud
+						if updateUni.UniverseDetails.Clusters[i].PlacementInfo != nil {
+							oldCL = updateUni.UniverseDetails.Clusters[i].PlacementInfo.CloudList
+						}
+						fbr, fba, fbaa := fetchProviderZoneFallback(
+							ctx, c, cUUID, oldCL, pi.CloudList)
+						resolveAZUUIDs(pi, oldCL, fbr, fba, fbaa)
+						updateUni.UniverseDetails.Clusters[i].PlacementInfo = pi
 						userAZExplicit = true
 					}
 				}
@@ -3838,16 +3859,23 @@ func resourceUniverseUpdate(
 						editZoneAllowed = true
 					}
 				}
-				// When cloud_list is configured but unchanged, still assert UserAZSelected=true
-				// so that YBA honours the existing PlacementInfo during a FULL_MOVE instead
-				// of re-deriving placement from the user_intent.region_list alone. Without
-				// this, edits that do not touch cloud_list (instance type change, disk resize,
-				// num_volumes, storage class) would send UserAZSelected=false and allow YBA
-				// to spread new nodes across unintended regions when the edit requires a
-				// FULL_MOVE.
+				// When cloud_list is configured but unchanged, assert UserAZSelected=true AND
+				// overwrite the live cluster PlacementInfo with the user-specified cloud_list.
+				// See the identical block in the pre-flight path above for the full rationale:
+				// sending the live PlacementInfo alone is not sufficient because a previous
+				// bad FULL_MOVE may have left nodes in the wrong regions. Overwriting ensures
+				// the UpdateReadOnlyCluster request contains the user's intended placement.
 				if !userAZExplicit {
 					if pi := newUni.Clusters[i].PlacementInfo; pi != nil &&
 						len(pi.CloudList) > 0 {
+						var oldCL []client.PlacementCloud
+						if updateUni.UniverseDetails.Clusters[i].PlacementInfo != nil {
+							oldCL = updateUni.UniverseDetails.Clusters[i].PlacementInfo.CloudList
+						}
+						fbr, fba, fbaa := fetchProviderZoneFallback(
+							ctx, c, cUUID, oldCL, pi.CloudList)
+						resolveAZUUIDs(pi, oldCL, fbr, fba, fbaa)
+						updateUni.UniverseDetails.Clusters[i].PlacementInfo = pi
 						userAZExplicit = true
 					}
 				}
@@ -4019,12 +4047,43 @@ func resourceUniverseUpdate(
 		}
 		newCommPorts := buildCommunicationPorts(
 			utils.MapFromSingletonList(d.Get("communication_ports").([]interface{})))
+
+		// Communication port changes trigger shouldReplaceNode=true on the YBA side,
+		// which marks all current nodes ToBeRemoved and does a FULL_MOVE. When the
+		// user has cloud_list configured, enforce the user's desired placement by
+		// overwriting the live cluster PlacementInfo entries and setting
+		// UserAZSelected=true. This prevents the FULL_MOVE from spreading new nodes
+		// to unintended regions (the same root-cause fix as the cluster-update paths).
+		portClusters := fetchedUni.UniverseDetails.Clusters
+		portUserAZSelected := false
+		configClusters := buildClusters(d.Get("clusters").([]interface{}))
+		for j := range portClusters {
+			if j >= len(configClusters) {
+				break
+			}
+			if configClusters[j].PlacementInfo == nil ||
+				len(configClusters[j].PlacementInfo.CloudList) == 0 {
+				continue
+			}
+			var oldCL []client.PlacementCloud
+			if portClusters[j].PlacementInfo != nil {
+				oldCL = portClusters[j].PlacementInfo.CloudList
+			}
+			pi := configClusters[j].PlacementInfo
+			fbr, fba, fbaa := fetchProviderZoneFallback(
+				ctx, c, cUUID, oldCL, pi.CloudList)
+			resolveAZUUIDs(pi, oldCL, fbr, fba, fbaa)
+			portClusters[j].PlacementInfo = pi
+			portUserAZSelected = true
+		}
+
 		req := client.UniverseConfigureTaskParams{
 			UniverseUUID: utils.GetStringPointer(d.Id()),
-			Clusters:     fetchedUni.UniverseDetails.Clusters,
+			Clusters:     portClusters,
 			NodeDetailsSet: buildNodeDetailsRespArrayToNodeDetailsArray(
 				fetchedUni.UniverseDetails.NodeDetailsSet),
 			CommunicationPorts:      newCommPorts,
+			UserAZSelected:          utils.GetBoolPointer(portUserAZSelected),
 			AllowInsecure:           fetchedUni.UniverseDetails.AllowInsecure,
 			RootAndClientRootCASame: fetchedUni.UniverseDetails.RootAndClientRootCASame,
 			RootCA:                  fetchedUni.UniverseDetails.RootCA,
