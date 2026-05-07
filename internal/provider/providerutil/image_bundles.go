@@ -52,6 +52,9 @@ func BuildImageBundleFromState(bundleMap map[string]interface{}) client.ImageBun
 	if details, ok := bundleMap["details"].([]interface{}); ok && len(details) > 0 {
 		if det, ok := details[0].(map[string]interface{}); ok {
 			arch, _ := det["arch"].(string)
+			if arch == "" {
+				arch = "x86_64"
+			}
 			sshUser, _ := det["ssh_user"].(string)
 			sshPort, _ := det["ssh_port"].(int)
 			globalYbImage, _ := det["global_yb_image"].(string)
