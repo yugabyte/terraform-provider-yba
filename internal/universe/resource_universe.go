@@ -228,20 +228,57 @@ func ResourceUniverse() *schema.Resource {
 				Description: "The architecture of the universe nodes." +
 					" Allowed values are x86_64 and aarch64.",
 			},
-			"allow_full_move": {
-				Type:     schema.TypeBool,
+			"full_move": {
+				Type:     schema.TypeList,
 				Optional: true,
-				Default:  false,
-				Description: "Explicit acknowledgment required to perform operations " +
-					"that trigger a FULL MOVE on the Primary or Read Replica Cluster: " +
-					"volume_size decrease (any instance type); num_volumes change with " +
-					"same instance type; storage_type change (any instance type). Full " +
-					"moves provision new nodes with the new configuration, migrate " +
-					"data from the old nodes, and decommission the old nodes. They " +
-					"require temporary 2x node capacity during migration and take " +
-					"significantly longer than in-place operations. False by default; " +
-					"set to true when the full-move implications have been reviewed and " +
-					"accepted.",
+				MaxItems: 1,
+				Description: "Block controlling whether and how full-move-triggering " +
+					"edits are permitted. A full move provisions new nodes with the " +
+					"new configuration, migrates data from the old nodes, and " +
+					"decommissions the old nodes; it requires temporary 2x node " +
+					"capacity during migration and takes significantly longer than " +
+					"in-place operations.",
+				Elem: &schema.Resource{
+					Schema: map[string]*schema.Schema{
+						"allow": {
+							Type:     schema.TypeBool,
+							Optional: true,
+							Default:  false,
+							Description: "Explicit acknowledgment required to perform " +
+								"operations that trigger a FULL MOVE on the Primary or " +
+								"Read Replica Cluster: volume_size decrease (any " +
+								"instance type); num_volumes change with same instance " +
+								"type; storage_type change (any instance type). False " +
+								"by default; set to true when the full-move " +
+								"implications have been reviewed and accepted. " +
+								"Plan-time validation rejects full-move-triggering " +
+								"edits when allow = false, and apply-time pre-flight " +
+								"aborts when YBA returns FULL_MOVE as the only valid " +
+								"update option.",
+						},
+						"force": {
+							Type:     schema.TypeBool,
+							Optional: true,
+							Default:  false,
+							Description: "When true, perform a FULL MOVE even when YBA " +
+								"reports that smart resize (in-place rolling update) " +
+								"is also available for the planned edit. Intended for " +
+								"specific one-off operations where the operator wants " +
+								"the stronger guarantees of a full rebuild (fresh " +
+								"nodes, no lingering state) over the speed and lower " +
+								"cost of smart resize. Requires allow = true; setting " +
+								"force = true with allow = false is rejected at plan " +
+								"time. Has no effect when YBA does not return " +
+								"FULL_MOVE as an option for the planned edit. " +
+								"Recommended usage: revert to force = false after the " +
+								"targeted operation completes. Leaving force = true " +
+								"in configuration routes every subsequent eligible " +
+								"edit through FULL MOVE, which requires 2x node " +
+								"capacity during migration and takes significantly " +
+								"longer than smart resize.",
+						},
+					},
+				},
 			},
 			"clusters": {
 				Type:     schema.TypeList,
@@ -590,7 +627,7 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 				return nil
 			},
 		),
-		customdiff.IfValue("allow_full_move",
+		customdiff.IfValue("full_move.0.allow",
 			func(ctx context.Context, value, meta interface{}) bool {
 				return !value.(bool)
 			},
@@ -598,7 +635,7 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 				"clusters",
 				func(ctx context.Context, old, new, m interface{}) error {
 					// if not a new universe, prevent decrease in volume size in primary
-					// unless allow_full_move = true (outer IfValue gate). Shrink triggers
+					// unless full_move { allow = true } (outer IfValue gate). Shrink triggers
 					// a FULL MOVE: new nodes are provisioned with
 					// the smaller volume, data is migrated, and old nodes are
 					// decommissioned. Requires 2x capacity and takes significantly
@@ -622,8 +659,8 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 											"with the smaller volume, data migrated, old " +
 											"nodes decommissioned; requires 2x capacity " +
 											"and takes significantly longer than smart " +
-											"resize). To proceed, set allow_full_move = " +
-											"true on the universe resource to acknowledge " +
+											"resize). To proceed, set full_move { allow =  " +
+											"true } on the universe resource to acknowledge " +
 											"these implications.")
 								}
 							}
@@ -633,7 +670,7 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 				},
 			),
 		),
-		customdiff.IfValue("allow_full_move",
+		customdiff.IfValue("full_move.0.allow",
 			func(ctx context.Context, value, meta interface{}) bool {
 				return !value.(bool)
 			},
@@ -642,7 +679,7 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 				func(ctx context.Context, old, new, m interface{}) error {
 					// num_volumes change with same instance type: full move via
 					// UpdatePrimaryCluster or UpdateReadOnlyCluster. Plan-time IfValue
-					// gate on allow_full_move has already enforced user consent for both
+					// gate on full_move.allow has already enforced user consent for both
 					// PRIMARY and RR paths.
 					newClusterSet := buildClusters(new.([]interface{}))
 					if len(old.([]interface{})) != 0 {
@@ -666,7 +703,7 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 											"decommissioned; requires 2x capacity and " +
 											"takes significantly longer than in-place " +
 											"operations). To proceed, set " +
-											"allow_full_move = true on the universe " +
+											"full_move { allow = true } on the universe " +
 											"resource to acknowledge these implications.")
 								}
 							}
@@ -676,7 +713,7 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 				},
 			),
 		),
-		customdiff.IfValue("allow_full_move",
+		customdiff.IfValue("full_move.0.allow",
 			func(ctx context.Context, value, meta interface{}) bool {
 				return !value.(bool)
 			},
@@ -685,7 +722,7 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 				func(ctx context.Context, old, new, m interface{}) error {
 					// PRIMARY storage_type change: YBA handles this via full move
 					// only (no cloud-provider in-place conversion path is wired).
-					// Gated on allow_full_move for the same reasons as volume_size
+					// Gated on full_move.allow for the same reasons as volume_size
 					// shrink and num_volumes change.
 					if len(old.([]interface{})) == 0 {
 						return nil
@@ -708,7 +745,7 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 							"new storage type, data migrated, old nodes "+
 							"decommissioned; requires 2x capacity and takes "+
 							"significantly longer than in-place operations). To "+
-							"proceed, set allow_full_move = true on the universe "+
+							"proceed, set full_move { allow = true } on the universe "+
 							"resource to acknowledge these implications.",
 						oldST, newST)
 				},
@@ -718,7 +755,7 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 			"clusters",
 			func(ctx context.Context, old, new, m interface{}) error {
 				// Validate storage_type transitions for shape, independent of
-				// allow_full_move. Always runs because these are config errors that
+				// full_move.allow. Always runs because these are config errors that
 				// would fail at YBA anyway, catching them at plan time gives the
 				// user a clearer message than a YBA 400.
 				if len(old.([]interface{})) == 0 {
@@ -771,7 +808,7 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 			"clusters",
 			func(ctx context.Context, old, new, m interface{}) error {
 				// Validate dedicated master storage_type transitions for shape,
-				// independent of allow_full_move. Mirrors the TServer validator above.
+				// independent of full_move.allow. Mirrors the TServer validator above.
 				if len(old.([]interface{})) == 0 {
 					return nil
 				}
@@ -815,7 +852,7 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 				return nil
 			},
 		),
-		customdiff.IfValue("allow_full_move",
+		customdiff.IfValue("full_move.0.allow",
 			func(ctx context.Context, value, meta interface{}) bool {
 				return !value.(bool)
 			},
@@ -823,7 +860,7 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 				"clusters",
 				func(ctx context.Context, old, new, m interface{}) error {
 					// RR storage_type change: YBA handles this via full move only,
-					// routed through UpdateReadOnlyCluster. Gated on allow_full_move,
+					// routed through UpdateReadOnlyCluster. Gated on full_move.allow,
 					// consistent with PRIMARY storage_type behavior.
 					if len(old.([]interface{})) == 0 {
 						return nil
@@ -846,7 +883,7 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 							"with the new storage type, data migrated, old nodes "+
 							"decommissioned; requires 2x capacity and takes "+
 							"significantly longer than in-place operations). To "+
-							"proceed, set allow_full_move = true on the universe "+
+							"proceed, set full_move { allow = true } on the universe "+
 							"resource to acknowledge these implications.",
 						oldST, newST)
 				},
@@ -856,7 +893,7 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 			"clusters",
 			func(ctx context.Context, old, new, m interface{}) error {
 				// Validate RR storage_type transitions for shape, independent of
-				// allow_full_move. Same logic as PRIMARY shape validator: reject
+				// full_move.allow. Same logic as PRIMARY shape validator: reject
 				// cross-cloud transitions and enforce iops/throughput requirements
 				// on the new storage_type.
 				if len(old.([]interface{})) == 0 {
@@ -901,7 +938,7 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 				return nil
 			},
 		),
-		customdiff.IfValue("allow_full_move",
+		customdiff.IfValue("full_move.0.allow",
 			func(ctx context.Context, value, meta interface{}) bool {
 				return !value.(bool)
 			},
@@ -910,7 +947,7 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 				func(ctx context.Context, old, new, m interface{}) error {
 					// RR volume_size decrease triggers a FULL MOVE via
 					// UpdateReadOnlyCluster (YBA's smart resize cannot shrink
-					// volumes). Gated on allow_full_move for the same reasons as
+					// volumes). Gated on full_move.allow for the same reasons as
 					// PRIMARY shrink. Fires regardless of instance_type change,
 					// since shrink is always a full move.
 					newClusterSet := buildClusters(new.([]interface{}))
@@ -936,12 +973,12 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 							"smaller volume, data migrated from primary, old nodes " +
 							"decommissioned; requires 2x capacity and takes " +
 							"significantly longer than smart resize). To proceed, " +
-							"set allow_full_move = true on the universe resource " +
+							"set full_move { allow = true } on the universe resource " +
 							"to acknowledge these implications.")
 				},
 			),
 		),
-		customdiff.IfValue("allow_full_move",
+		customdiff.IfValue("full_move.0.allow",
 			func(ctx context.Context, value, meta interface{}) bool {
 				return !value.(bool)
 			},
@@ -950,7 +987,7 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 				func(ctx context.Context, old, new, m interface{}) error {
 					// RR num_volumes change with same instance type triggers a
 					// FULL MOVE via UpdateReadOnlyCluster (no in-place path for
-					// disk count changes). Gated on allow_full_move for the same
+					// disk count changes). Gated on full_move.allow for the same
 					// reasons as PRIMARY num_volumes change. With instance-type
 					// change, the full move is already happening via the existing
 					// path and this validator does not fire. Volume_size changes
@@ -979,14 +1016,14 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 								"count, data migrated, old nodes decommissioned; " +
 								"requires 2x capacity and takes significantly " +
 								"longer than in-place operations). To proceed, " +
-								"set allow_full_move = true on the universe " +
+								"set full_move { allow = true } on the universe " +
 								"resource to acknowledge these implications.")
 					}
 					return nil
 				},
 			),
 		),
-		customdiff.IfValue("allow_full_move",
+		customdiff.IfValue("full_move.0.allow",
 			func(ctx context.Context, value, meta interface{}) bool {
 				return !value.(bool)
 			},
@@ -995,7 +1032,7 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 				func(ctx context.Context, old, new, m interface{}) error {
 					// dedicated_masters volume_size decrease: YBA handles this via a
 					// FULL MOVE on master nodes (same mechanics as TServer volume_size
-					// decrease). Gated on allow_full_move for the same reasons.
+					// decrease). Gated on full_move.allow for the same reasons.
 					if len(old.([]interface{})) == 0 {
 						return nil
 					}
@@ -1021,14 +1058,14 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 								"nodes provisioned with the smaller volume, data " +
 								"migrated, old master nodes decommissioned; requires " +
 								"2x capacity and takes significantly longer than smart " +
-								"resize). To proceed, set allow_full_move = true on " +
+								"resize). To proceed, set full_move { allow = true } on " +
 								"the universe resource to acknowledge these implications.")
 					}
 					return nil
 				},
 			),
 		),
-		customdiff.IfValue("allow_full_move",
+		customdiff.IfValue("full_move.0.allow",
 			func(ctx context.Context, value, meta interface{}) bool {
 				return !value.(bool)
 			},
@@ -1037,7 +1074,7 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 				func(ctx context.Context, old, new, m interface{}) error {
 					// dedicated_masters num_volumes change with the same master
 					// instance_type triggers a FULL MOVE on master nodes. Gated on
-					// allow_full_move for the same reasons as TServer num_volumes change.
+					// full_move.allow for the same reasons as TServer num_volumes change.
 					if len(old.([]interface{})) == 0 {
 						return nil
 					}
@@ -1063,15 +1100,15 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 								"nodes provisioned with the new volume count, data " +
 								"migrated, old master nodes decommissioned; requires " +
 								"2x capacity and takes significantly longer than " +
-								"in-place operations). To proceed, set allow_full_move" +
-								" = true on the universe resource to acknowledge " +
+								"in-place operations). To proceed, set full_move { allow" +
+								" = true }on the universe resource to acknowledge " +
 								"these implications.")
 					}
 					return nil
 				},
 			),
 		),
-		customdiff.IfValue("allow_full_move",
+		customdiff.IfValue("full_move.0.allow",
 			func(ctx context.Context, value, meta interface{}) bool {
 				return !value.(bool)
 			},
@@ -1080,7 +1117,7 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 				func(ctx context.Context, old, new, m interface{}) error {
 					// dedicated_masters storage_type change triggers a FULL MOVE on
 					// master nodes (same mechanics as TServer storage_type change).
-					// Gated on allow_full_move for the same reasons.
+					// Gated on full_move.allow for the same reasons.
 					if len(old.([]interface{})) == 0 {
 						return nil
 					}
@@ -1110,7 +1147,7 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 							"nodes provisioned with the new storage type, data "+
 							"migrated, old master nodes decommissioned; requires 2x "+
 							"capacity and takes significantly longer than in-place "+
-							"operations). To proceed, set allow_full_move = true on "+
+							"operations). To proceed, set full_move { allow = true } on "+
 							"the universe resource to acknowledge these implications.",
 						oldST, newST)
 				},
@@ -1538,6 +1575,24 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 				return nil
 			},
 		),
+		customdiff.ValidateValue("full_move", func(ctx context.Context, value, meta interface{}) error {
+			list := value.([]interface{})
+			if len(list) == 0 {
+				return nil
+			}
+			fm, ok := list[0].(map[string]interface{})
+			if !ok {
+				return nil
+			}
+			if fm["force"].(bool) && !fm["allow"].(bool) {
+				return errors.New(
+					"full_move.force = true requires full_move.allow = true: " +
+						"force has no meaning without first allowing full moves, " +
+						"and any full-move-triggering edit would be blocked by " +
+						"the plan-time full-move gates regardless")
+			}
+			return nil
+		}),
 		// When rollback is true, require that yb_software_version in the PRIMARY
 		// cluster config matches the universe's previous DB version. This prevents a
 		// spurious upgrade diff on the next plan after rollback (since after rollback the
@@ -2731,7 +2786,7 @@ func editUniverseParameters(ctx context.Context, oldUserIntent client.UserIntent
 		oldUserIntent.DeviceInfo.GetStorageType() != newUserIntent.DeviceInfo.GetStorageType() ||
 		dedicatedMasterChanged {
 
-		// Full-move warnings. Plan-time allow_full_move gates have already
+		// Full-move warnings. Plan-time full_move.allow gates have already
 		// enforced user consent; these just surface which specific change is
 		// triggering the full move so operators see it in the logs.
 		if (oldUserIntent.DeviceInfo.GetNumVolumes() !=
@@ -3024,11 +3079,11 @@ func resourceUniverseUpdate(
 				clusterUpdateOpts[i] = opts
 
 				isOnlyFullMove := len(opts) == 1 && opts[0] == "FULL_MOVE"
-				if isOnlyFullMove && !d.Get("allow_full_move").(bool) {
+				if isOnlyFullMove && !d.Get("full_move.0.allow").(bool) {
 					return diag.Errorf(
 						"Pre-flight safety check: YBA determined the planned edit on the %s Cluster "+
 							"requires a FULL MOVE (updateOptions=[\"FULL_MOVE\"]). "+
-							"To proceed, set allow_full_move = true on the universe resource. "+
+							"To proceed, set full_move { allow = true } on the universe resource. "+
 							"Execution aborted before any changes were made.",
 						clusterType,
 					)
@@ -3592,6 +3647,7 @@ func resourceUniverseUpdate(
 					smartResize := false
 					smartResizeOption := "Rolling"
 					hasUpdate := false
+					hasFullMove := false
 					isOnlyFullMove := len(opts) == 1 && opts[0] == "FULL_MOVE"
 
 					for _, o := range opts {
@@ -3601,6 +3657,24 @@ func resourceUniverseUpdate(
 						if o == "UPDATE" {
 							hasUpdate = true
 						}
+						if o == "FULL_MOVE" {
+							hasFullMove = true
+						}
+					}
+
+					// full_move.force = true: when YBA reports both smart resize and FULL
+					// MOVE as available, route this edit through FULL MOVE instead of smart
+					// resize. Setting smartResize = false and isOnlyFullMove = true diverts
+					// the dispatcher below into UpdatePrimaryCluster without touching the
+					// rest of the routing logic. The plan-time consistency validator has
+					// already enforced allow = true when force = true, so the pre-flight
+					// gate above is not re-checked here.
+					if d.Get("full_move.0.force").(bool) && hasFullMove && smartResize {
+						smartResize = false
+						isOnlyFullMove = true
+						tflog.Info(ctx, fmt.Sprintf(
+							"full_move.force = true: routing PRIMARY cluster %d edit through "+
+								"FULL MOVE instead of smart resize", i))
 					}
 
 					// 1. Execute Smart Resize if flagged
@@ -3894,6 +3968,7 @@ func resourceUniverseUpdate(
 					smartResize := false
 					smartResizeOption := "Rolling"
 					hasUpdate := false
+					hasFullMove := false
 					isOnlyFullMove := len(opts) == 1 && opts[0] == "FULL_MOVE"
 
 					for _, o := range opts {
@@ -3903,6 +3978,24 @@ func resourceUniverseUpdate(
 						if o == "UPDATE" {
 							hasUpdate = true
 						}
+						if o == "FULL_MOVE" {
+							hasFullMove = true
+						}
+					}
+
+					// full_move.force = true: when YBA reports both smart resize and FULL
+					// MOVE as available, route this edit through FULL MOVE instead of smart
+					// resize. Setting smartResize = false and isOnlyFullMove = true diverts
+					// the dispatcher below into UpdateReadOnlyCluster without touching the
+					// rest of the routing logic. The plan-time consistency validator has
+					// already enforced allow = true when force = true, so the pre-flight
+					// gate above is not re-checked here.
+					if d.Get("full_move.0.force").(bool) && hasFullMove && smartResize {
+						smartResize = false
+						isOnlyFullMove = true
+						tflog.Info(ctx, fmt.Sprintf(
+							"full_move.force = true: routing READ REPLICA cluster %d edit through "+
+								"FULL MOVE instead of smart resize", i))
 					}
 
 					// 1. Execute Smart Resize if flagged

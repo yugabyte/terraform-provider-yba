@@ -123,12 +123,12 @@ The following operations are supported in the Edit universe workflow:
 
 ### Optional
 
-- `allow_full_move` (Boolean) Explicit acknowledgment required to perform operations that trigger a FULL MOVE on the Primary or Read Replica Cluster: volume_size decrease (any instance type); num_volumes change with same instance type; storage_type change (any instance type). Full moves provision new nodes with the new configuration, migrate data from the old nodes, and decommission the old nodes. They require temporary 2x node capacity during migration and take significantly longer than in-place operations. False by default; set to true when the full-move implications have been reviewed and accepted.
 - `arch` (String) The architecture of the universe nodes. Allowed values are x86_64 and aarch64.
 - `client_root_ca` (String) The UUID of the clientRootCA to be used to generate client certificates and facilitate TLS communication between server and client. When set to a different value than root_ca, separate certificates are used for node-to-node and client-to-node TLS. May be set without root_ca (e.g. when node-to-node encryption is disabled but client-to-node encryption is enabled); in that case YBA auto-generates a root CA for node-to-node if needed and uses the provided value for client-to-node. When not set, root_ca is reused for client-to-node TLS.
 - `communication_ports` (Block List, Max: 1) Communication ports. (see [below for nested schema](#nestedblock--communication_ports))
 - `db_version_upgrade_options` (Block List, Max: 1) Options controlling the DB version upgrade path (UpgradeDBVersion). By default finalize = false pauses the upgrade in PreFinalize state for a monitoring phase; flip to true and re-apply to commit, or set rollback = true to revert to the previous DB version. (see [below for nested schema](#nestedblock--db_version_upgrade_options))
 - `delete_options` (Block List, Max: 1) (see [below for nested schema](#nestedblock--delete_options))
+- `full_move` (Block List, Max: 1) Block controlling whether and how full-move-triggering edits are permitted. A full move provisions new nodes with the new configuration, migrates data from the old nodes, and decommissions the old nodes; it requires temporary 2x node capacity during migration and takes significantly longer than in-place operations. (see [below for nested schema](#nestedblock--full_move))
 - `node_restart_settings` (Block List, Max: 1) Controls how node restarts are performed during upgrade operations (DB version, GFlags, Systemd, Finalize, Rollback). When omitted, YugabyteDB Anywhere platform defaults apply: Rolling strategy with 180000 ms (3 minutes) sleep after each master and TServer restart. (see [below for nested schema](#nestedblock--node_restart_settings))
 - `root_ca` (String) The UUID of the rootCA used for node-to-node TLS encryption. When not set, YBA creates and assigns a root CA automatically.
 - `timeouts` (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))
@@ -333,6 +333,15 @@ Optional:
 - `delete_backups` (Boolean) Flag indicating whether the backups should be deleted with the universe. False by default.
 - `delete_certs` (Boolean) Flag indicating whether the certificates should be deleted with the universe. False by default.
 - `force_delete` (Boolean) Force delete universe with errors. False by default.
+
+
+<a id="nestedblock--full_move"></a>
+### Nested Schema for `full_move`
+
+Optional:
+
+- `allow` (Boolean) Explicit acknowledgment required to perform operations that trigger a FULL MOVE on the Primary or Read Replica Cluster: volume_size decrease (any instance type); num_volumes change with same instance type; storage_type change (any instance type). False by default; set to true when the full-move implications have been reviewed and accepted. Plan-time validation rejects full-move-triggering edits when allow = false, and apply-time pre-flight aborts when YBA returns FULL_MOVE as the only valid update option.
+- `force` (Boolean) When true, perform a FULL MOVE even when YBA reports that smart resize (in-place rolling update) is also available for the planned edit. Intended for specific one-off operations where the operator wants the stronger guarantees of a full rebuild (fresh nodes, no lingering state) over the speed and lower cost of smart resize. Requires allow = true; setting force = true with allow = false is rejected at plan time. Has no effect when YBA does not return FULL_MOVE as an option for the planned edit. Recommended usage: revert to force = false after the targeted operation completes. Leaving force = true in configuration routes every subsequent eligible edit through FULL MOVE, which requires 2x node capacity during migration and takes significantly longer than smart resize.
 
 
 <a id="nestedblock--node_restart_settings"></a>
