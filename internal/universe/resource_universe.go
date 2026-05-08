@@ -3758,28 +3758,12 @@ func resourceUniverseUpdate(
 					}
 
 					// 2. Execute Update if flagged (or if minor config changes with empty opts).
-					// Guard: when editZoneAllowed is the only reason we are here (no user
-					// intent change) and the pre-flight returned no update options, the
-					// cloud_list diff was not recognized as actionable by YBA.
-					//
-					// Two known cases where this fires:
-					//
-					// a) leader_preference-only change: YBA's isSamePlacement compares
-					//    AZInfo(isAffinitized, numNodesInAZ, leaderPreference). When LP
-					//    is the only field that changed, isSamePlacement returns false and
-					//    getUpdateOptions returns UPDATE. If the @Data-generated equals on
-					//    AZInfo is ever reverted to reference equality the LP change would
-					//    go undetected and the empty-opts path below would cause an opaque
-					//    BE error.
-					//
-					// b) replication_factor-only (or LP+RF) change on a symmetric
-					//    placement: YBA's checkAndSetPerAZRF resets per-AZ RF=0 back to
-					//    the symmetric distribution when the number of AZs is <= the
-					//    cluster RF (e.g. 3 AZs, RF=3). After that reset no effective
-					//    change remains, so the pre-flight returns no update options and
-					//    the request through to UpdatePrimaryCluster would yield
-					//    "No changes that could be applied by EditUniverse". This is the
-					//    root cause of the 3AZ 3-node symmetric RF edit failure.
+					// This guard is only reached when YBA returned no update options (hasUpdate
+					// is false). A genuine RF or placement change would have produced UPDATE,
+					// so empty opts here means the diff was a no-op after YBA normalisation
+					// (e.g. symmetric placement: YBA resets per-AZ RF=0 back to 1 for every
+					// AZ, leaving no effective change). LP-only diffs fall through to the
+					// len(opts)==0 branch and are sent directly to UpdatePrimaryCluster.
 					if !editAllowed && editZoneAllowed && !hasUpdate && !isOnlyFullMove &&
 						!smartResize {
 						if d.HasChange(fmt.Sprintf("clusters.%d.cloud_list", i)) {
@@ -3788,41 +3772,35 @@ func resourceUniverseUpdate(
 							oldCL, _ := oldCLRaw.([]interface{})
 							newCL, _ := newCLRaw.([]interface{})
 							if reflect.DeepEqual(
-								cloudListWithoutLeaderPreference(oldCL),
-								cloudListWithoutLeaderPreference(newCL),
-							) {
-								return diag.Errorf(
-									"clusters[%d]: the only cloud_list change is "+
-										"leader_preference but YBA returned no update options "+
-										"for this edit (pre-flight options: %v). "+
-										"To apply, combine the leader_preference change with "+
-										"another placement field (e.g. replication_factor or "+
-										"num_nodes) in the same apply",
-									i, opts)
-							}
-							if reflect.DeepEqual(
 								cloudListWithoutLeaderPreferenceAndRF(oldCL),
 								cloudListWithoutLeaderPreferenceAndRF(newCL),
 							) {
-								return diag.Errorf(
-									"clusters[%d]: the cloud_list change contains only "+
-										"replication_factor and/or leader_preference edits but "+
-										"YBA returned no update options (pre-flight options: %v). "+
-										"For symmetric placements where the number of AZs equals "+
-										"the cluster replication_factor (e.g. 3 AZs, RF=3), "+
-										"YBA normalises az_list replication_factor=0 back to 1 "+
-										"for every AZ because each AZ is required for fault "+
-										"tolerance. Setting replication_factor=0 is therefore "+
-										"a no-op for this topology. "+
-										"If you intended to change leader_preference without "+
-										"touching replication_factor, remove the "+
-										"replication_factor change from your config. "+
-										"If your goal is to change the minimum-replica guarantee "+
-										"per AZ, first run 'terraform refresh' to sync state "+
-										"and then apply only the replication_factor change "+
-										"alongside a num_nodes or other placement change that "+
-										"YBA will recognise as actionable",
-									i, opts)
+								// RF changed but YBA returned no options: symmetric no-op.
+								// LP-only (RF unchanged) falls through to UpdatePrimaryCluster.
+								if !reflect.DeepEqual(
+									cloudListWithoutLeaderPreference(oldCL),
+									cloudListWithoutLeaderPreference(newCL),
+								) {
+									return diag.Errorf(
+										"clusters[%d]: the cloud_list change contains only "+
+											"replication_factor and/or leader_preference edits but "+
+											"YBA returned no update options (pre-flight options: %v). "+
+											"For symmetric placements where the number of AZs equals "+
+											"the cluster replication_factor (e.g. 3 AZs, RF=3), "+
+											"YBA normalises az_list replication_factor=0 back to 1 "+
+											"for every AZ because each AZ is required for fault "+
+											"tolerance. Setting replication_factor=0 is therefore "+
+											"a no-op for this topology. "+
+											"To change leader_preference only, remove the "+
+											"replication_factor change from your config and re-apply; "+
+											"a leader_preference-only edit is sent directly to YBA. "+
+											"If your goal is to change the minimum-replica guarantee "+
+											"per AZ, first run 'terraform refresh' to sync state "+
+											"and then apply only the replication_factor change "+
+											"alongside a num_nodes or other placement change that "+
+											"YBA will recognise as actionable",
+										i, opts)
+								}
 							}
 						}
 					}
