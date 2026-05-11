@@ -545,6 +545,38 @@ func accessKeyCodeUnknownInPlan(d *schema.ResourceDiff, clusterType string) bool
 	return false
 }
 
+// cloudListInRawConfig returns true when cloud_list is explicitly authored in
+// the HCL config for cluster i. For a TypeList nested inside another TypeList,
+// an absent block can surface as either a null value or a zero-length list in
+// the raw cty config depending on SDK internals, so we reject both.
+func cloudListInRawConfig(d *schema.ResourceDiff, i int) bool {
+	rawConfig := d.GetRawConfig()
+	if rawConfig == cty.NilVal || !rawConfig.IsKnown() || rawConfig.IsNull() {
+		return false
+	}
+	clusters := rawConfig.GetAttr("clusters")
+	if !clusters.IsKnown() || clusters.IsNull() {
+		return false
+	}
+	clusterSlice := clusters.AsValueSlice()
+	if i >= len(clusterSlice) {
+		return false
+	}
+	clusterVal := clusterSlice[i]
+	if !clusterVal.IsKnown() || clusterVal.IsNull() {
+		return false
+	}
+	cloudListVal := clusterVal.GetAttr("cloud_list")
+	if cloudListVal == cty.NilVal || !cloudListVal.IsKnown() || cloudListVal.IsNull() {
+		return false
+	}
+	t := cloudListVal.Type()
+	if !t.IsListType() && !t.IsTupleType() && !t.IsSetType() {
+		return false
+	}
+	return cloudListVal.LengthInt() > 0
+}
+
 func getClusterByType(clusters []client.Cluster, clusterType string) (client.Cluster, bool) {
 
 	for _, v := range clusters {
@@ -2289,37 +2321,57 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 			},
 		),
 		// --- END PENDING UPDATE SUPPORT ---
-		// When cloud_list is explicitly changed by the practitioner, validate that
-		// the per-AZ sums are consistent with the corresponding user_intent totals.
+		// Plan-time placement validator. Mirrors YBA's
+		// PlacementInfoUtil.checkReplicasDistributionIsCorrect so an invalid
+		// per-AZ replication_factor distribution is rejected before apply.
 		//
-		// num_nodes: YBA ignores user_intent.num_nodes when userAZSelected=true and
-		// derives the total from the AZ sum. A mismatch will not cause an API error
-		// but will cause perpetual plan drift on subsequent applies (the Read will
-		// return the AZ-derived count, which differs from what is in state).
+		// Why this matters: the EditUniverse pre-flight (UniverseConfigure
+		// EDIT) calls PlacementInfoUtil.updateUniverseDefinition, which in turn
+		// calls checkAndSetPerAZRF(..., throwIfIncorrect=false). That helper
+		// silently rewrites any distribution it considers invalid for the
+		// topology. After rewriting, getUpdateOptions compares the normalised
+		// request against the current placement via areReplicasChanged - which
+		// now sees no per-AZ RF diff - and returns an empty UpdateOptions set.
+		// The provider's safety guard then aborts the apply with the confusing
+		// "no update options" error, after the user has already waited
+		// through a round-trip.
 		//
-		// replication_factor: YBA enforces server-side that the per-AZ RF sum equals
-		// user_intent.replicationFactor. Catching this at plan time gives a clear
-		// error message instead of a failed 12-minute create.
+		// The per-AZ RF rules enforced below match what YBA accepts as-is.
+		// For some topologies (notably zoneCount == clusterRF, e.g. the 3 AZ
+		// RF=3 case in PLAT-20740) the rules leave only one acceptable
+		// distribution, so no per-AZ-RF-only edit can take effect - the user
+		// must change clusterRF or add zones to make a real change.
 		//
-		// Both checks are skipped for any AZ whose value is 0 (Computed, not yet
-		// known) to avoid false positives on first create when some fields are
-		// not yet set by the practitioner.
-		//
-		// IMPORTANT: We use schema.ResourceDiff (not customdiff.ValidateValue) so
-		// that we can call d.HasChange per cluster. When cloud_list is Optional+Computed
-		// and the practitioner has NOT configured it, its planned value comes from
-		// state (old per-AZ counts). If we validated against that stale planned value
-		// while only num_nodes changed, the plan would be wrongly rejected even though
-		// the practitioner never touched cloud_list. Skipping validation when
-		// cloud_list has not changed avoids this false positive.
+		// Fires when cloud_list changed, or when num_nodes changed and
+		// cloud_list is explicitly in the config (cloudListInRawConfig). When
+		// cloud_list is Computed (not authored), neither path applies, leaving
+		// YBA free to redistribute on a plain num_nodes change.
 		func(ctx context.Context, d *schema.ResourceDiff, meta interface{}) error {
+			// Skip validation on destroy. CustomizeDiff fires for destroy plans
+			// too. GetRawConfig stays populated during `terraform destroy`
+			// (HCL is still on disk), so check GetRawPlan, which is null for
+			// destroy plans. HasChange would otherwise return true for every
+			// field and trip the AZ-sum check against state values the user
+			// never intends to keep.
+			if rp := d.GetRawPlan(); rp == cty.NilVal || rp.IsNull() {
+				return nil
+			}
 			clusters := d.Get("clusters").([]interface{})
 			for i, clRaw := range clusters {
-				// Only validate when the practitioner is explicitly modifying
-				// cloud_list for this cluster. When cloud_list is Computed (not in
-				// config) and only num_nodes changed, HasChange returns false and we
-				// skip, letting YBA redistribute nodes automatically.
-				if !d.HasChange(fmt.Sprintf("clusters.%d.cloud_list", i)) {
+				// Gate everything on cloud_list being explicitly authored in HCL.
+				// HasChange("cloud_list") spuriously returns true for an
+				// Optional+Computed TypeList absent from config (the SDK quirk
+				// documented on the cloud_list schema), which would otherwise
+				// fire this validator on universes that don't author cloud_list
+				// at all. cloudListInRawConfig reads from the raw HCL config
+				// and is the authoritative signal.
+				if !cloudListInRawConfig(d, i) {
+					continue
+				}
+				cloudListChanged := d.HasChange(fmt.Sprintf("clusters.%d.cloud_list", i))
+				numNodesChanged := d.HasChange(
+					fmt.Sprintf("clusters.%d.user_intent.0.num_nodes", i))
+				if !cloudListChanged && !numNodesChanged {
 					continue
 				}
 				cl, ok := clRaw.(map[string]interface{})
@@ -2341,8 +2393,8 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 				wantNodes := ui["num_nodes"].(int)
 				wantRF := ui["replication_factor"].(int)
 
-				var sumNodes, sumRF int
-				allNodesKnown, allRFKnown := true, true
+				var sumNodes, sumRF, zoneCount, zeroRFZones int
+				allNodesKnown := true
 				for _, pcRaw := range cloudList {
 					pc, ok := pcRaw.(map[string]interface{})
 					if !ok {
@@ -2358,6 +2410,7 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 							if !ok {
 								continue
 							}
+							zoneCount++
 							n := paz["num_nodes"].(int)
 							r := paz["replication_factor"].(int)
 							if n == 0 {
@@ -2366,7 +2419,7 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 								sumNodes += n
 							}
 							if r == 0 {
-								allRFKnown = false
+								zeroRFZones++
 							} else {
 								sumRF += r
 							}
@@ -2382,18 +2435,42 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 							"and uses the AZ sum as the authoritative node count",
 						wantNodes, sumNodes)
 				}
-				// az_list.replication_factor is min_num_replicas in YBA: the minimum
-				// replicas guaranteed in that zone. The sum of per-AZ minimums may be
-				// less than the cluster RF (YBA freely places the remaining replicas).
-				// Only reject when the sum EXCEEDS the cluster RF, which would require
-				// more committed replicas than the total RF allows.
-				if allRFKnown && sumRF > 0 && sumRF > wantRF {
+
+				// Per-AZ replication_factor checks. Skip when every AZ has RF=0
+				// (sumRF == 0): that signals the user has not authored any
+				// per-AZ RF and is asking YBA to compute the default
+				// distribution, which is supported on Create.
+				if zoneCount == 0 || sumRF == 0 {
+					continue
+				}
+				if sumRF > wantRF {
 					return fmt.Errorf(
 						"sum of cloud_list az_list replication_factor (%d) exceeds "+
-							"user_intent.replication_factor (%d): "+
-							"az_list.replication_factor is the minimum replicas per zone "+
-							"(min_num_replicas) and the total cannot exceed the cluster "+
-							"replication_factor",
+							"user_intent.replication_factor (%d)",
+						sumRF, wantRF)
+				}
+				// YBA-supported exception: 2 AZs with cluster RF=3, distributed
+				// [1,1] (sum=2). See PlacementInfoUtil.checkReplicasDistributionIsCorrect.
+				if zoneCount == 2 && wantRF == 3 && sumRF == 2 && zeroRFZones == 0 {
+					continue
+				}
+				if zeroRFZones > 0 && zoneCount <= wantRF {
+					return fmt.Errorf(
+						"cloud_list has %d zone(s) with replication_factor=0 but "+
+							"zone count (%d) is <= user_intent.replication_factor (%d): "+
+							"every zone must hold at least one replica when there are "+
+							"no excess zones. Set replication_factor >= 1 on every "+
+							"az_list entry, or add more zones so zone count exceeds "+
+							"user_intent.replication_factor",
+						zeroRFZones, zoneCount, wantRF)
+				}
+				if sumRF != wantRF {
+					return fmt.Errorf(
+						"sum of cloud_list az_list replication_factor (%d) must equal "+
+							"user_intent.replication_factor (%d). Adjust the per-AZ "+
+							"values so they sum to user_intent.replication_factor, or "+
+							"remove replication_factor from every az_list entry to let "+
+							"YBA compute the distribution",
 						sumRF, wantRF)
 				}
 			}
@@ -3038,6 +3115,22 @@ func resourceUniverseUpdate(
 				}
 			}
 
+			// When num_nodes changes but the per-AZ NumNodesInAZ sums still equal
+			// the old total, redistribute so the placement sent to YBA reflects the
+			// new total. Required for dedicatedNodes=true: YBA's isNewUI configure
+			// path (PlacementInfoUtil.updateUniverseDefinitionV2) re-derives
+			// userIntent.numNodes from sum(numNodesInAZ) before getUpdateOptions
+			// runs. Without this, the submitted numNodes is overwritten back to
+			// the old total and YBA returns 400 "No changes that could be applied
+			// by EditUniverse". The non-dedicated path skips that normalization, so
+			// it happens to work even with stale per-AZ counts. Idempotent: a no-op
+			// when the user already updated cloud_list to sum to the new total.
+			if pi := preflightUni.UniverseDetails.Clusters[i].PlacementInfo; pi != nil &&
+				oldUserIntent.GetNumNodes() != newUserIntent.GetNumNodes() &&
+				totalNodesInAZs(pi) != int(newUserIntent.GetNumNodes()) {
+				redistributeNodesInAZs(pi, int(newUserIntent.GetNumNodes()))
+			}
+
 			if editAllowed || editZoneAllowed {
 				effectiveCommPorts := preflightUni.UniverseDetails.CommunicationPorts
 				if d.HasChange("communication_ports") {
@@ -3627,23 +3720,21 @@ func resourceUniverseUpdate(
 					}
 				}
 
-				// When cloud_list is absent from the config but num_nodes changes, the
-				// PlacementInfo in updateUni still reflects the old per-AZ node counts.
-				// YBA's EditUniverse handler calls isSamePlacement() on that unchanged
-				// PlacementInfo and finds no difference, returning "No changes that could
-				// be applied by EditUniverse" (HTTP 400). Redistribute the new node count
-				// across the existing AZs so isSamePlacement() returns false and the
-				// UPDATE option is correctly recognised.
-				//
-				// UserAZSelected stays false (userAZExplicit is not set here) so YBA
-				// auto-computes the final per-node placement during task execution.
-				if !userAZExplicit &&
+				// When num_nodes changes but the per-AZ NumNodesInAZ sums in PlacementInfo
+				// still equal the old total, redistribute so the request sent to YBA
+				// reflects the new total. Two cases require this:
+				//   1. cloud_list absent from the config: YBA's EditUniverse handler
+				//      calls isSamePlacement() on the unchanged PlacementInfo and
+				//      returns "No changes that could be applied by EditUniverse" (HTTP 400).
+				//   2. dedicatedNodes=true: YBA's isNewUI configure path re-derives
+				//      userIntent.numNodes from sum(numNodesInAZ) before computing
+				//      update options, erasing the submitted numNodes diff.
+				// The totalNodesInAZs check makes this a no-op when the user already
+				// supplied a cloud_list whose AZ counts sum to the new total.
+				if pi := updateUni.UniverseDetails.Clusters[i].PlacementInfo; pi != nil &&
 					oldUserIntent.GetNumNodes() != newUserIntent.GetNumNodes() &&
-					updateUni.UniverseDetails.Clusters[i].PlacementInfo != nil {
-					redistributeNodesInAZs(
-						updateUni.UniverseDetails.Clusters[i].PlacementInfo,
-						int(newUserIntent.GetNumNodes()),
-					)
+					totalNodesInAZs(pi) != int(newUserIntent.GetNumNodes()) {
+					redistributeNodesInAZs(pi, int(newUserIntent.GetNumNodes()))
 				}
 
 				if editAllowed || editZoneAllowed {
@@ -3771,12 +3862,12 @@ func resourceUniverseUpdate(
 					}
 
 					// 2. Execute Update if flagged (or if minor config changes with empty opts).
-					// This guard is only reached when YBA returned no update options (hasUpdate
-					// is false). A genuine RF or placement change would have produced UPDATE,
-					// so empty opts here means the diff was a no-op after YBA normalisation
-					// (e.g. symmetric placement: YBA resets per-AZ RF=0 back to 1 for every
-					// AZ, leaving no effective change). LP-only diffs fall through to the
-					// len(opts)==0 branch and are sent directly to UpdatePrimaryCluster.
+					// Defense-in-depth: the plan-time validator (resourceUniverseDiff)
+					// rejects per-AZ replication_factor distributions YBA would
+					// normalise. If somehow we still reach apply with editZoneAllowed
+					// but no update options, an RF-only change that survives the
+					// plan check is the most likely culprit; LP-only diffs are sent
+					// directly to UpdatePrimaryCluster via the len(opts)==0 branch.
 					if !editAllowed && editZoneAllowed && !hasUpdate && !isOnlyFullMove &&
 						!smartResize {
 						if d.HasChange(fmt.Sprintf("clusters.%d.cloud_list", i)) {
@@ -3788,30 +3879,21 @@ func resourceUniverseUpdate(
 								cloudListWithoutLeaderPreferenceAndRF(oldCL),
 								cloudListWithoutLeaderPreferenceAndRF(newCL),
 							) {
-								// RF changed but YBA returned no options: symmetric no-op.
-								// LP-only (RF unchanged) falls through to UpdatePrimaryCluster.
+								// RF changed but YBA returned no options. LP-only
+								// (RF unchanged) falls through to UpdatePrimaryCluster.
 								if !reflect.DeepEqual(
 									cloudListWithoutLeaderPreference(oldCL),
 									cloudListWithoutLeaderPreference(newCL),
 								) {
 									return diag.Errorf(
-										"clusters[%d]: the cloud_list change contains only "+
-											"replication_factor and/or leader_preference edits but "+
-											"YBA returned no update options (pre-flight options: %v). "+
-											"For symmetric placements where the number of AZs equals "+
-											"the cluster replication_factor (e.g. 3 AZs, RF=3), "+
-											"YBA normalises az_list replication_factor=0 back to 1 "+
-											"for every AZ because each AZ is required for fault "+
-											"tolerance. Setting replication_factor=0 is therefore "+
-											"a no-op for this topology. "+
-											"To change leader_preference only, remove the "+
-											"replication_factor change from your config and re-apply; "+
-											"a leader_preference-only edit is sent directly to YBA. "+
-											"If your goal is to change the minimum-replica guarantee "+
-											"per AZ, first run 'terraform refresh' to sync state "+
-											"and then apply only the replication_factor change "+
-											"alongside a num_nodes or other placement change that "+
-											"YBA will recognise as actionable",
+										"clusters[%d]: the per-AZ replication_factor "+
+											"distribution is invalid for this topology and was "+
+											"discarded by YBA. Set per-AZ replication_factor "+
+											"values that sum to user_intent.replication_factor "+
+											"(with no zone at 0 unless the number of zones "+
+											"exceeds user_intent.replication_factor), or change "+
+											"user_intent.replication_factor / add zones in the "+
+											"same apply (YBA returned no update options: %v)",
 										i, opts)
 								}
 							}

@@ -445,11 +445,14 @@ func flattenDeviceInfo(di *client.DeviceInfo) []interface{} {
 // values"). That produces a permanent plan diff: config has device_info, state
 // has [].
 //
-// This function restores the actual API-returned master device_info values
-// whenever the prior Terraform state already held a non-empty device_info list,
-// indicating the user deliberately tracked those values. Clusters that had
-// device_info: [] in prior state are left untouched -- their suppression is
-// intentional (user omitted the block and relies on TServer inheritance).
+// Restoration rule:
+//   - On terraform import (oldClusters empty), always restore the API master
+//     device_info so the imported state faithfully reflects server state.
+//   - On a regular post-apply read, restore only when the prior Terraform state
+//     held a non-empty device_info list (the user deliberately tracked those
+//     values). Clusters that had device_info: [] in prior state are left
+//     untouched -- their suppression is intentional (user omitted the block and
+//     relies on TServer inheritance).
 //
 // Cluster matching mirrors restoreRedactedPasswords: UUID-first, then index.
 func restoreDedicatedMasterDeviceInfo(
@@ -457,6 +460,8 @@ func restoreDedicatedMasterDeviceInfo(
 	oldClusters []interface{},
 	apiClusters []client.Cluster,
 ) {
+	importing := len(oldClusters) == 0
+
 	oldByUUID := make(map[string]map[string]interface{}, len(oldClusters))
 	for _, oc := range oldClusters {
 		ocm, ok := oc.(map[string]interface{})
@@ -478,42 +483,45 @@ func restoreDedicatedMasterDeviceInfo(
 	for i, nc := range newClusters {
 		uuid, _ := nc["uuid"].(string)
 
-		var oldCluster map[string]interface{}
-		if uuid != "" {
-			oldCluster = oldByUUID[uuid]
-		}
-		if oldCluster == nil && i < len(oldClusters) {
-			oldCluster, _ = oldClusters[i].(map[string]interface{})
-		}
-		if oldCluster == nil {
-			continue
+		if !importing {
+			var oldCluster map[string]interface{}
+			if uuid != "" {
+				oldCluster = oldByUUID[uuid]
+			}
+			if oldCluster == nil && i < len(oldClusters) {
+				oldCluster, _ = oldClusters[i].(map[string]interface{})
+			}
+			if oldCluster == nil {
+				continue
+			}
+
+			// Locate the prior dedicated_masters.device_info in old state.
+			oldUIList, ok := oldCluster["user_intent"].([]interface{})
+			if !ok || len(oldUIList) == 0 {
+				continue
+			}
+			oldUI, ok := oldUIList[0].(map[string]interface{})
+			if !ok {
+				continue
+			}
+			oldDMList, _ := oldUI["dedicated_masters"].([]interface{})
+			if len(oldDMList) == 0 {
+				continue
+			}
+			oldDM, ok := oldDMList[0].(map[string]interface{})
+			if !ok {
+				continue
+			}
+			oldDIList, _ := oldDM["device_info"].([]interface{})
+			if len(oldDIList) == 0 {
+				// Prior state had no explicit device_info -- suppression is correct.
+				continue
+			}
 		}
 
-		// Locate the prior dedicated_masters.device_info in old state.
-		oldUIList, ok := oldCluster["user_intent"].([]interface{})
-		if !ok || len(oldUIList) == 0 {
-			continue
-		}
-		oldUI, ok := oldUIList[0].(map[string]interface{})
-		if !ok {
-			continue
-		}
-		oldDMList, _ := oldUI["dedicated_masters"].([]interface{})
-		if len(oldDMList) == 0 {
-			continue
-		}
-		oldDM, ok := oldDMList[0].(map[string]interface{})
-		if !ok {
-			continue
-		}
-		oldDIList, _ := oldDM["device_info"].([]interface{})
-		if len(oldDIList) == 0 {
-			// Prior state had no explicit device_info -- suppression is correct.
-			continue
-		}
-
-		// Prior state had explicit device_info. If the flattener suppressed it
-		// to [] in newClusters, restore actual API master device_info values.
+		// Prior state had explicit device_info (or we are importing). If the
+		// flattener suppressed it to [] in newClusters, restore the actual
+		// API master device_info values.
 		newUIList, ok := nc["user_intent"].([]interface{})
 		if !ok || len(newUIList) == 0 {
 			continue

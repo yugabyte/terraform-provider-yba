@@ -882,6 +882,19 @@ func redistributeNodesInAZs(pi *client.PlacementInfo, totalNodes int) {
 	}
 }
 
+// totalNodesInAZs returns the sum of NumNodesInAZ across all AZs in pi.
+func totalNodesInAZs(pi *client.PlacementInfo) int {
+	total := 0
+	for _, cloud := range pi.CloudList {
+		for _, region := range cloud.GetRegionList() {
+			for _, az := range region.GetAzList() {
+				total += int(az.GetNumNodesInAZ())
+			}
+		}
+	}
+	return total
+}
+
 func buildNodeDetailsRespArrayToNodeDetailsArray(
 	nodes []client.NodeDetailsResp,
 ) []client.NodeDetails {
