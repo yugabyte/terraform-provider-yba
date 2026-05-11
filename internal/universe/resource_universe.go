@@ -1535,29 +1535,6 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 			}
 			return nil
 		}),
-		customdiff.ValidateChange("clusters",
-			func(ctx context.Context, old, new, m interface{}) error {
-				// Prevent toggling dedicated master mode on an existing universe. The YBA
-				// API does not support changing dedicated mode via smart resize; toggling
-				// it would require a full universe rebuild.
-				if len(old.([]interface{})) == 0 {
-					return nil
-				}
-				oldClusters := buildClusters(old.([]interface{}))
-				newClusters := buildClusters(new.([]interface{}))
-				oldPrimary, oldOK := getClusterByType(oldClusters, "PRIMARY")
-				newPrimary, newOK := getClusterByType(newClusters, "PRIMARY")
-				if !oldOK || !newOK {
-					return nil
-				}
-				if oldPrimary.UserIntent.GetDedicatedNodes() != newPrimary.UserIntent.GetDedicatedNodes() {
-					return fmt.Errorf(
-						"cannot add or remove dedicated_masters after universe creation: " +
-							"smart resize does not support toggling dedicated master mode")
-				}
-				return nil
-			},
-		),
 		customdiff.ValidateChange(
 			"db_version_upgrade_options",
 			func(ctx context.Context, old, new, m interface{}) error {
@@ -1575,24 +1552,27 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 				return nil
 			},
 		),
-		customdiff.ValidateValue("full_move", func(ctx context.Context, value, meta interface{}) error {
-			list := value.([]interface{})
-			if len(list) == 0 {
+		customdiff.ValidateValue(
+			"full_move",
+			func(ctx context.Context, value, meta interface{}) error {
+				list := value.([]interface{})
+				if len(list) == 0 {
+					return nil
+				}
+				fm, ok := list[0].(map[string]interface{})
+				if !ok {
+					return nil
+				}
+				if fm["force"].(bool) && !fm["allow"].(bool) {
+					return errors.New(
+						"full_move.force = true requires full_move.allow = true: " +
+							"force has no meaning without first allowing full moves, " +
+							"and any full-move-triggering edit would be blocked by " +
+							"the plan-time full-move gates regardless")
+				}
 				return nil
-			}
-			fm, ok := list[0].(map[string]interface{})
-			if !ok {
-				return nil
-			}
-			if fm["force"].(bool) && !fm["allow"].(bool) {
-				return errors.New(
-					"full_move.force = true requires full_move.allow = true: " +
-						"force has no meaning without first allowing full moves, " +
-						"and any full-move-triggering edit would be blocked by " +
-						"the plan-time full-move gates regardless")
-			}
-			return nil
-		}),
+			},
+		),
 		// When rollback is true, require that yb_software_version in the PRIMARY
 		// cluster config matches the universe's previous DB version. This prevents a
 		// spurious upgrade diff on the next plan after rollback (since after rollback the
@@ -2773,8 +2753,14 @@ func editUniverseParameters(ctx context.Context, oldUserIntent client.UserIntent
 	// ("Instance type X mismatch for node Y, expected Z"). Only device-info
 	// field changes (num_volumes, volume_size, storage_type, etc.) that require
 	// a full move go through UpdatePrimaryCluster.
-	dedicatedMasterChanged := newUserIntent.GetDedicatedNodes() &&
-		masterDeviceInfoChanged(oldUserIntent, newUserIntent)
+	//
+	// Exception: when dedicatedNodes itself is being toggled (false->true or true->false)
+	// there are no existing dedicated master nodes, so masterInstanceType and
+	// masterDeviceInfo must be included in the EditUniverse (UpdatePrimaryCluster)
+	// request to provision or deprovision them correctly.
+	dedicatedNodesToggled := oldUserIntent.GetDedicatedNodes() != newUserIntent.GetDedicatedNodes()
+	dedicatedMasterChanged := dedicatedNodesToggled ||
+		(newUserIntent.GetDedicatedNodes() && masterDeviceInfoChanged(oldUserIntent, newUserIntent))
 
 	if !reflect.DeepEqual(oldUserIntent.GetInstanceTags(), newUserIntent.GetInstanceTags()) ||
 		!reflect.DeepEqual(oldUserIntent.GetRegionList(), newUserIntent.GetRegionList()) ||
@@ -2841,10 +2827,18 @@ func editUniverseParameters(ctx context.Context, oldUserIntent client.UserIntent
 		oldUserIntent.DeviceInfo.StorageType = newUserIntent.DeviceInfo.StorageType
 		oldUserIntent.DeviceInfo.DiskIops = newUserIntent.DeviceInfo.DiskIops
 		oldUserIntent.DeviceInfo.Throughput = newUserIntent.DeviceInfo.Throughput
-		// Dedicated master device-info fields (full-move path).
-		// MasterInstanceType is intentionally excluded here: it is applied
-		// via ResizeNode, not UpdatePrimaryCluster.
-		if newUserIntent.GetDedicatedNodes() {
+		// When dedicatedNodes is being toggled on or off, propagate the full set of
+		// master fields (DedicatedNodes flag, MasterInstanceType, MasterDeviceInfo)
+		// into the UpdatePrimaryCluster request. There are no existing dedicated master
+		// nodes at toggle time, so the "Instance type X mismatch" rejection that
+		// prevents a standalone masterInstanceType change does not apply here.
+		if dedicatedNodesToggled {
+			oldUserIntent.DedicatedNodes = newUserIntent.DedicatedNodes
+			oldUserIntent.MasterInstanceType = newUserIntent.MasterInstanceType
+			oldUserIntent.MasterDeviceInfo = newUserIntent.MasterDeviceInfo
+		} else if newUserIntent.GetDedicatedNodes() {
+			// MasterInstanceType is intentionally excluded: it is applied via
+			// ResizeNode, not UpdatePrimaryCluster.
 			if oldUserIntent.MasterDeviceInfo != nil && newUserIntent.MasterDeviceInfo != nil {
 				oldUserIntent.MasterDeviceInfo.NumVolumes = newUserIntent.MasterDeviceInfo.NumVolumes
 				oldUserIntent.MasterDeviceInfo.VolumeSize = newUserIntent.MasterDeviceInfo.VolumeSize
@@ -3631,6 +3625,25 @@ func resourceUniverseUpdate(
 						updateUni.UniverseDetails.Clusters[i].PlacementInfo = pi
 						userAZExplicit = true
 					}
+				}
+
+				// When cloud_list is absent from the config but num_nodes changes, the
+				// PlacementInfo in updateUni still reflects the old per-AZ node counts.
+				// YBA's EditUniverse handler calls isSamePlacement() on that unchanged
+				// PlacementInfo and finds no difference, returning "No changes that could
+				// be applied by EditUniverse" (HTTP 400). Redistribute the new node count
+				// across the existing AZs so isSamePlacement() returns false and the
+				// UPDATE option is correctly recognised.
+				//
+				// UserAZSelected stays false (userAZExplicit is not set here) so YBA
+				// auto-computes the final per-node placement during task execution.
+				if !userAZExplicit &&
+					oldUserIntent.GetNumNodes() != newUserIntent.GetNumNodes() &&
+					updateUni.UniverseDetails.Clusters[i].PlacementInfo != nil {
+					redistributeNodesInAZs(
+						updateUni.UniverseDetails.Clusters[i].PlacementInfo,
+						int(newUserIntent.GetNumNodes()),
+					)
 				}
 
 				if editAllowed || editZoneAllowed {

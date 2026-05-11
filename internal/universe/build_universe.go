@@ -838,6 +838,50 @@ func collectAZUUIDs(cloudList []client.PlacementCloud) map[string]bool {
 	return uuids
 }
 
+// redistributeNodesInAZs distributes totalNodes evenly across all AZs in pi,
+// updating NumNodesInAZ on each AZ. The first (totalNodes % numAZs) AZs each
+// receive one extra node; the rest receive the base count.
+//
+// This is used when cloud_list is absent from the Terraform config but
+// num_nodes changes: YBA's EditUniverse handler calls isSamePlacement() to
+// detect whether a change exists. If PlacementInfo still has the old per-AZ
+// counts it reports "same placement" and returns "No changes that could be
+// applied by EditUniverse". Updating the counts here makes isSamePlacement()
+// return false so the UPDATE option is recognised. UserAZSelected stays false,
+// so YBA auto-computes the final per-node placement during task execution.
+func redistributeNodesInAZs(pi *client.PlacementInfo, totalNodes int) {
+	var azPtrs []*client.PlacementAZ
+	for ci := range pi.CloudList {
+		for ri := range pi.CloudList[ci].RegionList {
+			for ai := range pi.CloudList[ci].RegionList[ri].AzList {
+				azPtrs = append(azPtrs, &pi.CloudList[ci].RegionList[ri].AzList[ai])
+			}
+		}
+	}
+	if len(azPtrs) == 0 {
+		return
+	}
+	// Clamp base to 1 so every AZ receives NumNodesInAZ >= 1. With
+	// UserAZSelected=false YBA recomputes the final placement, so the exact
+	// counts here only need to (a) differ from the prior per-AZ counts so
+	// isSamePlacement() returns false and (b) satisfy any present-or-future
+	// YBA-side numNodesInAZ >= 1 invariant. Without the clamp, totalNodes <
+	// numAZs would yield zero-node AZs.
+	base := totalNodes / len(azPtrs)
+	extra := totalNodes % len(azPtrs)
+	if base == 0 {
+		base = 1
+		extra = 0
+	}
+	for j, az := range azPtrs {
+		count := int32(base)
+		if j < extra {
+			count++
+		}
+		az.NumNodesInAZ = &count
+	}
+}
+
 func buildNodeDetailsRespArrayToNodeDetailsArray(
 	nodes []client.NodeDetailsResp,
 ) []client.NodeDetails {
