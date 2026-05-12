@@ -2709,7 +2709,7 @@ func resourceUniverseRead(
 	oldClusters := d.Get("clusters").([]interface{})
 	restoreRedactedPasswords(ctx, newClusters, oldClusters)
 	alignClustersCloudList(newClusters, oldClusters)
-	restoreDedicatedMasterDeviceInfo(newClusters, oldClusters, u.Clusters)
+	restoreDedicatedMasterFields(newClusters, oldClusters, u.Clusters, d.GetRawConfig())
 	if err = d.Set("clusters", newClusters); err != nil {
 		return diag.FromErr(err)
 	}

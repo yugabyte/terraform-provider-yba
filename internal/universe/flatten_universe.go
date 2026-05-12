@@ -19,6 +19,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/hashicorp/go-cty/cty"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	client "github.com/yugabyte/platform-go-client"
 	"github.com/yugabyte/terraform-provider-yba/internal/utils"
@@ -438,27 +439,29 @@ func flattenDeviceInfo(di *client.DeviceInfo) []interface{} {
 	return utils.CreateSingletonList(v)
 }
 
-// restoreDedicatedMasterDeviceInfo corrects a suppression edge case: when the
-// user explicitly wrote a dedicated_masters.device_info block whose values happen
-// to equal the TServer device_info, flattenDedicatedMasters suppresses it to []
-// (because it cannot distinguish "user omitted it" from "user wrote identical
-// values"). That produces a permanent plan diff: config has device_info, state
-// has [].
+// restoreDedicatedMasterFields corrects a suppression edge case: when the user
+// explicitly wrote dedicated_masters.instance_type or dedicated_masters.device_info
+// whose values happen to equal the TServer equivalents, flattenDedicatedMasters
+// suppresses them (because it cannot distinguish "user omitted it" from "user
+// wrote identical values"). That produces a permanent plan diff: config has the
+// field, state does not.
 //
-// Restoration rule:
+// Restoration rule (applied independently to instance_type and device_info):
 //   - On terraform import (oldClusters empty), always restore the API master
-//     device_info so the imported state faithfully reflects server state.
-//   - On a regular post-apply read, restore only when the prior Terraform state
-//     held a non-empty device_info list (the user deliberately tracked those
-//     values). Clusters that had device_info: [] in prior state are left
-//     untouched -- their suppression is intentional (user omitted the block and
-//     relies on TServer inheritance).
+//     value so the imported state faithfully reflects server state.
+//   - On a regular post-apply read, restore when EITHER the prior Terraform
+//     state held a non-empty value for that field OR the user's current HCL
+//     (rawConfig) explicitly authors it. The rawConfig signal closes the
+//     transition gap where the user just switched from `dedicated_masters {}`
+//     to an explicit value that happens to equal the TServer field -- prior
+//     state is still empty, so without rawConfig we would never restore.
 //
 // Cluster matching mirrors restoreRedactedPasswords: UUID-first, then index.
-func restoreDedicatedMasterDeviceInfo(
+func restoreDedicatedMasterFields(
 	newClusters []map[string]interface{},
 	oldClusters []interface{},
 	apiClusters []client.Cluster,
+	rawConfig cty.Value,
 ) {
 	importing := len(oldClusters) == 0
 
@@ -483,6 +486,10 @@ func restoreDedicatedMasterDeviceInfo(
 	for i, nc := range newClusters {
 		uuid, _ := nc["uuid"].(string)
 
+		// Determine whether each field should be restored. On import, both
+		// are restored unconditionally. On a regular read, each is gated on
+		// prior state or raw config explicitly tracking the field.
+		restoreIT, restoreDI := importing, importing
 		if !importing {
 			var oldCluster map[string]interface{}
 			if uuid != "" {
@@ -491,37 +498,15 @@ func restoreDedicatedMasterDeviceInfo(
 			if oldCluster == nil && i < len(oldClusters) {
 				oldCluster, _ = oldClusters[i].(map[string]interface{})
 			}
-			if oldCluster == nil {
-				continue
-			}
-
-			// Locate the prior dedicated_masters.device_info in old state.
-			oldUIList, ok := oldCluster["user_intent"].([]interface{})
-			if !ok || len(oldUIList) == 0 {
-				continue
-			}
-			oldUI, ok := oldUIList[0].(map[string]interface{})
-			if !ok {
-				continue
-			}
-			oldDMList, _ := oldUI["dedicated_masters"].([]interface{})
-			if len(oldDMList) == 0 {
-				continue
-			}
-			oldDM, ok := oldDMList[0].(map[string]interface{})
-			if !ok {
-				continue
-			}
-			oldDIList, _ := oldDM["device_info"].([]interface{})
-			if len(oldDIList) == 0 {
-				// Prior state had no explicit device_info -- suppression is correct.
+			priorIT, priorDI := priorStateHasDedicatedMasterFields(oldCluster)
+			cfgIT, cfgDI := rawConfigHasDedicatedMasterFields(rawConfig, i)
+			restoreIT = priorIT || cfgIT
+			restoreDI = priorDI || cfgDI
+			if !restoreIT && !restoreDI {
 				continue
 			}
 		}
 
-		// Prior state had explicit device_info (or we are importing). If the
-		// flattener suppressed it to [] in newClusters, restore the actual
-		// API master device_info values.
 		newUIList, ok := nc["user_intent"].([]interface{})
 		if !ok || len(newUIList) == 0 {
 			continue
@@ -538,12 +523,7 @@ func restoreDedicatedMasterDeviceInfo(
 		if !ok {
 			continue
 		}
-		if diList, _ := newDM["device_info"].([]interface{}); len(diList) > 0 {
-			// Flattener already wrote values -- nothing to restore.
-			continue
-		}
 
-		// Find the matching API cluster to get the live MasterDeviceInfo.
 		var apiCluster client.Cluster
 		var found bool
 		if uuid != "" {
@@ -553,11 +533,123 @@ func restoreDedicatedMasterDeviceInfo(
 			apiCluster = apiClusters[i]
 			found = true
 		}
-		if !found || apiCluster.UserIntent.MasterDeviceInfo == nil {
+		if !found {
 			continue
 		}
-		newDM["device_info"] = flattenDeviceInfo(apiCluster.UserIntent.MasterDeviceInfo)
+
+		if restoreIT {
+			if it, _ := newDM["instance_type"].(string); it == "" {
+				if mit := apiCluster.UserIntent.GetMasterInstanceType(); mit != "" {
+					newDM["instance_type"] = mit
+				}
+			}
+		}
+		if restoreDI {
+			if diList, _ := newDM["device_info"].([]interface{}); len(diList) == 0 &&
+				apiCluster.UserIntent.MasterDeviceInfo != nil {
+				newDM["device_info"] = flattenDeviceInfo(apiCluster.UserIntent.MasterDeviceInfo)
+			}
+		}
 	}
+}
+
+// priorStateHasDedicatedMasterFields reports whether the prior Terraform state
+// tracked an explicit dedicated_masters.instance_type (non-empty) and/or
+// dedicated_masters.device_info (non-empty list).
+func priorStateHasDedicatedMasterFields(
+	oldCluster map[string]interface{},
+) (hasIT, hasDI bool) {
+	if oldCluster == nil {
+		return false, false
+	}
+	oldUIList, _ := oldCluster["user_intent"].([]interface{})
+	if len(oldUIList) == 0 {
+		return false, false
+	}
+	oldUI, ok := oldUIList[0].(map[string]interface{})
+	if !ok {
+		return false, false
+	}
+	oldDMList, _ := oldUI["dedicated_masters"].([]interface{})
+	if len(oldDMList) == 0 {
+		return false, false
+	}
+	oldDM, ok := oldDMList[0].(map[string]interface{})
+	if !ok {
+		return false, false
+	}
+	if it, _ := oldDM["instance_type"].(string); it != "" {
+		hasIT = true
+	}
+	if oldDIList, _ := oldDM["device_info"].([]interface{}); len(oldDIList) > 0 {
+		hasDI = true
+	}
+	return
+}
+
+// rawConfigHasDedicatedMasterFields inspects the user's HCL config for cluster i
+// and reports whether dedicated_masters.instance_type and/or .device_info are
+// explicitly authored. Used by restoreDedicatedMasterFields to close the
+// transition gap where prior state was empty (user wrote `dedicated_masters {}`)
+// but the new config sets an explicit value that happens to equal the TServer
+// field -- the flattener suppresses it, so without a config signal we would
+// produce a permanent plan diff.
+//
+// TypeList traversal in cty mirrors cloudListInRawConfig: an absent nested
+// block can surface as either null or a zero-length list, so we treat both as
+// "not authored."
+func rawConfigHasDedicatedMasterFields(rawConfig cty.Value, i int) (hasIT, hasDI bool) {
+	if rawConfig == cty.NilVal || !rawConfig.IsKnown() || rawConfig.IsNull() {
+		return false, false
+	}
+	clusters := rawConfig.GetAttr("clusters")
+	if !clusters.IsKnown() || clusters.IsNull() {
+		return false, false
+	}
+	clusterSlice := clusters.AsValueSlice()
+	if i >= len(clusterSlice) {
+		return false, false
+	}
+	clusterVal := clusterSlice[i]
+	if !clusterVal.IsKnown() || clusterVal.IsNull() {
+		return false, false
+	}
+	uiVal := clusterVal.GetAttr("user_intent")
+	if uiVal == cty.NilVal || !uiVal.IsKnown() || uiVal.IsNull() {
+		return false, false
+	}
+	uiType := uiVal.Type()
+	if (!uiType.IsListType() && !uiType.IsTupleType()) || uiVal.LengthInt() == 0 {
+		return false, false
+	}
+	ui := uiVal.AsValueSlice()[0]
+	if !ui.IsKnown() || ui.IsNull() {
+		return false, false
+	}
+	dmVal := ui.GetAttr("dedicated_masters")
+	if dmVal == cty.NilVal || !dmVal.IsKnown() || dmVal.IsNull() {
+		return false, false
+	}
+	dmType := dmVal.Type()
+	if (!dmType.IsListType() && !dmType.IsTupleType()) || dmVal.LengthInt() == 0 {
+		return false, false
+	}
+	dm := dmVal.AsValueSlice()[0]
+	if !dm.IsKnown() || dm.IsNull() {
+		return false, false
+	}
+	if itVal := dm.GetAttr("instance_type"); itVal != cty.NilVal &&
+		itVal.IsKnown() && !itVal.IsNull() && itVal.AsString() != "" {
+		hasIT = true
+	}
+	if diVal := dm.GetAttr("device_info"); diVal != cty.NilVal &&
+		diVal.IsKnown() && !diVal.IsNull() {
+		t := diVal.Type()
+		if (t.IsListType() || t.IsTupleType()) && diVal.LengthInt() > 0 {
+			hasDI = true
+		}
+	}
+	return
 }
 
 // alignClustersCloudList reorders the cloud_list, region_list, and az_list
