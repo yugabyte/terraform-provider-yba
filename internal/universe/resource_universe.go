@@ -1605,6 +1605,35 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 				return nil
 			},
 		),
+		func(ctx context.Context, d *schema.ResourceDiff, m interface{}) error {
+			if d.Id() == "" || d.Get("full_move.0.allow").(bool) ||
+				!d.HasChange("communication_ports") {
+				return nil
+			}
+			oldRaw, newRaw := d.GetChange("communication_ports")
+			oldList, _ := oldRaw.([]interface{})
+			newList, _ := newRaw.([]interface{})
+			if len(oldList) == 0 || len(newList) == 0 {
+				return nil
+			}
+			oldCP, _ := oldList[0].(map[string]interface{})
+			newCP, _ := newList[0].(map[string]interface{})
+			if oldCP == nil || newCP == nil {
+				return nil
+			}
+			for _, p := range []string{
+				"master_http_port", "master_rpc_port", "node_exporter_port",
+				"tserver_http_port", "tserver_rpc_port",
+			} {
+				if oldCP[p] != newCP[p] {
+					return fmt.Errorf(
+						"communication_ports change (%s) triggers a FULL MOVE; "+
+							"set full_move { allow = true } on the universe resource "+
+							"to acknowledge", p)
+				}
+			}
+			return nil
+		},
 		// When rollback is true, require that yb_software_version in the PRIMARY
 		// cluster config matches the universe's previous DB version. This prevents a
 		// spurious upgrade diff on the next plan after rollback (since after rollback the
