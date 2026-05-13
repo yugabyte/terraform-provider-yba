@@ -2166,6 +2166,54 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 			},
 		),
 
+		// Universe name is immutable after universe creation.
+		// Remove this block when universe name update is implemented.
+		customdiff.ValidateChange("clusters",
+			func(ctx context.Context, old, new, m interface{}) error {
+				if len(old.([]interface{})) == 0 {
+					return nil
+				}
+				oldClusters := buildClusters(old.([]interface{}))
+				newClusters := buildClusters(new.([]interface{}))
+				for i, oldCl := range oldClusters {
+					if i >= len(newClusters) {
+						continue
+					}
+					newCl := newClusters[i]
+					if oldCl.UserIntent.GetUniverseName() != newCl.UserIntent.GetUniverseName() {
+						return errors.New(
+							"universe_name cannot be changed after universe creation: " +
+								"universe name update is not supported by this provider version")
+					}
+				}
+				return nil
+			},
+		),
+
+		// Access key code is immutable after universe creation.
+		// Remove this block when access key code update is implemented.
+		customdiff.ValidateChange("clusters",
+			func(ctx context.Context, old, new, m interface{}) error {
+				if len(old.([]interface{})) == 0 {
+					return nil
+				}
+				oldClusters := buildClusters(old.([]interface{}))
+				newClusters := buildClusters(new.([]interface{}))
+				for i, oldCl := range oldClusters {
+					if i >= len(newClusters) {
+						continue
+					}
+					newCl := newClusters[i]
+					if oldCl.UserIntent.GetAccessKeyCode() != newCl.UserIntent.GetAccessKeyCode() {
+						return errors.New(
+							"access_key_code cannot be changed after universe creation: " +
+								"access key code update is not supported by this provider version")
+					}
+				}
+				return nil
+			},
+		),
+
 		// assign_public_ip is a create-time networking setting with no update API.
 		// Remove this block when assign_public_ip update is implemented.
 		customdiff.ValidateChange("clusters",
