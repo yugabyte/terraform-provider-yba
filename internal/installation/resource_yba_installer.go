@@ -28,24 +28,152 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/customdiff"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/yugabyte/terraform-provider-yba/internal/utils"
-	"golang.org/x/exp/maps"
+	"golang.org/x/crypto/ssh"
 )
+
+// installerFileSpec describes one logical input that the YBA installer
+// resource needs to upload to the remote host. Each spec exposes both a
+// file-path attribute and a content attribute. Either may be set; the
+// content attribute takes precedence when both are populated (the schema
+// also marks them as conflicting so this is normally rejected by
+// Terraform up-front).
+type installerFileSpec struct {
+	// fileAttr is the attribute that accepts a path to a local file.
+	fileAttr string
+	// contentAttr is the attribute that accepts the file contents
+	// directly as a string.
+	contentAttr string
+	// remotePath is where the contents are written on the remote host.
+	remotePath string
+}
 
 var (
-	reconfigurationYBAInstallerFiles = map[string]string{
-		"tls_certificate_file":      "/tmp/server.crt",
-		"tls_key_file":              "/tmp/server.key",
-		"application_settings_file": "/tmp/settings.yml",
+	tlsCertificateSpec = installerFileSpec{
+		fileAttr:    "tls_certificate_file",
+		contentAttr: "tls_certificate",
+		remotePath:  "/tmp/server.crt",
 	}
-	licenseYBAInstallerFiles = map[string]string{
-		"yba_license_file": "/tmp/license.lic",
+	tlsKeySpec = installerFileSpec{
+		fileAttr:    "tls_key_file",
+		contentAttr: "tls_key",
+		remotePath:  "/tmp/server.key",
+	}
+	applicationSettingsSpec = installerFileSpec{
+		fileAttr:    "application_settings_file",
+		contentAttr: "application_settings",
+		remotePath:  "/tmp/settings.yml",
+	}
+	licenseSpec = installerFileSpec{
+		fileAttr:    "yba_license_file",
+		contentAttr: "yba_license",
+		remotePath:  "/tmp/license.lic",
+	}
+	sshPrivateKeySpec = installerFileSpec{
+		fileAttr:    "ssh_private_key_file_path",
+		contentAttr: "ssh_private_key",
+		// ssh_private_key is consumed locally (to authenticate) and is
+		// not transferred to the remote host. remotePath is unused.
 	}
 )
 
-func getInstallationFiles() map[string]string {
-	installationYBAInstallerFiles := reconfigurationYBAInstallerFiles
-	maps.Copy(installationYBAInstallerFiles, licenseYBAInstallerFiles)
-	return installationYBAInstallerFiles
+// reconfigurationYBAInstallerSpecs lists inputs that participate in a
+// reconfigure cycle (their values are written to /tmp/* on the remote
+// host before yba-ctl reconfigure runs).
+func reconfigurationYBAInstallerSpecs() []installerFileSpec {
+	return []installerFileSpec{
+		tlsCertificateSpec,
+		tlsKeySpec,
+		applicationSettingsSpec,
+	}
+}
+
+// licenseYBAInstallerSpecs lists inputs that are uploaded as part of a
+// license-update flow.
+func licenseYBAInstallerSpecs() []installerFileSpec {
+	return []installerFileSpec{
+		licenseSpec,
+	}
+}
+
+// installationYBAInstallerSpecs lists every spec that may need to be
+// uploaded during a fresh install.
+func installationYBAInstallerSpecs() []installerFileSpec {
+	specs := make([]installerFileSpec, 0,
+		len(reconfigurationYBAInstallerSpecs())+len(licenseYBAInstallerSpecs()))
+	specs = append(specs, reconfigurationYBAInstallerSpecs()...)
+	specs = append(specs, licenseYBAInstallerSpecs()...)
+	return specs
+}
+
+// resolveInstallerInput returns the content for a given installer input,
+// preferring the inline content attribute when set and falling back to
+// reading the file pointed to by the file-path attribute. An empty
+// string with a nil error is returned when neither attribute is set
+// (callers should treat that as "input not provided").
+func resolveInstallerInput(d *schema.ResourceData, spec installerFileSpec) (string, error) {
+	if spec.contentAttr != "" {
+		if v, ok := d.GetOk(spec.contentAttr); ok {
+			content := v.(string)
+			if content != "" {
+				return content, nil
+			}
+		}
+	}
+	if spec.fileAttr != "" {
+		if v, ok := d.GetOk(spec.fileAttr); ok {
+			path := v.(string)
+			if path != "" {
+				data, err := utils.ReadFileContents(path)
+				if err != nil {
+					return "", err
+				}
+				return data, nil
+			}
+		}
+	}
+	return "", nil
+}
+
+// changeDetector is the minimal surface area needed by
+// installerInputHasChange. Both *schema.ResourceData and
+// *schema.ResourceDiff satisfy it.
+type changeDetector interface {
+	HasChange(key string) bool
+}
+
+// inputReader is the minimal surface area needed by
+// installerInputProvided. Both *schema.ResourceData and
+// *schema.ResourceDiff satisfy it.
+type inputReader interface {
+	GetOk(key string) (interface{}, bool)
+}
+
+// installerInputHasChange returns true if either of the attributes for
+// the given spec has changed.
+func installerInputHasChange(d changeDetector, spec installerFileSpec) bool {
+	if spec.contentAttr != "" && d.HasChange(spec.contentAttr) {
+		return true
+	}
+	if spec.fileAttr != "" && d.HasChange(spec.fileAttr) {
+		return true
+	}
+	return false
+}
+
+// installerInputProvided returns true if either attribute for the spec
+// is set to a non-empty value.
+func installerInputProvided(d inputReader, spec installerFileSpec) bool {
+	if spec.contentAttr != "" {
+		if v, ok := d.GetOk(spec.contentAttr); ok && v.(string) != "" {
+			return true
+		}
+	}
+	if spec.fileAttr != "" {
+		if v, ok := d.GetOk(spec.fileAttr); ok && v.(string) != "" {
+			return true
+		}
+	}
+	return false
 }
 
 // ResourceYBAInstaller handles installation of YugabyteDB Anywhere using YBA installer
@@ -100,9 +228,25 @@ func ResourceYBAInstaller() *schema.Resource {
 			},
 			"ssh_private_key_file_path": {
 				Type:     schema.TypeString,
-				Required: true,
+				Optional: true,
+				ExactlyOneOf: []string{
+					"ssh_private_key_file_path",
+					"ssh_private_key",
+				},
+				ConflictsWith: []string{"ssh_private_key"},
 				Description: "Path to file containing the private key to use for ssh " +
-					"commands.",
+					"commands. Conflicts with `ssh_private_key`.",
+			},
+			"ssh_private_key": {
+				Type:      schema.TypeString,
+				Optional:  true,
+				Sensitive: true,
+				ConflictsWith: []string{
+					"ssh_private_key_file_path",
+				},
+				Description: "Contents of the private key to use for ssh commands. " +
+					"Use this instead of `ssh_private_key_file_path` to pass the key " +
+					"directly without writing it to a local file.",
 			},
 			"ssh_user": {
 				Type:        schema.TypeString,
@@ -113,33 +257,84 @@ func ResourceYBAInstaller() *schema.Resource {
 				Type:     schema.TypeString,
 				Optional: true,
 				// change should trigger yba-ctl reconfigure
-				RequiredWith: []string{"tls_key_file"},
-				Description: "TLS certificate used to configure HTTPS. Ensure " +
-					"yba_application_settings file has *server_cert_path* set to /tmp/server.crt",
+				ConflictsWith: []string{"tls_certificate"},
+				Description: "Path to a TLS certificate file used to configure HTTPS. " +
+					"Ensure the application settings have *server_cert_path* set to " +
+					"/tmp/server.crt. Conflicts with `tls_certificate`.",
+			},
+			"tls_certificate": {
+				Type:      schema.TypeString,
+				Optional:  true,
+				Sensitive: true,
+				// change should trigger yba-ctl reconfigure
+				ConflictsWith: []string{"tls_certificate_file"},
+				Description: "Inline TLS certificate contents used to configure HTTPS. " +
+					"Ensure the application settings have *server_cert_path* set to " +
+					"/tmp/server.crt.",
 			},
 			"tls_key_file": {
 				Type:     schema.TypeString,
 				Optional: true,
 				// change should trigger yba-ctl reconfigure
-				RequiredWith: []string{"tls_certificate_file"},
-				Description: "TLS key used to configure HTTPS. Ensure " +
-					"yba_application_settings file has *server_key_path* set to /tmp/server.key",
+				ConflictsWith: []string{"tls_key"},
+				Description: "Path to a TLS key file used to configure HTTPS. Ensure " +
+					"the application settings have *server_key_path* set to " +
+					"/tmp/server.key. Conflicts with `tls_key`.",
+			},
+			"tls_key": {
+				Type:      schema.TypeString,
+				Optional:  true,
+				Sensitive: true,
+				// change should trigger yba-ctl reconfigure
+				ConflictsWith: []string{"tls_key_file"},
+				Description: "Inline TLS key contents used to configure HTTPS. Ensure " +
+					"the application settings have *server_key_path* set to " +
+					"/tmp/server.key.",
 			},
 			"yba_license_file": {
 				Type:     schema.TypeString,
-				Required: true,
-				Description: "YugabyteDB Anywhere license file used for installation using " +
-					"YBA installer.",
+				Optional: true,
+				ExactlyOneOf: []string{
+					"yba_license_file",
+					"yba_license",
+				},
+				ConflictsWith: []string{"yba_license"},
+				Description: "Path to a YugabyteDB Anywhere license file used for " +
+					"installation. Conflicts with `yba_license`.",
+			},
+			"yba_license": {
+				Type:      schema.TypeString,
+				Optional:  true,
+				Sensitive: true,
+				ConflictsWith: []string{
+					"yba_license_file",
+				},
+				Description: "Inline YugabyteDB Anywhere license contents used for " +
+					"installation. Use this instead of `yba_license_file` to pass " +
+					"the license without writing it to a local file.",
 			},
 			"application_settings_file": {
 				Type:     schema.TypeString,
 				Optional: true,
 				// Change in this should trigger yba-ctl reconfigure
-				Description: "Application settings file to configure YugabyteDB Anywhere. " +
-					"If left empty, the [default configuration]" +
+				ConflictsWith: []string{"application_settings"},
+				Description: "Path to an application settings file to configure " +
+					"YugabyteDB Anywhere. If left empty, the [default configuration]" +
 					"(https://github.com/yugabyte/terraform-provider-yba/tree/main" +
 					"/modules/resources/yba-ctl.yml)" +
-					" would be used for the application.",
+					" would be used. Conflicts with `application_settings`.",
+			},
+			"application_settings": {
+				Type:      schema.TypeString,
+				Optional:  true,
+				Sensitive: true,
+				// Change in this should trigger yba-ctl reconfigure
+				ConflictsWith: []string{"application_settings_file"},
+				Description: "Inline application settings contents used to configure " +
+					"YugabyteDB Anywhere. If left empty, the [default configuration]" +
+					"(https://github.com/yugabyte/terraform-provider-yba/tree/main" +
+					"/modules/resources/yba-ctl.yml)" +
+					" would be used.",
 			},
 			"reconfigure": {
 				Type:     schema.TypeBool,
@@ -147,8 +342,10 @@ func ResourceYBAInstaller() *schema.Resource {
 				Default:  false,
 				// True should trigger yba-ctl reconfigure
 				// if the contents of application_settings_file have been modified
-				Description: "Set to true for reconfiguration (If the contents of " +
-					"application_settings_file have been modified).",
+				Description: "Force a reconfiguration on the next apply, even when " +
+					"no other tracked attribute has changed. Content changes to " +
+					"`application_settings`, `tls_certificate`, or `tls_key` " +
+					"already trigger reconfiguration automatically.",
 			},
 			"skip_preflight_checks": {
 				Type:     schema.TypeList,
@@ -162,67 +359,102 @@ func ResourceYBAInstaller() *schema.Resource {
 	}
 }
 
+// validateInstallerFileAttr returns a CustomizeDiff function that
+// confirms a file-path attribute points at a real file (only when the
+// attribute is non-empty - empty values are valid because the user may
+// be supplying contents via the corresponding content attribute).
+func validateInstallerFileAttr(attr string) schema.CustomizeDiffFunc {
+	return customdiff.ValidateValue(attr, func(ctx context.Context, value,
+		meta interface{}) error {
+		name, _ := value.(string)
+		if name == "" {
+			return nil
+		}
+		return utils.FileExist(name)
+	})
+}
+
 func resourceYBAInstallerDiff() schema.CustomizeDiffFunc {
 	return customdiff.All(
-		customdiff.ValidateValue("tls_certificate_file", func(ctx context.Context, value,
-			meta interface{}) error {
-			if value.(string) != "" {
-				name := value.(string)
-				if err := utils.FileExist(name); err != nil {
-					return err
-				}
+		validateInstallerFileAttr("tls_certificate_file"),
+		validateInstallerFileAttr("tls_key_file"),
+		validateInstallerFileAttr("yba_license_file"),
+		validateInstallerFileAttr("application_settings_file"),
+		validateInstallerFileAttr("ssh_private_key_file_path"),
+		// TLS cert and key must be supplied together. Either side may
+		// be provided through the file-path or the inline content
+		// attribute.
+		func(ctx context.Context, d *schema.ResourceDiff, meta interface{}) error {
+			certProvided := installerInputProvided(d, tlsCertificateSpec)
+			keyProvided := installerInputProvided(d, tlsKeySpec)
+			if certProvided != keyProvided {
+				return errors.New(
+					"tls_certificate / tls_certificate_file and tls_key / " +
+						"tls_key_file must be set together",
+				)
 			}
 			return nil
-		}),
-		customdiff.ValidateValue("tls_key_file", func(ctx context.Context, value,
-			meta interface{}) error {
-			if value.(string) != "" {
-				name := value.(string)
-				if err := utils.FileExist(name); err != nil {
-					return err
-				}
-			}
-			return nil
-		}),
-		customdiff.ValidateValue("yba_license_file", func(ctx context.Context, value,
-			meta interface{}) error {
-			name := value.(string)
-			if err := utils.FileExist(name); err != nil {
-				return err
-			}
-			return nil
-		}),
-		customdiff.ValidateValue("application_settings_file", func(ctx context.Context, value,
-			meta interface{}) error {
-			if value.(string) != "" {
-				name := value.(string)
-				if err := utils.FileExist(name); err != nil {
-					return err
-				}
-			}
-			return nil
-		}),
-		customdiff.ValidateValue("ssh_private_key_file_path", func(ctx context.Context, value,
-			meta interface{}) error {
-			name := value.(string)
-			if err := utils.FileExist(name); err != nil {
-				return err
-			}
-			return nil
-		}),
+		},
 		customdiff.IfValue("reconfigure",
 			func(ctx context.Context, value, meta interface{}) bool {
 				return value.(bool)
 			},
 			func(ctx context.Context, d *schema.ResourceDiff, meta interface{}) error {
-				applicationSettingsFile := d.Get("application_settings_file").(string)
-				if applicationSettingsFile == "" {
-					return errors.New("Cannot reconfigure YBA Installer with empty " +
-						"application_settings_file file")
+				if !installerInputProvided(d, applicationSettingsSpec) {
+					return errEmptyApplicationSettings
 				}
 				return nil
 			}),
 	)
+}
+
+// errEmptyApplicationSettings is returned when a reconfigure is
+// requested but neither application_settings nor
+// application_settings_file is set.
+var errEmptyApplicationSettings = errors.New(
+	"Cannot reconfigure YBA Installer with empty application_settings " +
+		"(or application_settings_file)",
+)
+
+// resolveSSHPrivateKey returns the SSH private key contents either from
+// the inline `ssh_private_key` attribute or by reading the file pointed
+// to by `ssh_private_key_file_path`.
+func resolveSSHPrivateKey(d *schema.ResourceData) (string, error) {
+	content, err := resolveInstallerInput(d, sshPrivateKeySpec)
+	if err != nil {
+		return "", err
+	}
+	if content == "" {
+		return "", errors.New("ssh_private_key or ssh_private_key_file_path must be set")
+	}
+	return content, nil
+}
+
+// uploadInstallerInputs resolves and uploads each given input to the
+// remote host. Inputs that are not set (neither file path nor content)
+// are skipped.
+func uploadInstallerInputs(
+	ctx context.Context,
+	sshClient *ssh.Client,
+	d *schema.ResourceData,
+	specs []installerFileSpec,
+) error {
+	for _, spec := range specs {
+		if spec.remotePath == "" {
+			continue
+		}
+		content, err := resolveInstallerInput(d, spec)
+		if err != nil {
+			return err
+		}
+		if content == "" {
+			continue
+		}
+		if err := scpContent(ctx, sshClient, content, spec.remotePath); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func resourceYBAInstallerCreate(
@@ -233,42 +465,32 @@ func resourceYBAInstallerCreate(
 
 	hostIPForSSH := d.Get("ssh_host_ip").(string)
 	user := d.Get("ssh_user").(string)
-	pk, err := utils.ReadSSHPrivateKey(d.Get("ssh_private_key_file_path").(string))
+	pk, err := resolveSSHPrivateKey(d)
 	if err != nil {
 		return diag.FromErr(err)
 	}
 
-	sshClient, err := waitForIP(ctx, user, hostIPForSSH, *pk, d.Timeout(schema.TimeoutCreate))
+	sshClient, err := waitForIP(ctx, user, hostIPForSSH, pk, d.Timeout(schema.TimeoutCreate))
 	if err != nil {
 		tflog.Error(ctx, "Timeout: Couldn't connect to YugabyteDB Anywhere host")
 		return diag.FromErr(err)
 	}
 	defer sshClient.Close()
 
-	for key, remote := range getInstallationFiles() {
-		local := d.Get(key).(string)
-		if local == "" {
-			continue
-		}
-		err = scpFile(ctx, sshClient, local, remote)
-		if err != nil {
-			tflog.Error(ctx, "Error occurred while transferring files required for installation")
-			return diag.FromErr(err)
-		}
+	if err := uploadInstallerInputs(ctx, sshClient, d, installationYBAInstallerSpecs()); err != nil {
+		tflog.Error(ctx, "Error occurred while transferring files required for installation")
+		return diag.FromErr(err)
 	}
 
 	ybaVersion := d.Get("yba_version").(string)
 	hostOS := d.Get("host_os").(string)
 	hostArch := d.Get("host_architecture").(string)
-	configExists := false
 	skipPreflight := d.Get("skip_preflight_checks")
 	var skipPreflightChecksList *[]string
 	if skipPreflight != nil {
 		skipPreflightChecksList = utils.StringSlice(d.Get("skip_preflight_checks").([]interface{}))
 	}
-	if d.Get("application_settings_file").(string) != "" {
-		configExists = true
-	}
+	configExists := installerInputProvided(d, applicationSettingsSpec)
 
 	for _, cmd := range getInstallCommands(ybaVersion, hostOS, hostArch, configExists,
 		skipPreflightChecksList) {
@@ -303,12 +525,12 @@ func resourceYBAInstallerUpdate(
 
 	hostIPForSSH := d.Get("ssh_host_ip").(string)
 	user := d.Get("ssh_user").(string)
-	pk, err := utils.ReadSSHPrivateKey(d.Get("ssh_private_key_file_path").(string))
-	skipPreflightChecksList := utils.StringSlice(d.Get("skip_preflight_checks").([]interface{}))
+	pk, err := resolveSSHPrivateKey(d)
 	if err != nil {
 		return diag.FromErr(err)
 	}
-	sshClient, err := waitForIP(ctx, user, hostIPForSSH, *pk, d.Timeout(schema.TimeoutCreate))
+	skipPreflightChecksList := utils.StringSlice(d.Get("skip_preflight_checks").([]interface{}))
+	sshClient, err := waitForIP(ctx, user, hostIPForSSH, pk, d.Timeout(schema.TimeoutCreate))
 	if err != nil {
 		tflog.Error(ctx, "Timeout: Couldn't connect to YugabyteDB Anywhere host")
 		return diag.FromErr(err)
@@ -328,45 +550,30 @@ func resourceYBAInstallerUpdate(
 
 	commands := make([]string, 0)
 
-	if d.HasChange("yba_license_file") {
-		for key, remote := range licenseYBAInstallerFiles {
-			local := d.Get(key).(string)
-			if local == "" {
-				continue
-			}
-			err = scpFile(ctx, sshClient, local, remote)
-			if err != nil {
-				tflog.Error(ctx, "Error occurred while transferring files required for "+
-					"updating license")
-				return diag.FromErr(err)
-			}
+	if installerInputHasChange(d, licenseSpec) {
+		if err := uploadInstallerInputs(ctx, sshClient, d, licenseYBAInstallerSpecs()); err != nil {
+			tflog.Error(ctx, "Error occurred while transferring files required for "+
+				"updating license")
+			return diag.FromErr(err)
 		}
-
 		folder, _, _ := getYBAInstallerPackageString(oldVersion, hostOS, hostArch)
 		commands = append(commands, getAddLicenseCommands(folder))
 	}
 
-	if d.Get("reconfigure").(bool) || d.HasChange("application_settings_file") ||
-		d.HasChange("tls_certificate_file") || d.HasChange("tls_key_file") {
-		applicationSettingsFile := d.Get("application_settings_file").(string)
-		if applicationSettingsFile == "" {
-			err := errors.New(
-				"Cannot reconfigure YBA Installer with empty application_settings_file " +
-					"file",
-			)
-			return diag.FromErr(err)
+	reconfigureRequested := d.Get("reconfigure").(bool)
+	contentChanged := installerInputHasChange(d, applicationSettingsSpec) ||
+		installerInputHasChange(d, tlsCertificateSpec) ||
+		installerInputHasChange(d, tlsKeySpec)
+	if reconfigureRequested || contentChanged {
+		if !installerInputProvided(d, applicationSettingsSpec) {
+			return diag.FromErr(errEmptyApplicationSettings)
 		}
-		for key, remote := range reconfigurationYBAInstallerFiles {
-			local := d.Get(key).(string)
-			if local == "" {
-				continue
-			}
-			err = scpFile(ctx, sshClient, local, remote)
-			if err != nil {
-				tflog.Error(ctx, "Error occurred while transferring files required for "+
-					"reconfiguration")
-				return diag.FromErr(err)
-			}
+		if err := uploadInstallerInputs(
+			ctx, sshClient, d, reconfigurationYBAInstallerSpecs(),
+		); err != nil {
+			tflog.Error(ctx, "Error occurred while transferring files required for "+
+				"reconfiguration")
+			return diag.FromErr(err)
 		}
 		commands = append(commands, getReconfigureCommands()...)
 	}
@@ -398,12 +605,12 @@ func resourceYBAInstallerDelete(
 
 	hostIPForSSH := d.Get("ssh_host_ip").(string)
 	user := d.Get("ssh_user").(string)
-	pk, err := utils.ReadSSHPrivateKey(d.Get("ssh_private_key_file_path").(string))
+	pk, err := resolveSSHPrivateKey(d)
 	if err != nil {
 		return diag.FromErr(err)
 	}
 
-	sshClient, err := newSSHClient(user, hostIPForSSH, *pk)
+	sshClient, err := newSSHClient(user, hostIPForSSH, pk)
 	if err != nil {
 		return diag.FromErr(err)
 	}
