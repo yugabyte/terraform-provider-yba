@@ -21,6 +21,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 	"github.com/yugabyte/terraform-provider-yba/internal/api"
 	"github.com/yugabyte/terraform-provider-yba/internal/utils"
 	"golang.org/x/exp/slices"
@@ -48,6 +49,8 @@ func ReleaseVersion() *schema.Resource {
 			"track": {
 				Type:     schema.TypeString,
 				Optional: true,
+				ValidateDiagFunc: validation.ToDiagFunc(
+					validation.StringInSlice([]string{"stable", "preview"}, false)),
 				Description: "YugabyteDB release verion track. Allowed values: stable, preview." +
 					" Uses the latest/user given version from the corresponding track.",
 			},

@@ -349,8 +349,8 @@ Optional:
 
 Optional:
 
-- `sleep_after_master_restart_millis` (Number) Milliseconds to sleep after each master node restart. Defaults to 180000 (3 minutes), matching the YugabyteDB Anywhere platform default.
-- `sleep_after_tserver_restart_millis` (Number) Milliseconds to sleep after each TServer node restart. Defaults to 180000 (3 minutes), matching the YugabyteDB Anywhere platform default.
+- `sleep_after_master_restart_millis` (Number) Milliseconds to sleep after each master node restart. Must be 0 or a positive integer. Defaults to 180000 (3 minutes), matching the YugabyteDB Anywhere platform default.
+- `sleep_after_tserver_restart_millis` (Number) Milliseconds to sleep after each TServer node restart. Must be 0 or a positive integer. Defaults to 180000 (3 minutes), matching the YugabyteDB Anywhere platform default.
 - `upgrade_option` (String) Node restart strategy applied to all upgrade operations. Allowed values: Rolling, Non-Rolling, Non-Restart. Defaults to Rolling (YugabyteDB Anywhere platform default). TLS toggle always uses Non-Rolling; ResizeNode and VMImageUpgrade always use Rolling, regardless of this setting.
 
 

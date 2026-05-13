@@ -475,20 +475,22 @@ func ResourceUniverse() *schema.Resource {
 								"regardless of this setting.",
 						},
 						"sleep_after_master_restart_millis": {
-							Type:     schema.TypeInt,
-							Optional: true,
-							Default:  180000,
+							Type:             schema.TypeInt,
+							Optional:         true,
+							Default:          180000,
+							ValidateDiagFunc: validation.ToDiagFunc(validation.IntAtLeast(0)),
 							Description: "Milliseconds to sleep after each master node restart. " +
-								"Defaults to 180000 (3 minutes), matching the YugabyteDB Anywhere " +
-								"platform default.",
+								"Must be 0 or a positive integer. Defaults to 180000 (3 minutes), " +
+								"matching the YugabyteDB Anywhere platform default.",
 						},
 						"sleep_after_tserver_restart_millis": {
-							Type:     schema.TypeInt,
-							Optional: true,
-							Default:  180000,
+							Type:             schema.TypeInt,
+							Optional:         true,
+							Default:          180000,
+							ValidateDiagFunc: validation.ToDiagFunc(validation.IntAtLeast(0)),
 							Description: "Milliseconds to sleep after each TServer node restart. " +
-								"Defaults to 180000 (3 minutes), matching the YugabyteDB Anywhere " +
-								"platform default.",
+								"Must be 0 or a positive integer. Defaults to 180000 (3 minutes), " +
+								"matching the YugabyteDB Anywhere platform default.",
 						},
 					},
 				},
