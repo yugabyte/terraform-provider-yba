@@ -14,6 +14,8 @@ to a distinct YBA API task that runs asynchronously on the YugabyteDB Anywhere p
 This guide describes every supported action: what triggers it, which fields control its
 behavior, and any ordering or constraint rules that apply.
 
+~> **Warning:** Read replica (ASYNC cluster) support is not fully documented in this provider. Configuration options for ASYNC clusters may be incomplete or subject to change. Use read replicas with caution and refer to the YugabyteDB Anywhere UI or API documentation for the full set of supported options.
+
 ## Fields that cannot be changed via Terraform after creation
 
 The provider rejects edits to the following `yba_universe` fields at plan time. Changing any of

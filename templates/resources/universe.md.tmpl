@@ -18,21 +18,8 @@ The details for configuration are available in the [YugabyteDB Anywhere Create Y
 
 ~> **Warning:** Read replica (ASYNC cluster) support is not fully documented in this provider. Configuration options for ASYNC clusters may be incomplete or subject to change. Use read replicas with caution and refer to the YugabyteDB Anywhere UI or API documentation for the full set of supported options.
 
-~> **Disclaimer:** Please note that data move to a different *zone* is currently not supported.
-
-The following operations are supported in the Edit universe workflow:
-
-1. Software upgrades
-1. GFlags upgrades
-1. Upgrade to systemD
-1. Toggle TLS settings
-1. Editing cluster parameters
-    1. Instance type
-    1. Number of Nodes
-    1. Number of Volumes per instance
-    1. Volume Size
-    1. Instance Tags
-1. Delete read replicas (Adding read replica after universe creation currently not supported)
+The full set of in-place edit operations -- triggers, behavior, and ordering rules -- is
+documented in the [Universe Edit Actions](../guides/universe-edit-actions.md) guide.
 
 ~> **Note:** `clusters[*].user_intent.access_key_code` is listed in the Optional schema group, but it is required when the cluster targets a cloud provider (`aws`, `gcp`, `azu`). It is only optional for on-prem providers whose nodes have the YBA node agent installed. The provider rejects a plan that omits it for a cloud provider at plan time.
 
