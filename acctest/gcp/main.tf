@@ -25,6 +25,11 @@ variable "GCP_VPC_NETWORK" {
   description = "GCP VPC network to run acceptance testing"
 }
 
+variable "RUNNER_IP" {
+  description = "IP of the runners to be able to connect to the instances"
+  type = string
+}
+
 resource "random_uuid" "random" {
 }
 
@@ -41,6 +46,7 @@ module "gcp_yb_anywhere" {
   // files
   ssh_private_key = "${var.RESOURCES_DIR}/acctest"
   ssh_public_key  = "${var.RESOURCES_DIR}/acctest.pub"
+  runner_ip =  "${var.RUNNER_IP}"
 }
 
 output "host" {
@@ -61,6 +67,9 @@ resource "yba_installation" "installation" {
   replicated_config_file    = "${var.RESOURCES_DIR}/replicated.conf"
   replicated_license_file   = "${var.RESOURCES_DIR}/acctest.rli"
   application_settings_file = "${var.RESOURCES_DIR}/application_settings.conf"
+  timeouts {
+    create = "30m"
+  }
 }
 
 resource "yba_customer_resource" "customer" {

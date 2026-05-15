@@ -59,3 +59,9 @@ variable "ssh_public_key" {
   type        = string
   sensitive   = true
 }
+
+variable "runner_ip" {
+  description = "IP of the runners to be ablee to connect to the instances"
+  type = string
+}
+

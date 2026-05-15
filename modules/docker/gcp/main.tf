@@ -3,16 +3,16 @@ data "google_compute_image" "yb_anywhere_image" {
   project = var.image_project
 }
 
-#resource "google_compute_firewall" "yugaware-firewall" {
-#  name    = "${var.cluster_name}-firewall"
-#  network = var.vpc_network
-#  allow {
-#    protocol = "tcp"
-#    ports    = ["22", "8800", "80", "7000", "7100", "9000", "9100", "11000", "12000", "9300", "9042", "5433", "6379"]
-#  }
-#  source_ranges = ["0.0.0.0/0"]
-#  target_tags   = [var.cluster_name]
-#}
+resource "google_compute_firewall" "yugaware-firewall" {
+ name    = "${var.cluster_name}-fw"
+ network = var.vpc_network
+ allow {
+   protocol = "tcp"
+   ports    = ["22", "80", "443"]
+ }
+ source_ranges = ["${var.runner_ip}"]
+ target_tags   = ["terraform-acctest-yugaware"]
+}
 
 resource "google_compute_instance" "yb_anywhere_node" {
   name         = var.cluster_name
@@ -37,4 +37,5 @@ resource "google_compute_instance" "yb_anywhere_node" {
     subnetwork = var.vpc_subnetwork
     access_config {}
   }
+  depends_on = [ google_compute_firewall.yugaware-firewall ]
 }
