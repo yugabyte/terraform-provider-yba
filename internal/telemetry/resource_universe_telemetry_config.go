@@ -165,7 +165,7 @@ func auditLogsSchema() *schema.Schema {
 						Schema: map[string]*schema.Schema{
 							"enabled": {Type: schema.TypeBool, Optional: true, Default: false},
 							"classes": {
-								Type:        schema.TypeList,
+								Type:        schema.TypeSet,
 								Optional:    true,
 								Elem:        &schema.Schema{Type: schema.TypeString},
 								Description: "YSQL audit log classes (e.g. READ, WRITE, DDL, ROLE).",
@@ -190,12 +190,12 @@ func auditLogsSchema() *schema.Schema {
 						Schema: map[string]*schema.Schema{
 							"enabled":             {Type: schema.TypeBool, Optional: true, Default: false},
 							"log_level":           {Type: schema.TypeString, Optional: true, Default: "WARNING"},
-							"included_categories": {Type: schema.TypeList, Optional: true, Elem: &schema.Schema{Type: schema.TypeString}},
-							"excluded_categories": {Type: schema.TypeList, Optional: true, Elem: &schema.Schema{Type: schema.TypeString}},
-							"included_keyspaces":  {Type: schema.TypeList, Optional: true, Elem: &schema.Schema{Type: schema.TypeString}},
-							"excluded_keyspaces":  {Type: schema.TypeList, Optional: true, Elem: &schema.Schema{Type: schema.TypeString}},
-							"included_users":      {Type: schema.TypeList, Optional: true, Elem: &schema.Schema{Type: schema.TypeString}},
-							"excluded_users":      {Type: schema.TypeList, Optional: true, Elem: &schema.Schema{Type: schema.TypeString}},
+							"included_categories": {Type: schema.TypeSet, Optional: true, Elem: &schema.Schema{Type: schema.TypeString}},
+							"excluded_categories": {Type: schema.TypeSet, Optional: true, Elem: &schema.Schema{Type: schema.TypeString}},
+							"included_keyspaces":  {Type: schema.TypeSet, Optional: true, Elem: &schema.Schema{Type: schema.TypeString}},
+							"excluded_keyspaces":  {Type: schema.TypeSet, Optional: true, Elem: &schema.Schema{Type: schema.TypeString}},
+							"included_users":      {Type: schema.TypeSet, Optional: true, Elem: &schema.Schema{Type: schema.TypeString}},
+							"excluded_users":      {Type: schema.TypeSet, Optional: true, Elem: &schema.Schema{Type: schema.TypeString}},
 						},
 					},
 				},
@@ -273,7 +273,7 @@ func metricsSchema() *schema.Schema {
 					ValidateFunc: validation.StringInSlice(allowedCollectionLevels, false),
 				},
 				"scrape_config_targets": {
-					Type:     schema.TypeList,
+					Type:     schema.TypeSet,
 					Optional: true,
 					Elem: &schema.Schema{
 						Type:         schema.TypeString,
@@ -723,16 +723,20 @@ func intValue(in interface{}) int {
 	return 0
 }
 
-// stringList converts a Terraform list of strings (always []interface{}) to a
-// concrete []string.
+// stringList converts a Terraform collection of strings to a concrete
+// []string. TypeList fields decode to []interface{}; TypeSet fields decode
+// to *schema.Set, so callers can hand either shape to this helper.
 func stringList(in interface{}) []string {
 	out := []string{}
-	list, ok := in.([]interface{})
-	if !ok {
-		return out
-	}
-	for _, item := range list {
-		out = append(out, stringValue(item))
+	switch v := in.(type) {
+	case []interface{}:
+		for _, item := range v {
+			out = append(out, stringValue(item))
+		}
+	case *schema.Set:
+		for _, item := range v.List() {
+			out = append(out, stringValue(item))
+		}
 	}
 	return out
 }
