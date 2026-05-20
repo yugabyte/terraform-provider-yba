@@ -26,6 +26,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 	clientv2 "github.com/yugabyte/platform-go-client/v2"
+
 	"github.com/yugabyte/terraform-provider-yba/internal/api"
 	"github.com/yugabyte/terraform-provider-yba/internal/utils"
 )
@@ -165,20 +166,56 @@ func auditLogsSchema() *schema.Schema {
 						Schema: map[string]*schema.Schema{
 							"enabled": {Type: schema.TypeBool, Optional: true, Default: false},
 							"classes": {
-								Type:        schema.TypeList,
+								Type:        schema.TypeSet,
 								Optional:    true,
 								Elem:        &schema.Schema{Type: schema.TypeString},
 								Description: "YSQL audit log classes (e.g. READ, WRITE, DDL, ROLE).",
 							},
-							"log_catalog":            {Type: schema.TypeBool, Optional: true, Default: true},
-							"log_client":             {Type: schema.TypeBool, Optional: true, Default: true},
-							"log_level":              {Type: schema.TypeString, Optional: true, Default: "LOG"},
-							"log_parameter":          {Type: schema.TypeBool, Optional: true, Default: false},
-							"log_parameter_max_size": {Type: schema.TypeInt, Optional: true, Default: 0},
-							"log_relation":           {Type: schema.TypeBool, Optional: true, Default: false},
-							"log_rows":               {Type: schema.TypeBool, Optional: true, Default: false},
-							"log_statement":          {Type: schema.TypeBool, Optional: true, Default: true},
-							"log_statement_once":     {Type: schema.TypeBool, Optional: true, Default: false},
+							"log_catalog": {
+								Type:     schema.TypeBool,
+								Optional: true,
+								Default:  true,
+							},
+							"log_client": {
+								Type:     schema.TypeBool,
+								Optional: true,
+								Default:  true,
+							},
+							"log_level": {
+								Type:     schema.TypeString,
+								Optional: true,
+								Default:  "LOG",
+							},
+							"log_parameter": {
+								Type:     schema.TypeBool,
+								Optional: true,
+								Default:  false,
+							},
+							"log_parameter_max_size": {
+								Type:     schema.TypeInt,
+								Optional: true,
+								Default:  0,
+							},
+							"log_relation": {
+								Type:     schema.TypeBool,
+								Optional: true,
+								Default:  false,
+							},
+							"log_rows": {
+								Type:     schema.TypeBool,
+								Optional: true,
+								Default:  false,
+							},
+							"log_statement": {
+								Type:     schema.TypeBool,
+								Optional: true,
+								Default:  true,
+							},
+							"log_statement_once": {
+								Type:     schema.TypeBool,
+								Optional: true,
+								Default:  false,
+							},
 						},
 					},
 				},
@@ -188,14 +225,46 @@ func auditLogsSchema() *schema.Schema {
 					MaxItems: 1,
 					Elem: &schema.Resource{
 						Schema: map[string]*schema.Schema{
-							"enabled":             {Type: schema.TypeBool, Optional: true, Default: false},
-							"log_level":           {Type: schema.TypeString, Optional: true, Default: "WARNING"},
-							"included_categories": {Type: schema.TypeList, Optional: true, Elem: &schema.Schema{Type: schema.TypeString}},
-							"excluded_categories": {Type: schema.TypeList, Optional: true, Elem: &schema.Schema{Type: schema.TypeString}},
-							"included_keyspaces":  {Type: schema.TypeList, Optional: true, Elem: &schema.Schema{Type: schema.TypeString}},
-							"excluded_keyspaces":  {Type: schema.TypeList, Optional: true, Elem: &schema.Schema{Type: schema.TypeString}},
-							"included_users":      {Type: schema.TypeList, Optional: true, Elem: &schema.Schema{Type: schema.TypeString}},
-							"excluded_users":      {Type: schema.TypeList, Optional: true, Elem: &schema.Schema{Type: schema.TypeString}},
+							"enabled": {
+								Type:     schema.TypeBool,
+								Optional: true,
+								Default:  false,
+							},
+							"log_level": {
+								Type:     schema.TypeString,
+								Optional: true,
+								Default:  "WARNING",
+							},
+							"included_categories": {
+								Type:     schema.TypeSet,
+								Optional: true,
+								Elem:     &schema.Schema{Type: schema.TypeString},
+							},
+							"excluded_categories": {
+								Type:     schema.TypeSet,
+								Optional: true,
+								Elem:     &schema.Schema{Type: schema.TypeString},
+							},
+							"included_keyspaces": {
+								Type:     schema.TypeSet,
+								Optional: true,
+								Elem:     &schema.Schema{Type: schema.TypeString},
+							},
+							"excluded_keyspaces": {
+								Type:     schema.TypeSet,
+								Optional: true,
+								Elem:     &schema.Schema{Type: schema.TypeString},
+							},
+							"included_users": {
+								Type:     schema.TypeSet,
+								Optional: true,
+								Elem:     &schema.Schema{Type: schema.TypeString},
+							},
+							"excluded_users": {
+								Type:     schema.TypeSet,
+								Optional: true,
+								Elem:     &schema.Schema{Type: schema.TypeString},
+							},
 						},
 					},
 				},
@@ -238,15 +307,51 @@ func queryLogsSchema() *schema.Schema {
 					MaxItems: 1,
 					Elem: &schema.Resource{
 						Schema: map[string]*schema.Schema{
-							"enabled":                    {Type: schema.TypeBool, Optional: true, Default: false},
-							"log_statement":              {Type: schema.TypeString, Optional: true, Default: "NONE"},
-							"log_min_error_statement":    {Type: schema.TypeString, Optional: true, Default: "ERROR"},
-							"log_error_verbosity":        {Type: schema.TypeString, Optional: true, Default: "DEFAULT"},
-							"log_duration":               {Type: schema.TypeBool, Optional: true, Default: false},
-							"debug_print_plan":           {Type: schema.TypeBool, Optional: true, Default: false},
-							"log_connections":            {Type: schema.TypeBool, Optional: true, Default: false},
-							"log_disconnections":         {Type: schema.TypeBool, Optional: true, Default: false},
-							"log_min_duration_statement": {Type: schema.TypeInt, Optional: true, Default: -1},
+							"enabled": {
+								Type:     schema.TypeBool,
+								Optional: true,
+								Default:  false,
+							},
+							"log_statement": {
+								Type:     schema.TypeString,
+								Optional: true,
+								Default:  "NONE",
+							},
+							"log_min_error_statement": {
+								Type:     schema.TypeString,
+								Optional: true,
+								Default:  "ERROR",
+							},
+							"log_error_verbosity": {
+								Type:     schema.TypeString,
+								Optional: true,
+								Default:  "DEFAULT",
+							},
+							"log_duration": {
+								Type:     schema.TypeBool,
+								Optional: true,
+								Default:  false,
+							},
+							"debug_print_plan": {
+								Type:     schema.TypeBool,
+								Optional: true,
+								Default:  false,
+							},
+							"log_connections": {
+								Type:     schema.TypeBool,
+								Optional: true,
+								Default:  false,
+							},
+							"log_disconnections": {
+								Type:     schema.TypeBool,
+								Optional: true,
+								Default:  false,
+							},
+							"log_min_duration_statement": {
+								Type:     schema.TypeInt,
+								Optional: true,
+								Default:  -1,
+							},
 						},
 					},
 				},
@@ -273,7 +378,7 @@ func metricsSchema() *schema.Schema {
 					ValidateFunc: validation.StringInSlice(allowedCollectionLevels, false),
 				},
 				"scrape_config_targets": {
-					Type:     schema.TypeList,
+					Type:     schema.TypeSet,
 					Optional: true,
 					Elem: &schema.Schema{
 						Type:         schema.TypeString,
@@ -304,11 +409,23 @@ func exporterListSchema(withBatching bool) *schema.Schema {
 		},
 	}
 	if withBatching {
-		s["send_batch_max_size"] = &schema.Schema{Type: schema.TypeInt, Optional: true, Default: 1000}
+		s["send_batch_max_size"] = &schema.Schema{
+			Type:     schema.TypeInt,
+			Optional: true,
+			Default:  1000,
+		}
 		s["send_batch_size"] = &schema.Schema{Type: schema.TypeInt, Optional: true, Default: 100}
-		s["send_batch_timeout_seconds"] = &schema.Schema{Type: schema.TypeInt, Optional: true, Default: 10}
+		s["send_batch_timeout_seconds"] = &schema.Schema{
+			Type:     schema.TypeInt,
+			Optional: true,
+			Default:  10,
+		}
 		s["memory_limit_mib"] = &schema.Schema{Type: schema.TypeInt, Optional: true, Default: 2048}
-		s["memory_limit_check_interval_seconds"] = &schema.Schema{Type: schema.TypeInt, Optional: true, Default: 10}
+		s["memory_limit_check_interval_seconds"] = &schema.Schema{
+			Type:     schema.TypeInt,
+			Optional: true,
+			Default:  10,
+		}
 	}
 	return &schema.Schema{
 		Type:     schema.TypeList,
@@ -330,10 +447,18 @@ func metricsExporterSchema() *schema.Schema {
 			Description: "Additional string tags appended to each metric.",
 			Elem:        &schema.Schema{Type: schema.TypeString},
 		},
-		"send_batch_max_size":                 {Type: schema.TypeInt, Optional: true, Default: 1000},
-		"send_batch_size":                     {Type: schema.TypeInt, Optional: true, Default: 100},
-		"send_batch_timeout_seconds":          {Type: schema.TypeInt, Optional: true, Default: 10},
-		"memory_limit_mib":                    {Type: schema.TypeInt, Optional: true, Default: 2048},
+		"send_batch_max_size": {
+			Type:     schema.TypeInt,
+			Optional: true,
+			Default:  1000,
+		},
+		"send_batch_size":            {Type: schema.TypeInt, Optional: true, Default: 100},
+		"send_batch_timeout_seconds": {Type: schema.TypeInt, Optional: true, Default: 10},
+		"memory_limit_mib": {
+			Type:     schema.TypeInt,
+			Optional: true,
+			Default:  2048,
+		},
 		"memory_limit_check_interval_seconds": {Type: schema.TypeInt, Optional: true, Default: 10},
 		"metrics_prefix": {
 			Type:        schema.TypeString,
@@ -421,7 +546,10 @@ func buildMetrics(in interface{}) *clientv2.MetricsTelemetrySpec {
 		Exporters:             buildBatchedExporters(m["exporter"], true /* withMetricsPrefix */),
 	}
 	for _, t := range stringList(m["scrape_config_targets"]) {
-		out.ScrapeConfigTargets = append(out.ScrapeConfigTargets, clientv2.ScrapeConfigTargetType(t))
+		out.ScrapeConfigTargets = append(
+			out.ScrapeConfigTargets,
+			clientv2.ScrapeConfigTargetType(t),
+		)
 	}
 	return out
 }
@@ -510,7 +638,10 @@ func buildAuditExporters(in interface{}) []clientv2.TelemetryExporterEntry {
 // batching/memory fields used by query logs and metrics. When
 // `withMetricsPrefix` is true the optional `metrics_prefix` field is also
 // emitted.
-func buildBatchedExporters(in interface{}, withMetricsPrefix bool) []clientv2.TelemetryExporterEntry {
+func buildBatchedExporters(
+	in interface{},
+	withMetricsPrefix bool,
+) []clientv2.TelemetryExporterEntry {
 	list, ok := in.([]interface{})
 	if !ok {
 		return nil
@@ -522,12 +653,22 @@ func buildBatchedExporters(in interface{}, withMetricsPrefix bool) []clientv2.Te
 			continue
 		}
 		entry := clientv2.TelemetryExporterEntry{
-			ExporterUuid:                    stringValue(m["exporter_uuid"]),
-			SendBatchMaxSize:                utils.GetInt32Pointer(int32(intValue(m["send_batch_max_size"]))),
-			SendBatchSize:                   utils.GetInt32Pointer(int32(intValue(m["send_batch_size"]))),
-			SendBatchTimeoutSeconds:         utils.GetInt32Pointer(int32(intValue(m["send_batch_timeout_seconds"]))),
-			MemoryLimitMib:                  utils.GetInt32Pointer(int32(intValue(m["memory_limit_mib"]))),
-			MemoryLimitCheckIntervalSeconds: utils.GetInt32Pointer(int32(intValue(m["memory_limit_check_interval_seconds"]))),
+			ExporterUuid: stringValue(m["exporter_uuid"]),
+			SendBatchMaxSize: utils.GetInt32Pointer(
+				int32(intValue(m["send_batch_max_size"])),
+			),
+			SendBatchSize: utils.GetInt32Pointer(
+				int32(intValue(m["send_batch_size"])),
+			),
+			SendBatchTimeoutSeconds: utils.GetInt32Pointer(
+				int32(intValue(m["send_batch_timeout_seconds"])),
+			),
+			MemoryLimitMib: utils.GetInt32Pointer(
+				int32(intValue(m["memory_limit_mib"])),
+			),
+			MemoryLimitCheckIntervalSeconds: utils.GetInt32Pointer(
+				int32(intValue(m["memory_limit_check_interval_seconds"])),
+			),
 		}
 		if tags := stringMap(m["additional_tags"]); len(tags) > 0 {
 			entry.AdditionalTags = &tags
@@ -723,16 +864,20 @@ func intValue(in interface{}) int {
 	return 0
 }
 
-// stringList converts a Terraform list of strings (always []interface{}) to a
-// concrete []string.
+// stringList converts a Terraform collection of strings to a concrete
+// []string. TypeList fields decode to []interface{}; TypeSet fields decode
+// to *schema.Set, so callers can hand either shape to this helper.
 func stringList(in interface{}) []string {
 	out := []string{}
-	list, ok := in.([]interface{})
-	if !ok {
-		return out
-	}
-	for _, item := range list {
-		out = append(out, stringValue(item))
+	switch v := in.(type) {
+	case []interface{}:
+		for _, item := range v {
+			out = append(out, stringValue(item))
+		}
+	case *schema.Set:
+		for _, item := range v.List() {
+			out = append(out, stringValue(item))
+		}
 	}
 	return out
 }
