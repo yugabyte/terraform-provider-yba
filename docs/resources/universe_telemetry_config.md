@@ -4,6 +4,7 @@ description: |-
   Universe Telemetry Config Resource. Attaches audit log, query log, and metrics export pipelines to a YBA universe via the unified export-telemetry-configs API. Each exporter references a yba_telemetry_provider (or any pre-existing telemetry provider UUID) and triggers a rolling/non-rolling restart of the universe to install or update the OpenTelemetry collector.
   ~> Note: OTLP-based exporters require the global runtime config yb.telemetry.allow_otlp to be set to true. Manage that with the yba_runtime_config resource.
   ~> Note: This resource does not currently support importing an existing universe-level configuration; recreate the resource by applying the desired state.
+  ~> Dependency Note: When exporter_uuid is wired through a reference like yba_telemetry_provider.x.id, Terraform's dependency graph automatically orders create / replace / destroy of the provider before this resource — there is no need to add an explicit depends_on. The provider's own destroy step also proactively detaches itself from every referencing universe before deletion, so a plan that destroys-and-recreates a provider in the same apply is safe.
 ---
 
 # yba_universe_telemetry_config (Resource)
@@ -121,7 +122,7 @@ resource "yba_universe_telemetry_config" "main" {
 - `timeouts` (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))
 - `upgrade_options` (Block List, Max: 1) Optional rolling-restart options applied while reconfiguring the universe.
 
-  ~> **Performance Note:** The `sleep_after_*_restart_millis` defaults of 180000 (3 minutes) are applied per node. A 9-node universe therefore spends ~27 minutes just sleeping between restarts on top of the actual restart work. Lower these values for faster reconfigures on healthy clusters, or raise them for clusters under heavy traffic. (see [below for nested schema](#nestedblock--upgrade_options))
+~> **Performance Note:** The `sleep_after_*_restart_millis` defaults of 180000 (3 minutes) are applied per node. A 9-node universe therefore spends ~27 minutes just sleeping between restarts on top of the actual restart work. Lower these values for faster reconfigures on healthy clusters, or raise them for clusters under heavy traffic. (see [below for nested schema](#nestedblock--upgrade_options))
 
 ### Read-Only
 
@@ -154,12 +155,12 @@ Optional:
 Optional:
 
 - `enabled` (Boolean)
-- `excluded_categories` (List of String)
-- `excluded_keyspaces` (List of String)
-- `excluded_users` (List of String)
-- `included_categories` (List of String)
-- `included_keyspaces` (List of String)
-- `included_users` (List of String)
+- `excluded_categories` (Set of String)
+- `excluded_keyspaces` (Set of String)
+- `excluded_users` (Set of String)
+- `included_categories` (Set of String)
+- `included_keyspaces` (Set of String)
+- `included_users` (Set of String)
 - `log_level` (String)
 
 
@@ -168,7 +169,7 @@ Optional:
 
 Optional:
 
-- `classes` (List of String) YSQL audit log classes (e.g. READ, WRITE, DDL, ROLE).
+- `classes` (Set of String) YSQL audit log classes (e.g. READ, WRITE, DDL, ROLE).
 - `enabled` (Boolean)
 - `log_catalog` (Boolean)
 - `log_client` (Boolean)
@@ -189,7 +190,7 @@ Optional:
 
 - `collection_level` (String)
 - `exporter` (Block List) (see [below for nested schema](#nestedblock--metrics--exporter))
-- `scrape_config_targets` (List of String)
+- `scrape_config_targets` (Set of String)
 - `scrape_interval_seconds` (Number)
 - `scrape_timeout_seconds` (Number)
 
