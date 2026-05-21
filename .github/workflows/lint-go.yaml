@@ -1,0 +1,61 @@
+name: Lint (Go)
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "**/*.go"
+      - "**/go.mod"
+      - "**/go.sum"
+      - ".golangci.yml"
+      - "versions.env"
+      - ".github/workflows/lint-go.yaml"
+  pull_request:
+    paths:
+      - "**/*.go"
+      - "**/go.mod"
+      - "**/go.sum"
+      - ".golangci.yml"
+      - "versions.env"
+      - ".github/workflows/lint-go.yaml"
+
+jobs:
+  lint-go:
+    name: Lint (Go)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out code into the Go module directory
+        uses: actions/checkout@v4
+
+      - name: Load tool versions from versions.env
+        run: cat versions.env >> "$GITHUB_ENV"
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: "go.mod"
+        id: go
+
+      - name: Cache golangci-lint binary
+        id: cache-golangci-lint-bin
+        uses: actions/cache@v4
+        with:
+          path: ~/go/bin/golangci-lint
+          key: golangci-lint.bin-${{ runner.os }}-${{ env.GOLANGCI_LINT_VERSION }}
+
+      - name: Install golangci-lint
+        if: steps.cache-golangci-lint-bin.outputs.cache-hit != 'true'
+        run: make lint-go-install
+
+      - name: Cache golangci-lint analysis cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/golangci-lint
+          key: golangci-lint.cache-${{ runner.os }}-${{ env.GOLANGCI_LINT_VERSION }}-${{ hashFiles('go.mod', '.golangci.yml') }}
+          restore-keys: |
+            golangci-lint.cache-${{ runner.os }}-${{ env.GOLANGCI_LINT_VERSION }}-
+            golangci-lint.cache-${{ runner.os }}-
+
+      - name: Run golangci-lint
+        run: make lint-go

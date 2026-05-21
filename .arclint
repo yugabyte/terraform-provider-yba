@@ -1,22 +1,15 @@
 {
     "linters": {
-        "go-files-length": {
-            "type": "text",
-            "text.max-line-length": 100,
-            "include": "(^internal/.*[.]go$)",
-            "severity": {
-                "2": "disabled"
-            }
-        },
-        "go-files": {
-            "type": "golint",
-            "include": "(^internal/.*[.]go$)",
+        "golangci-lint": {
+            "type": "script-and-regex",
+            "include": "(\\.go$)",
             "exclude": [
                 "(^docs/)",
                 "(^examples/)",
                 "(^modules/)"
-
-            ]
+            ],
+            "script-and-regex.script": "make lint-go",
+            "script-and-regex.regex": "/^(?P<file>[^:\\n]+\\.go):(?P<line>\\d+):(?P<char>\\d+):\\s+(?P<message>.+?)\\s+\\((?P<name>[^)]+)\\)\\s*$/m"
         }
     }
 }

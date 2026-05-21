@@ -1,0 +1,78 @@
+version: "2"
+
+run:
+  timeout: 5m
+  modules-download-mode: readonly
+
+linters:
+  default: standard
+  enable:
+    - bodyclose
+    - copyloopvar
+    - errorlint
+    - gocritic
+    - misspell
+    - nilerr
+    - noctx
+    - revive
+    - unconvert
+  settings:
+    revive:
+      rules:
+        - name: var-naming
+        - name: exported
+          arguments:
+            - disableStutteringCheck
+        - name: package-comments
+        - name: error-return
+        - name: error-naming
+        - name: if-return
+        - name: increment-decrement
+        - name: range
+        - name: receiver-naming
+        - name: indent-error-flow
+        - name: superfluous-else
+        - name: unused-parameter
+          disabled: true
+    govet:
+      enable-all: true
+      disable:
+        - fieldalignment
+    staticcheck:
+      checks:
+        - "all"
+        # ST1005 (capitalized error strings) is nitpicky for user-facing
+        # error messages and conflicts with proper-noun starts.
+        - "-ST1005"
+        # ST1003 (underscore in package names) — the existing
+        # cloud_provider package name is load-bearing across many imports;
+        # renaming is out of scope for lint cleanup.
+        - "-ST1003"
+  exclusions:
+    generated: lax
+    rules:
+      # platform-go-client (YBA SDK) is OpenAPI-generated and reads + closes the
+      # response body inside Execute(). The returned *http.Response is retained
+      # only for status codes / headers; the body is already drained.
+      # RetryOnUniverseTaskConflict and DispatchAndWait wrap Execute() calls.
+      - linters:
+          - bodyclose
+        source: "Execute\\(\\)|RetryOnUniverseTaskConflict|DispatchAndWait|\\w+API\\.|nodeInstanceGet"
+    paths:
+      - docs
+      - examples
+      - modules
+
+formatters:
+  enable:
+    - gofmt
+    - gci
+    - golines
+  settings:
+    gci:
+      sections:
+        - standard
+        - default
+        - prefix(github.com/yugabyte/terraform-provider-yba)
+    golines:
+      max-len: 100
