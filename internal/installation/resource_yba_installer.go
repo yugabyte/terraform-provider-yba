@@ -192,7 +192,14 @@ func installerInputProvided(d inputReader, spec installerFileSpec) bool {
 func ResourceYBAInstaller() *schema.Resource {
 	return &schema.Resource{
 		Description: "Manages the installation of YugabyteDB Anywhere on an existing virtual" +
-			" machine using YBA Installer. ",
+			" machine using YBA Installer.\n\n" +
+			"~> **Note:** When `/opt/yugabyte/data` is already populated " +
+			"(typically because it lives on a separately managed " +
+			"persistent disk that survives the host VM), the resource " +
+			"installs with `--without-data` and starts services in place " +
+			"rather than reinitialising storage. Destroy runs `yba-ctl " +
+			"clean` only and leaves `/opt/yugabyte/data` intact; wiping " +
+			"the data directory is the operator's responsibility.",
 
 		CreateContext: resourceYBAInstallerCreate,
 		ReadContext:   resourceYBAInstallerRead,
@@ -624,7 +631,19 @@ func resourceYBAInstallerDelete(
 
 	sshClient, err := newSSHClient(user, hostIPForSSH, pk)
 	if err != nil {
-		return diag.FromErr(err)
+		// The host may already be gone (e.g. caller wired
+		// lifecycle.replace_triggered_by to the cloud VM, so the VM
+		// was destroyed first; or the host is simply unreachable
+		// during the destroy half of a replace cycle). In every such
+		// case there's nothing to clean up remotely, and an empty
+		// host is the desired terminal state. Surface the reason and
+		// move on rather than blocking destroy on a side effect that
+		// can never succeed.
+		tflog.Warn(ctx, fmt.Sprintf(
+			"yba_installer: skipping remote cleanup, SSH to %s failed: %v",
+			hostIPForSSH, err))
+		d.SetId("")
+		return diags
 	}
 	defer sshClient.Close()
 
@@ -685,27 +704,53 @@ func getAddLicenseCommand(version, folder string) string {
 	return fmt.Sprintf("sudo YBA_MODE=dev ./%s/yba-ctl license add -l /tmp/license.lic", folder)
 }
 
+// getInstallCommands returns the ordered list of shell commands that
+// stage and run a fresh YBA install. The final command auto-detects
+// whether /opt/yugabyte/data is already populated (e.g. a separately
+// managed persistent data disk that survived an OS-image upgrade) and
+// picks the correct yba-ctl invocation. When the data dir is
+// non-empty the install runs with --without-data and is followed by
+// `yba-ctl start`; otherwise the original `install -f` path runs
+// untouched, which keeps callers that don't use a separate data disk
+// behaving exactly as before.
 func getInstallCommands(
 	version, os, arch string,
 	config bool, skipPreflightCheckList *[]string) []string {
-	var s string
-	folder, installationCommands := getYBAInstallerBundle(version, os, arch)
-	s = getAddLicenseCommand(version, folder)
-	installationCommands = append(installationCommands, s)
+	folder, cmds := getYBAInstallerBundle(version, os, arch)
+	cmds = append(cmds, getAddLicenseCommand(version, folder))
 	if config {
-		installationCommands = append(installationCommands,
+		// The yba_installer_full tarball doesn't create /opt/yba-ctl
+		// before `install` runs; mkdir -p keeps the staged mv safe on
+		// hosts where the directory doesn't yet exist.
+		cmds = append(cmds,
+			"sudo mkdir -p /opt/yba-ctl",
 			"sudo mv /tmp/settings.yml /opt/yba-ctl/yba-ctl.yml")
 	}
+
+	var installPrefix, ybactl string
 	if IsGAVersion(version) {
-		s = fmt.Sprintf("sudo ./%s/yba-ctl install -f", folder)
+		installPrefix = fmt.Sprintf("sudo ./%s/yba-ctl install -f", folder)
+		ybactl = "sudo /opt/yba-ctl/yba-ctl"
 	} else {
-		s = fmt.Sprintf("sudo YBA_MODE=dev ./%s/yba-ctl install -f", folder)
+		installPrefix = fmt.Sprintf("sudo YBA_MODE=dev ./%s/yba-ctl install -f", folder)
+		ybactl = "sudo YBA_MODE=dev /opt/yba-ctl/yba-ctl"
 	}
+
+	skipSuffix := ""
 	if skipPreflightCheckList != nil && len(*skipPreflightCheckList) != 0 {
-		s = fmt.Sprintf("%s -s %s", s, strings.Join(*skipPreflightCheckList, ","))
+		skipSuffix = fmt.Sprintf(" -s %s", strings.Join(*skipPreflightCheckList, ","))
 	}
-	installationCommands = append(installationCommands, s)
-	return installationCommands
+
+	cmds = append(cmds, fmt.Sprintf(
+		`if [ -d /opt/yugabyte/data ] && `+
+			`[ -n "$(sudo ls -A /opt/yugabyte/data 2>/dev/null)" ]; then `+
+			`%s --without-data%s && %s start; `+
+			`else %s%s; `+
+			`fi`,
+		installPrefix, skipSuffix, ybactl,
+		installPrefix, skipSuffix,
+	))
+	return cmds
 }
 
 func getReconfigureCommands(version string) []string {
@@ -739,16 +784,21 @@ func getUpgradeCommands(version, os, arch string, skipPreflightCheckList *[]stri
 	return updateCommands
 }
 
+// getDeleteCommands returns the shell commands run during resource
+// destroy. yba-ctl clean (without --all) stops services and removes
+// /opt/yba-ctl/ but deliberately preserves /opt/yugabyte/data; that
+// matters when the data directory lives on a separately managed
+// persistent disk that must outlive the YBA host. Explicit data wipe
+// is the operator's responsibility, not this resource's.
 func getDeleteCommands(version string) []string {
-	var s string
+	var clean string
 	if IsGAVersion(version) {
-		s = "sudo /opt/yba-ctl/yba-ctl clean"
+		clean = "sudo /opt/yba-ctl/yba-ctl clean"
 	} else {
-		s = "sudo YBA_MODE=dev /opt/yba-ctl/yba-ctl clean"
+		clean = "sudo YBA_MODE=dev /opt/yba-ctl/yba-ctl clean"
 	}
-	var deleteCommands = []string{s}
-	deleteCommands = append(deleteCommands, "sudo rm -rf /opt/yugabyte")
-	deleteCommands = append(deleteCommands,
-		"sudo rm /tmp/server.crt /tmp/server.key /tmp/license.lic /tmp/settings.yml")
-	return deleteCommands
+	return []string{
+		clean,
+		"sudo rm -f /tmp/server.crt /tmp/server.key /tmp/license.lic /tmp/settings.yml",
+	}
 }

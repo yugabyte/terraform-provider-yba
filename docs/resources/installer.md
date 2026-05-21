@@ -2,6 +2,7 @@
 page_title: "yba_installer Resource - YugabyteDB Anywhere"
 description: |-
   Manages the installation of YugabyteDB Anywhere on an existing virtual machine using YBA Installer.
+  ~> Note: When /opt/yugabyte/data is already populated (typically because it lives on a separately managed persistent disk that survives the host VM), the resource installs with --without-data and starts services in place rather than reinitialising storage. Destroy runs yba-ctl clean only and leaves /opt/yugabyte/data intact; wiping the data directory is the operator's responsibility.
 ---
 
 # yba_installer (Resource)
@@ -9,6 +10,8 @@ description: |-
 -> **Note:** Ensure the YugabyteDB Anywhere host has **curl** installed to allow the YBA Installer package downloads during *terraform apply*.
 
 Manages the installation of YugabyteDB Anywhere on an existing virtual machine using YBA Installer.
+
+~> **Note:** When `/opt/yugabyte/data` is already populated (typically because it lives on a separately managed persistent disk that survives the host VM), the resource installs with `--without-data` and starts services in place rather than reinitialising storage. Destroy runs `yba-ctl clean` only and leaves `/opt/yugabyte/data` intact; wiping the data directory is the operator's responsibility.
 
 ### Supported Versions
 
