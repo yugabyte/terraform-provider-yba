@@ -26,6 +26,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 	client "github.com/yugabyte/platform-go-client"
+
 	"github.com/yugabyte/terraform-provider-yba/internal/provider/providerutil"
 	"github.com/yugabyte/terraform-provider-yba/internal/utils"
 )
@@ -491,7 +492,7 @@ func resourceAWSProviderRead(
 	if err = d.Set("host_vpc_id", awsInfo.GetHostVpcId()); err != nil {
 		return diag.FromErr(err)
 	}
-	if err = d.Set("vpc_type", string(awsInfo.GetVpcType())); err != nil {
+	if err = d.Set("vpc_type", awsInfo.GetVpcType()); err != nil {
 		return diag.FromErr(err)
 	}
 
@@ -644,15 +645,15 @@ func resourceAWSProviderUpdate(
 		if d.HasChange("ssh_keypair_name") || d.HasChange("ssh_private_key_content") {
 			newKeypairName := d.Get("ssh_keypair_name").(string)
 			if newKeypairName != "" {
-				if err := providerutil.ValidateSSHKeypairNameUnique(
+				if vErr := providerutil.ValidateSSHKeypairNameUnique(
 					p.GetAllAccessKeys(), newKeypairName,
-				); err != nil {
+				); vErr != nil {
 					utils.RevertFields(d,
 						"ssh_keypair_name", "ssh_private_key_content",
 						"access_key_id", "secret_access_key",
 						"skip_ssh_keypair_validation",
 					)
-					return diag.FromErr(err)
+					return diag.FromErr(vErr)
 				}
 			}
 		}

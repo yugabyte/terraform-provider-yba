@@ -17,6 +17,7 @@ package utils
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"reflect"
@@ -59,7 +60,7 @@ func gcpGetCredentials() (GCPCredentials, error) {
 	gcsCredsJSON := GCPCredentials{}
 	err = json.Unmarshal(gcsCredsByteArray, &gcsCredsJSON)
 	if err != nil {
-		return GCPCredentials{}, fmt.Errorf("Failed unmarshalling GCE credentials: %s", err)
+		return GCPCredentials{}, fmt.Errorf("Failed unmarshalling GCE credentials: %w", err)
 	}
 	return gcsCredsJSON, nil
 
@@ -77,7 +78,7 @@ func gcpCredentialsFromFilePath(filePath string) ([]byte, error) {
 	}
 	gcsCredsByteArray, err := os.ReadFile(filePath)
 	if err != nil {
-		return nil, fmt.Errorf("Failed reading data from %s: %s", filePath, err)
+		return nil, fmt.Errorf("Failed reading data from %s: %w", filePath, err)
 	}
 	return gcsCredsByteArray, nil
 }
@@ -113,19 +114,19 @@ func GcpGetCredentialsAsString() (string, error) {
 		field := gcpGetJSONTag(v.Type().Field(i))
 
 		if field == "private_key" {
-			valString := strings.Replace(v.Field(i).Interface().(string), "\n", "\\n", -1)
+			valString := strings.ReplaceAll(v.Field(i).Interface().(string), "\n", "\\n")
 			s = "\"" + field + "\"" + ": " + "\"" + valString + "\""
 
 		} else {
 			s = "\"" + field + "\"" + ": " + "\"" + v.Field(i).Interface().(string) + "\""
 		}
 		if gcsCredString[len(gcsCredString)-2] != '{' {
-			gcsCredString = gcsCredString + " , " + s
+			gcsCredString += " , " + s
 		} else {
-			gcsCredString = gcsCredString + s
+			gcsCredString += s
 		}
 	}
-	gcsCredString = gcsCredString + "}"
+	gcsCredString += "}"
 	return gcsCredString, nil
 }
 
@@ -150,7 +151,7 @@ func AwsCredentialsFromEnv() (awsCreds.Value, error) {
 
 	awsCredentials, err := awsCreds.NewEnvCredentials().Get()
 	if err != nil {
-		return awsCreds.Value{}, fmt.Errorf("Error getting AWS env credentials %s", err)
+		return awsCreds.Value{}, fmt.Errorf("Error getting AWS env credentials: %w", err)
 	}
 	return awsCredentials, nil
 }
@@ -192,9 +193,9 @@ func AzureCredentialsFromEnv() (AzureCredentials, error) {
 	if !isPresentRG {
 		errorString = fmt.Sprintf("%s%s ", errorString, AzureRGEnv)
 	}
-	if !(isPresentClientID && isPresentClientSecret && isPresentRG &&
-		isPresentSubscriptionID && isPresentTenantID) {
-		return AzureCredentials{}, fmt.Errorf(errorString)
+	if !isPresentClientID || !isPresentClientSecret || !isPresentRG || !isPresentSubscriptionID ||
+		!isPresentTenantID {
+		return AzureCredentials{}, errors.New(errorString)
 	}
 	return azureCreds, nil
 }
@@ -203,7 +204,7 @@ func AzureCredentialsFromEnv() (AzureCredentials, error) {
 func ReadSSHPrivateKey(filePath string) (*string, error) {
 	fileContentByte, err := os.ReadFile(filePath)
 	if err != nil {
-		return nil, fmt.Errorf("Failed reading data from %s: %s", filePath, err)
+		return nil, fmt.Errorf("Failed reading data from %s: %w", filePath, err)
 	}
 	fileContent := string(fileContentByte)
 	return &fileContent, nil

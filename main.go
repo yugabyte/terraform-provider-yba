@@ -13,6 +13,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
+// Package main is the entry point for the YugabyteDB Anywhere Terraform provider plugin.
 package main
 
 import (
@@ -20,30 +21,31 @@ import (
 	"flag"
 	"log"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/plugin"
+
 	"github.com/yugabyte/terraform-provider-yba/internal/provider"
 )
 
 //go:generate terraform fmt -recursive ./examples/
 //go:generate go run github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs
 
-var (
-	// these will be set by the goreleaser configuration
-	// to appropriate values for the compiled binary
-	version = "dev"
-
-	// goreleaser can also pass the specific commit if you want
-	// commit  string = ""
-)
+// version is populated at build time via -ldflags="-X 'main.version=...'".
+//
+//nolint:unused // set via build ldflags (see GNUmakefile and .goreleaser.yml)
+var version = "dev"
 
 func main() {
 	var debugMode bool
 
-	flag.BoolVar(&debugMode, "debug", false, "set to true to run the provider with support for debuggers like delve")
+	flag.BoolVar(
+		&debugMode,
+		"debug",
+		false,
+		"set to true to run the provider with support for debuggers like delve",
+	)
 	flag.Parse()
 
-	opts := &plugin.ServeOpts{ProviderFunc: func() *schema.Provider { return provider.New() }}
+	opts := &plugin.ServeOpts{ProviderFunc: provider.New}
 
 	if debugMode {
 		err := plugin.Debug(context.Background(), "registry.terraform.io/yugabyte/yba", opts)

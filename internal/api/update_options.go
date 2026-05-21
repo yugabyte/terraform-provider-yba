@@ -29,11 +29,11 @@ func (vc *VanillaClient) UniverseUpdateOptions(
 	// Target the universe_configure endpoint instead
 	path := fmt.Sprintf("api/v1/customers/%s/universe_configure", cUUID)
 
-	res, err := vc.makeRequest(http.MethodPost, path, reqBuf, token)
+	res, err := vc.makeRequest(ctx, http.MethodPost, path, reqBuf, token)
 	if err != nil {
 		return nil, fmt.Errorf("universe_configure request failed: %w", err)
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 
 	if httpErr := utils.CheckHTTPError(res, "UniverseConfigureOptions"); httpErr != nil {
 		return nil, httpErr

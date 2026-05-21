@@ -13,6 +13,9 @@
 // specific language governing permissions and limitations
 // under the License.
 
+// Package cloud_provider contains the legacy unified yba_cloud_provider resource
+// and supporting data sources. New code should target the per-cloud resources
+// (yba_aws_provider, yba_gcp_provider, yba_azure_provider).
 package cloud_provider
 
 import (
@@ -23,9 +26,10 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	client "github.com/yugabyte/platform-go-client"
+	"golang.org/x/exp/slices"
+
 	"github.com/yugabyte/terraform-provider-yba/internal/api"
 	"github.com/yugabyte/terraform-provider-yba/internal/utils"
-	"golang.org/x/exp/slices"
 )
 
 // ProviderFilter keeps track of the filtered providers
@@ -162,7 +166,9 @@ func dataSourceProviderFilterRead(
 		providers[p.GetName()] = p.GetUuid()
 	}
 
-	d.Set("providers", providers)
+	if err := d.Set("providers", providers); err != nil {
+		return diag.FromErr(err)
+	}
 	d.SetId(strconv.Itoa(len(providers)))
 	return diags
 }

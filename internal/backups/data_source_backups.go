@@ -24,6 +24,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 	client "github.com/yugabyte/platform-go-client"
+
 	"github.com/yugabyte/terraform-provider-yba/internal/api"
 	"github.com/yugabyte/terraform-provider-yba/internal/utils"
 )
@@ -343,7 +344,10 @@ func readBackupByUUID(
 		return diag.FromErr(err)
 	}
 	if backup.HasCreateTime() {
-		if err := d.Set("create_time", backup.GetCreateTime().UTC().Format(time.RFC3339)); err != nil {
+		if err := d.Set(
+			"create_time",
+			backup.GetCreateTime().UTC().Format(time.RFC3339),
+		); err != nil {
 			return diag.FromErr(err)
 		}
 	}
@@ -409,7 +413,13 @@ func readBackupByUUID(
 	}
 
 	// Fetch the incremental backup chain using the base backup UUID.
-	if chainDiags := fetchAndSetIncrementalChain(ctx, d, c, cUUID, baseBackupUUID); chainDiags != nil {
+	if chainDiags := fetchAndSetIncrementalChain(
+		ctx,
+		d,
+		c,
+		cUUID,
+		baseBackupUUID,
+	); chainDiags != nil {
 		diags = append(diags, chainDiags...)
 	}
 
@@ -473,8 +483,12 @@ func readLatestBackupForUniverse(
 
 	if len(r.Entities) == 0 {
 		// No backup found - preserve the input filter values and clear ID.
-		d.Set("universe_uuid", d.Get("universe_uuid"))
-		d.Set("universe_name", d.Get("universe_name"))
+		if err := d.Set("universe_uuid", d.Get("universe_uuid")); err != nil {
+			return diag.FromErr(err)
+		}
+		if err := d.Set("universe_name", d.Get("universe_name")); err != nil {
+			return diag.FromErr(err)
+		}
 		d.SetId("")
 		return diags
 	}
@@ -552,7 +566,13 @@ func readLatestBackupForUniverse(
 	// Fetch the incremental backup chain. For a full backup, ListIncrementalBackups is
 	// called with the full backup UUID itself; for an incremental backup, we use its
 	// base_backup_uuid so the entire chain is returned.
-	if chainDiags := fetchAndSetIncrementalChain(ctx, d, c, cUUID, baseBackupUUID); chainDiags != nil {
+	if chainDiags := fetchAndSetIncrementalChain(
+		ctx,
+		d,
+		c,
+		cUUID,
+		baseBackupUUID,
+	); chainDiags != nil {
 		diags = append(diags, chainDiags...)
 	}
 

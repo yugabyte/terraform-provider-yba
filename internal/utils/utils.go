@@ -37,7 +37,7 @@ import (
 )
 
 // YbaStructuredError is a structure mimicking YBPError, with error being an interface{}
-// to accomodate errors thrown as YBPStructuredError
+// to accommodate errors thrown as YBPStructuredError
 type YbaStructuredError struct {
 	// User-visible unstructured error message
 	Error *interface{} `json:"error,omitempty"`
@@ -377,13 +377,13 @@ func CompareYbVersions(v1 string, v2 string) (int, error) {
 			if err != nil {
 				return 0, err
 			}
-			if a > b {
+			switch {
+			case a > b:
 				return 1, nil
-			} else if a < b {
+			case a < b:
 				return -1, nil
-			} else {
-				return 0, nil
 			}
+			return 0, nil
 		}
 		return 0, nil
 	}
@@ -393,17 +393,18 @@ func CompareYbVersions(v1 string, v2 string) (int, error) {
 // ConvertUnitToMs converts time from unit to milliseconds
 func ConvertUnitToMs(value float64, unit string) int64 {
 	var v int64
-	if strings.Compare(unit, "YEARS") == 0 {
+	switch unit {
+	case "YEARS":
 		v = int64(value * 12 * 30 * 24 * 60 * 60 * 1000)
-	} else if strings.Compare(unit, "MONTHS") == 0 {
+	case "MONTHS":
 		v = int64(value * 30 * 24 * 60 * 60 * 1000)
-	} else if strings.Compare(unit, "DAYS") == 0 {
+	case "DAYS":
 		v = int64(value * 24 * 60 * 60 * 1000)
-	} else if strings.Compare(unit, "HOURS") == 0 {
+	case "HOURS":
 		v = int64(value * 60 * 60 * 1000)
-	} else if strings.Compare(unit, "MINUTES") == 0 {
+	case "MINUTES":
 		v = int64(value * 60 * 1000)
-	} else if strings.Compare(unit, "SECONDS") == 0 {
+	case "SECONDS":
 		v = int64(value * 1000)
 	}
 	return v
@@ -412,18 +413,19 @@ func ConvertUnitToMs(value float64, unit string) int64 {
 // ConvertMsToUnit converts time from milliseconds to unit
 func ConvertMsToUnit(value int64, unit string) float64 {
 	var v float64
-	if strings.Compare(unit, "YEARS") == 0 {
-		v = (float64(value) / 12 / 30 / 24 / 60 / 60 / 1000)
-	} else if strings.Compare(unit, "MONTHS") == 0 {
-		v = (float64(value) / 30 / 24 / 60 / 60 / 1000)
-	} else if strings.Compare(unit, "DAYS") == 0 {
-		v = (float64(value) / 24 / 60 / 60 / 1000)
-	} else if strings.Compare(unit, "HOURS") == 0 {
-		v = (float64(value) / 60 / 60 / 1000)
-	} else if strings.Compare(unit, "MINUTES") == 0 {
-		v = (float64(value) / 60 / 1000)
-	} else if strings.Compare(unit, "SECONDS") == 0 {
-		v = (float64(value) / 1000)
+	switch unit {
+	case "YEARS":
+		v = float64(value) / 12 / 30 / 24 / 60 / 60 / 1000
+	case "MONTHS":
+		v = float64(value) / 30 / 24 / 60 / 60 / 1000
+	case "DAYS":
+		v = float64(value) / 24 / 60 / 60 / 1000
+	case "HOURS":
+		v = float64(value) / 60 / 60 / 1000
+	case "MINUTES":
+		v = float64(value) / 60 / 1000
+	case "SECONDS":
+		v = float64(value) / 1000
 	}
 	return v
 }
@@ -431,23 +433,24 @@ func ConvertMsToUnit(value int64, unit string) float64 {
 // GetUnitOfTimeFromDuration takes time.Duration as input and caluclates the unit specified in
 // that duration
 func GetUnitOfTimeFromDuration(duration time.Duration) string {
-	if duration.Hours() >= float64(24*30*365) {
+	switch {
+	case duration.Hours() >= float64(24*30*365):
 		return "YEARS"
-	} else if duration.Hours() >= float64(24*30) {
+	case duration.Hours() >= float64(24*30):
 		return "MONTHS"
-	} else if duration.Hours() >= float64(24) {
+	case duration.Hours() >= float64(24):
 		return "DAYS"
-	} else if duration.Hours() >= float64(1) {
+	case duration.Hours() >= float64(1):
 		return "HOURS"
-	} else if duration.Minutes() >= float64(1) {
+	case duration.Minutes() >= float64(1):
 		return "MINUTES"
-	} else if duration.Seconds() >= float64(1) {
+	case duration.Seconds() >= float64(1):
 		return "SECONDS"
-	} else if duration.Milliseconds() > int64(0) {
+	case duration.Milliseconds() > int64(0):
 		return "MILLISECONDS"
-	} else if duration.Microseconds() > int64(0) {
+	case duration.Microseconds() > int64(0):
 		return "MICROSECONDS"
-	} else if duration.Nanoseconds() > int64(0) {
+	case duration.Nanoseconds() > int64(0):
 		return "NANOSECONDS"
 	}
 	return ""
@@ -599,7 +602,7 @@ func FileExist(filePath string) error {
 
 // GetUniversesForProvider fetches the list of universes corresponding to a particular
 // provider. Currently edit operations are blocked if universes exists. For the current
-// scenario, only on prem providers are editable, but to accomodate future changes to
+// scenario, only on prem providers are editable, but to accommodate future changes to
 // cloud provider resource, defining in the utils class
 func GetUniversesForProvider(ctx context.Context, c *client.APIClient, cUUID, pUUID,
 	universeName string) ([]client.UniverseResp, bool, error) {
@@ -790,6 +793,12 @@ func RetryOnUniverseTaskConflict(
 	var lastResponse *http.Response
 	retryErr := resource.RetryContext(ctx, timeout, func() *resource.RetryError {
 		resp, err := fn()
+		if resp != nil {
+			// platform-go-client SDK already drained and closed the body inside
+			// Execute(); the explicit Close here satisfies bodyclose and is a
+			// safe no-op on an already-closed body.
+			_ = resp.Body.Close()
+		}
 		lastResponse = resp
 		if err != nil {
 			if IsUniverseTaskConflict(resp, err) {
@@ -864,6 +873,12 @@ func DispatchAndWait(
 
 	retryErr := resource.RetryContext(ctx, timeout, func() *resource.RetryError {
 		tUUID, resp, err := fn()
+		if resp != nil {
+			// platform-go-client SDK already drained and closed the body inside
+			// Execute(); the explicit Close here satisfies bodyclose and is a
+			// safe no-op on an already-closed body.
+			_ = resp.Body.Close()
+		}
 		lastResponse = resp
 		if err != nil {
 			if IsUniverseTaskConflict(resp, err) {

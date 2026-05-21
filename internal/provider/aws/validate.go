@@ -21,6 +21,7 @@ import (
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+
 	"github.com/yugabyte/terraform-provider-yba/internal/provider/providerutil"
 )
 
@@ -139,11 +140,7 @@ func validateNoDuplicateRegionsOrZones(
 		}
 	}
 
-	if err := validateAWSImageBundleRegionCoverage(d); err != nil {
-		return err
-	}
-
-	return nil
+	return validateAWSImageBundleRegionCoverage(d)
 }
 
 // normalizeRegionOverrides is the pure logic for normalizeAWSRegionOverridesInPlan.

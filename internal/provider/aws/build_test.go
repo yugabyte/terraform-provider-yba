@@ -19,6 +19,7 @@ import (
 	"testing"
 
 	client "github.com/yugabyte/platform-go-client"
+
 	"github.com/yugabyte/terraform-provider-yba/internal/utils"
 )
 
@@ -539,26 +540,4 @@ func TestFlattenAWSImageBundlesNoRegionOverrides(t *testing.T) {
 	if _, ok := details["region_overrides"]; ok {
 		t.Error("expected region_overrides to not be set for empty overrides")
 	}
-}
-
-// Helper function to create a test image bundle
-func createTestImageBundle(
-	uuid, name, arch string,
-	useAsDefault bool,
-	bundleType string,
-) client.ImageBundle {
-	bundle := client.ImageBundle{
-		Uuid:         utils.GetStringPointer(uuid),
-		Name:         utils.GetStringPointer(name),
-		UseAsDefault: utils.GetBoolPointer(useAsDefault),
-		Details: &client.ImageBundleDetails{
-			Arch:    utils.GetStringPointer(arch),
-			SshUser: utils.GetStringPointer("ec2-user"),
-			SshPort: utils.GetInt32Pointer(22),
-		},
-		Metadata: &client.Metadata{
-			Type: bundleType,
-		},
-	}
-	return bundle
 }

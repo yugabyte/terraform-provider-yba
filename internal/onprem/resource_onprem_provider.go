@@ -27,9 +27,10 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	client "github.com/yugabyte/platform-go-client"
+	"golang.org/x/exp/slices"
+
 	"github.com/yugabyte/terraform-provider-yba/internal/provider/providerutil"
 	"github.com/yugabyte/terraform-provider-yba/internal/utils"
-	"golang.org/x/exp/slices"
 )
 
 // ResourceOnPremProvider creates and maintains On-Premises provider resource
@@ -971,9 +972,10 @@ func updateNodeInstances(ctx context.Context, c *client.APIClient, cUUID, pUUID 
 		ip := details.GetIp()
 		if !n.GetInUse() && !slices.Contains(newNodeIPs, ip) {
 			tflog.Info(ctx, fmt.Sprintf("Removing node instance %s from provider %s", ip, pUUID))
-			_, response, err := c.NodeInstancesAPI.DeleteInstance(ctx, cUUID, pUUID, ip).Execute()
-			if err != nil {
-				errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
+			_, response, delErr := c.NodeInstancesAPI.DeleteInstance(ctx, cUUID, pUUID, ip).
+				Execute()
+			if delErr != nil {
+				errMessage := utils.ErrorFromHTTPResponse(response, delErr, utils.ResourceEntity,
 					"Node Instance", "Delete")
 				return errMessage
 			}
@@ -1266,12 +1268,12 @@ func resourceOnPremProviderRead(
 	}
 
 	if v := d.Get("node_instances"); v != nil && len(v.([]interface{})) > 0 {
-		nodeInstances, err := readNodeInstances(ctx, c, cUUID, pUUID)
-		if err != nil {
-			return diag.FromErr(err)
+		nodeInstances, niErr := readNodeInstances(ctx, c, cUUID, pUUID)
+		if niErr != nil {
+			return diag.FromErr(niErr)
 		}
-		if err = d.Set("node_instances", flattenNodeInstances(nodeInstances)); err != nil {
-			return diag.FromErr(err)
+		if niErr = d.Set("node_instances", flattenNodeInstances(nodeInstances)); niErr != nil {
+			return diag.FromErr(niErr)
 		}
 	}
 
@@ -1373,13 +1375,13 @@ func resourceOnPremProviderUpdate(
 	if d.HasChange("ssh_keypair_name") || d.HasChange("ssh_private_key_content") {
 		newKeypairName := d.Get("ssh_keypair_name").(string)
 		if newKeypairName != "" {
-			if err := providerutil.ValidateSSHKeypairNameUnique(
+			if vErr := providerutil.ValidateSSHKeypairNameUnique(
 				p.GetAllAccessKeys(), newKeypairName,
-			); err != nil {
+			); vErr != nil {
 				utils.RevertFields(d,
 					"ssh_keypair_name", "ssh_private_key_content",
 				)
-				return diag.FromErr(err)
+				return diag.FromErr(vErr)
 			}
 		}
 

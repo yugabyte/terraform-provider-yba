@@ -22,6 +22,7 @@ import (
 	sdkacctest "github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
+
 	"github.com/yugabyte/terraform-provider-yba/internal/acctest"
 )
 
@@ -112,14 +113,4 @@ resource "yba_customer" "test" {
   password = "%s"
 }
 `, name, email, code, password)
-}
-
-func customerConfigDefaultCode(name, email, password string) string {
-	return fmt.Sprintf(`
-resource "yba_customer" "test" {
-  name     = "%s"
-  email    = "%s"
-  password = "%s"
-}
-`, name, email, password)
 }

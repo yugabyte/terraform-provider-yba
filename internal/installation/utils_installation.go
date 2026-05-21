@@ -26,7 +26,6 @@ import (
 	"github.com/bramvdbogaerde/go-scp"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	client "github.com/yugabyte/platform-go-client"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -59,7 +58,7 @@ func runCommand(ctx context.Context, client *ssh.Client, cmd string) (string, er
 	var c bytes.Buffer
 	session.Stderr = &c
 	session.Stdout = &b
-	defer session.Close()
+	defer func() { _ = session.Close() }()
 	err = session.Run(cmd)
 	tflog.Info(ctx, b.String())
 	return c.String(), err
@@ -75,9 +74,10 @@ func waitForIP(ctx context.Context, user string, ip string, pk string, timeout t
 
 		Refresh: func() (result interface{}, state string, err error) {
 			tflog.Info(ctx, fmt.Sprintf("Trying SSH connection to host using ip: %s", ip))
-			c, err := newSSHClient(user, ip, pk)
-			if err != nil {
-				return nil, "Waiting", nil
+			c, cErr := newSSHClient(user, ip, pk)
+			if cErr != nil {
+				// keep polling — the host may still be coming up
+				return nil, "Waiting", nil //nolint:nilerr // intentional: error means "not ready yet"
 			}
 
 			return c, "Ready", nil
@@ -111,33 +111,8 @@ func scpFile(ctx context.Context,
 	defer c.Close()
 
 	f, _ := os.Open(localFile)
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	err = c.CopyFromFile(context.Background(), *f, remoteFile, "0666")
 	return err
-}
-
-func waitForStart(ctx context.Context, c *client.APIClient, timeout time.Duration) error {
-	wait := &resource.StateChangeConf{
-		Delay:   1 * time.Second,
-		Pending: []string{"Waiting"},
-		Target:  []string{"Ready"},
-		Timeout: timeout,
-
-		Refresh: func() (result interface{}, state string, err error) {
-			tflog.Info(ctx, "Waiting for Application to start")
-			_, _, err = c.SessionManagementAPI.AppVersion(ctx).Execute()
-			if err != nil {
-				return "Waiting", "Waiting", nil
-			}
-			tflog.Info(ctx, "Application started")
-			return "Ready", "Ready", nil
-		},
-	}
-
-	if _, err := wait.WaitForStateContext(ctx); err != nil {
-		return err
-	}
-
-	return nil
 }

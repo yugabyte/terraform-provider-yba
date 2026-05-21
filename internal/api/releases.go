@@ -20,6 +20,7 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -36,28 +37,28 @@ type ReleaseResponse struct {
 func (vc *VanillaClient) ReleaseImport(ctx context.Context, cUUID string, version string,
 	s3 map[string]interface{}, gcs map[string]interface{}, https map[string]interface{},
 	token string) (bool, error) {
-	mapping := make(map[string]interface{})
-
-	if len(s3) != 0 {
+	var mapping map[string]interface{}
+	switch {
+	case len(s3) != 0:
 		mapping = map[string]interface{}{
 			version: map[string]interface{}{
 				"s3": s3,
 			},
 		}
-	} else if len(gcs) != 0 {
+	case len(gcs) != 0:
 		mapping = map[string]interface{}{
 			version: map[string]interface{}{
 				"gcs": gcs,
 			},
 		}
-	} else if len(https) != 0 {
+	case len(https) != 0:
 		mapping = map[string]interface{}{
 			version: map[string]interface{}{
 				"http": https,
 			},
 		}
-	} else {
-		return false, fmt.Errorf("Request body empty")
+	default:
+		return false, errors.New("Request body empty")
 	}
 
 	reqBytes, err := json.Marshal(mapping)
@@ -69,14 +70,18 @@ func (vc *VanillaClient) ReleaseImport(ctx context.Context, cUUID string, versio
 
 	var req *http.Request
 	if vc.EnableHTTPS {
-		http.DefaultTransport.(*http.Transport).TLSClientConfig = &tls.Config{
-			InsecureSkipVerify: true,
+		tr, ok := http.DefaultTransport.(*http.Transport)
+		if !ok {
+			return false, errors.New("http.DefaultTransport is not *http.Transport")
 		}
-		req, err = http.NewRequest("POST", fmt.Sprintf("https://%s/api/v1/customers/%s/releases",
-			vc.Host, cUUID), reqBuf)
+		tr.TLSClientConfig = &tls.Config{
+			InsecureSkipVerify: true, //nolint:gosec // TLS verification intentionally disabled for YBA self-signed certs
+		}
+		req, err = http.NewRequestWithContext(ctx, http.MethodPost,
+			fmt.Sprintf("https://%s/api/v1/customers/%s/releases", vc.Host, cUUID), reqBuf)
 	} else {
-		req, err = http.NewRequest("POST", fmt.Sprintf("http://%s/api/v1/customers/%s/releases",
-			vc.Host, cUUID), reqBuf)
+		req, err = http.NewRequestWithContext(ctx, http.MethodPost,
+			fmt.Sprintf("http://%s/api/v1/customers/%s/releases", vc.Host, cUUID), reqBuf)
 	}
 	if err != nil {
 		return false, err
@@ -89,7 +94,7 @@ func (vc *VanillaClient) ReleaseImport(ctx context.Context, cUUID string, versio
 	if err != nil {
 		return false, fmt.Errorf("error during POST call for Import Release: %w", err)
 	}
-	defer r.Body.Close()
+	defer func() { _ = r.Body.Close() }()
 
 	// Check for HTTP errors
 	if httpErr := utils.CheckHTTPError(r, "Import Release"); httpErr != nil {

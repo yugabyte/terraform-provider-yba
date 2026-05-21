@@ -49,11 +49,11 @@ func (vc *VanillaClient) Login(ctx context.Context, email string, password strin
 	}
 	reqBuf := bytes.NewBuffer(reqBytes)
 
-	res, err := vc.makeRequest(http.MethodPost, "api/v1/login", reqBuf, "")
+	res, err := vc.makeRequest(ctx, http.MethodPost, "api/v1/login", reqBuf, "")
 	if err != nil {
 		return nil, err
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 
 	// Check for HTTP errors (especially auth errors like 401/403)
 	if httpErr := utils.CheckHTTPError(res, "Login"); httpErr != nil {

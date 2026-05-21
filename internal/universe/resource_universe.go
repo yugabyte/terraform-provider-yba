@@ -31,6 +31,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 	client "github.com/yugabyte/platform-go-client"
+
 	"github.com/yugabyte/terraform-provider-yba/internal/api"
 	"github.com/yugabyte/terraform-provider-yba/internal/provider/providerutil"
 	"github.com/yugabyte/terraform-provider-yba/internal/utils"
@@ -658,8 +659,8 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 							"PRIMARY",
 						)
 						if isNewPresent {
-							if oldPrimaryCluster.UserIntent.GetUseSystemd() == true &&
-								newPrimaryCluster.UserIntent.GetUseSystemd() == false {
+							if oldPrimaryCluster.UserIntent.GetUseSystemd() &&
+								!newPrimaryCluster.UserIntent.GetUseSystemd() {
 								return errors.New("Cannot disable Systemd")
 							}
 						}
@@ -700,9 +701,9 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 											"with the smaller volume, data migrated, old " +
 											"nodes decommissioned; requires 2x capacity " +
 											"and takes significantly longer than smart " +
-											"resize). To proceed, set full_move { allow =  " +
+											"resize); to proceed, set full_move { allow = " +
 											"true } on the universe resource to acknowledge " +
-											"these implications.")
+											"these implications")
 								}
 							}
 						}
@@ -743,9 +744,9 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 											"volume count, data migrated, old nodes " +
 											"decommissioned; requires 2x capacity and " +
 											"takes significantly longer than in-place " +
-											"operations). To proceed, set " +
+											"operations); to proceed, set " +
 											"full_move { allow = true } on the universe " +
-											"resource to acknowledge these implications.")
+											"resource to acknowledge these implications")
 								}
 							}
 						}
@@ -785,9 +786,9 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 							"triggers a FULL MOVE (new nodes provisioned with the "+
 							"new storage type, data migrated, old nodes "+
 							"decommissioned; requires 2x capacity and takes "+
-							"significantly longer than in-place operations). To "+
+							"significantly longer than in-place operations); to "+
 							"proceed, set full_move { allow = true } on the universe "+
-							"resource to acknowledge these implications.",
+							"resource to acknowledge these implications",
 						oldST, newST)
 				},
 			),
@@ -825,9 +826,9 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 							"storage_type cannot change from %s (cloud: %s) to %s "+
 								"(cloud: %s) on the Primary Cluster: a universe's "+
 								"provider cannot change after creation, so cross-cloud "+
-								"storage_type transitions are not possible. Check that "+
+								"storage_type transitions are not possible; check that "+
 								"the new storage_type is valid for the configured "+
-								"provider.",
+								"provider",
 							oldST, oldCloud, newST, newCloud)
 					}
 				}
@@ -879,7 +880,7 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 							"dedicated_masters.device_info.storage_type cannot change "+
 								"from %s (cloud: %s) to %s (cloud: %s): a universe's "+
 								"provider cannot change after creation, so cross-cloud "+
-								"storage_type transitions are not possible.",
+								"storage_type transitions are not possible",
 							oldST, oldCloud, newST, newCloud)
 					}
 				}
@@ -923,9 +924,9 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 							"Cluster triggers a FULL MOVE (new nodes provisioned "+
 							"with the new storage type, data migrated, old nodes "+
 							"decommissioned; requires 2x capacity and takes "+
-							"significantly longer than in-place operations). To "+
+							"significantly longer than in-place operations); to "+
 							"proceed, set full_move { allow = true } on the universe "+
-							"resource to acknowledge these implications.",
+							"resource to acknowledge these implications",
 						oldST, newST)
 				},
 			),
@@ -963,7 +964,7 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 								"(cloud: %s) on the Read Replica Cluster: a "+
 								"universe's provider cannot change after creation, "+
 								"so cross-cloud storage_type transitions are not "+
-								"possible.",
+								"possible",
 							oldST, oldCloud, newST, newCloud)
 					}
 				}
@@ -1013,9 +1014,9 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 							"triggers a FULL MOVE (new nodes provisioned with the " +
 							"smaller volume, data migrated from primary, old nodes " +
 							"decommissioned; requires 2x capacity and takes " +
-							"significantly longer than smart resize). To proceed, " +
+							"significantly longer than smart resize); to proceed, " +
 							"set full_move { allow = true } on the universe resource " +
-							"to acknowledge these implications.")
+							"to acknowledge these implications")
 				},
 			),
 		),
@@ -1056,9 +1057,9 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 								"(new nodes provisioned with the new volume " +
 								"count, data migrated, old nodes decommissioned; " +
 								"requires 2x capacity and takes significantly " +
-								"longer than in-place operations). To proceed, " +
+								"longer than in-place operations); to proceed, " +
 								"set full_move { allow = true } on the universe " +
-								"resource to acknowledge these implications.")
+								"resource to acknowledge these implications")
 					}
 					return nil
 				},
@@ -1099,8 +1100,8 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 								"nodes provisioned with the smaller volume, data " +
 								"migrated, old master nodes decommissioned; requires " +
 								"2x capacity and takes significantly longer than smart " +
-								"resize). To proceed, set full_move { allow = true } on " +
-								"the universe resource to acknowledge these implications.")
+								"resize); to proceed, set full_move { allow = true } on " +
+								"the universe resource to acknowledge these implications")
 					}
 					return nil
 				},
@@ -1141,9 +1142,9 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 								"nodes provisioned with the new volume count, data " +
 								"migrated, old master nodes decommissioned; requires " +
 								"2x capacity and takes significantly longer than " +
-								"in-place operations). To proceed, set full_move { allow" +
-								" = true }on the universe resource to acknowledge " +
-								"these implications.")
+								"in-place operations); to proceed, set full_move { allow" +
+								" = true } on the universe resource to acknowledge " +
+								"these implications")
 					}
 					return nil
 				},
@@ -1188,8 +1189,8 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 							"nodes provisioned with the new storage type, data "+
 							"migrated, old master nodes decommissioned; requires 2x "+
 							"capacity and takes significantly longer than in-place "+
-							"operations). To proceed, set full_move { allow = true } on "+
-							"the universe resource to acknowledge these implications.",
+							"operations); to proceed, set full_move { allow = true } on "+
+							"the universe resource to acknowledge these implications",
 						oldST, newST)
 				},
 			),
@@ -1218,8 +1219,8 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 						newPrimary.UserIntent.DeviceInfo.GetVolumeSize() {
 					return fmt.Errorf(
 						"storage_type %s does not support online volume resize "+
-							"(Azure limitation). To expand volume size on this "+
-							"storage type, destroy and recreate the universe.",
+							"(Azure limitation); to expand volume size on this "+
+							"storage type, destroy and recreate the universe",
 						tserverST)
 				}
 				// Dedicated master check.
@@ -1231,9 +1232,9 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 						oldMDI.GetVolumeSize() < newMDI.GetVolumeSize() {
 						return fmt.Errorf(
 							"dedicated_masters.device_info.storage_type %s does "+
-								"not support online volume resize (Azure limitation). "+
-								"To expand master volume size on this storage type, "+
-								"destroy and recreate the universe.",
+								"not support online volume resize (Azure limitation); "+
+								"to expand master volume size on this storage type, "+
+								"destroy and recreate the universe",
 							masterST)
 					}
 				}
@@ -1275,7 +1276,7 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 						if newPrimary.UserIntent.GetYbSoftwareVersion() !=
 							newReadOnly.UserIntent.GetYbSoftwareVersion() {
 							return errors.New(
-								"Cannot have different software versions for Primary " +
+								"cannot have different software versions for Primary " +
 									"and Read Only clusters",
 							)
 						}
@@ -1642,18 +1643,18 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 				if primaryUI.GetProviderType() == "onprem" {
 					err := errors.New("Error in onprem primary cluster definition: ")
 					if len(primaryUI.GetInstanceTags()) > 0 {
-						errMessage := "Cannot add instance tags to onprem primary cluster."
+						errMessage := "cannot add instance tags to onprem primary cluster"
 						err = fmt.Errorf("%w %s", err, errMessage)
 					}
 					if len(primaryUI.DeviceInfo.GetMountPoints()) == 0 {
-						errMessage := "Mount points are compulsory for onprem clusters."
+						errMessage := "mount points are compulsory for onprem clusters"
 						err = fmt.Errorf("%w %s", err, errMessage)
 					}
 					if len(primaryUI.DeviceInfo.GetStorageType()) > 0 {
-						errMessage := "Cannot specify storage type for onprem clusters."
+						errMessage := "cannot specify storage type for onprem clusters"
 						err = fmt.Errorf("%w %s", err, errMessage)
 					}
-					if err.Error() != "Error in onprem primary cluster definition: " {
+					if err.Error() != "error in onprem primary cluster definition: " {
 						return err
 					}
 				}
@@ -1663,18 +1664,18 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 				if readUI.GetProviderType() == "onprem" {
 					err := errors.New("Error in onprem read replica cluster definition: ")
 					if len(readUI.GetInstanceTags()) > 0 {
-						errMessage := "Cannot add instance tags to onprem read replica clusters."
+						errMessage := "cannot add instance tags to onprem read replica clusters"
 						err = fmt.Errorf("%w %s", err, errMessage)
 					}
 					if len(readUI.DeviceInfo.GetMountPoints()) == 0 {
-						errMessage := "Mount points are compulsory for onprem clusters."
+						errMessage := "mount points are compulsory for onprem clusters"
 						err = fmt.Errorf("%w %s", err, errMessage)
 					}
 					if len(readUI.DeviceInfo.GetStorageType()) > 0 {
-						errMessage := "Cannot specify storage type for onprem clusters."
+						errMessage := "cannot specify storage type for onprem clusters"
 						err = fmt.Errorf("%w %s", err, errMessage)
 					}
-					if err.Error() != "Error in onprem read replica cluster definition: " {
+					if err.Error() != "error in onprem read replica cluster definition: " {
 						return err
 					}
 				}
@@ -1895,7 +1896,7 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 			cUUID := m.(*api.APIClient).CustomerID
 			uni, _, err := c.UniverseManagementAPI.GetUniverse(ctx, cUUID, d.Id()).Execute()
 			if err != nil {
-				// Do not block the plan if the universe cannot be fetched.
+				//nolint:nilerr // Plan-time validator: do not block plan on transient API errors.
 				return nil
 			}
 			prevCfg := uni.UniverseDetails.PrevYBSoftwareConfig
@@ -1985,6 +1986,7 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 				}
 				p, err := providerutil.GetProvider(ctx, c, cUUID, providerUUID)
 				if err != nil {
+					//nolint:nilerr // Plan-time validator: API errors deferred to create/update.
 					return nil
 				}
 				code := p.GetCode()
@@ -2098,11 +2100,7 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 				}
 			}
 			// Validate that every region in cloud_list is also in user_intent.region_list.
-			if err := validateCloudListRegionsInUserIntent(
-				ctx, c, cUUID, clusters); err != nil {
-				return err
-			}
-			return nil
+			return validateCloudListRegionsInUserIntent(ctx, c, cUUID, clusters)
 		},
 		// Validate that preferred_region, when set, is listed in region_list.
 		// Neither YBA nor the provider previously enforced this; a universe can
@@ -2341,7 +2339,11 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 				}
 				return nil
 			}
-			if err := checkUnknown("root_ca", n2nEnabled, "enable_node_to_node_encrypt"); err != nil {
+			if err := checkUnknown(
+				"root_ca",
+				n2nEnabled,
+				"enable_node_to_node_encrypt",
+			); err != nil {
 				return err
 			}
 			return checkUnknown("client_root_ca", c2nEnabled, "enable_client_to_node_encrypt")
@@ -2873,7 +2875,7 @@ func resolveCloudListUUIDs(
 				if !ok {
 					continue
 				}
-				if uuid, ok := regionUUIDByCode[pr["code"].(string)]; ok {
+				if uuid, found := regionUUIDByCode[pr["code"].(string)]; found {
 					pr["uuid"] = uuid
 					changed = true
 				}
@@ -3083,8 +3085,8 @@ func validateCommPortsNotRestricted(d *schema.ResourceData) error {
 	}
 	if len(changed) > 0 {
 		return fmt.Errorf(
-			"the following communication ports cannot be changed after universe creation: %s. "+
-				"Remove these fields from your configuration or reset them to their current values.",
+			"the following communication ports cannot be changed after universe creation: %s; "+
+				"remove these fields from your configuration or reset them to their current values",
 			strings.Join(changed, ", "),
 		)
 	}
@@ -3791,7 +3793,10 @@ func resourceUniverseUpdate(
 			tflog.Error(ctx, "Cannot have more than 1 Read only cluster")
 		} else {
 			if len(updateUni.UniverseDetails.Clusters) < len(clusters) {
-				tflog.Error(ctx, "Currently not supporting adding Read Replicas after universe creation")
+				tflog.Error(
+					ctx,
+					"Currently not supporting adding Read Replicas after universe creation",
+				)
 			} else if len(updateUni.UniverseDetails.Clusters) > len(clusters) {
 				var clusterUUID string
 				for _, v := range updateUni.UniverseDetails.Clusters {
@@ -3804,11 +3809,11 @@ func resourceUniverseUpdate(
 					d.Timeout(schema.TimeoutUpdate),
 					utils.ResourceEntity, "Universe", "Update - Delete Read Replica cluster",
 					func() (string, *http.Response, error) {
-						r, resp, err := c.UniverseClusterMutationsAPI.DeleteReadonlyCluster(
+						r, resp, delErr := c.UniverseClusterMutationsAPI.DeleteReadonlyCluster(
 							ctx, cUUID, d.Id(), clusterUUID).IsForceDelete(
 							d.Get("delete_options.0.force_delete").(bool)).Execute()
-						if err != nil {
-							return "", resp, err
+						if delErr != nil {
+							return "", resp, delErr
 						}
 						return r.GetTaskUUID(), resp, nil
 					},
@@ -3822,9 +3827,10 @@ func resourceUniverseUpdate(
 				updateUni, response, err = c.UniverseManagementAPI.GetUniverse(
 					ctx, cUUID, d.Id()).Execute()
 				if err != nil {
-					return diag.FromErr(utils.ErrorFromHTTPResponse(response, err,
+					diagErr := diag.FromErr(utils.ErrorFromHTTPResponse(response, err,
 						utils.ResourceEntity, "Universe",
 						"Update - Fetch universe after Read Replica deletion"))
+					return diagErr
 				}
 			}
 		}
@@ -3857,10 +3863,10 @@ func resourceUniverseUpdate(
 						d.Timeout(schema.TimeoutUpdate),
 						utils.ResourceEntity, "Universe", "Update - DB Version Upgrade",
 						func() (string, *http.Response, error) {
-							r, resp, err := c.UniverseUpgradesManagementAPI.UpgradeDBVersion(
+							r, resp, e := c.UniverseUpgradesManagementAPI.UpgradeDBVersion(
 								ctx, cUUID, d.Id()).SoftwareUpgradeParams(req).Execute()
-							if err != nil {
-								return "", resp, err
+							if e != nil {
+								return "", resp, e
 							}
 							return r.GetTaskUUID(), resp, nil
 						},
@@ -3925,10 +3931,10 @@ func resourceUniverseUpdate(
 						d.Timeout(schema.TimeoutUpdate),
 						utils.ResourceEntity, "Universe", "Update - GFlags",
 						func() (string, *http.Response, error) {
-							r, resp, err := c.UniverseUpgradesManagementAPI.UpgradeGFlags(
+							r, resp, e := c.UniverseUpgradesManagementAPI.UpgradeGFlags(
 								ctx, cUUID, d.Id()).GflagsUpgradeParams(req).Execute()
-							if err != nil {
-								return "", resp, err
+							if e != nil {
+								return "", resp, e
 							}
 							return r.GetTaskUUID(), resp, nil
 						},
@@ -3946,7 +3952,7 @@ func resourceUniverseUpdate(
 				}
 				oldUserIntent = updateUni.UniverseDetails.Clusters[i].UserIntent
 
-				//TLS Toggle
+				// TLS Toggle
 				if (oldUserIntent.GetEnableClientToNodeEncrypt() !=
 					newUserIntent.GetEnableClientToNodeEncrypt()) ||
 					(oldUserIntent.GetEnableNodeToNodeEncrypt() !=
@@ -3959,7 +3965,7 @@ func resourceUniverseUpdate(
 						updateUni.UniverseDetails.Clusters[i].UserIntent.EnableNodeToNodeEncrypt =
 							newUserIntent.EnableNodeToNodeEncrypt
 					}
-					//updateUni.UniverseDetails.Clusters[i].UserIntent = newUserIntent
+					// updateUni.UniverseDetails.Clusters[i].UserIntent = newUserIntent
 
 					// When re-enabling TLS, pass the cert UUIDs that were used at create
 					// time so YBA reuses them instead of auto-generating new certificates.
@@ -3988,17 +3994,13 @@ func resourceUniverseUpdate(
 					}
 
 					req := client.TlsToggleParams{
-						EnableClientToNodeEncrypt: newUserIntent.GetEnableClientToNodeEncrypt(),
-						EnableNodeToNodeEncrypt:   newUserIntent.GetEnableNodeToNodeEncrypt(),
-						Clusters:                  updateUni.UniverseDetails.Clusters,
-						UpgradeOption:             "Non-Rolling",
-						SleepAfterMasterRestartMillis: int32(
-							sleepAfterMasterMs,
-						),
-						SleepAfterTServerRestartMillis: int32(
-							sleepAfterTServerMs,
-						),
-						RootAndClientRootCASame: tlsRootAndClientSame,
+						EnableClientToNodeEncrypt:      newUserIntent.GetEnableClientToNodeEncrypt(),
+						EnableNodeToNodeEncrypt:        newUserIntent.GetEnableNodeToNodeEncrypt(),
+						Clusters:                       updateUni.UniverseDetails.Clusters,
+						UpgradeOption:                  "Non-Rolling",
+						SleepAfterMasterRestartMillis:  sleepAfterMasterMs,
+						SleepAfterTServerRestartMillis: sleepAfterTServerMs,
+						RootAndClientRootCASame:        tlsRootAndClientSame,
 					}
 					if tlsRootCA != "" {
 						req.RootCA = utils.GetStringPointer(tlsRootCA)
@@ -4010,10 +4012,10 @@ func resourceUniverseUpdate(
 						d.Timeout(schema.TimeoutUpdate),
 						utils.ResourceEntity, "Universe", "Update - TLS Toggle",
 						func() (string, *http.Response, error) {
-							r, resp, err := c.UniverseUpgradesManagementAPI.UpgradeTls(
+							r, resp, e := c.UniverseUpgradesManagementAPI.UpgradeTls(
 								ctx, cUUID, d.Id()).TlsToggleParams(req).Execute()
-							if err != nil {
-								return "", resp, err
+							if e != nil {
+								return "", resp, e
 							}
 							return r.GetTaskUUID(), resp, nil
 						},
@@ -4031,36 +4033,32 @@ func resourceUniverseUpdate(
 				}
 				oldUserIntent = updateUni.UniverseDetails.Clusters[i].UserIntent
 
-				//Systemd upgrade
-				if oldUserIntent.GetUseSystemd() == false &&
-					newUserIntent.GetUseSystemd() == true {
+				// Systemd upgrade
+				if !oldUserIntent.GetUseSystemd() &&
+					newUserIntent.GetUseSystemd() {
 					updateUni.UniverseDetails.Clusters[i].UserIntent = newUserIntent
 					req := client.SystemdUpgradeParams{
-						Clusters:      updateUni.UniverseDetails.Clusters,
-						UpgradeOption: upgradeOption,
-						SleepAfterMasterRestartMillis: int32(
-							sleepAfterMasterMs,
-						),
-						SleepAfterTServerRestartMillis: int32(
-							sleepAfterTServerMs,
-						),
+						Clusters:                       updateUni.UniverseDetails.Clusters,
+						UpgradeOption:                  upgradeOption,
+						SleepAfterMasterRestartMillis:  sleepAfterMasterMs,
+						SleepAfterTServerRestartMillis: sleepAfterTServerMs,
 					}
 					if diags := utils.DispatchAndWait(ctx, "Systemd Upgrade", cUUID, c,
 						d.Timeout(schema.TimeoutUpdate),
 						utils.ResourceEntity, "Universe", "Update - Systemd",
 						func() (string, *http.Response, error) {
-							r, resp, err := c.UniverseUpgradesManagementAPI.UpgradeSystemd(
+							r, resp, e := c.UniverseUpgradesManagementAPI.UpgradeSystemd(
 								ctx, cUUID, d.Id()).SystemdUpgradeParams(req).Execute()
-							if err != nil {
-								return "", resp, err
+							if e != nil {
+								return "", resp, e
 							}
 							return r.GetTaskUUID(), resp, nil
 						},
 					); diags != nil {
 						return diags
 					}
-				} else if oldUserIntent.GetUseSystemd() == true &&
-					newUserIntent.GetUseSystemd() == false {
+				} else if oldUserIntent.GetUseSystemd() &&
+					!newUserIntent.GetUseSystemd() {
 					tflog.Error(ctx, "Cannot disable Systemd")
 				}
 
@@ -4232,10 +4230,10 @@ func resourceUniverseUpdate(
 							d.Timeout(schema.TimeoutUpdate),
 							utils.ResourceEntity, "Universe", "Update - Resize Nodes",
 							func() (string, *http.Response, error) {
-								r, resp, err := c.UniverseUpgradesManagementAPI.ResizeNode(
+								r, resp, e := c.UniverseUpgradesManagementAPI.ResizeNode(
 									ctx, cUUID, d.Id()).ResizeNodeParams(resizeReq).Execute()
-								if err != nil {
-									return "", resp, err
+								if e != nil {
+									return "", resp, e
 								}
 								return r.GetTaskUUID(), resp, nil
 							},
@@ -4254,11 +4252,11 @@ func resourceUniverseUpdate(
 						updateUni, response, err = c.UniverseManagementAPI.GetUniverse(
 							ctx, cUUID, d.Id()).Execute()
 						if err != nil {
-							return diag.FromErr(utils.ErrorFromHTTPResponse(response, err,
+							diagErr := diag.FromErr(utils.ErrorFromHTTPResponse(response, err,
 								utils.ResourceEntity, "Universe",
 								"Update - Fetch universe after smart resize"))
-						}
-						// Re-check whether any user-intent fields still need
+							return diagErr
+						} // Re-check whether any user-intent fields still need
 						// UpdatePrimaryCluster after the smart resize has been applied.
 						// If smart resize handled every pending change, suppress UPDATE so
 						// no stale-nodeset UpdatePrimaryCluster request is sent.
@@ -4358,10 +4356,10 @@ func resourceUniverseUpdate(
 							d.Timeout(schema.TimeoutUpdate),
 							utils.ResourceEntity, "Universe", "Update - Primary Cluster",
 							func() (string, *http.Response, error) {
-								r, resp, err := c.UniverseClusterMutationsAPI.UpdatePrimaryCluster(
+								r, resp, e := c.UniverseClusterMutationsAPI.UpdatePrimaryCluster(
 									ctx, cUUID, d.Id()).UniverseConfigureTaskParams(req).Execute()
-								if err != nil {
-									return "", resp, err
+								if e != nil {
+									return "", resp, e
 								}
 								return r.GetTaskUUID(), resp, nil
 							},
@@ -4373,19 +4371,29 @@ func resourceUniverseUpdate(
 						// 3. Fallback abort: Only trigger if NO valid action was taken across both blocks
 						return diag.Errorf(
 							"Safety abort: YBA returned unexpected update options %v for the planned edit. "+
-								"Execution aborted.", opts)
+								"Execution aborted.",
+							opts,
+						)
 					}
 				}
 
 			} else {
 
-				//Ignore Software, GFlags, Systemd, TLS Upgrade changes to Read-Only Cluster
-				updateUni, response, err := c.UniverseManagementAPI.GetUniverse(ctx, cUUID, d.Id()).Execute()
-				if err != nil {
-					errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
+				// Ignore Software, GFlags, Systemd, TLS Upgrade changes to Read-Only Cluster
+				rrUni, rrResp, rrErr := c.UniverseManagementAPI.GetUniverse(ctx, cUUID, d.Id()).
+					Execute()
+				if rrErr != nil {
+					errMessage := utils.ErrorFromHTTPResponse(rrResp, rrErr, utils.ResourceEntity,
 						"Universe", "Update - Fetch universe")
+					if rrResp != nil {
+						_ = rrResp.Body.Close()
+					}
 					return diag.FromErr(errMessage)
 				}
+				if rrResp != nil {
+					_ = rrResp.Body.Close()
+				}
+				updateUni = rrUni
 				oldUserIntent := updateUni.UniverseDetails.Clusters[i].UserIntent
 				if oldUserIntent.GetYbSoftwareVersion() != newUserIntent.GetYbSoftwareVersion() {
 					tflog.Info(ctx, "Software Upgrade is applied only via change in Primary "+
@@ -4409,7 +4417,10 @@ func resourceUniverseUpdate(
 				// Num of nodes, Instance Type, Num of Volumes, Volume Size User Tags changes
 				var editAllowed, editZoneAllowed bool
 				editAllowed, updateUni.UniverseDetails.Clusters[i].UserIntent = editUniverseParameters(
-					ctx, oldUserIntent, newUserIntent)
+					ctx,
+					oldUserIntent,
+					newUserIntent,
+				)
 
 				// Placement (cloud_list) changes for read replica.
 				// See PRIMARY path comment above for why empty newPI is ignored.
@@ -4426,8 +4437,19 @@ func resourceUniverseUpdate(
 						// so accidental config changes and multi-cloud universes
 						// are handled correctly.
 						rrFallbackByRegion, rrFallbackByAZ, rrFallbackByAZAttrs := fetchProviderZoneFallback(
-							ctx, c, cUUID, oldCloudList, newPI.CloudList)
-						resolveAZUUIDs(newPI, oldCloudList, rrFallbackByRegion, rrFallbackByAZ, rrFallbackByAZAttrs)
+							ctx,
+							c,
+							cUUID,
+							oldCloudList,
+							newPI.CloudList,
+						)
+						resolveAZUUIDs(
+							newPI,
+							oldCloudList,
+							rrFallbackByRegion,
+							rrFallbackByAZ,
+							rrFallbackByAZAttrs,
+						)
 						oldAZUUIDs := collectAZUUIDs(oldCloudList)
 						newAZUUIDs := collectAZUUIDs(newPI.CloudList)
 						clusterUUID := updateUni.UniverseDetails.Clusters[i].GetUuid()
@@ -4518,14 +4540,20 @@ func resourceUniverseUpdate(
 							SleepAfterMasterRestartMillis:  sleepAfterMasterMs,
 							SleepAfterTServerRestartMillis: sleepAfterTServerMs,
 						}
-						if diags := utils.DispatchAndWait(ctx, "Resize Nodes (Read Replica)", cUUID, c,
+						if diags := utils.DispatchAndWait(
+							ctx,
+							"Resize Nodes (Read Replica)",
+							cUUID,
+							c,
 							d.Timeout(schema.TimeoutUpdate),
-							utils.ResourceEntity, "Universe", "Update - Resize Nodes (Read Replica)",
+							utils.ResourceEntity,
+							"Universe",
+							"Update - Resize Nodes (Read Replica)",
 							func() (string, *http.Response, error) {
-								r, resp, err := c.UniverseUpgradesManagementAPI.ResizeNode(
+								r, resp, e := c.UniverseUpgradesManagementAPI.ResizeNode(
 									ctx, cUUID, d.Id()).ResizeNodeParams(resizeReq).Execute()
-								if err != nil {
-									return "", resp, err
+								if e != nil {
+									return "", resp, e
 								}
 								return r.GetTaskUUID(), resp, nil
 							},
@@ -4539,9 +4567,10 @@ func resourceUniverseUpdate(
 						updateUni, response, err = c.UniverseManagementAPI.GetUniverse(
 							ctx, cUUID, d.Id()).Execute()
 						if err != nil {
-							return diag.FromErr(utils.ErrorFromHTTPResponse(response, err,
+							diagErr := diag.FromErr(utils.ErrorFromHTTPResponse(response, err,
 								utils.ResourceEntity, "Universe",
 								"Update - Fetch universe after smart resize (Read Replica)"))
+							return diagErr
 						}
 						if hasUpdate {
 							freshOld := updateUni.UniverseDetails.Clusters[i].UserIntent
@@ -4579,10 +4608,14 @@ func resourceUniverseUpdate(
 					// 2. Execute Update if flagged (or if minor config changes with empty opts)
 					if isOnlyFullMove || hasUpdate || len(opts) == 0 {
 						req := client.UniverseConfigureTaskParams{
-							UniverseUUID:            utils.GetStringPointer(d.Id()),
-							CurrentClusterType:      utils.GetStringPointer("ASYNC"), // Read Replica cluster type
-							Clusters:                updateUni.UniverseDetails.Clusters,
-							NodeDetailsSet:          buildNodeDetailsRespArrayToNodeDetailsArray(updateUni.UniverseDetails.NodeDetailsSet),
+							UniverseUUID: utils.GetStringPointer(d.Id()),
+							CurrentClusterType: utils.GetStringPointer(
+								"ASYNC",
+							), // Read Replica cluster type
+							Clusters: updateUni.UniverseDetails.Clusters,
+							NodeDetailsSet: buildNodeDetailsRespArrayToNodeDetailsArray(
+								updateUni.UniverseDetails.NodeDetailsSet,
+							),
 							CommunicationPorts:      effectiveCommPorts,
 							UserAZSelected:          utils.GetBoolPointer(userAZExplicit),
 							AllowInsecure:           updateUni.UniverseDetails.AllowInsecure,
@@ -4593,14 +4626,20 @@ func resourceUniverseUpdate(
 							XclusterInfo:            updateUni.UniverseDetails.XclusterInfo,
 						}
 
-						if diags := utils.DispatchAndWait(ctx, "Update Read Replica Cluster", cUUID, c,
+						if diags := utils.DispatchAndWait(
+							ctx,
+							"Update Read Replica Cluster",
+							cUUID,
+							c,
 							d.Timeout(schema.TimeoutUpdate),
-							utils.ResourceEntity, "Universe", "Update - Read Replica Cluster",
+							utils.ResourceEntity,
+							"Universe",
+							"Update - Read Replica Cluster",
 							func() (string, *http.Response, error) {
-								r, resp, err := c.UniverseClusterMutationsAPI.UpdateReadOnlyCluster(
+								r, resp, e := c.UniverseClusterMutationsAPI.UpdateReadOnlyCluster(
 									ctx, cUUID, d.Id()).UniverseConfigureTaskParams(req).Execute()
-								if err != nil {
-									return "", resp, err
+								if e != nil {
+									return "", resp, e
 								}
 								return r.GetTaskUUID(), resp, nil
 							},
@@ -4612,7 +4651,9 @@ func resourceUniverseUpdate(
 						// 3. Fallback abort: Only trigger if NO valid action was taken across both blocks
 						return diag.Errorf(
 							"Safety abort: YBA returned unexpected update options %v for the planned edit on the Read Replica Cluster. "+
-								"Execution aborted.", opts)
+								"Execution aborted.",
+							opts,
+						)
 					}
 				}
 			}
@@ -4863,7 +4904,10 @@ func requiresForceDelete(ctx context.Context,
 	if taskUUID == "" {
 		return false
 	}
-	task, _, err := c.CustomerTasksAPI.TaskStatus(ctx, cUUID, taskUUID).Execute()
+	task, taskResp, err := c.CustomerTasksAPI.TaskStatus(ctx, cUUID, taskUUID).Execute()
+	if taskResp != nil {
+		defer func() { _ = taskResp.Body.Close() }()
+	}
 	if err != nil {
 		tflog.Warn(ctx, fmt.Sprintf(
 			"could not fetch task %s: %v",
@@ -4940,7 +4984,11 @@ func resourceUniverseDelete(
 	// succeed against this fingerprint (primary or RR create left half-provisioned).
 	// If the fingerprint does not match, return the original error, the user's
 	// force_delete=false preference stands and the failure is treated as legitimate.
-	uni, _, fetchErr := c.UniverseManagementAPI.GetUniverse(ctx, cUUID, universeID).Execute()
+	uni, uniRespFetch, fetchErr := c.UniverseManagementAPI.GetUniverse(ctx, cUUID, universeID).
+		Execute()
+	if uniRespFetch != nil {
+		defer func() { _ = uniRespFetch.Body.Close() }()
+	}
 	if fetchErr != nil {
 		tflog.Warn(ctx, fmt.Sprintf(
 			"Universe %s delete failed; could not fetch universe to check for "+

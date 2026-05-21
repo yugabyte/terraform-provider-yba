@@ -17,6 +17,7 @@ package backups
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -29,11 +30,13 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 	client "github.com/yugabyte/platform-go-client"
+
 	"github.com/yugabyte/terraform-provider-yba/internal/api"
 	"github.com/yugabyte/terraform-provider-yba/internal/utils"
 )
 
-// ResourceStorageConfig defines the schema to maintain the storage config resources
+// ResourceStorageConfig defines the schema to maintain the storage config resources.
+//
 // Deprecated: Use yba_s3_storage_config, yba_gcs_storage_config, yba_azure_storage_config,
 // or yba_nfs_storage_config instead. Kept through the v1.x line; removal is planned for v2.0.0.
 func ResourceStorageConfig() *schema.Resource {
@@ -104,8 +107,8 @@ func ResourceStorageConfig() *schema.Resource {
 										azCredentialsList := []map[string]interface{}{
 											azCredentials,
 										}
-										d.Set("azure_credentials", azCredentialsList)
-
+										// DiffSuppressFunc cannot return an error
+										_ = d.Set("azure_credentials", azCredentialsList)
 									}
 									return true
 								}
@@ -140,8 +143,8 @@ func ResourceStorageConfig() *schema.Resource {
 										gcsCredentialsList := []map[string]interface{}{
 											gcsCredentials,
 										}
-										d.Set("gcs_credentials", gcsCredentialsList)
-
+										// DiffSuppressFunc cannot return an error
+										_ = d.Set("gcs_credentials", gcsCredentialsList)
 									}
 									return true
 								}
@@ -174,8 +177,8 @@ func ResourceStorageConfig() *schema.Resource {
 										s3CredentialsList := []map[string]interface{}{
 											s3Credentials,
 										}
-										d.Set("s3_credentials", s3CredentialsList)
-
+										// DiffSuppressFunc cannot return an error
+										_ = d.Set("s3_credentials", s3CredentialsList)
 									}
 									return true
 								}
@@ -199,8 +202,8 @@ func ResourceStorageConfig() *schema.Resource {
 										s3CredentialsList := []map[string]interface{}{
 											s3Credentials,
 										}
-										d.Set("s3_credentials", s3CredentialsList)
-
+										// DiffSuppressFunc cannot return an error
+										_ = d.Set("s3_credentials", s3CredentialsList)
 									}
 									return true
 								}
@@ -252,7 +255,9 @@ func resourceStorageConfigDiff() schema.CustomizeDiffFunc {
 					applicationCreds := gcsCredentials["application_credentials"]
 
 					if applicationCreds == nil || len(applicationCreds.(string)) == 0 {
-						return fmt.Errorf("application credentials cannot be empty in gcs_credentials")
+						return fmt.Errorf(
+							"application credentials cannot be empty in gcs_credentials",
+						)
 					}
 				}
 
@@ -295,13 +300,13 @@ func resourceStorageConfigDiff() schema.CustomizeDiffFunc {
 				// throw error for other storage config options
 				switch name {
 				case "GCS":
-					return fmt.Errorf("Cannot set use_iam_instance_profile " +
+					return errors.New("Cannot set use_iam_instance_profile " +
 						"for GCS storage configuration")
 				case "AZ":
-					return fmt.Errorf("Cannot set use_iam_instance_profile " +
+					return errors.New("Cannot set use_iam_instance_profile " +
 						"for AZ storage configuration")
 				case "NFS":
-					return fmt.Errorf("Cannot set use_iam_instance_profile " +
+					return errors.New("Cannot set use_iam_instance_profile " +
 						"for NFS storage configuration")
 				}
 
@@ -331,9 +336,9 @@ func resourceStorageConfigDiff() schema.CustomizeDiffFunc {
 							errorString = fmt.Sprintf("%s%s ", errorString,
 								utils.AWSSecretAccessKeyEnv)
 						}
-						if !(isPresentAccessKeyID && isPresentSecretAccessKey) {
+						if !isPresentAccessKeyID || !isPresentSecretAccessKey {
 							errorString = fmt.Sprintf("%s%s", errorMessage, errorString)
-							return fmt.Errorf(errorString)
+							return errors.New(errorString)
 						}
 					} else {
 						s3Credentials := utils.MapFromSingletonList(s3CredentialsInterface)

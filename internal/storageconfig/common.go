@@ -13,6 +13,9 @@
 // specific language governing permissions and limitations
 // under the License.
 
+// Package storageconfig provides per-cloud storage configuration resources
+// (yba_s3_storage_config, yba_gcs_storage_config, yba_azure_storage_config,
+// yba_nfs_storage_config) used for backups and restores.
 package storageconfig
 
 import (
@@ -22,6 +25,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	client "github.com/yugabyte/platform-go-client"
+
 	"github.com/yugabyte/terraform-provider-yba/internal/api"
 	"github.com/yugabyte/terraform-provider-yba/internal/utils"
 )

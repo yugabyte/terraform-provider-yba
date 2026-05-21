@@ -21,6 +21,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
+
 	"github.com/yugabyte/terraform-provider-yba/internal/api"
 	"github.com/yugabyte/terraform-provider-yba/internal/utils"
 )
@@ -172,13 +173,13 @@ func dataSourceUniverseSchemaRead(
 	// Doing this before GetAllNamespaces avoids a cryptic 500 "Could not find the
 	// master leader" error that YBA returns when the universe nodes are unreachable
 	// because the universe is paused.
-	uni, response, err := c.UniverseManagementAPI.GetUniverse(ctx, cUUID, uUUID).Execute()
+	uni, uniResp, err := c.UniverseManagementAPI.GetUniverse(ctx, cUUID, uUUID).Execute()
 	if err != nil {
-		if utils.IsHTTPNotFound(response) || utils.IsHTTPBadRequestNotFound(response) {
+		if utils.IsHTTPNotFound(uniResp) || utils.IsHTTPBadRequestNotFound(uniResp) {
 			return diag.Errorf("universe %s not found: verify that the universe_uuid is correct",
 				uUUID)
 		}
-		errMessage := utils.ErrorFromHTTPResponse(response, err, utils.DataSourceEntity,
+		errMessage := utils.ErrorFromHTTPResponse(uniResp, err, utils.DataSourceEntity,
 			"Universe Schema", "Read - Fetch Universe")
 		return diag.FromErr(errMessage)
 	}
@@ -189,10 +190,13 @@ func dataSourceUniverseSchemaRead(
 	}
 
 	// Fetch namespaces
-	namespaces, response, err := c.TableManagementAPI.GetAllNamespaces(ctx, cUUID, uUUID).
+	namespaces, nsResp, err := c.TableManagementAPI.GetAllNamespaces(ctx, cUUID, uUUID).
 		IncludeSystemNamespaces(includeSystem).Execute()
+	if nsResp != nil {
+		defer func() { _ = nsResp.Body.Close() }()
+	}
 	if err != nil {
-		errMessage := utils.ErrorFromHTTPResponse(response, err, utils.DataSourceEntity,
+		errMessage := utils.ErrorFromHTTPResponse(nsResp, err, utils.DataSourceEntity,
 			"Universe Schema", "Read")
 		return diag.FromErr(errMessage)
 	}
@@ -242,9 +246,12 @@ func dataSourceUniverseSchemaRead(
 	// Fetch tables only if requested
 	tableList := make([]map[string]interface{}, 0)
 	if includeTables {
-		tables, response, err := c.TableManagementAPI.GetAllTables(ctx, cUUID, uUUID).Execute()
+		tables, tblResp, err := c.TableManagementAPI.GetAllTables(ctx, cUUID, uUUID).Execute()
+		if tblResp != nil {
+			defer func() { _ = tblResp.Body.Close() }()
+		}
 		if err != nil {
-			errMessage := utils.ErrorFromHTTPResponse(response, err, utils.DataSourceEntity,
+			errMessage := utils.ErrorFromHTTPResponse(tblResp, err, utils.DataSourceEntity,
 				"Universe Schema", "Read")
 			return diag.FromErr(errMessage)
 		}

@@ -13,6 +13,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
+// Package installation provides the yba_installer resource for bootstrapping
+// YugabyteDB Anywhere over SSH using yba-ctl.
 package installation
 
 import (
@@ -27,8 +29,9 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/customdiff"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	"github.com/yugabyte/terraform-provider-yba/internal/utils"
 	"golang.org/x/exp/maps"
+
+	"github.com/yugabyte/terraform-provider-yba/internal/utils"
 )
 
 var (
@@ -187,10 +190,7 @@ func resourceYBAInstallerDiff() schema.CustomizeDiffFunc {
 		customdiff.ValidateValue("yba_license_file", func(ctx context.Context, value,
 			meta interface{}) error {
 			name := value.(string)
-			if err := utils.FileExist(name); err != nil {
-				return err
-			}
-			return nil
+			return utils.FileExist(name)
 		}),
 		customdiff.ValidateValue("application_settings_file", func(ctx context.Context, value,
 			meta interface{}) error {
@@ -205,10 +205,7 @@ func resourceYBAInstallerDiff() schema.CustomizeDiffFunc {
 		customdiff.ValidateValue("ssh_private_key_file_path", func(ctx context.Context, value,
 			meta interface{}) error {
 			name := value.(string)
-			if err := utils.FileExist(name); err != nil {
-				return err
-			}
-			return nil
+			return utils.FileExist(name)
 		}),
 		customdiff.IfValue("reconfigure",
 			func(ctx context.Context, value, meta interface{}) bool {
@@ -243,7 +240,7 @@ func resourceYBAInstallerCreate(
 		tflog.Error(ctx, "Timeout: Couldn't connect to YugabyteDB Anywhere host")
 		return diag.FromErr(err)
 	}
-	defer sshClient.Close()
+	defer func() { _ = sshClient.Close() }()
 
 	for key, remote := range getInstallationFiles() {
 		local := d.Get(key).(string)
@@ -313,7 +310,7 @@ func resourceYBAInstallerUpdate(
 		tflog.Error(ctx, "Timeout: Couldn't connect to YugabyteDB Anywhere host")
 		return diag.FromErr(err)
 	}
-	defer sshClient.Close()
+	defer func() { _ = sshClient.Close() }()
 
 	hostOS := d.Get("host_os").(string)
 	hostArch := d.Get("host_architecture").(string)
@@ -350,11 +347,9 @@ func resourceYBAInstallerUpdate(
 		d.HasChange("tls_certificate_file") || d.HasChange("tls_key_file") {
 		applicationSettingsFile := d.Get("application_settings_file").(string)
 		if applicationSettingsFile == "" {
-			err := errors.New(
-				"Cannot reconfigure YBA Installer with empty application_settings_file " +
-					"file",
-			)
-			return diag.FromErr(err)
+			return diag.FromErr(errors.New(
+				"cannot reconfigure YBA Installer with empty application_settings_file file",
+			))
 		}
 		for key, remote := range reconfigurationYBAInstallerFiles {
 			local := d.Get(key).(string)
@@ -407,7 +402,7 @@ func resourceYBAInstallerDelete(
 	if err != nil {
 		return diag.FromErr(err)
 	}
-	defer sshClient.Close()
+	defer func() { _ = sshClient.Close() }()
 
 	for _, cmd := range getDeleteCommands() {
 		m, err := runCommand(ctx, sshClient, cmd)
@@ -447,7 +442,7 @@ func getInstallCommands(
 	s = getAddLicenseCommands(folder)
 	installationCommands = append(installationCommands, s)
 	if config {
-		k := fmt.Sprintf("sudo mv /tmp/settings.yml /opt/yba-ctl/yba-ctl.yml")
+		k := "sudo mv /tmp/settings.yml /opt/yba-ctl/yba-ctl.yml"
 		installationCommands = append(installationCommands, k)
 	}
 	s = fmt.Sprintf("sudo ./%s/yba-ctl install -f", folder)
@@ -461,7 +456,7 @@ func getInstallCommands(
 
 func getReconfigureCommands() []string {
 	var reconfigureCommands = []string{"sudo mv /tmp/settings.yml /opt/yba-ctl/yba-ctl.yml"}
-	s := fmt.Sprintf("sudo /opt/yba-ctl/yba-ctl reconfigure -f")
+	s := "sudo /opt/yba-ctl/yba-ctl reconfigure -f"
 	reconfigureCommands = append(reconfigureCommands, s)
 	return reconfigureCommands
 }
@@ -484,9 +479,9 @@ func getAddLicenseCommands(folder string) string {
 
 func getDeleteCommands() []string {
 	var deleteCommands = []string{"sudo /opt/yba-ctl/yba-ctl clean"}
-	s := fmt.Sprintf("sudo rm -rf /opt/yugabyte")
+	s := "sudo rm -rf /opt/yugabyte"
 	deleteCommands = append(deleteCommands, s)
-	s = fmt.Sprintf("sudo rm /tmp/server.crt /tmp/server.key /tmp/license.lic /tmp/settings.yml")
+	s = "sudo rm /tmp/server.crt /tmp/server.key /tmp/license.lic /tmp/settings.yml"
 	deleteCommands = append(deleteCommands, s)
 	return deleteCommands
 }

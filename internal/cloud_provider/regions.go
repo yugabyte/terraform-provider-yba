@@ -23,6 +23,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	client "github.com/yugabyte/platform-go-client"
+
 	"github.com/yugabyte/terraform-provider-yba/internal/utils"
 )
 
@@ -203,7 +204,8 @@ func buildRegions(
 
 		regionCloudInfo := client.RegionCloudInfo{}
 		details := client.RegionDetails{}
-		if cloudCode == "gcp" {
+		switch cloudCode {
+		case "gcp":
 			gcpRegionInfo := client.GCPRegionCloudInfo{
 				YbImage: utils.GetStringPointer(region["yb_image"].(string)),
 			}
@@ -212,18 +214,21 @@ func buildRegions(
 					gcpRegionInfo.SetInstanceTemplate(region["instance_template"].(string))
 				}
 			} else {
-				tflog.Info(ctx, fmt.Sprintf("YugabyteDB Anywhere version %s does not support Instance "+
-					"Templates, ignoring value.\n", version))
+				tflog.Info(
+					ctx,
+					fmt.Sprintf("YugabyteDB Anywhere version %s does not support Instance "+
+						"Templates, ignoring value.\n", version),
+				)
 			}
 			regionCloudInfo.SetGcp(gcpRegionInfo)
-		} else if cloudCode == "aws" {
+		case "aws":
 			awsRegionInfo := client.AWSRegionCloudInfo{
 				YbImage:         utils.GetStringPointer(region["yb_image"].(string)),
 				Vnet:            utils.GetStringPointer(region["vnet_name"].(string)),
 				SecurityGroupId: utils.GetStringPointer(region["security_group_id"].(string)),
 			}
 			regionCloudInfo.SetAws(awsRegionInfo)
-		} else if cloudCode == "azure" {
+		case "azure":
 			azureCloudInfo := client.AzureRegionCloudInfo{
 				YbImage:         utils.GetStringPointer(region["yb_image"].(string)),
 				Vnet:            utils.GetStringPointer(region["vnet_name"].(string)),
@@ -266,20 +271,21 @@ func flattenRegions(regions []client.Region, cloudCode string) (res []map[string
 			"name":  region.Code,
 			"zones": flattenZones(region.Zones),
 		}
-		if cloudCode == "gcp" {
+		switch cloudCode {
+		case "gcp":
 			details := region.GetDetails()
 			cloudInfo := details.GetCloudInfo()
 			gcp := cloudInfo.GetGcp()
 			r["instance_template"] = gcp.GetInstanceTemplate()
 			r["yb_image"] = gcp.GetYbImage()
-		} else if cloudCode == "aws" {
+		case "aws":
 			details := region.GetDetails()
 			cloudInfo := details.GetCloudInfo()
 			aws := cloudInfo.GetAws()
 			r["vnet_name"] = aws.GetVnet()
 			r["yb_image"] = aws.GetYbImage()
 			r["security_group_id"] = aws.GetSecurityGroupId()
-		} else if cloudCode == "azure" {
+		case "azure":
 			details := region.GetDetails()
 			cloudInfo := details.GetCloudInfo()
 			azure := cloudInfo.GetAzu()

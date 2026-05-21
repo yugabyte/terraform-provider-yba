@@ -17,6 +17,7 @@ package cloud_provider
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -29,6 +30,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 	client "github.com/yugabyte/platform-go-client"
+
 	"github.com/yugabyte/terraform-provider-yba/internal/api"
 	"github.com/yugabyte/terraform-provider-yba/internal/utils"
 )
@@ -278,7 +280,7 @@ func ResourceCloudProvider() *schema.Resource {
 							Optional: true,
 							ForceNew: true,
 							Description: "Azure Network Subscription ID." +
-								"All network resources and NIC resouce of VMs will " +
+								"All network resources and NIC resource of VMs will " +
 								"be created in this group. If left empty, the default subscription ID will be used.",
 						},
 						"network_resource_group": {
@@ -286,7 +288,7 @@ func ResourceCloudProvider() *schema.Resource {
 							Optional: true,
 							ForceNew: true,
 							Description: "Azure Network Resource Group." +
-								"All network resources and NIC resouce of VMs will " +
+								"All network resources and NIC resource of VMs will " +
 								"be created in this group. If left empty, the default resource group will be used.",
 						},
 					}},
@@ -438,10 +440,11 @@ func resourceCloudProviderDiff() schema.CustomizeDiffFunc {
 					if !isPresentRG {
 						errorString = fmt.Sprintf("%s%s ", errorString, utils.AzureRGEnv)
 					}
-					if !(isPresentClientID && isPresentClientSecret && isPresentRG &&
-						isPresentSubscriptionID && isPresentTenantID) {
+					if !isPresentClientID || !isPresentClientSecret || !isPresentRG ||
+						!isPresentSubscriptionID ||
+						!isPresentTenantID {
 						errorString = fmt.Sprintf("%s%s", errorMessage, errorString)
-						return fmt.Errorf(errorString)
+						return errors.New(errorString)
 					}
 				} else {
 					clientSecret := configSettings["client_secret"]
@@ -451,22 +454,22 @@ func resourceCloudProviderDiff() schema.CustomizeDiffFunc {
 					if clientSecret == nil || len(clientSecret.(string)) == 0 {
 						errorString = "Azure Client Secret cannot be empty when " +
 							"Azure Client ID is set"
-						return fmt.Errorf(errorString)
+						return errors.New(errorString)
 					}
 					if subscriptionID == nil || len(subscriptionID.(string)) == 0 {
 						errorString = "Azure Subscription ID cannot be empty when " +
 							"Azure Client ID is set"
-						return fmt.Errorf(errorString)
+						return errors.New(errorString)
 					}
 					if tenantID == nil || len(tenantID.(string)) == 0 {
 						errorString = "Azure Tenant ID cannot be empty when " +
 							"Azure Client ID is set"
-						return fmt.Errorf(errorString)
+						return errors.New(errorString)
 					}
 					if rg == nil || len(rg.(string)) == 0 {
 						errorString = "Azure Resource Group cannot be empty when " +
 							"Azure Client ID is set"
-						return fmt.Errorf(errorString)
+						return errors.New(errorString)
 					}
 				}
 				return nil
@@ -508,16 +511,16 @@ func resourceCloudProviderDiff() schema.CustomizeDiffFunc {
 								utils.AWSSecretAccessKeyEnv,
 							)
 						}
-						if !(isPresentAccessKeyID && isPresentSecretAccessKey) {
+						if !isPresentAccessKeyID || !isPresentSecretAccessKey {
 							errorString = fmt.Sprintf("%s%s", errorMessage, errorString)
-							return fmt.Errorf(errorString)
+							return errors.New(errorString)
 						}
 					} else {
 						secretAccessKey := configSettings["secret_access_key"]
 						if secretAccessKey == nil || len(secretAccessKey.(string)) == 0 {
 							errorString = "AWS Secret Access Key cannot be empty when " +
 								"AWS Access Key ID is set"
-							return fmt.Errorf(errorString)
+							return errors.New(errorString)
 						}
 					}
 				}
@@ -601,7 +604,8 @@ func buildCloudInfo(
 	cloudInfo := client.CloudInfo{}
 	cloudCode := d.Get("code").(string)
 
-	if cloudCode == "gcp" {
+	switch cloudCode {
+	case "gcp":
 		gcpCloudInfo := client.GCPCloudInfo{}
 		var isIAM bool
 		var configSettings map[string]interface{}
@@ -623,7 +627,7 @@ func buildCloudInfo(
 						gcpCloudInfo.SetDestVpcId(network)
 
 					} else {
-						return cloudInfo, fmt.Errorf("Network required if create_vpc is set")
+						return cloudInfo, errors.New("Network required if create_vpc is set")
 					}
 				} else if strings.Compare(createVpc, "false") == 0 {
 					useHostVpc := configSettings["use_host_vpc"].(bool)
@@ -637,7 +641,7 @@ func buildCloudInfo(
 								gcpCloudInfo.SetDestVpcId(network)
 							} else {
 								return cloudInfo,
-									fmt.Errorf("Network required if use_host_vpc is not set")
+									errors.New("Network required if use_host_vpc is not set")
 							}
 
 						}
@@ -675,7 +679,7 @@ func buildCloudInfo(
 		}
 		cloudInfo.SetGcp(gcpCloudInfo)
 
-	} else if cloudCode == "azu" {
+	case "azu":
 		azCloudInfo := client.AzureCloudInfo{}
 		configInterface := d.Get("azure_config_settings").([]interface{})
 		var configSettings map[string]interface{}
@@ -731,7 +735,7 @@ func buildCloudInfo(
 		}
 		cloudInfo.SetAzu(azCloudInfo)
 
-	} else if cloudCode == "aws" {
+	case "aws":
 		awsCloudInfo := client.AWSCloudInfo{}
 		var isIAM bool
 		configInterface := d.Get("aws_config_settings").([]interface{})
@@ -797,7 +801,7 @@ func resourceCloudProviderCreate(
 		(d.Get("image_bundles") != nil && len(d.Get("image_bundles").([]interface{})) > 0) {
 		return diag.FromErr(
 			fmt.Errorf(
-				"Image bundle blocks are not supported below YugabyteDB Anywhere version %s, currently on %s",
+				"image bundle blocks are not supported below YugabyteDB Anywhere version %s, currently on %s",
 				utils.YBAAllowImageBundlesMinVersion,
 				imageBundleVersion,
 			))

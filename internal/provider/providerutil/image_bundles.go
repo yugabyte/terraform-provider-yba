@@ -24,6 +24,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	client "github.com/yugabyte/platform-go-client"
+
 	"github.com/yugabyte/terraform-provider-yba/internal/utils"
 )
 
@@ -140,6 +141,7 @@ func EnsureImageBundleDefaults(bundles []client.ImageBundle) []client.ImageBundl
 }
 
 // MergeImageBundlesForUpdate merges old state bundles with new config bundles.
+//
 // Deprecated: use PrepareImageBundlesForUpdate which sources YBA bundles from the live API.
 func MergeImageBundlesForUpdate(
 	oldBundlesRaw, newBundlesRaw interface{},

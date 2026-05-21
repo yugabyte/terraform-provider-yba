@@ -13,6 +13,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
+// Package api wraps the YugabyteDB Anywhere Go client and provides a vanilla
+// HTTP client for endpoints not covered by the generated client.
 package api
 
 import (
@@ -26,6 +28,7 @@ import (
 	"time"
 
 	client "github.com/yugabyte/platform-go-client"
+
 	"github.com/yugabyte/terraform-provider-yba/internal/utils"
 )
 
@@ -102,20 +105,40 @@ type VanillaClient struct {
 	EnableHTTPS bool
 }
 
-func (c VanillaClient) makeRequest(method string, url string, body io.Reader, apiKey string) (
+func (vc VanillaClient) makeRequest(
+	ctx context.Context,
+	method string,
+	url string,
+	body io.Reader,
+	apiKey string,
+) (
 	*http.Response, error) {
 	var req *http.Request
 	var err error
-	if c.EnableHTTPS {
-		http.DefaultTransport.(*http.Transport).TLSClientConfig = &tls.Config{
-			InsecureSkipVerify: true,
+	if vc.EnableHTTPS {
+		tr, ok := http.DefaultTransport.(*http.Transport)
+		if !ok {
+			return nil, errors.New("http.DefaultTransport is not *http.Transport")
 		}
-		req, err = http.NewRequest(method, fmt.Sprintf("https://%s/%s", c.Host, url), body)
+		tr.TLSClientConfig = &tls.Config{
+			InsecureSkipVerify: true, //nolint:gosec // TLS verification intentionally disabled for YBA self-signed certs
+		}
+		req, err = http.NewRequestWithContext(
+			ctx,
+			method,
+			fmt.Sprintf("https://%s/%s", vc.Host, url),
+			body,
+		)
 		if err != nil {
 			return nil, err
 		}
 	} else {
-		req, err = http.NewRequest(method, fmt.Sprintf("http://%s/%s", c.Host, url), body)
+		req, err = http.NewRequestWithContext(
+			ctx,
+			method,
+			fmt.Sprintf("http://%s/%s", vc.Host, url),
+			body,
+		)
 		if err != nil {
 			return nil, err
 		}
@@ -123,7 +146,7 @@ func (c VanillaClient) makeRequest(method string, url string, body io.Reader, ap
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-AUTH-YW-API-TOKEN", apiKey)
 
-	r, err := c.Client.Do(req)
+	r, err := vc.Client.Do(req) //nolint:bodyclose // caller is responsible for closing r.Body
 	if err != nil {
 		return nil, err
 	}

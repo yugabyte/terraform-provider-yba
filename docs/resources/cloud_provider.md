@@ -349,8 +349,8 @@ Optional:
 - `client_id` (String) Azure Client ID. Can also be set using environment variable AZURE_CLIENT_ID.
 - `client_secret` (String, Sensitive) Azure Client Secret. Can also be set using environment variable AZURE_CLIENT_SECRET. Required with client_id.
 - `hosted_zone_id` (String) Private DNS Zone for Azure.
-- `network_resource_group` (String) Azure Network Resource Group.All network resources and NIC resouce of VMs will be created in this group. If left empty, the default resource group will be used.
-- `network_subscription_id` (String) Azure Network Subscription ID.All network resources and NIC resouce of VMs will be created in this group. If left empty, the default subscription ID will be used.
+- `network_resource_group` (String) Azure Network Resource Group.All network resources and NIC resource of VMs will be created in this group. If left empty, the default resource group will be used.
+- `network_subscription_id` (String) Azure Network Subscription ID.All network resources and NIC resource of VMs will be created in this group. If left empty, the default subscription ID will be used.
 - `resource_group` (String) Azure Resource Group. Can also be set using environment variable AZURE_RG. Required with client_id.
 - `subscription_id` (String) Azure Subscription ID. Can also be set using environment variable AZURE_SUBSCRIPTION_ID. Required with client_id.
 - `tenant_id` (String) Azure Tenant ID. Can also be set using environment variable AZURE_TENANT_ID. Required with client_id.
