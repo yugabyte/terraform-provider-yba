@@ -13,6 +13,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
+// Package releases provides resources and data sources related to YugabyteDB
+// releases and version metadata.
 package releases
 
 import (
@@ -22,9 +24,10 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
+	"golang.org/x/exp/slices"
+
 	"github.com/yugabyte/terraform-provider-yba/internal/api"
 	"github.com/yugabyte/terraform-provider-yba/internal/utils"
-	"golang.org/x/exp/slices"
 )
 
 // ReleaseVersion data spurce keeps track of the imported releases on current YBA
@@ -132,11 +135,15 @@ func dataSourceReleaseVersionRead(
 			versions = versionsPreview
 		}
 	} else {
-		versions = append(versionsStable, versionsPreview...)
+		versions = make([]string, 0, len(versionsStable)+len(versionsPreview))
+		versions = append(versions, versionsStable...)
+		versions = append(versions, versionsPreview...)
 	}
 
 	if d.Get("version").(string) == "" {
-		d.Set("version_list", versions)
+		if err := d.Set("version_list", versions); err != nil {
+			return diag.FromErr(err)
+		}
 	} else {
 		matchedVersions := make([]string, 0)
 		for _, version := range versions {
@@ -144,14 +151,18 @@ func dataSourceReleaseVersionRead(
 				matchedVersions = append(matchedVersions, version)
 			}
 		}
-		d.Set("version_list", matchedVersions)
+		if err := d.Set("version_list", matchedVersions); err != nil {
+			return diag.FromErr(err)
+		}
 	}
 
 	listVersions := d.Get("version_list").([]interface{})
-	for _, version := range listVersions {
-		d.SetId(version.(string))
-		d.Set("selected_version", version.(string))
-		break
+	if len(listVersions) > 0 {
+		version := listVersions[0].(string)
+		d.SetId(version)
+		if err := d.Set("selected_version", version); err != nil {
+			return diag.FromErr(err)
+		}
 	}
 	return diags
 }

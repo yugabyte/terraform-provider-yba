@@ -13,6 +13,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
+// Package universe implements the Terraform resource and data sources for YBA
+// universes.
 package universe
 
 import (
@@ -24,15 +26,17 @@ import (
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	client "github.com/yugabyte/platform-go-client"
+
 	"github.com/yugabyte/terraform-provider-yba/internal/utils"
 )
 
 func buildUniverse(d *schema.ResourceData) client.UniverseConfigureTaskParams {
-	clusters := buildClusters(d.Get("clusters").([]interface{}))
+	clustersRaw, _ := d.Get("clusters").([]interface{})
+	clusters := buildClusters(clustersRaw)
 	alignSpecificGFlagsWithHCL(clusters, d.GetRawConfig())
 	enableYbc := true
-	rootCA := d.Get("root_ca").(string)
-	clientRootCA := d.Get("client_root_ca").(string)
+	rootCA, _ := d.Get("root_ca").(string)
+	clientRootCA, _ := d.Get("client_root_ca").(string)
 	// rootAndClientRootCASame defaults to true on the YBA server side.  When true, the
 	// server ignores the clientRootCA field and sets it equal to rootCA instead.  We must
 	// explicitly send false in any situation where the caller has chosen a clientRootCA that
@@ -61,35 +65,6 @@ func buildUniverse(d *schema.ResourceData) client.UniverseConfigureTaskParams {
 		CommunicationPorts: buildCommunicationPorts(
 			utils.MapFromSingletonList(d.Get("communication_ports").([]interface{}))),
 		EnableYbc:      utils.GetBoolPointer(enableYbc),
-		UserAZSelected: utils.GetBoolPointer(hasExplicitCloudList(clusters)),
-	}
-	if rootCA != "" {
-		params.RootCA = utils.GetStringPointer(rootCA)
-	}
-	if clientRootCA != "" {
-		params.ClientRootCA = utils.GetStringPointer(clientRootCA)
-	}
-	return params
-}
-
-func buildUniverseDefinitionTaskParams(d *schema.ResourceData) client.UniverseDefinitionTaskParams {
-	rootCA := d.Get("root_ca").(string)
-	clientRootCA := d.Get("client_root_ca").(string)
-	// See comment in buildUniverse for the full rationale behind this flag.
-	var rootAndClientRootCASame *bool
-	if clientRootCA != "" && (rootCA == "" || clientRootCA != rootCA) {
-		rootAndClientRootCASame = utils.GetBoolPointer(false)
-	}
-	clusters := buildClusters(d.Get("clusters").([]interface{}))
-	alignSpecificGFlagsWithHCL(clusters, d.GetRawConfig())
-	// See comment in buildUniverse: only set RootCA/ClientRootCA when non-empty
-	// so that the server receives a missing/null field rather than "" when the
-	// user has not specified a cert UUID.
-	params := client.UniverseDefinitionTaskParams{
-		RootAndClientRootCASame: rootAndClientRootCASame,
-		Clusters:                clusters,
-		CommunicationPorts: buildCommunicationPorts(
-			utils.MapFromSingletonList(d.Get("communication_ports").([]interface{}))),
 		UserAZSelected: utils.GetBoolPointer(hasExplicitCloudList(clusters)),
 	}
 	if rootCA != "" {
@@ -342,8 +317,11 @@ func validateCloudListRegionsInUserIntent(
 				continue
 			}
 			if _, fetched := seenProvider[provUUID]; !fetched {
-				regions, _, err := c.RegionManagementAPI.GetRegion(
+				regions, resp, err := c.RegionManagementAPI.GetRegion(
 					ctx, cUUID, provUUID).Execute()
+				if resp != nil {
+					_ = resp.Body.Close()
+				}
 				if err != nil {
 					seenProvider[provUUID] = nil
 					continue
@@ -419,7 +397,10 @@ func validateCloudListAZCodes(
 			continue
 		}
 		if _, fetched := seenProvider[provUUID]; !fetched {
-			regions, _, err := c.RegionManagementAPI.GetRegion(ctx, cUUID, provUUID).Execute()
+			regions, resp, err := c.RegionManagementAPI.GetRegion(ctx, cUUID, provUUID).Execute()
+			if resp != nil {
+				_ = resp.Body.Close()
+			}
 			if err != nil {
 				seenProvider[provUUID] = nil
 				continue
@@ -551,7 +532,9 @@ func resolveAZUUIDs(
 									az.Subnet = utils.GetStringPointer(attrs.subnet)
 								}
 								if attrs.secondarySubnet != "" {
-									az.SecondarySubnet = utils.GetStringPointer(attrs.secondarySubnet)
+									az.SecondarySubnet = utils.GetStringPointer(
+										attrs.secondarySubnet,
+									)
 								}
 							}
 						}
@@ -613,7 +596,11 @@ func fetchProviderZoneFallback(
 			continue
 		}
 		seen[providerUUID] = true
-		provRegions, _, err := c.RegionManagementAPI.GetRegion(ctx, cUUID, providerUUID).Execute()
+		provRegions, resp, err := c.RegionManagementAPI.GetRegion(ctx, cUUID, providerUUID).
+			Execute()
+		if resp != nil {
+			_ = resp.Body.Close()
+		}
 		if err != nil {
 			tflog.Warn(ctx, fmt.Sprintf(
 				"could not fetch provider regions for UUID %s: %v; "+
@@ -699,7 +686,7 @@ func buildClusters(clusters []interface{}) (res []client.Cluster) {
 		}
 		if len(cluster["cloud_list"].([]interface{})) > 0 {
 			c.PlacementInfo = &client.PlacementInfo{
-				CloudList: buildCloudList(cluster["cloud_list"].(interface{})),
+				CloudList: buildCloudList(cluster["cloud_list"]),
 			}
 		}
 
@@ -733,7 +720,7 @@ func buildRegionList(cl []interface{}) []client.PlacementRegion {
 			Uuid:   utils.GetStringPointer(r["uuid"].(string)),
 			Code:   utils.GetStringPointer(r["code"].(string)),
 			Name:   utils.GetStringPointer(r["name"].(string)),
-			AzList: buildAzList(r["az_list"].(interface{})),
+			AzList: buildAzList(r["az_list"]),
 		}
 		res = append(res, pr)
 	}

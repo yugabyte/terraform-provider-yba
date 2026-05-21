@@ -17,6 +17,7 @@ package backups
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -28,6 +29,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 	client "github.com/yugabyte/platform-go-client"
+
 	"github.com/yugabyte/terraform-provider-yba/internal/api"
 	"github.com/yugabyte/terraform-provider-yba/internal/utils"
 )
@@ -331,9 +333,9 @@ func resourceBackupCreate(
 		d.Timeout(schema.TimeoutCreate),
 		utils.ResourceEntity, "Backup", "Create",
 		func() (string, *http.Response, error) {
-			r, resp, err := c.BackupsAPI.Createbackup(ctx, cUUID).Backup(req).Execute()
-			if err != nil {
-				return "", resp, err
+			r, resp, createErr := c.BackupsAPI.Createbackup(ctx, cUUID).Backup(req).Execute()
+			if createErr != nil {
+				return "", resp, createErr
 			}
 			taskUUID = r.GetTaskUUID()
 			return taskUUID, resp, nil
@@ -551,7 +553,8 @@ func isBackupGone(response *http.Response, err error) bool {
 		return true
 	}
 	if response.StatusCode == http.StatusBadRequest {
-		if oErr, ok := err.(*client.GenericOpenAPIError); ok {
+		oErr := &client.GenericOpenAPIError{}
+		if errors.As(err, &oErr) {
 			return strings.Contains(string(oErr.Body()), "Invalid customer or backup UUID")
 		}
 	}

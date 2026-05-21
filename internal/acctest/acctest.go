@@ -13,6 +13,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
+// Package acctest provides shared helpers used by acceptance tests.
 package acctest
 
 import (
@@ -21,6 +22,7 @@ import (
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+
 	"github.com/yugabyte/terraform-provider-yba/internal/api"
 	"github.com/yugabyte/terraform-provider-yba/internal/provider"
 )
@@ -163,8 +165,5 @@ func TestAccPreCheck(t *testing.T) {
 
 // IsResourceNotFoundError function
 func IsResourceNotFoundError(err error) bool {
-	if strings.Contains(err.Error(), "404") {
-		return true
-	}
-	return false
+	return strings.Contains(err.Error(), "404")
 }

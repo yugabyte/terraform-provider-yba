@@ -17,6 +17,7 @@ package releases
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"time"
@@ -25,6 +26,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/customdiff"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+
 	"github.com/yugabyte/terraform-provider-yba/internal/api"
 	"github.com/yugabyte/terraform-provider-yba/internal/utils"
 )
@@ -138,9 +140,9 @@ func resourceReleaseDiff() schema.CustomizeDiffFunc {
 				if !isPresentSecretAccessKey {
 					errorString = fmt.Sprintf("%s%s ", errorString, utils.AWSSecretAccessKeyEnv)
 				}
-				if !(isPresentAccessKeyID && isPresentSecretAccessKey) {
+				if !isPresentAccessKeyID || !isPresentSecretAccessKey {
 					errorString = fmt.Sprintf("%s%s", errorMessage, errorString)
-					return fmt.Errorf(errorString)
+					return errors.New(errorString)
 				}
 			}
 			return nil

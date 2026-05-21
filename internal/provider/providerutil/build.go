@@ -17,6 +17,7 @@ package providerutil
 
 import (
 	client "github.com/yugabyte/platform-go-client"
+
 	"github.com/yugabyte/terraform-provider-yba/internal/utils"
 )
 
@@ -91,11 +92,12 @@ func BuildYBADefaultImageBundles(bundles []interface{}, providerType string) []c
 		name, _ := bundle["name"].(string)
 		if name == "" {
 			name = "YBA-Managed-"
-			if arch == "x86_64" {
+			switch arch {
+			case "x86_64":
 				name += "x86"
-			} else if arch == "aarch64" {
+			case "aarch64":
 				name += "aarch"
-			} else {
+			default:
 				name += arch
 			}
 		}

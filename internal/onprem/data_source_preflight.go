@@ -23,6 +23,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	client "github.com/yugabyte/platform-go-client"
+
 	"github.com/yugabyte/terraform-provider-yba/internal/api"
 	"github.com/yugabyte/terraform-provider-yba/internal/utils"
 )
@@ -93,13 +94,20 @@ func dataSourcePreflightCheckRead(
 		if r.TaskUUID != nil {
 			tflog.Debug(ctx, fmt.Sprintf(
 				"Waiting for preflight check of node %s in on prem provider %s", nodeIP, pUUID))
-			err = utils.WaitForTask(ctx, *r.TaskUUID, cUUID, c, d.Timeout(schema.TimeoutCreate))
-			if err != nil {
+			if err := utils.WaitForTask(
+				ctx,
+				*r.TaskUUID,
+				cUUID,
+				c,
+				d.Timeout(schema.TimeoutCreate),
+			); err != nil {
 				return diag.FromErr(err)
 			}
 		}
 	}
 	d.SetId("Success")
-	d.Set("nodes", nodeList)
+	if err := d.Set("nodes", nodeList); err != nil {
+		return diag.FromErr(err)
+	}
 	return diags
 }

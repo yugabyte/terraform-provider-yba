@@ -26,9 +26,10 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/customdiff"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	client "github.com/yugabyte/platform-go-client"
+	"golang.org/x/exp/slices"
+
 	"github.com/yugabyte/terraform-provider-yba/internal/api"
 	"github.com/yugabyte/terraform-provider-yba/internal/utils"
-	"golang.org/x/exp/slices"
 )
 
 // ResourceOnPremNodeInstances creates and maintains resource for nodes for an OnPrem providers
@@ -187,7 +188,7 @@ func resourceOnPremNodeDiff() schema.CustomizeDiffFunc {
 			pUUID := d.Get("provider_uuid").(string)
 			pName := d.Get("provider_name").(string)
 
-			pUUID, pName, err := fetchProviderUUIDAndName(ctx, c, cUUID, pUUID, pName)
+			pUUID, _, err := fetchProviderUUIDAndName(ctx, c, cUUID, pUUID, pName)
 			if err != nil {
 				return err
 			}
@@ -201,9 +202,8 @@ func resourceOnPremNodeDiff() schema.CustomizeDiffFunc {
 			for _, n := range existingNodeInstances {
 				if n.GetInUse() {
 					details := n.GetDetails()
-					ip := details.GetIp()
-					inUseNodes = append(inUseNodes, ip)
-
+					nodeIP := details.GetIp()
+					inUseNodes = append(inUseNodes, nodeIP)
 				}
 			}
 			if len(inUseNodes) > 0 {

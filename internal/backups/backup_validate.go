@@ -13,6 +13,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
+// Package backups provides resources and data sources for YugabyteDB Anywhere
+// backups, restores, and backup schedules.
 package backups
 
 // Shared CustomizeDiff validators used by both yba_backup and yba_backup_schedule.
@@ -26,6 +28,7 @@ import (
 	"fmt"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+
 	"github.com/yugabyte/terraform-provider-yba/internal/utils"
 )
 
@@ -105,13 +108,11 @@ func validateIncrementalFrequencyDiff() schema.CustomizeDiffFunc {
 
 		fullMs, _, _, err := utils.GetMsFromDurationString(freqStr)
 		if err != nil {
-			// The individual frequency validator will report the format error.
-			return nil
+			return fmt.Errorf("invalid frequency %q: %w", freqStr, err)
 		}
 		incrMs, _, _, err := utils.GetMsFromDurationString(incrFreqStr)
 		if err != nil {
-			// The individual incremental frequency validator will report this.
-			return nil
+			return fmt.Errorf("invalid incremental_backup_frequency %q: %w", incrFreqStr, err)
 		}
 
 		if incrMs > fullMs {

@@ -13,6 +13,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
+// Package utils provides shared helpers (HTTP client wrapping, type assertions,
+// version comparison, credentials handling) used across the provider packages.
 package utils
 
 // Entities

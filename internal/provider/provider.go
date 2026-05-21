@@ -13,6 +13,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
+// Package provider wires the YugabyteDB Anywhere Terraform provider's
+// resources and data sources.
 package provider
 
 import (
@@ -20,22 +22,22 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+
 	"github.com/yugabyte/terraform-provider-yba/internal/api"
 	"github.com/yugabyte/terraform-provider-yba/internal/backups"
 	"github.com/yugabyte/terraform-provider-yba/internal/cloud_provider"
 	"github.com/yugabyte/terraform-provider-yba/internal/customer"
 	"github.com/yugabyte/terraform-provider-yba/internal/installation"
 	"github.com/yugabyte/terraform-provider-yba/internal/onprem"
-	"github.com/yugabyte/terraform-provider-yba/internal/releases"
-	"github.com/yugabyte/terraform-provider-yba/internal/universe"
-	"github.com/yugabyte/terraform-provider-yba/internal/user"
-	"github.com/yugabyte/terraform-provider-yba/internal/utils"
-
 	// New provider packages following yba-cli patterns
 	awsProvider "github.com/yugabyte/terraform-provider-yba/internal/provider/aws"
 	azureProvider "github.com/yugabyte/terraform-provider-yba/internal/provider/azure"
 	gcpProvider "github.com/yugabyte/terraform-provider-yba/internal/provider/gcp"
+	"github.com/yugabyte/terraform-provider-yba/internal/releases"
 	"github.com/yugabyte/terraform-provider-yba/internal/storageconfig"
+	"github.com/yugabyte/terraform-provider-yba/internal/universe"
+	"github.com/yugabyte/terraform-provider-yba/internal/user"
+	"github.com/yugabyte/terraform-provider-yba/internal/utils"
 )
 
 func init() {
@@ -104,15 +106,17 @@ func New() *schema.Provider {
 			"yba_universe_schema":        universe.DataSourceUniverseSchema(),
 		},
 		ResourcesMap: map[string]*schema.Resource{
-			"yba_installer":         installation.ResourceYBAInstaller(),
-			"yba_cloud_provider":    cloud_provider.ResourceCloudProvider(),
-			"yba_universe":          universe.ResourceUniverse(),
-			"yba_backup":            backups.ResourceBackup(),
-			"yba_backup_schedule":   backups.ResourceBackupSchedule(),
+			"yba_installer": installation.ResourceYBAInstaller(),
+			//nolint:staticcheck // intentionally registering deprecated yba_cloud_provider through v1.x; removal scheduled for v2.0
+			"yba_cloud_provider":  cloud_provider.ResourceCloudProvider(),
+			"yba_universe":        universe.ResourceUniverse(),
+			"yba_backup":          backups.ResourceBackup(),
+			"yba_backup_schedule": backups.ResourceBackupSchedule(),
+			//nolint:staticcheck // intentionally registering deprecated yba_backups through v1.x; removal scheduled for v2.0
 			"yba_backups":           backups.ResourceBackupsDeprecated(),
 			"yba_user":              user.ResourceUser(),
 			"yba_customer_resource": customer.ResourceCustomer(),
-			// Deprecated: use yba_s3/gcs/azure/nfs_storage_config instead
+			//nolint:staticcheck // intentionally registering deprecated yba_storage_config_resource through v1.x; removal scheduled for v2.0
 			"yba_storage_config_resource": backups.ResourceStorageConfig(),
 			"yba_restore":                 backups.ResourceRestore(),
 			"yba_onprem_provider":         onprem.ResourceOnPremProvider(),

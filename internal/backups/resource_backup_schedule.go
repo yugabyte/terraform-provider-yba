@@ -30,6 +30,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 	client "github.com/yugabyte/platform-go-client"
+
 	"github.com/yugabyte/terraform-provider-yba/internal/api"
 	"github.com/yugabyte/terraform-provider-yba/internal/utils"
 )
@@ -68,7 +69,7 @@ func ResourceBackupSchedule() *schema.Resource {
 			"schedule_name": {
 				Type:        schema.TypeString,
 				ForceNew:    true,
-				Required:    true, //compulsory for V2 schedules
+				Required:    true, // compulsory for V2 schedules
 				Description: "Backup schedule name.",
 			},
 			"cron_expression": {
@@ -301,6 +302,7 @@ func ResourceBackupSchedule() *schema.Resource {
 }
 
 // ResourceBackupsDeprecated returns the deprecated yba_backups resource.
+//
 // Deprecated: Use ResourceBackupSchedule (yba_backup_schedule) instead.
 // Kept through the v1.x line; removal is planned for v2.0.0.
 func ResourceBackupsDeprecated() *schema.Resource {
@@ -371,7 +373,7 @@ func resourceBackupDiff() schema.CustomizeDiffFunc {
 					}
 					if oldIncrFreqInterface.(string) != "" && newIncrFreqInterface.(string) == "" {
 						return errors.New(
-							"Cannot disable incremental backups on existing schedules",
+							"cannot disable incremental backups on existing schedules",
 						)
 					}
 				}
@@ -750,7 +752,10 @@ func resourceBackupsRead(
 	// of these fields and is then imported, the user must set that value explicitly in
 	// their config -- this is unavoidable because the API does not expose these fields
 	// on the schedule read endpoint.
-	if err = d.Set("min_num_backups_to_retain", d.Get("min_num_backups_to_retain").(int)); err != nil {
+	if err = d.Set(
+		"min_num_backups_to_retain",
+		d.Get("min_num_backups_to_retain").(int),
+	); err != nil {
 		return diag.FromErr(err)
 	}
 	if err = d.Set("kms_config_uuid", d.Get("kms_config_uuid").(string)); err != nil {
@@ -877,10 +882,16 @@ func resourceBackupsUpdate(
 					return diag.Errorf("Frequency of backups cannot be less than 1 hour")
 				}
 			} else {
-				r, response, err := c.ScheduleManagementAPI.GetSchedule(ctx, cUUID, d.Id()).Execute()
-				if err != nil {
-					errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
-						"Backups", "Update - Fetch Backup Schedule")
+				r, response, schedErr := c.ScheduleManagementAPI.GetSchedule(ctx, cUUID, d.Id()).
+					Execute()
+				if schedErr != nil {
+					errMessage := utils.ErrorFromHTTPResponse(
+						response,
+						schedErr,
+						utils.ResourceEntity,
+						"Backups",
+						"Update - Fetch Backup Schedule",
+					)
 					return diag.FromErr(errMessage)
 				}
 				frequency = r.GetFrequency()

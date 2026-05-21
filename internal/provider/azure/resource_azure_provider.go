@@ -25,6 +25,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	client "github.com/yugabyte/platform-go-client"
+
 	"github.com/yugabyte/terraform-provider-yba/internal/provider/providerutil"
 	"github.com/yugabyte/terraform-provider-yba/internal/utils"
 )
@@ -398,7 +399,7 @@ func resourceAzureProviderRead(
 		return diag.FromErr(err)
 	}
 	// Read-only Azure fields
-	if err = d.Set("vpc_type", string(azureInfo.GetVpcType())); err != nil {
+	if err = d.Set("vpc_type", azureInfo.GetVpcType()); err != nil {
 		return diag.FromErr(err)
 	}
 	if err = d.Set("network_subscription_id", azureInfo.GetAzuNetworkSubscriptionId()); err != nil {
@@ -563,14 +564,14 @@ func resourceAzureProviderUpdate(
 
 		newKeypairName := d.Get("ssh_keypair_name").(string)
 		if newKeypairName != "" {
-			if err := providerutil.ValidateSSHKeypairNameUnique(
+			if vErr := providerutil.ValidateSSHKeypairNameUnique(
 				p.GetAllAccessKeys(), newKeypairName,
-			); err != nil {
+			); vErr != nil {
 				utils.RevertFields(d,
 					"ssh_keypair_name", "ssh_private_key_content",
 					"client_secret", "use_managed_identity",
 				)
-				return diag.FromErr(err)
+				return diag.FromErr(vErr)
 			}
 		}
 

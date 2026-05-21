@@ -24,9 +24,10 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	client "github.com/yugabyte/platform-go-client"
+	"golang.org/x/exp/slices"
+
 	"github.com/yugabyte/terraform-provider-yba/internal/api"
 	"github.com/yugabyte/terraform-provider-yba/internal/utils"
-	"golang.org/x/exp/slices"
 )
 
 // UniverseFilter keeps track of the filtered universes
@@ -167,14 +168,14 @@ func dataSourceUniverseFilterRead(
 			}
 		}
 		if isYCQL {
-			if userIntent.GetEnableYCQL() == true {
+			if userIntent.GetEnableYCQL() {
 				addUniverse = true
 			} else if addUniverse {
 				addUniverse = false
 			}
 		}
 		if isYSQL {
-			if userIntent.GetEnableYSQL() == true {
+			if userIntent.GetEnableYSQL() {
 				addUniverse = true
 			} else if addUniverse {
 				addUniverse = false
@@ -193,7 +194,9 @@ func dataSourceUniverseFilterRead(
 		universes[u.GetName()] = u.GetUniverseUUID()
 	}
 
-	d.Set("universes", universes)
+	if err := d.Set("universes", universes); err != nil {
+		return diag.FromErr(err)
+	}
 	d.SetId(strconv.Itoa(len(universes)))
 	return diags
 }

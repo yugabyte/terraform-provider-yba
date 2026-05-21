@@ -26,6 +26,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
 	client "github.com/yugabyte/platform-go-client"
+
 	"github.com/yugabyte/terraform-provider-yba/internal/acctest"
 	"github.com/yugabyte/terraform-provider-yba/internal/utils"
 )
@@ -124,14 +125,15 @@ func testAccCheckDestroyProviderAndUniverse(s *terraform.State) error {
 	conn := acctest.APIClient.YugawareClient
 
 	for _, r := range s.RootModule().Resources {
-		if r.Type == "yba_universe" {
+		switch r.Type {
+		case "yba_universe":
 			cUUID := acctest.APIClient.CustomerID
 			_, _, err := conn.UniverseManagementAPI.GetUniverse(context.Background(), cUUID,
 				r.Primary.ID).Execute()
 			if err == nil || acctest.IsResourceNotFoundError(err) {
 				return errors.New("Universe resource is not destroyed")
 			}
-		} else if r.Type == "yba_cloud_provider" {
+		case "yba_cloud_provider":
 			time.Sleep(60 * time.Second)
 			cUUID := acctest.APIClient.CustomerID
 			res, response, err := conn.CloudProvidersAPI.GetListOfProviders(context.Background(),
@@ -250,18 +252,20 @@ func universeConfigWithProviderWithNodes(p string, name string, nodes int) strin
 }
 
 func getUniverseStorageType(p string) string {
-	if p == "gcp" {
+	switch p {
+	case "gcp":
 		return "Persistent"
-	} else if p == "aws" {
+	case "aws":
 		return "GP2"
 	}
 	return "Premium_LRS"
 }
 
 func getUniverseInstanceType(p string) string {
-	if p == "gcp" {
+	switch p {
+	case "gcp":
 		return "n1-standard-1"
-	} else if p == "aws" {
+	case "aws":
 		return "c5.large"
 	}
 	return "Standard_D4s_v3"
