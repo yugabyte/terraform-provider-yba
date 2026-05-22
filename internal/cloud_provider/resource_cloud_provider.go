@@ -114,9 +114,9 @@ func ResourceCloudProvider() *schema.Resource {
 				Type:     schema.TypeString,
 				Optional: true,
 				ForceNew: true,
-				Deprecated: "Deprecated since YugabyteDB Anywhere 2.17.2.0." +
+				Deprecated: "Deprecated since YugabyteDB Anywhere 2.17.2.0. " +
 					"Will be removed in the next terraform-provider-yba release.",
-				Description: "Host VPC Region. Deprecated since YugabyteDB Anywhere 2.17.2.0." +
+				Description: "Host VPC Region. Deprecated since YugabyteDB Anywhere 2.17.2.0. " +
 					"Will be removed in the next terraform-provider-yba release.",
 			},
 			"image_bundles": ImageBundleSchema(),

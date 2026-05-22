@@ -38,20 +38,20 @@ no task is dispatched. To change one of these, destroy and recreate the universe
 
 ## Overview of Supported Actions
 
-| Action | Trigger | YBA Task |
+| Action | Trigger | Task name |
 |---|---|---|
-| [DB Version Upgrade](#db-version-upgrade) | `yb_software_version` changes | `UpgradeDBVersion` |
-| [Finalize Upgrade](#finalize-upgrade) | `db_version_upgrade_options.finalize = true` | `FinalizeUpgrade` |
-| [Rollback Upgrade](#rollback-upgrade) | `db_version_upgrade_options.rollback = true` | `RollbackUpgrade` |
-| [GFlags Upgrade](#gflags-upgrade) | `master_gflags` or `tserver_gflags` changes | `UpgradeGFlags` |
-| [TLS Toggle](#tls-toggle) | `enable_node_to_node_encrypt` or `enable_client_to_node_encrypt` changes | `UpgradeTls` |
-| [Systemd Upgrade](#systemd-upgrade) | `use_systemd` changes from `false` to `true` | `UpgradeSystemd` |
-| [VM Image Upgrade](#vm-image-upgrade) | `image_bundle_uuid` changes | `UpgradeVMImage` |
-| [Resize Nodes](#resize-nodes) | `volume_size` increases with no instance type change | `ResizeNode` |
-| [Edit Cluster Parameters](#edit-cluster-parameters) | Instance type, node count, volume count, volume size decrease, storage type, instance tags, or zone placement changes | `UpdatePrimaryCluster` / `UpdateReadOnlyCluster` |
-| [Update Communication Ports](#update-communication-ports) | Mutable fields in `communication_ports` change without cluster changes | `UpdatePrimaryCluster` |
-| [Delete Read Replica](#delete-read-replica) | ASYNC cluster removed from `clusters` list | `DeleteReadonlyCluster` |
-| [Delete Universe](#delete-universe) | `terraform destroy` | `DestroyUniverse` |
+| [DB Version Upgrade](#db-version-upgrade) | `yb_software_version` changes | Upgrading Software |
+| [Finalize Upgrade](#finalize-upgrade) | `db_version_upgrade_options.finalize = true` | Finalizing Upgrade |
+| [Rollback Upgrade](#rollback-upgrade) | `db_version_upgrade_options.rollback = true` | Rolling back upgrade |
+| [GFlags Upgrade](#gflags-upgrade) | `specific_gflags` changes (or legacy `master_gflags` / `tserver_gflags`) | Upgrading GFlags |
+| [TLS Toggle](#tls-toggle) | `enable_node_to_node_encrypt` or `enable_client_to_node_encrypt` changes | Toggling TLS |
+| [Systemd Upgrade](#systemd-upgrade) | `use_systemd` changes from `false` to `true` | Upgrading to Systemd |
+| [VM Image Upgrade](#vm-image-upgrade) | `image_bundle_uuid` changes | Upgrading VM Image |
+| [Resize Nodes](#resize-nodes) | `volume_size` increases with no instance type change | Resizing Node |
+| [Edit Cluster Parameters](#edit-cluster-parameters) | Instance type, node count, volume count, volume size decrease, storage type, instance tags, or zone placement changes | Updating Universe |
+| [Update Communication Ports](#update-communication-ports) | Mutable fields in `communication_ports` change without cluster changes | Updating Universe |
+| [Delete Read Replica](#delete-read-replica) | ASYNC cluster removed from `clusters` list | Deleting Read Replica |
+| [Delete Universe](#delete-universe) | `terraform destroy` | Deleting Universe |
 
 You can batch multiple actions in a single `terraform apply`. When more than one field
 changes at the same time, the provider runs the corresponding tasks sequentially in the
@@ -63,7 +63,7 @@ order shown above.
 
 **Trigger:** `clusters[*].user_intent.yb_software_version` changes on the PRIMARY cluster.
 
-**YBA task:** `UpgradeDBVersion`
+**Task name:** Upgrading Software
 
 **Controlling fields:**
 
@@ -72,7 +72,7 @@ order shown above.
 | `node_restart_settings.upgrade_option` | Restart strategy: `Rolling` (default), `Non-Rolling`, or `Non-Restart`. |
 | `node_restart_settings.sleep_after_master_restart_millis` | Milliseconds to pause after each master restart (default 180000). |
 | `node_restart_settings.sleep_after_tserver_restart_millis` | Milliseconds to pause after each TServer restart (default 180000). |
-| `db_version_upgrade_options.finalize` | When `true`, automatically calls FinalizeUpgrade after the upgrade task completes. |
+| `db_version_upgrade_options.finalize` | When `true`, automatically finalizes the upgrade after the software upgrade completes. |
 | `db_version_upgrade_state` (read-only) | Current upgrade state reported by YBA. |
 
 **Behavior:** The upgrade task rolls out the new software version across nodes according to the
@@ -116,7 +116,7 @@ resource "yba_universe" "example" {
 **Trigger:** `db_version_upgrade_options.finalize` flips from `false` to `true` while the
 universe is in `PreFinalize` state.
 
-**YBA task:** `FinalizeUpgrade`
+**Task name:** Finalizing Upgrade
 
 **Controlling fields:** Same `node_restart_settings` as the upgrade itself.
 
@@ -153,7 +153,7 @@ db_version_upgrade_options {
 **Trigger:** `db_version_upgrade_options.rollback` is set to `true` while the universe is in
 `PreFinalize` state.
 
-**YBA task:** `RollbackUpgrade`
+**Task name:** Rolling back upgrade
 
 **Controlling fields:** Same `node_restart_settings` as the upgrade itself.
 
@@ -179,10 +179,11 @@ db_version_upgrade_options {
 
 ## GFlags Upgrade
 
-**Trigger:** `clusters[*].user_intent.master_gflags` or `tserver_gflags` changes on the
-PRIMARY cluster.
+**Trigger:** changes to `clusters[*].user_intent.specific_gflags`. The deprecated
+`master_gflags` / `tserver_gflags` maps also trigger this upgrade but are subject to the
+limitations noted below.
 
-**YBA task:** `UpgradeGFlags`
+**Task name:** Upgrading GFlags
 
 **Controlling fields:**
 
@@ -195,24 +196,84 @@ PRIMARY cluster.
 **Behavior:** Applies new GFlag values to master and TServer processes. The restart strategy
 controls whether nodes are restarted one at a time (`Rolling`), all at once (`Non-Rolling`),
 or not at all (`Non-Restart` -- config pushed without restart, supported only for certain
-flags).
-
-GFlag changes on ASYNC clusters are ignored -- GFlags are applied universe-wide through the
-PRIMARY cluster change.
+flags). `Non-Restart` rejects flag deletions and `gflag_groups` changes.
 
 **Example:**
 
 ```terraform
 user_intent {
-  master_gflags = {
-    "log_min_duration_statement" = "1000"
-  }
-  tserver_gflags = {
-    "ysql_log_min_duration_statement" = "1000"
-  }
   # ... other fields ...
+  specific_gflags {
+    per_process {
+      master_gflags = {
+        "log_min_duration_statement" = "1000"
+      }
+      tserver_gflags = {
+        "ysql_log_min_duration_statement" = "1000"
+      }
+    }
+  }
 }
 ```
+
+`specific_gflags` exposes three knobs the flat maps cannot:
+
+- `gflag_groups` -- atomically apply a YBA-managed bundle (e.g.
+  `ENHANCED_POSTGRES_COMPATIBILITY`). Names are case-insensitive in HCL; the provider
+  normalizes to the upper-case form YBA stores.
+- `per_az` -- override flags for specific availability zones; per-AZ values overlay the
+  cluster-level `per_process` map.
+- Read Replica divergence -- the ASYNC cluster can carry its own `per_process` and
+  `per_az` settings, or set `inherit_from_primary = true` to pick up the Primary's flags
+  at runtime. `gflag_groups` is universe-wide: YBA overwrites the Read Replica's
+  `gflag_groups` with the Primary's on every apply, so the provider rejects HCL where
+  Primary and Read Replica declare different groups. Per-cluster `per_process` /
+  `per_az` edits are bundled into one GFlag upgrade that applies the deltas across
+  all clusters together.
+
+The deprecated flat path is universe-wide: `master_gflags` / `tserver_gflags` must match
+between Primary and Read Replica, and edits to the Read Replica's flat maps alone are
+ignored. Setting both the flat maps and `specific_gflags` in the same cluster is rejected
+at plan time as mutually exclusive. See the [v1.0.0 upgrade
+guide](upgrading-to-v1.0.0#migrating-universe-gflags-to-specific_gflags) for the migration
+recipe.
+
+### Removing GFlags or groups <a id="removing-gflags-or-groups"></a>
+
+The fields inside `specific_gflags` are `Optional + Computed`, which means commenting a
+block out or omitting a field is interpreted as "use the value YBA has", not "remove it".
+To actually clear a setting, declare it explicitly empty in HCL.
+
+| To remove | Write |
+|---|---|
+| All `master_gflags` from `per_process` | `master_gflags = {}` |
+| All `tserver_gflags` from `per_process` | `tserver_gflags = {}` |
+| All `gflag_groups` | `gflag_groups = []` |
+| Read Replica inheritance | `inherit_from_primary = false` |
+| A specific `per_az` override | Drop that `per_az` block from HCL; `per_az` is not Computed at the entry level. |
+
+For a partial removal of individual flag keys, edit the map content (e.g. omit the key
+from `master_gflags`); the provider sends the new map to YBA and the missing key is
+treated as a deletion. The empty-map / empty-list pattern above is only required when you
+want to clear the entire field.
+
+Example -- drop all TServer flags while keeping the Master flags and the
+`ENHANCED_POSTGRES_COMPATIBILITY` group active:
+
+```hcl
+specific_gflags {
+  gflag_groups = ["ENHANCED_POSTGRES_COMPATIBILITY"]
+  per_process {
+    tserver_gflags = {}
+    master_gflags = {
+      "timestamp_history_retention_interval_sec" = "14400"
+    }
+  }
+}
+```
+
+`terraform plan` will show the TServer map going to `{}`; the resulting GFlag upgrade
+clears those flags on every TServer.
 
 ---
 
@@ -221,7 +282,7 @@ user_intent {
 **Trigger:** `clusters[*].user_intent.enable_node_to_node_encrypt` or
 `enable_client_to_node_encrypt` changes on the PRIMARY cluster.
 
-**YBA task:** `UpgradeTls`
+**Task name:** Toggling TLS
 
 **Controlling fields:**
 
@@ -267,7 +328,7 @@ resource "yba_universe" "example" {
 **Trigger:** `clusters[*].user_intent.use_systemd` changes from `false` to `true` on the
 PRIMARY cluster.
 
-**YBA task:** `UpgradeSystemd`
+**Task name:** Upgrading to Systemd
 
 **Controlling fields:**
 
@@ -290,7 +351,7 @@ the PRIMARY cluster change.
 
 **Trigger:** `clusters[*].user_intent.image_bundle_uuid` changes on any cluster.
 
-**YBA task:** `UpgradeVMImage`
+**Task name:** Upgrading VM Image
 
 **Controlling fields:**
 
@@ -325,7 +386,7 @@ user_intent {
 **Trigger:** `clusters[*].user_intent.device_info.volume_size` increases while the instance
 type remains unchanged.
 
-**YBA task:** `ResizeNode`
+**Task name:** Resizing Node
 
 **Controlling fields:**
 
@@ -339,7 +400,7 @@ is always `Rolling`. This is the most efficient path for volume size increases: 
 reprovisioned and no data migration is required.
 
 **Volume shrink:** Decreasing `volume_size` cannot use the in-place resize path. The shrink is
-instead handled by `UpdatePrimaryCluster` / `UpdateReadOnlyCluster` as a full move (see
+instead handled as a full move via the cluster edit (see
 [Edit Cluster Parameters](#edit-cluster-parameters)). You must set `full_move { allow = true }`
 to authorize a volume shrink.
 
@@ -362,7 +423,7 @@ to authorize a volume shrink.
 | `instance_tags` | Any change. |
 | `cloud_list` | Per-zone placement changes. |
 
-**YBA task:** `UpdatePrimaryCluster` (PRIMARY) or `UpdateReadOnlyCluster` (ASYNC)
+**Task name:** Updating Universe
 
 **Controlling field:**
 
@@ -466,7 +527,7 @@ resource "yba_universe" "example" {
 **Trigger:** One or more mutable fields in the `communication_ports` block change without any
 cluster changes in the same apply.
 
-**YBA task:** `UpdatePrimaryCluster` (via `UniverseConfigureTaskParams` carrying the new ports)
+**Task name:** Updating Universe
 
 **Mutable ports:**
 
@@ -494,8 +555,7 @@ The provider validates that immutable ports have not changed at plan time and re
 before dispatching any task if they have.
 
 When cluster changes and port changes occur in the same apply, the updated ports are bundled
-into the `UpdatePrimaryCluster` request for the cluster edit and no separate port-only task
-is dispatched.
+into the cluster edit request and no separate port-only task is dispatched.
 
 ---
 
@@ -504,7 +564,7 @@ is dispatched.
 **Trigger:** An ASYNC cluster entry is removed from the `clusters` list in the Terraform
 configuration.
 
-**YBA task:** `DeleteReadonlyCluster`
+**Task name:** Deleting Read Replica
 
 **Controlling field:**
 
@@ -523,7 +583,7 @@ supported -- read replicas may only be specified at universe creation time.
 **Trigger:** `terraform destroy` or removing the `yba_universe` resource block from
 configuration.
 
-**YBA task:** `DestroyUniverse`
+**Task name:** Deleting Universe
 
 **Controlling fields:**
 
@@ -563,14 +623,19 @@ fixed order:
 3. **Delete Read Replica** (if ASYNC cluster removed)
 4. **VM Image Upgrade** (before scale-out, if `image_bundle_uuid` and `num_nodes` both change)
 5. Per-cluster loop (PRIMARY first, then ASYNC):
-   1. **DB Version Upgrade** + optional auto-finalize
-   2. **GFlags Upgrade**
-   3. **TLS Toggle**
-   4. **Systemd Upgrade**
+   1. **DB Version Upgrade** + optional auto-finalize *(PRIMARY only)*
+   2. **GFlags Upgrade** -- only on the legacy flat path, dispatched from the PRIMARY
+      iteration with the universe-wide map. ASYNC iteration logs the change and skips.
+      Configs on the `specific_gflags` path skip this step and dispatch in step 6 below.
+   3. **TLS Toggle** *(PRIMARY only)*
+   4. **Systemd Upgrade** *(PRIMARY only)*
    5. **Resize Nodes** (volume grow, same instance type)
-   6. **Edit Cluster Parameters** (`UpdatePrimaryCluster` / `UpdateReadOnlyCluster`)
-6. **VM Image Upgrade** (after cluster edit, if not already run before scale-out)
-7. **Update Communication Ports** (if only ports changed with no cluster changes)
+   6. **Edit Cluster Parameters**
+6. **GFlags Upgrade** -- `specific_gflags` path only. One GFlag upgrade dispatched
+   after the per-cluster loop that carries the per-cluster deltas (Primary, Read
+   Replica, or both).
+7. **VM Image Upgrade** (after cluster edit, if not already run before scale-out)
+8. **Update Communication Ports** (if only ports changed with no cluster changes)
 
 Each task in the sequence completes (or fails fast) before the next is dispatched. A failure
 in any step causes `terraform apply` to return an error; partial changes already applied to

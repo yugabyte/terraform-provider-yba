@@ -192,9 +192,10 @@ Inheritance and ownership rules:
 - `enable_ysql_auth` (Boolean) Enable YSQL authentication.
 - `image_bundle_uuid` (String) Image Bundle UUID. When omitted for cloud providers (aws, gcp, azu), YBA resolves the provider's default image bundle for the configured arch.
 - `instance_tags` (Map of String) Instance Tags.
-- `master_gflags` (Map of String) Set of Master GFlags.
+- `master_gflags` (Map of String, Deprecated) Set of Master GFlags. Deprecated since YugabyteDB Anywhere 2.18.6.0. Please use 'specific_gflags.per_process.master_gflags' instead. Values set here are promoted into specific_gflags on apply and mirrored back on Read.
 - `preferred_region` (String) Preferred Region for node placement.
-- `tserver_gflags` (Map of String) Set of TServer Gflags.
+- `specific_gflags` (Block List, Max: 1) Cluster-level GFlags configuration. When set, this block takes precedence over the flat master_gflags / tserver_gflags maps. Use it to apply GFlag groups, inherit GFlags from the Primary cluster (read replicas only), or override GFlags per AZ. All inner fields are Optional+Computed: omitting one in HCL preserves the existing value. To clear a setting, declare it explicitly empty (e.g. `tserver_gflags = {}`, `gflag_groups = []`). See the [Removing GFlags or groups](../guides/universe-edit-actions#removing-gflags-or-groups) section of the universe edit actions guide. (see [below for nested schema](#nestedblock--clusters--user_intent--specific_gflags))
+- `tserver_gflags` (Map of String, Deprecated) Set of TServer GFlags. Deprecated since YugabyteDB Anywhere 2.18.6.0. Please use 'specific_gflags.per_process.tserver_gflags' instead. Values set here are promoted into specific_gflags on apply and mirrored back on Read.
 - `use_host_name` (Boolean) Enable to use host name instead of IP addresses to communicate.
 - `use_systemd` (Boolean) Enable Systemd in universe nodes. True by default.
 - `use_time_sync` (Boolean) Enable time sync. True by default.
@@ -240,6 +241,39 @@ Optional:
 - `storage_type` (String) Storage type for master node volumes. AWS: IO1, IO2, GP2, GP3. GCP: Scratch, Persistent, Hyperdisk_Balanced, Hyperdisk_Extreme. Azure: StandardSSD_LRS, Premium_LRS, PremiumV2_LRS, UltraSSD_LRS. Inherited from user_intent.device_info on the first apply when unset. Once this device_info block is present in config, this field is no longer updated automatically when user_intent.device_info.storage_type changes.
 - `throughput` (Number) Disk throughput in MB/s for master nodes. Required for storage types that support throughput provisioning: GP3, UltraSSD_LRS, PremiumV2_LRS, Hyperdisk_Balanced. Inherited from user_intent.device_info on the first apply when unset. Once this device_info block is present in config, this field is no longer updated automatically when user_intent.device_info.throughput changes.
 - `volume_size` (Number) Volume size in GB for master nodes. Inherited from user_intent.device_info on the first apply when unset. Once this device_info block is present in config, this field is no longer updated automatically when user_intent.device_info.volume_size changes.
+
+
+
+<a id="nestedblock--clusters--user_intent--specific_gflags"></a>
+### Nested Schema for `clusters.user_intent.specific_gflags`
+
+Optional:
+
+- `gflag_groups` (List of String) GFlag group names to apply to the universe. Universe-wide: YBA overwrites the Read Replica's groups with the Primary's on every apply, so the value declared on the ASYNC cluster must match the PRIMARY (or be omitted). Case-insensitive in config; YBA stores the upper-case form. Allowed values: ENHANCED_POSTGRES_COMPATIBILITY.
+- `inherit_from_primary` (Boolean) Read-replica clusters: inherit all GFlags from the Primary cluster. Ignored on the Primary cluster.
+- `per_az` (Block List) Per-availability-zone GFlag overrides. Each entry overrides flags for the specified AZ UUID. (see [below for nested schema](#nestedblock--clusters--user_intent--specific_gflags--per_az))
+- `per_process` (Block List, Max: 1) Per-process GFlags applied to every AZ in this cluster. (see [below for nested schema](#nestedblock--clusters--user_intent--specific_gflags--per_process))
+
+<a id="nestedblock--clusters--user_intent--specific_gflags--per_az"></a>
+### Nested Schema for `clusters.user_intent.specific_gflags.per_az`
+
+Required:
+
+- `az_uuid` (String) Availability zone UUID for these overrides.
+
+Optional:
+
+- `master_gflags` (Map of String) Master GFlags for nodes in this AZ.
+- `tserver_gflags` (Map of String) TServer GFlags for nodes in this AZ.
+
+
+<a id="nestedblock--clusters--user_intent--specific_gflags--per_process"></a>
+### Nested Schema for `clusters.user_intent.specific_gflags.per_process`
+
+Optional:
+
+- `master_gflags` (Map of String) Master process GFlags for this cluster.
+- `tserver_gflags` (Map of String) TServer process GFlags for this cluster.
 
 
 

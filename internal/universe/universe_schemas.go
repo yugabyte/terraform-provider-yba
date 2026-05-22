@@ -16,9 +16,18 @@
 package universe
 
 import (
+	"strings"
+
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 )
+
+// AllowedGFlagGroups enumerates the GFlag group names accepted by the YBA
+// UpgradeGFlags API, mirroring the server-side GFlagGroup.GroupName enum.
+// Update this list when YBA adds new group names.
+var AllowedGFlagGroups = []string{
+	"ENHANCED_POSTGRES_COMPATIBILITY",
+}
 
 func cloudListSchema() *schema.Resource {
 	return &schema.Resource{
@@ -518,16 +527,136 @@ func userIntentSchema() *schema.Resource {
 					"the YBA node agent installed.",
 			},
 			"tserver_gflags": {
-				Type:        schema.TypeMap,
-				Elem:        schema.TypeString,
-				Optional:    true,
-				Description: "Set of TServer Gflags.",
+				Type:     schema.TypeMap,
+				Elem:     schema.TypeString,
+				Optional: true,
+				Computed: true,
+				Deprecated: "Deprecated since YugabyteDB Anywhere 2.18.6.0. " +
+					"Please use 'specific_gflags.per_process.tserver_gflags' instead.",
+				Description: "Set of TServer GFlags. " +
+					"Deprecated since YugabyteDB Anywhere 2.18.6.0. " +
+					"Please use 'specific_gflags.per_process.tserver_gflags' instead. " +
+					"Values set here are promoted into specific_gflags on " +
+					"apply and mirrored back on Read.",
 			},
 			"master_gflags": {
-				Type:        schema.TypeMap,
-				Elem:        schema.TypeString,
-				Optional:    true,
-				Description: "Set of Master GFlags.",
+				Type:     schema.TypeMap,
+				Elem:     schema.TypeString,
+				Optional: true,
+				Computed: true,
+				Deprecated: "Deprecated since YugabyteDB Anywhere 2.18.6.0. " +
+					"Please use 'specific_gflags.per_process.master_gflags' instead.",
+				Description: "Set of Master GFlags. " +
+					"Deprecated since YugabyteDB Anywhere 2.18.6.0. " +
+					"Please use 'specific_gflags.per_process.master_gflags' instead. " +
+					"Values set here are promoted into specific_gflags on " +
+					"apply and mirrored back on Read.",
+			},
+			"specific_gflags": {
+				Type:     schema.TypeList,
+				MaxItems: 1,
+				Optional: true,
+				Computed: true,
+				Description: "Cluster-level GFlags configuration. When set, " +
+					"this block takes precedence over the flat master_gflags " +
+					"/ tserver_gflags maps. Use it to apply GFlag groups, " +
+					"inherit GFlags from the Primary cluster (read replicas " +
+					"only), or override GFlags per AZ. All inner fields are " +
+					"Optional+Computed: omitting one in HCL preserves the " +
+					"existing value. To clear a setting, declare it " +
+					"explicitly empty (e.g. `tserver_gflags = {}`, " +
+					"`gflag_groups = []`). See the [Removing GFlags or groups]" +
+					"(../guides/universe-edit-actions#removing-gflags-or-groups) " +
+					"section of the universe edit actions guide.",
+				Elem: &schema.Resource{
+					Schema: map[string]*schema.Schema{
+						"inherit_from_primary": {
+							Type:     schema.TypeBool,
+							Optional: true,
+							Computed: true,
+							Description: "Read-replica clusters: inherit all GFlags " +
+								"from the Primary cluster. Ignored on the Primary cluster.",
+						},
+						"gflag_groups": {
+							Type:     schema.TypeList,
+							Optional: true,
+							Computed: true,
+							Elem: &schema.Schema{
+								Type: schema.TypeString,
+								// Accept any case in HCL; normalize to the
+								// upper-case form YBA's API expects so the
+								// config and the state never diff on case.
+								StateFunc: func(v interface{}) string {
+									return strings.ToUpper(v.(string))
+								},
+								ValidateFunc: validation.StringInSlice(
+									AllowedGFlagGroups, true),
+							},
+							Description: "GFlag group names to apply to the universe. " +
+								"Universe-wide: YBA overwrites the Read Replica's " +
+								"groups with the Primary's on every apply, so the " +
+								"value declared on the ASYNC cluster must match the " +
+								"PRIMARY (or be omitted). " +
+								"Case-insensitive in config; YBA stores the " +
+								"upper-case form. Allowed values: " +
+								"ENHANCED_POSTGRES_COMPATIBILITY.",
+						},
+						"per_process": {
+							Type:     schema.TypeList,
+							MaxItems: 1,
+							Optional: true,
+							Computed: true,
+							Description: "Per-process GFlags applied to every AZ " +
+								"in this cluster.",
+							Elem: &schema.Resource{
+								Schema: map[string]*schema.Schema{
+									"master_gflags": {
+										Type:        schema.TypeMap,
+										Elem:        &schema.Schema{Type: schema.TypeString},
+										Optional:    true,
+										Computed:    true,
+										Description: "Master process GFlags for this cluster.",
+									},
+									"tserver_gflags": {
+										Type:        schema.TypeMap,
+										Elem:        &schema.Schema{Type: schema.TypeString},
+										Optional:    true,
+										Computed:    true,
+										Description: "TServer process GFlags for this cluster.",
+									},
+								},
+							},
+						},
+						"per_az": {
+							Type:     schema.TypeList,
+							Optional: true,
+							Computed: true,
+							Description: "Per-availability-zone GFlag overrides. " +
+								"Each entry overrides flags for the specified AZ UUID.",
+							Elem: &schema.Resource{
+								Schema: map[string]*schema.Schema{
+									"az_uuid": {
+										Type:        schema.TypeString,
+										Required:    true,
+										Description: "Availability zone UUID for these overrides.",
+									},
+									"master_gflags": {
+										Type:        schema.TypeMap,
+										Elem:        &schema.Schema{Type: schema.TypeString},
+										Optional:    true,
+										Description: "Master GFlags for nodes in this AZ.",
+									},
+									"tserver_gflags": {
+										Type:        schema.TypeMap,
+										Elem:        &schema.Schema{Type: schema.TypeString},
+										Optional:    true,
+										Description: "TServer GFlags for nodes in this AZ.",
+									},
+								},
+							},
+						},
+					},
+				},
 			},
 			"dedicated_masters": {
 				Type:     schema.TypeList,

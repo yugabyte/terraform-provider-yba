@@ -23,6 +23,7 @@ This guide walks through every breaking change between `v0.1.13` and `v1.0.0` an
 | YBA release import | `yba_releases` | (removed) | Delete from HCL; manage releases through the YBA UI / API |
 | Replicated installation | `yba_installation` | (removed) | Delete from HCL; use [`yba_installer`](../resources/installer) for new installs |
 | Provider env vars | `YB_HOST` / `YB_API_KEY` / `YB_ENABLE_HTTPS` | `YBA_HOST` / `YBA_API_TOKEN` / `YBA_ENABLE_HTTPS` | Rename env vars (old names still work as fallback) |
+| Universe GFlags | `user_intent.master_gflags` / `tserver_gflags` | `user_intent.specific_gflags.per_process.master_gflags` / `tserver_gflags` | Wrap the existing maps in `specific_gflags { per_process { ... } }`; no state surgery |
 
 ## Recommended ordering
 
@@ -320,6 +321,91 @@ terraform state rm yba_releases.<name>
 The legacy Replicated-based `yba_installation` resource has been removed. For new YBA installations, use [`yba_installer`](../resources/installer), which deploys YBA using the supported `yba-installer` tool.
 
 Remove every `yba_installation` block from your HCL and drop the state entry. There is no in-place migration to `yba_installer`; existing Replicated-based YBA installs are not managed by this provider after v1.0.0.
+
+## Migrating universe GFlags to `specific_gflags`
+
+The flat `user_intent.master_gflags` / `tserver_gflags` maps have been deprecated since YugabyteDB Anywhere 2.18.6.0. They still work for simple universe-wide GFlag sets, but they cannot express per-cluster, per-AZ, or GFlag-group configuration. `specific_gflags` matches YBA's canonical GFlag model and is the supported path going forward.
+
+The inner key names are identical between the flat and nested forms, so migrating is a literal copy-paste into the new nesting:
+
+```hcl
+# Before
+user_intent {
+  # ... other fields ...
+  master_gflags = {
+    "ysql_max_connections" = "300"
+  }
+  tserver_gflags = {
+    "ysql_num_shards_per_tserver" = "1"
+  }
+}
+
+# After
+user_intent {
+  # ... other fields ...
+  specific_gflags {
+    per_process {
+      master_gflags = {
+        "ysql_max_connections" = "300"
+      }
+      tserver_gflags = {
+        "ysql_num_shards_per_tserver" = "1"
+      }
+    }
+  }
+}
+```
+
+Remove the flat blocks; setting both forms on the same cluster is rejected at plan time as mutually exclusive. Both fields are `Optional + Computed`, so no `state rm` / `import` is needed -- the first `terraform apply` after the rename is a no-op if the resulting GFlag set is unchanged.
+
+`specific_gflags` exposes three capabilities the flat maps cannot. See the [GFlags Upgrade](universe-edit-actions#gflags-upgrade) section of the universe edits guide for examples:
+
+- `gflag_groups` -- apply a YBA-managed GFlag bundle (e.g. `ENHANCED_POSTGRES_COMPATIBILITY`) atomically.
+- `per_az` -- override flags for specific availability zones; overlays the cluster-level `per_process` map.
+- Read Replica divergence -- the ASYNC cluster can carry its own `per_process` and `per_az` settings, or set `inherit_from_primary = true` to inherit from Primary. `gflag_groups` is universe-wide and must match between Primary and Read Replica; the provider rejects mismatched HCL at plan time. The flat path applies universe-wide and ignores Read Replica edits.
+
+### Bringing UI-managed settings under HCL
+
+If you enabled a GFlag group (e.g. `ENHANCED_POSTGRES_COMPATIBILITY`) or set
+per-AZ / `inherit_from_primary` overrides via the YBA UI before migrating,
+those values land in your state file but not in your HCL. `terraform apply`
+will be a no-op against this universe because state already matches YBA --
+but if you replicate the HCL to a different environment, the UI-set
+settings do not follow.
+
+After running `terraform refresh`, inspect `state.specific_gflags`:
+
+```sh
+terraform show | grep -A8 'specific_gflags ='
+```
+
+If you see `gflag_groups`, `inherit_from_primary = true`, or a populated
+`per_az` block that does not appear in your HCL, copy those values into
+the HCL `specific_gflags` block so the configuration is the single source
+of truth across environments.
+
+```hcl
+specific_gflags {
+  gflag_groups = ["ENHANCED_POSTGRES_COMPATIBILITY"]   # was UI-set, now in HCL
+  per_process {
+    master_gflags  = { ... }
+    tserver_gflags = { ... }
+  }
+}
+```
+
+A second `terraform apply` after this addition is a no-op (the value
+already matches YBA), but the HCL is now authoritative.
+
+### Removing GFlags or groups after migrating
+
+Once on `specific_gflags`, commenting out a `tserver_gflags = { ... }` block (or
+`gflag_groups`, `inherit_from_primary`, etc.) does not clear the setting -- those
+fields are `Optional + Computed`, so omission keeps whatever YBA already has.
+To actually remove a field, declare it explicitly empty (`tserver_gflags = {}`,
+`gflag_groups = []`, `inherit_from_primary = false`). The full reference table is
+in the [universe edit actions
+guide](universe-edit-actions#removing-gflags-or-groups).
 
 ## Universe field renames and behavior changes
 

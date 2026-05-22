@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/hashicorp/go-cty/cty"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	client "github.com/yugabyte/platform-go-client"
@@ -28,6 +29,7 @@ import (
 
 func buildUniverse(d *schema.ResourceData) client.UniverseConfigureTaskParams {
 	clusters := buildClusters(d.Get("clusters").([]interface{}))
+	alignSpecificGFlagsWithHCL(clusters, d.GetRawConfig())
 	enableYbc := true
 	rootCA := d.Get("root_ca").(string)
 	clientRootCA := d.Get("client_root_ca").(string)
@@ -79,6 +81,7 @@ func buildUniverseDefinitionTaskParams(d *schema.ResourceData) client.UniverseDe
 		rootAndClientRootCASame = utils.GetBoolPointer(false)
 	}
 	clusters := buildClusters(d.Get("clusters").([]interface{}))
+	alignSpecificGFlagsWithHCL(clusters, d.GetRawConfig())
 	// See comment in buildUniverse: only set RootCA/ClientRootCA when non-empty
 	// so that the server receives a missing/null field rather than "" when the
 	// user has not specified a cert UUID.
@@ -646,6 +649,38 @@ func buildCommunicationPorts(cp map[string]interface{}) *client.CommunicationPor
 	return ports
 }
 
+// alignSpecificGFlagsWithHCL reconciles each cluster's UserIntent with the
+// customer's HCL intent before the request is sent to YBA. For clusters
+// where HCL authored specific_gflags, mirror PerProcessFlags into the flat
+// maps so the request body is coherent. For clusters where HCL did NOT
+// author specific_gflags, drop intent.SpecificGFlags entirely so the flat
+// maps are the sole signal of intent; this prevents stale state-derived
+// PerProcessFlags from masking customer edits to the flat fields.
+func alignSpecificGFlagsWithHCL(clusters []client.Cluster, rawConfig cty.Value) {
+	if rawConfig == cty.NilVal || !rawConfig.IsKnown() || rawConfig.IsNull() {
+		return
+	}
+	for i := range clusters {
+		if !rawConfigHasSpecificGFlags(rawConfig, i) {
+			clusters[i].UserIntent.SpecificGFlags = nil
+			continue
+		}
+		sg := clusters[i].UserIntent.SpecificGFlags
+		if sg == nil || sg.PerProcessFlags == nil {
+			continue
+		}
+		ppf := sg.PerProcessFlags.Value
+		if m, ok := ppf["MASTER"]; ok {
+			mc := m
+			clusters[i].UserIntent.MasterGFlags = &mc
+		}
+		if t, ok := ppf["TSERVER"]; ok {
+			tc := t
+			clusters[i].UserIntent.TserverGFlags = &tc
+		}
+	}
+}
+
 func buildClusters(clusters []interface{}) (res []client.Cluster) {
 	for _, v := range clusters {
 		cluster := v.(map[string]interface{})
@@ -756,6 +791,7 @@ func buildUserIntent(ui map[string]interface{}) client.UserIntent {
 		TserverGFlags:             utils.StringMap(ui["tserver_gflags"].(map[string]interface{})),
 		MasterGFlags:              utils.StringMap(ui["master_gflags"].(map[string]interface{})),
 	}
+	intent.SpecificGFlags = buildSpecificGFlags(ui["specific_gflags"].([]interface{}))
 	// dedicated_masters block presence drives DedicatedNodes.
 	// An empty block means: dedicated mode, fall back to TServer instance/device.
 	// Terraform SDK v2 may pass []interface{}{nil} for an empty block that has
@@ -823,6 +859,68 @@ func buildDeviceInfo(di map[string]interface{}) *client.DeviceInfo {
 		VolumeSize:  utils.GetInt32Pointer(int32(di["volume_size"].(int))),
 		StorageType: utils.GetStringPointer(di["storage_type"].(string)),
 	}
+}
+
+// buildSpecificGFlags converts the specific_gflags HCL block to the API
+// model. Returns nil when the block is absent so legacy flat-fields configs
+// don't clobber YBA's existing SpecificGFlags on upgrade.
+func buildSpecificGFlags(in []interface{}) *client.SpecificGFlags {
+	if len(in) == 0 || in[0] == nil {
+		return nil
+	}
+	sg := client.NewSpecificGFlags()
+	m := in[0].(map[string]interface{})
+	if v, ok := m["inherit_from_primary"].(bool); ok {
+		sg.SetInheritFromPrimary(v)
+	}
+	if v, ok := m["gflag_groups"].([]interface{}); ok && len(v) > 0 {
+		groups := *utils.StringSlice(v)
+		for i, g := range groups {
+			groups[i] = strings.ToUpper(g)
+		}
+		sg.SetGflagGroups(groups)
+	}
+	if ppfList, ok := m["per_process"].([]interface{}); ok && len(ppfList) > 0 &&
+		ppfList[0] != nil {
+		ppf := ppfList[0].(map[string]interface{})
+		ppfValue := map[string]map[string]string{}
+		if mm, ok := ppf["master_gflags"].(map[string]interface{}); ok && len(mm) > 0 {
+			ppfValue["MASTER"] = *utils.StringMap(mm)
+		}
+		if tm, ok := ppf["tserver_gflags"].(map[string]interface{}); ok && len(tm) > 0 {
+			ppfValue["TSERVER"] = *utils.StringMap(tm)
+		}
+		if len(ppfValue) > 0 {
+			sg.SetPerProcessFlags(*client.NewPerProcessFlags(ppfValue))
+		}
+	}
+	if azList, ok := m["per_az"].([]interface{}); ok && len(azList) > 0 {
+		perAZ := map[string]client.PerProcessFlags{}
+		for _, raw := range azList {
+			if raw == nil {
+				continue
+			}
+			e := raw.(map[string]interface{})
+			uuid, _ := e["az_uuid"].(string)
+			if uuid == "" {
+				continue
+			}
+			value := map[string]map[string]string{}
+			if mm, ok := e["master_gflags"].(map[string]interface{}); ok && len(mm) > 0 {
+				value["MASTER"] = *utils.StringMap(mm)
+			}
+			if tm, ok := e["tserver_gflags"].(map[string]interface{}); ok && len(tm) > 0 {
+				value["TSERVER"] = *utils.StringMap(tm)
+			}
+			if len(value) > 0 {
+				perAZ[uuid] = *client.NewPerProcessFlags(value)
+			}
+		}
+		if len(perAZ) > 0 {
+			sg.SetPerAZ(perAZ)
+		}
+	}
+	return sg
 }
 
 // collectAZUUIDs returns a set of AZ UUIDs present in the given cloud list.

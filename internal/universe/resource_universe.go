@@ -1301,21 +1301,189 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 				return nil
 			},
 		),
+		func(ctx context.Context, d *schema.ResourceDiff, m interface{}) error {
+			// Reject HCL that sets both specific_gflags and the deprecated
+			// flat master_gflags / tserver_gflags maps. Check raw HCL only;
+			// merged state is unreliable here because YBA always populates
+			// SpecificGFlags on Read.
+			rawConfig := d.GetRawConfig()
+			if rawConfig == cty.NilVal || !rawConfig.IsKnown() || rawConfig.IsNull() {
+				return nil
+			}
+			clusters := rawConfig.GetAttr("clusters")
+			if !clusters.IsKnown() || clusters.IsNull() {
+				return nil
+			}
+			for i, clusterVal := range clusters.AsValueSlice() {
+				if !clusterVal.IsKnown() || clusterVal.IsNull() {
+					continue
+				}
+				uiVal := clusterVal.GetAttr("user_intent")
+				if uiVal == cty.NilVal || !uiVal.IsKnown() || uiVal.IsNull() {
+					continue
+				}
+				uiType := uiVal.Type()
+				if (!uiType.IsListType() && !uiType.IsTupleType()) ||
+					uiVal.LengthInt() == 0 {
+					continue
+				}
+				ui := uiVal.AsValueSlice()[0]
+				if !ui.IsKnown() || ui.IsNull() {
+					continue
+				}
+				if !ctyHasNonEmptyBlock(ui, "specific_gflags") {
+					continue
+				}
+				if ctyHasNonEmptyMap(ui, "master_gflags") ||
+					ctyHasNonEmptyMap(ui, "tserver_gflags") {
+					return fmt.Errorf(
+						"clusters[%d]: specific_gflags and the deprecated "+
+							"master_gflags / tserver_gflags fields are mutually "+
+							"exclusive. Remove master_gflags / tserver_gflags "+
+							"and place all flags under "+
+							"specific_gflags.per_process",
+						i,
+					)
+				}
+			}
+			return nil
+		},
+		func(ctx context.Context, d *schema.ResourceDiff, m interface{}) error {
+			// inherit_from_primary is only valid on a Read Replica (ASYNC).
+			// YBA rejects it on PRIMARY in both the universe-create validator
+			// (UniverseDefinitionTaskParams.validateUserIntent) and the
+			// UpgradeGFlags task (UpgradeWithGFlags.verifySpecificGFlags).
+			// Catch it at plan time so the error surfaces before any API call.
+			rawConfig := d.GetRawConfig()
+			if rawConfig == cty.NilVal || !rawConfig.IsKnown() || rawConfig.IsNull() {
+				return nil
+			}
+			clusters := rawConfig.GetAttr("clusters")
+			if !clusters.IsKnown() || clusters.IsNull() {
+				return nil
+			}
+			for i, clusterVal := range clusters.AsValueSlice() {
+				if !clusterVal.IsKnown() || clusterVal.IsNull() {
+					continue
+				}
+				ctVal := clusterVal.GetAttr("cluster_type")
+				if !ctVal.IsKnown() || ctVal.IsNull() {
+					continue
+				}
+				if ctVal.AsString() != "PRIMARY" {
+					continue
+				}
+				uiVal := clusterVal.GetAttr("user_intent")
+				if uiVal == cty.NilVal || !uiVal.IsKnown() || uiVal.IsNull() {
+					continue
+				}
+				uiType := uiVal.Type()
+				if (!uiType.IsListType() && !uiType.IsTupleType()) ||
+					uiVal.LengthInt() == 0 {
+					continue
+				}
+				ui := uiVal.AsValueSlice()[0]
+				if !ui.IsKnown() || ui.IsNull() {
+					continue
+				}
+				sgVal := ui.GetAttr("specific_gflags")
+				if sgVal == cty.NilVal || !sgVal.IsKnown() || sgVal.IsNull() {
+					continue
+				}
+				sgType := sgVal.Type()
+				if (!sgType.IsListType() && !sgType.IsTupleType()) ||
+					sgVal.LengthInt() == 0 {
+					continue
+				}
+				sg := sgVal.AsValueSlice()[0]
+				if !sg.IsKnown() || sg.IsNull() {
+					continue
+				}
+				inh := sg.GetAttr("inherit_from_primary")
+				if inh == cty.NilVal || !inh.IsKnown() || inh.IsNull() {
+					continue
+				}
+				if inh.True() {
+					return fmt.Errorf(
+						"clusters[%d]: inherit_from_primary is only valid on a "+
+							"Read Replica (ASYNC) cluster; set it on the ASYNC "+
+							"cluster or remove it from the PRIMARY",
+						i,
+					)
+				}
+			}
+			return nil
+		},
+		func(ctx context.Context, d *schema.ResourceDiff, m interface{}) error {
+			// gflag_groups is universe-wide. YBA force-overwrites every
+			// cluster's gflag_groups with the Primary's on every create,
+			// add-RR, and UpgradeGFlags task (see UniverseCRUDHandler and
+			// UpdateAndPersistGFlags). Reject HCL that declares a different
+			// set on the Read Replica; the apply would silently land with
+			// the Primary's value.
+			rawConfig := d.GetRawConfig()
+			if rawConfig == cty.NilVal || !rawConfig.IsKnown() || rawConfig.IsNull() {
+				return nil
+			}
+			clusters := rawConfig.GetAttr("clusters")
+			if !clusters.IsKnown() || clusters.IsNull() {
+				return nil
+			}
+			var primaryGroups, asyncGroups []string
+			var primaryFound, asyncFound bool
+			for _, clusterVal := range clusters.AsValueSlice() {
+				if !clusterVal.IsKnown() || clusterVal.IsNull() {
+					continue
+				}
+				ctVal := clusterVal.GetAttr("cluster_type")
+				if !ctVal.IsKnown() || ctVal.IsNull() {
+					continue
+				}
+				groups := gflagGroupsFromClusterHCL(clusterVal)
+				switch ctVal.AsString() {
+				case "PRIMARY":
+					primaryGroups, primaryFound = groups, true
+				case "ASYNC":
+					asyncGroups, asyncFound = groups, true
+				}
+			}
+			if !primaryFound || !asyncFound {
+				return nil
+			}
+			if !utils.SameStringSet(primaryGroups, asyncGroups) {
+				return errors.New(
+					"specific_gflags.gflag_groups is universe-wide and must " +
+						"match between PRIMARY and Read Replica (ASYNC). YBA " +
+						"overwrites the Read Replica's gflag_groups with the " +
+						"Primary's on every apply, so a divergent setting in " +
+						"HCL is silently lost. Set the same gflag_groups (or " +
+						"omit on the Read Replica) on both clusters.")
+			}
+			return nil
+		},
 		customdiff.ValidateChange(
 			"clusters",
 			func(ctx context.Context, old, new, m interface{}) error {
-				// check if Gflags setting of the clusters are the same
+				// Flat master_gflags / tserver_gflags are universe-level and
+				// must match between Primary and RR. specific_gflags supports
+				// per-cluster divergence, so only guard the flat-only path.
 				newClusterSet := buildClusters(new.([]interface{}))
 				newPrimary, isPresent := getClusterByType(newClusterSet, "PRIMARY")
 				newReadOnly, isRRPresnt := getClusterByType(newClusterSet, "ASYNC")
-				if isPresent && isRRPresnt {
-					if !reflect.DeepEqual(newPrimary.UserIntent.GetMasterGFlags(),
-						newReadOnly.UserIntent.GetMasterGFlags()) ||
-						!reflect.DeepEqual(newPrimary.UserIntent.GetTserverGFlags(),
-							newReadOnly.UserIntent.GetTserverGFlags()) {
-						return errors.New("Cannot have different Gflags settings for Primary " +
-							"and Read Only clusters")
-					}
+				if !isPresent || !isRRPresnt {
+					return nil
+				}
+				if newPrimary.UserIntent.SpecificGFlags != nil ||
+					newReadOnly.UserIntent.SpecificGFlags != nil {
+					return nil
+				}
+				if !reflect.DeepEqual(newPrimary.UserIntent.GetMasterGFlags(),
+					newReadOnly.UserIntent.GetMasterGFlags()) ||
+					!reflect.DeepEqual(newPrimary.UserIntent.GetTserverGFlags(),
+						newReadOnly.UserIntent.GetTserverGFlags()) {
+					return errors.New("Read Replica master_gflags / " +
+						"tserver_gflags must match the Primary. To set " +
+						"per-cluster gflags, move to specific_gflags.")
 				}
 				return nil
 			},
@@ -2796,6 +2964,7 @@ func resourceUniverseRead(
 	diags = append(diags, restoreRedactedPasswords(ctx, newClusters, oldClusters)...)
 	alignClustersCloudList(newClusters, oldClusters)
 	restoreDedicatedMasterFields(newClusters, oldClusters, u.Clusters, d.GetRawConfig())
+	pruneSpecificGFlagsByConfig(newClusters, d.GetRawConfig())
 	if err = d.Set("clusters", newClusters); err != nil {
 		return diag.FromErr(err)
 	}
@@ -2857,6 +3026,112 @@ func validateCommPortsNotRestricted(d *schema.ResourceData) error {
 		)
 	}
 	return nil
+}
+
+// gflagsChanged returns true when newUI's gflags differ from oldUI's.
+// Compares the user-clean MASTER/TSERVER view; non-flat fields
+// (gflag_groups, inherit_from_primary, per_az) are only compared when
+// the customer authored specific_gflags in HCL (newUI.SpecificGFlags != nil),
+// so UI-set values aren't flagged as drift.
+func gflagsChanged(oldUI, newUI client.UserIntent) bool {
+	if !reflect.DeepEqual(masterFromIntent(oldUI), masterFromIntent(newUI)) {
+		return true
+	}
+	if !reflect.DeepEqual(tserverFromIntent(oldUI), tserverFromIntent(newUI)) {
+		return true
+	}
+	if newUI.SpecificGFlags == nil {
+		return false
+	}
+	var oldGroups []string
+	var oldInherit bool
+	var oldPerAZ map[string]client.PerProcessFlags
+	if oldUI.SpecificGFlags != nil {
+		oldGroups = oldUI.SpecificGFlags.GetGflagGroups()
+		oldInherit = oldUI.SpecificGFlags.GetInheritFromPrimary()
+		if oldUI.SpecificGFlags.PerAZ != nil {
+			oldPerAZ = *oldUI.SpecificGFlags.PerAZ
+		}
+	}
+	newGroups := newUI.SpecificGFlags.GetGflagGroups()
+	newInherit := newUI.SpecificGFlags.GetInheritFromPrimary()
+	var newPerAZ map[string]client.PerProcessFlags
+	if newUI.SpecificGFlags.PerAZ != nil {
+		newPerAZ = *newUI.SpecificGFlags.PerAZ
+	}
+	if !reflect.DeepEqual(oldGroups, newGroups) {
+		return true
+	}
+	if oldInherit != newInherit {
+		return true
+	}
+	if !reflect.DeepEqual(oldPerAZ, newPerAZ) {
+		return true
+	}
+	return false
+}
+
+// applyGFlagsOnto overlays src's gflag fields onto dst without touching the
+// rest. If src has specific_gflags, dst.SpecificGFlags is fully replaced;
+// otherwise the legacy flat maps are mirrored into dst.SpecificGFlags.
+// PerProcessFlags so UI-set gflag_groups / inherit / per_az survive.
+func applyGFlagsOnto(dst *client.UserIntent, src client.UserIntent) {
+	if src.SpecificGFlags != nil {
+		dst.SpecificGFlags = src.SpecificGFlags
+	} else if dst.SpecificGFlags != nil {
+		ppfValue := map[string]map[string]string{}
+		if dst.SpecificGFlags.PerProcessFlags != nil {
+			for k, v := range dst.SpecificGFlags.PerProcessFlags.Value {
+				ppfValue[k] = v
+			}
+		}
+		if m := src.GetMasterGFlags(); len(m) > 0 {
+			ppfValue["MASTER"] = m
+		} else {
+			delete(ppfValue, "MASTER")
+		}
+		if t := src.GetTserverGFlags(); len(t) > 0 {
+			ppfValue["TSERVER"] = t
+		} else {
+			delete(ppfValue, "TSERVER")
+		}
+		if len(ppfValue) > 0 {
+			dst.SpecificGFlags.SetPerProcessFlags(*client.NewPerProcessFlags(ppfValue))
+		} else {
+			dst.SpecificGFlags.PerProcessFlags = nil
+		}
+	}
+	dst.MasterGFlags = src.MasterGFlags
+	dst.TserverGFlags = src.TserverGFlags
+}
+
+// masterFromIntent returns the user-set MASTER gflag map. Prefers
+// SpecificGFlags.PerProcessFlags (user-clean view) over the deprecated flat
+// map, which YBA pollutes with group-derived and per-AZ flags. Falls back
+// to the flat map only when SpecificGFlags is absent (pre-2.18.6 universes).
+func masterFromIntent(ui client.UserIntent) map[string]string {
+	if ui.SpecificGFlags != nil {
+		if ui.SpecificGFlags.PerProcessFlags != nil {
+			if m, ok := ui.SpecificGFlags.PerProcessFlags.Value["MASTER"]; ok {
+				return m
+			}
+		}
+		return map[string]string{}
+	}
+	return ui.GetMasterGFlags()
+}
+
+// tserverFromIntent mirrors masterFromIntent for the TSERVER bucket.
+func tserverFromIntent(ui client.UserIntent) map[string]string {
+	if ui.SpecificGFlags != nil {
+		if ui.SpecificGFlags.PerProcessFlags != nil {
+			if t, ok := ui.SpecificGFlags.PerProcessFlags.Value["TSERVER"]; ok {
+				return t
+			}
+		}
+		return map[string]string{}
+	}
+	return ui.GetTserverGFlags()
 }
 
 // masterDeviceInfoChanged returns true when any editable master device field
@@ -3411,6 +3686,18 @@ func resourceUniverseUpdate(
 			}
 		}
 
+		// Pick the gflag upgrade path from raw HCL (state is unreliable).
+		// specific_gflags -> collect per-cluster deltas, dispatch once after
+		// the loop. Flat-only -> legacy in-loop dispatch from the Primary.
+		usingSpecificGFlags := false
+		rawConfig := d.GetRawConfig()
+		for j := range newUni.Clusters {
+			if rawConfigHasSpecificGFlags(rawConfig, j) {
+				usingSpecificGFlags = true
+				break
+			}
+		}
+
 		// VM Image Upgrade BEFORE cluster operations if scaling out.
 		// New nodes will be provisioned with the new image directly.
 		if len(imageBundleUpgrades) > 0 && hasScaleOut {
@@ -3552,23 +3839,20 @@ func resourceUniverseUpdate(
 				}
 				oldUserIntent = updateUni.UniverseDetails.Clusters[i].UserIntent
 
-				//GFlag Update
-				if !reflect.DeepEqual(oldUserIntent.GetMasterGFlags(),
-					newUserIntent.GetMasterGFlags()) ||
-					!reflect.DeepEqual(oldUserIntent.GetTserverGFlags(),
-						newUserIntent.GetTserverGFlags()) {
-					updateUni.UniverseDetails.Clusters[i].UserIntent = newUserIntent
+				// Legacy flat-only gflag dispatch. specific_gflags path is
+				// handled by performGFlagsUpgrade after the loop.
+				if !usingSpecificGFlags && gflagsChanged(oldUserIntent, newUserIntent) {
+					applyGFlagsOnto(
+						&updateUni.UniverseDetails.Clusters[i].UserIntent,
+						newUserIntent,
+					)
 					req := client.GFlagsUpgradeParams{
-						MasterGFlags:  newUserIntent.GetMasterGFlags(),
-						TserverGFlags: newUserIntent.GetTserverGFlags(),
-						Clusters:      updateUni.UniverseDetails.Clusters,
-						UpgradeOption: upgradeOption,
-						SleepAfterMasterRestartMillis: int32(
-							sleepAfterMasterMs,
-						),
-						SleepAfterTServerRestartMillis: int32(
-							sleepAfterTServerMs,
-						),
+						MasterGFlags:                   masterFromIntent(newUserIntent),
+						TserverGFlags:                  tserverFromIntent(newUserIntent),
+						Clusters:                       updateUni.UniverseDetails.Clusters,
+						UpgradeOption:                  upgradeOption,
+						SleepAfterMasterRestartMillis:  sleepAfterMasterMs,
+						SleepAfterTServerRestartMillis: sleepAfterTServerMs,
 					}
 					if diags := utils.DispatchAndWait(ctx, "GFlags Upgrade", cUUID, c,
 						d.Timeout(schema.TimeoutUpdate),
@@ -4039,8 +4323,7 @@ func resourceUniverseUpdate(
 					tflog.Info(ctx, "Software Upgrade is applied only via change in Primary "+
 						"Cluster User Intent, ignoring")
 				}
-				if !reflect.DeepEqual(oldUserIntent.GetMasterGFlags(), newUserIntent.GetMasterGFlags()) ||
-					!reflect.DeepEqual(oldUserIntent.GetTserverGFlags(), newUserIntent.GetTserverGFlags()) {
+				if !usingSpecificGFlags && gflagsChanged(oldUserIntent, newUserIntent) {
 					tflog.Info(ctx, "GFlags Upgrade is applied only via change in Primary "+
 						"Cluster User Intent, ignoring")
 				}
@@ -4265,6 +4548,37 @@ func resourceUniverseUpdate(
 				}
 			}
 		}
+		// specific_gflags path: one UpgradeGFlags call after the loop with
+		// per-cluster deltas. Mirrors the VMImageUpgrade pattern below.
+		if usingSpecificGFlags {
+			updateUni, response, err = c.UniverseManagementAPI.GetUniverse(
+				ctx, cUUID, d.Id()).Execute()
+			if err != nil {
+				errMessage := utils.ErrorFromHTTPResponse(
+					response, err, utils.ResourceEntity,
+					"Universe", "Update - Fetch universe before GFlags")
+				return diag.FromErr(errMessage)
+			}
+			newUni = buildUniverse(d)
+			gflagChanges := map[int]client.UserIntent{}
+			for j, cl := range updateUni.UniverseDetails.Clusters {
+				if j >= len(newUni.Clusters) {
+					continue
+				}
+				if gflagsChanged(cl.UserIntent, newUni.Clusters[j].UserIntent) {
+					gflagChanges[j] = newUni.Clusters[j].UserIntent
+				}
+			}
+			if len(gflagChanges) > 0 {
+				if diagErr := performGFlagsUpgrade(
+					ctx, c, cUUID, d, updateUni, gflagChanges,
+					upgradeOption, sleepAfterMasterMs, sleepAfterTServerMs,
+				); diagErr != nil {
+					return diagErr
+				}
+			}
+		}
+
 		// VM Image Upgrade AFTER cluster operations if scaling in or no scale change.
 		// Avoids upgrading nodes that are about to be removed.
 		// imageBundleUpgrades is nil if already executed before the loop (scale-out case).
@@ -4394,6 +4708,58 @@ func performVMImageUpgrade(
 		func() (string, *http.Response, error) {
 			r, resp, err := c.UniverseUpgradesManagementAPI.UpgradeVMImage(
 				ctx, cUUID, d.Id()).VmimageUpgradeParams(req).Execute()
+			if err != nil {
+				return "", resp, err
+			}
+			return r.GetTaskUUID(), resp, nil
+		},
+	)
+}
+
+// performGFlagsUpgrade dispatches a single UpgradeGFlags task. changedByIdx
+// maps cluster index in updateUni to the new UserIntent to apply.
+func performGFlagsUpgrade(
+	ctx context.Context,
+	c *client.APIClient,
+	cUUID string,
+	d *schema.ResourceData,
+	updateUni *client.UniverseResp,
+	changedByIdx map[int]client.UserIntent,
+	upgradeOption string,
+	sleepAfterMasterMs int32,
+	sleepAfterTServerMs int32,
+) diag.Diagnostics {
+	if len(changedByIdx) == 0 {
+		return nil
+	}
+	for idx, newUI := range changedByIdx {
+		applyGFlagsOnto(
+			&updateUni.UniverseDetails.Clusters[idx].UserIntent,
+			newUI,
+		)
+	}
+	// Universe-level flat maps come from the Primary cluster.
+	var primaryUI client.UserIntent
+	for _, cl := range updateUni.UniverseDetails.Clusters {
+		if cl.GetClusterType() == "PRIMARY" {
+			primaryUI = cl.UserIntent
+			break
+		}
+	}
+	req := client.GFlagsUpgradeParams{
+		MasterGFlags:                   masterFromIntent(primaryUI),
+		TserverGFlags:                  tserverFromIntent(primaryUI),
+		Clusters:                       updateUni.UniverseDetails.Clusters,
+		UpgradeOption:                  upgradeOption,
+		SleepAfterMasterRestartMillis:  sleepAfterMasterMs,
+		SleepAfterTServerRestartMillis: sleepAfterTServerMs,
+	}
+	return utils.DispatchAndWait(ctx, "GFlags Upgrade", cUUID, c,
+		d.Timeout(schema.TimeoutUpdate),
+		utils.ResourceEntity, "Universe", "Update - GFlags",
+		func() (string, *http.Response, error) {
+			r, resp, err := c.UniverseUpgradesManagementAPI.UpgradeGFlags(
+				ctx, cUUID, d.Id()).GflagsUpgradeParams(req).Execute()
 			if err != nil {
 				return "", resp, err
 			}

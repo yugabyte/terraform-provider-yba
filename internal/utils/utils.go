@@ -49,6 +49,28 @@ type YbaStructuredError struct {
 	Success *bool `json:"success,omitempty"`
 }
 
+// SameStringSet reports whether two string slices contain the same elements,
+// ignoring order and duplicates.
+func SameStringSet(a, b []string) bool {
+	aSet := make(map[string]struct{}, len(a))
+	for _, s := range a {
+		aSet[s] = struct{}{}
+	}
+	bSet := make(map[string]struct{}, len(b))
+	for _, s := range b {
+		bSet[s] = struct{}{}
+	}
+	if len(aSet) != len(bSet) {
+		return false
+	}
+	for s := range aSet {
+		if _, ok := bSet[s]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
 // StringSlice accepts array of interface and returns a pointer to slice of string
 func StringSlice(in []interface{}) *[]string {
 	var out []string

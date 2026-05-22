@@ -275,7 +275,7 @@ The details for configuration are available in the [YugabyteDB Anywhere Configur
 - `dest_vpc_id` (String, Deprecated) Destination VPC network. Deprecated since YugabyteDB Anywhere 2.17.2.0. Please use 'gcp_config_settings.network' instead.
 - `gcp_config_settings` (Block List, Max: 1) Settings that can be configured for GCP. (see [below for nested schema](#nestedblock--gcp_config_settings))
 - `host_vpc_id` (String, Deprecated) Host VPC Network. Deprecated since YugabyteDB Anywhere 2.17.2.0. Will be removed in the next terraform-provider-yba release.
-- `host_vpc_region` (String, Deprecated) Host VPC Region. Deprecated since YugabyteDB Anywhere 2.17.2.0.Will be removed in the next terraform-provider-yba release.
+- `host_vpc_region` (String, Deprecated) Host VPC Region. Deprecated since YugabyteDB Anywhere 2.17.2.0. Will be removed in the next terraform-provider-yba release.
 - `image_bundles` (Block List) Image bundles associated with cloud providers. Supported from YugabyteDB Anywhere version: 2.20.3.0-b68 (see [below for nested schema](#nestedblock--image_bundles))
 - `key_pair_name` (String) Access Key Pair name.
 - `ntp_servers` (List of String) NTP servers. Set "set_up_chrony" to true to use these servers.

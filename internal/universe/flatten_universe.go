@@ -18,6 +18,7 @@ package universe
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/hashicorp/go-cty/cty"
@@ -400,11 +401,54 @@ func flattenUserIntent(ui client.UserIntent) []interface{} {
 		"enable_client_to_node_encrypt": ui.EnableClientToNodeEncrypt,
 		"yb_software_version":           ui.YbSoftwareVersion,
 		"access_key_code":               ui.AccessKeyCode,
-		"tserver_gflags":                ui.GetTserverGFlags(),
-		"master_gflags":                 ui.GetMasterGFlags(),
+		"tserver_gflags":                tserverFromIntent(ui),
+		"master_gflags":                 masterFromIntent(ui),
+		"specific_gflags":               flattenSpecificGFlags(ui.SpecificGFlags),
 		"dedicated_masters":             flattenDedicatedMasters(ui),
 	}
 	return utils.CreateSingletonList(v)
+}
+
+// flattenSpecificGFlags converts the API SpecificGFlags model into the
+// Terraform specific_gflags block. Returns an empty list when the API did not
+// return any specific_gflags data.
+func flattenSpecificGFlags(sg *client.SpecificGFlags) []interface{} {
+	if sg == nil {
+		return []interface{}{}
+	}
+	out := map[string]interface{}{
+		"inherit_from_primary": sg.GetInheritFromPrimary(),
+		"gflag_groups":         sg.GetGflagGroups(),
+		"per_process":          []interface{}{},
+		"per_az":               []interface{}{},
+	}
+	if sg.PerProcessFlags != nil {
+		ppf := map[string]interface{}{}
+		if m, ok := sg.PerProcessFlags.Value["MASTER"]; ok && len(m) > 0 {
+			ppf["master_gflags"] = m
+		}
+		if t, ok := sg.PerProcessFlags.Value["TSERVER"]; ok && len(t) > 0 {
+			ppf["tserver_gflags"] = t
+		}
+		if len(ppf) > 0 {
+			out["per_process"] = []interface{}{ppf}
+		}
+	}
+	if sg.PerAZ != nil && len(*sg.PerAZ) > 0 {
+		az := make([]interface{}, 0, len(*sg.PerAZ))
+		for uuid, ppf := range *sg.PerAZ {
+			entry := map[string]interface{}{"az_uuid": uuid}
+			if m, ok := ppf.Value["MASTER"]; ok && len(m) > 0 {
+				entry["master_gflags"] = m
+			}
+			if t, ok := ppf.Value["TSERVER"]; ok && len(t) > 0 {
+				entry["tserver_gflags"] = t
+			}
+			az = append(az, entry)
+		}
+		out["per_az"] = az
+	}
+	return []interface{}{out}
 }
 
 // flattenDedicatedMasters converts dedicated-master fields from the API UserIntent
@@ -680,6 +724,141 @@ func rawConfigHasDedicatedMasterFields(rawConfig cty.Value, i int) (hasIT, hasDI
 		}
 	}
 	return
+}
+
+// pruneSpecificGFlagsByConfig clears specific_gflags on clusters where the
+// customer's HCL did not author it. Skips when rawConfig is unavailable
+// (e.g. terraform import or pure refresh) so server state is preserved.
+func pruneSpecificGFlagsByConfig(
+	newClusters []map[string]interface{},
+	rawConfig cty.Value,
+) {
+	if rawConfig == cty.NilVal || !rawConfig.IsKnown() || rawConfig.IsNull() {
+		return
+	}
+	for i, nc := range newClusters {
+		if rawConfigHasSpecificGFlags(rawConfig, i) {
+			continue
+		}
+		uiList, _ := nc["user_intent"].([]interface{})
+		if len(uiList) == 0 {
+			continue
+		}
+		ui, ok := uiList[0].(map[string]interface{})
+		if !ok {
+			continue
+		}
+		ui["specific_gflags"] = []interface{}{}
+	}
+}
+
+func rawConfigHasSpecificGFlags(rawConfig cty.Value, i int) bool {
+	clusters := rawConfig.GetAttr("clusters")
+	if !clusters.IsKnown() || clusters.IsNull() {
+		return false
+	}
+	clusterSlice := clusters.AsValueSlice()
+	if i >= len(clusterSlice) {
+		return false
+	}
+	clusterVal := clusterSlice[i]
+	if !clusterVal.IsKnown() || clusterVal.IsNull() {
+		return false
+	}
+	uiVal := clusterVal.GetAttr("user_intent")
+	if uiVal == cty.NilVal || !uiVal.IsKnown() || uiVal.IsNull() {
+		return false
+	}
+	uiType := uiVal.Type()
+	if (!uiType.IsListType() && !uiType.IsTupleType()) || uiVal.LengthInt() == 0 {
+		return false
+	}
+	ui := uiVal.AsValueSlice()[0]
+	if !ui.IsKnown() || ui.IsNull() {
+		return false
+	}
+	sgVal := ui.GetAttr("specific_gflags")
+	if sgVal == cty.NilVal || !sgVal.IsKnown() || sgVal.IsNull() {
+		return false
+	}
+	t := sgVal.Type()
+	if !t.IsListType() && !t.IsTupleType() {
+		return false
+	}
+	return sgVal.LengthInt() > 0
+}
+
+func ctyHasNonEmptyBlock(val cty.Value, attr string) bool {
+	v := val.GetAttr(attr)
+	if v == cty.NilVal || !v.IsKnown() || v.IsNull() {
+		return false
+	}
+	t := v.Type()
+	if !t.IsListType() && !t.IsTupleType() {
+		return false
+	}
+	return v.LengthInt() > 0
+}
+
+// gflagGroupsFromClusterHCL pulls user_intent[0].specific_gflags[0].gflag_groups
+// from a cluster cty.Value (typically a slice element of d.GetRawConfig().GetAttr
+// ("clusters")). Returns an empty slice when the path is null, missing, or empty.
+func gflagGroupsFromClusterHCL(clusterVal cty.Value) []string {
+	uiVal := clusterVal.GetAttr("user_intent")
+	if uiVal == cty.NilVal || !uiVal.IsKnown() || uiVal.IsNull() {
+		return nil
+	}
+	uiType := uiVal.Type()
+	if (!uiType.IsListType() && !uiType.IsTupleType()) || uiVal.LengthInt() == 0 {
+		return nil
+	}
+	ui := uiVal.AsValueSlice()[0]
+	if !ui.IsKnown() || ui.IsNull() {
+		return nil
+	}
+	sgVal := ui.GetAttr("specific_gflags")
+	if sgVal == cty.NilVal || !sgVal.IsKnown() || sgVal.IsNull() {
+		return nil
+	}
+	sgType := sgVal.Type()
+	if (!sgType.IsListType() && !sgType.IsTupleType()) || sgVal.LengthInt() == 0 {
+		return nil
+	}
+	sg := sgVal.AsValueSlice()[0]
+	if !sg.IsKnown() || sg.IsNull() {
+		return nil
+	}
+	gg := sg.GetAttr("gflag_groups")
+	if gg == cty.NilVal || !gg.IsKnown() || gg.IsNull() {
+		return nil
+	}
+	ggType := gg.Type()
+	if !ggType.IsListType() && !ggType.IsTupleType() {
+		return nil
+	}
+	out := make([]string, 0, gg.LengthInt())
+	for _, v := range gg.AsValueSlice() {
+		if !v.IsKnown() || v.IsNull() {
+			continue
+		}
+		// Normalize to upper-case to match the StateFunc on the gflag_groups
+		// element so HCL case differences do not falsely trigger the
+		// mismatch check.
+		out = append(out, strings.ToUpper(v.AsString()))
+	}
+	return out
+}
+
+func ctyHasNonEmptyMap(val cty.Value, attr string) bool {
+	v := val.GetAttr(attr)
+	if v == cty.NilVal || !v.IsKnown() || v.IsNull() {
+		return false
+	}
+	t := v.Type()
+	if !t.IsMapType() && !t.IsObjectType() {
+		return false
+	}
+	return v.LengthInt() > 0
 }
 
 // alignClustersCloudList reorders the cloud_list, region_list, and az_list
