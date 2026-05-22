@@ -139,6 +139,9 @@ func New() *schema.Provider {
 			"yba_telemetry_provider":        telemetry.ResourceTelemetryProvider(),
 			"yba_universe_telemetry_config": telemetry.ResourceUniverseTelemetryConfig(),
 			"yba_runtime_config":            telemetry.ResourceRuntimeConfig(),
+
+			// Universe load balancer association (update_lb_config API).
+			"yba_universe_load_balancer": universe.ResourceUniverseLoadBalancer(),
 		},
 		ConfigureContextFunc: providerConfigure,
 	}
