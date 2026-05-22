@@ -709,13 +709,19 @@ func getInstallCommands(
 }
 
 func getReconfigureCommands(version string) []string {
-	var reconfigureCommands = []string{"sudo mv /tmp/settings.yml /opt/yba-ctl/yba-ctl.yml"}
+	folder := fmt.Sprintf("yba_installer_full-%s", version)
+	// yba-ctl uses a relative glob to find perf_advisor-*.tar.gz inside the
+	// extracted installer bundle, so it must run with that directory as CWD.
+	var reconfigureCmd string
 	if IsGAVersion(version) {
-		reconfigureCommands = append(reconfigureCommands, "sudo /opt/yba-ctl/yba-ctl reconfigure -f")
+		reconfigureCmd = fmt.Sprintf("cd ~/%s && sudo /opt/yba-ctl/yba-ctl reconfigure -f", folder)
 	} else {
-		reconfigureCommands = append(reconfigureCommands, "sudo YBA_MODE=dev /opt/yba-ctl/yba-ctl reconfigure -f")
+		reconfigureCmd = fmt.Sprintf("cd ~/%s && sudo YBA_MODE=dev /opt/yba-ctl/yba-ctl reconfigure -f", folder)
 	}
-	return reconfigureCommands
+	return []string{
+		"sudo mv /tmp/settings.yml /opt/yba-ctl/yba-ctl.yml",
+		reconfigureCmd,
+	}
 }
 
 func getUpgradeCommands(version, os, arch string, skipPreflightCheckList *[]string) []string {
