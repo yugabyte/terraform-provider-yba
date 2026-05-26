@@ -250,7 +250,7 @@ Optional:
 Optional:
 
 - `gflag_groups` (List of String) GFlag group names to apply to the universe. Universe-wide: YBA overwrites the Read Replica's groups with the Primary's on every apply, so the value declared on the ASYNC cluster must match the PRIMARY (or be omitted). Case-insensitive in config; YBA stores the upper-case form. Allowed values: ENHANCED_POSTGRES_COMPATIBILITY.
-- `inherit_from_primary` (Boolean) Read-replica clusters: inherit all GFlags from the Primary cluster. Ignored on the Primary cluster.
+- `inherit_from_primary` (Boolean) Read Replica (ASYNC) only: inherit all GFlags from the Primary cluster. Invalid on the PRIMARY cluster.
 - `per_az` (Block List) Per-availability-zone GFlag overrides. Each entry overrides flags for the specified AZ UUID. (see [below for nested schema](#nestedblock--clusters--user_intent--specific_gflags--per_az))
 - `per_process` (Block List, Max: 1) Per-process GFlags applied to every AZ in this cluster. (see [below for nested schema](#nestedblock--clusters--user_intent--specific_gflags--per_process))
 
@@ -272,7 +272,7 @@ Optional:
 
 Optional:
 
-- `master_gflags` (Map of String) Master process GFlags for this cluster.
+- `master_gflags` (Map of String) Master process GFlags for this cluster. Invalid on a Read Replica (ASYNC) cluster -- ASYNC clusters have no master processes.
 - `tserver_gflags` (Map of String) TServer process GFlags for this cluster.
 
 

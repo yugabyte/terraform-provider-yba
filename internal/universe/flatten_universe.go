@@ -800,41 +800,44 @@ func ctyHasNonEmptyBlock(val cty.Value, attr string) bool {
 	return v.LengthInt() > 0
 }
 
-// gflagGroupsFromClusterHCL pulls user_intent[0].specific_gflags[0].gflag_groups
-// from a cluster cty.Value (typically a slice element of d.GetRawConfig().GetAttr
-// ("clusters")). Returns an empty slice when the path is null, missing, or empty.
-func gflagGroupsFromClusterHCL(clusterVal cty.Value) []string {
+// gflagGroupsFromClusterHCL returns (groups, authored). authored is true
+// when the customer's HCL set `gflag_groups` explicitly (including to an
+// empty list); false when the field is absent or unreachable. Distinguishing
+// the two matters because YBA force-overwrites the Read Replica's gflag
+// groups with the Primary's, so an explicit empty list on ASYNC is a
+// silently-ignored override that the user almost certainly didn't intend.
+func gflagGroupsFromClusterHCL(clusterVal cty.Value) (groups []string, authored bool) {
 	uiVal := clusterVal.GetAttr("user_intent")
 	if uiVal == cty.NilVal || !uiVal.IsKnown() || uiVal.IsNull() {
-		return nil
+		return nil, false
 	}
 	uiType := uiVal.Type()
 	if (!uiType.IsListType() && !uiType.IsTupleType()) || uiVal.LengthInt() == 0 {
-		return nil
+		return nil, false
 	}
 	ui := uiVal.AsValueSlice()[0]
 	if !ui.IsKnown() || ui.IsNull() {
-		return nil
+		return nil, false
 	}
 	sgVal := ui.GetAttr("specific_gflags")
 	if sgVal == cty.NilVal || !sgVal.IsKnown() || sgVal.IsNull() {
-		return nil
+		return nil, false
 	}
 	sgType := sgVal.Type()
 	if (!sgType.IsListType() && !sgType.IsTupleType()) || sgVal.LengthInt() == 0 {
-		return nil
+		return nil, false
 	}
 	sg := sgVal.AsValueSlice()[0]
 	if !sg.IsKnown() || sg.IsNull() {
-		return nil
+		return nil, false
 	}
 	gg := sg.GetAttr("gflag_groups")
 	if gg == cty.NilVal || !gg.IsKnown() || gg.IsNull() {
-		return nil
+		return nil, false
 	}
 	ggType := gg.Type()
 	if !ggType.IsListType() && !ggType.IsTupleType() {
-		return nil
+		return nil, false
 	}
 	out := make([]string, 0, gg.LengthInt())
 	for _, v := range gg.AsValueSlice() {
@@ -846,7 +849,93 @@ func gflagGroupsFromClusterHCL(clusterVal cty.Value) []string {
 		// mismatch check.
 		out = append(out, strings.ToUpper(v.AsString()))
 	}
-	return out
+	return out, true
+}
+
+func rawConfigInheritFromPrimaryAuthored(rawConfig cty.Value, i int) bool {
+	sg, ok := specificGFlagsFromClusterHCL(rawConfig, i)
+	if !ok {
+		return false
+	}
+	inh := sg.GetAttr("inherit_from_primary")
+	return inh != cty.NilVal && inh.IsKnown() && !inh.IsNull()
+}
+
+func rawConfigHasAsyncGFlagOverrides(rawConfig cty.Value, i int) bool {
+	sg, ok := specificGFlagsFromClusterHCL(rawConfig, i)
+	if !ok {
+		return false
+	}
+	return asyncHasGflagOverrides(sg)
+}
+
+func specificGFlagsFromClusterHCL(rawConfig cty.Value, i int) (cty.Value, bool) {
+	clusters := rawConfig.GetAttr("clusters")
+	if !clusters.IsKnown() || clusters.IsNull() {
+		return cty.NilVal, false
+	}
+	slice := clusters.AsValueSlice()
+	if i >= len(slice) {
+		return cty.NilVal, false
+	}
+	return asyncSpecificGFlagsBlock(slice[i])
+}
+
+func asyncSpecificGFlagsBlock(clusterVal cty.Value) (cty.Value, bool) {
+	uiVal := clusterVal.GetAttr("user_intent")
+	if uiVal == cty.NilVal || !uiVal.IsKnown() || uiVal.IsNull() {
+		return cty.NilVal, false
+	}
+	uiType := uiVal.Type()
+	if (!uiType.IsListType() && !uiType.IsTupleType()) || uiVal.LengthInt() == 0 {
+		return cty.NilVal, false
+	}
+	ui := uiVal.AsValueSlice()[0]
+	if !ui.IsKnown() || ui.IsNull() {
+		return cty.NilVal, false
+	}
+	sgVal := ui.GetAttr("specific_gflags")
+	if sgVal == cty.NilVal || !sgVal.IsKnown() || sgVal.IsNull() {
+		return cty.NilVal, false
+	}
+	sgType := sgVal.Type()
+	if (!sgType.IsListType() && !sgType.IsTupleType()) || sgVal.LengthInt() == 0 {
+		return cty.NilVal, false
+	}
+	sg := sgVal.AsValueSlice()[0]
+	if !sg.IsKnown() || sg.IsNull() {
+		return cty.NilVal, false
+	}
+	return sg, true
+}
+
+func asyncPerProcessHasMasterGFlags(sg cty.Value) bool {
+	pp := sg.GetAttr("per_process")
+	if pp == cty.NilVal || !pp.IsKnown() || pp.IsNull() {
+		return false
+	}
+	ppType := pp.Type()
+	if (!ppType.IsListType() && !ppType.IsTupleType()) || pp.LengthInt() == 0 {
+		return false
+	}
+	ppEntry := pp.AsValueSlice()[0]
+	if !ppEntry.IsKnown() || ppEntry.IsNull() {
+		return false
+	}
+	return ctyHasNonEmptyMap(ppEntry, "master_gflags")
+}
+
+func asyncHasGflagOverrides(sg cty.Value) bool {
+	if ctyHasNonEmptyBlock(sg, "gflag_groups") {
+		return true
+	}
+	if ctyHasNonEmptyBlock(sg, "per_process") {
+		return true
+	}
+	if ctyHasNonEmptyBlock(sg, "per_az") {
+		return true
+	}
+	return false
 }
 
 func ctyHasNonEmptyMap(val cty.Value, attr string) bool {

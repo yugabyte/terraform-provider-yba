@@ -650,12 +650,11 @@ func buildCommunicationPorts(cp map[string]interface{}) *client.CommunicationPor
 }
 
 // alignSpecificGFlagsWithHCL reconciles each cluster's UserIntent with the
-// customer's HCL intent before the request is sent to YBA. For clusters
-// where HCL authored specific_gflags, mirror PerProcessFlags into the flat
-// maps so the request body is coherent. For clusters where HCL did NOT
-// author specific_gflags, drop intent.SpecificGFlags entirely so the flat
-// maps are the sole signal of intent; this prevents stale state-derived
-// PerProcessFlags from masking customer edits to the flat fields.
+// customer's HCL intent before sending the request: drop SpecificGFlags
+// when HCL didn't author it; mirror PerProcessFlags into the flat maps
+// when it did; derive inherit_from_primary on ASYNC from the rest of the
+// block when HCL didn't set it explicitly, overriding any state-derived
+// value so customer overrides are honored.
 func alignSpecificGFlagsWithHCL(clusters []client.Cluster, rawConfig cty.Value) {
 	if rawConfig == cty.NilVal || !rawConfig.IsKnown() || rawConfig.IsNull() {
 		return
@@ -666,7 +665,15 @@ func alignSpecificGFlagsWithHCL(clusters []client.Cluster, rawConfig cty.Value) 
 			continue
 		}
 		sg := clusters[i].UserIntent.SpecificGFlags
-		if sg == nil || sg.PerProcessFlags == nil {
+		if sg == nil {
+			continue
+		}
+		if clusters[i].ClusterType == "ASYNC" &&
+			!rawConfigInheritFromPrimaryAuthored(rawConfig, i) {
+			inherit := !rawConfigHasAsyncGFlagOverrides(rawConfig, i)
+			sg.SetInheritFromPrimary(inherit)
+		}
+		if sg.PerProcessFlags == nil {
 			continue
 		}
 		ppf := sg.PerProcessFlags.Value

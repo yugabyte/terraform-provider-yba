@@ -1430,7 +1430,7 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 				return nil
 			}
 			var primaryGroups, asyncGroups []string
-			var primaryFound, asyncFound bool
+			var primaryFound, asyncFound, asyncAuthored bool
 			for _, clusterVal := range clusters.AsValueSlice() {
 				if !clusterVal.IsKnown() || clusterVal.IsNull() {
 					continue
@@ -1439,15 +1439,22 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 				if !ctVal.IsKnown() || ctVal.IsNull() {
 					continue
 				}
-				groups := gflagGroupsFromClusterHCL(clusterVal)
+				groups, authored := gflagGroupsFromClusterHCL(clusterVal)
 				switch ctVal.AsString() {
 				case "PRIMARY":
 					primaryGroups, primaryFound = groups, true
 				case "ASYNC":
-					asyncGroups, asyncFound = groups, true
+					asyncGroups, asyncFound, asyncAuthored = groups, true, authored
 				}
 			}
 			if !primaryFound || !asyncFound {
+				return nil
+			}
+			// Omitting gflag_groups on ASYNC is fine: YBA mirrors the
+			// Primary's set onto it. But authoring it (including as an
+			// empty list) on ASYNC declares an intent that YBA will silently
+			// overwrite -- reject so the customer notices.
+			if !asyncAuthored {
 				return nil
 			}
 			if !utils.SameStringSet(primaryGroups, asyncGroups) {
@@ -1456,8 +1463,64 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 						"match between PRIMARY and Read Replica (ASYNC). YBA " +
 						"overwrites the Read Replica's gflag_groups with the " +
 						"Primary's on every apply, so a divergent setting in " +
-						"HCL is silently lost. Set the same gflag_groups (or " +
-						"omit on the Read Replica) on both clusters.")
+						"HCL (including an explicit empty list) is silently " +
+						"lost. Either set the same gflag_groups on both " +
+						"clusters, or omit the gflag_groups field on the " +
+						"Read Replica entirely.")
+			}
+			return nil
+		},
+		func(ctx context.Context, d *schema.ResourceDiff, m interface{}) error {
+			// Read Replica restrictions: master_gflags (no masters on RRs),
+			// and overrides alongside inherit_from_primary = true (ignored).
+			rawConfig := d.GetRawConfig()
+			if rawConfig == cty.NilVal || !rawConfig.IsKnown() || rawConfig.IsNull() {
+				return nil
+			}
+			clusters := rawConfig.GetAttr("clusters")
+			if !clusters.IsKnown() || clusters.IsNull() {
+				return nil
+			}
+			for i, clusterVal := range clusters.AsValueSlice() {
+				if !clusterVal.IsKnown() || clusterVal.IsNull() {
+					continue
+				}
+				ctVal := clusterVal.GetAttr("cluster_type")
+				if !ctVal.IsKnown() || ctVal.IsNull() {
+					continue
+				}
+				if ctVal.AsString() != "ASYNC" {
+					continue
+				}
+				sg, ok := asyncSpecificGFlagsBlock(clusterVal)
+				if !ok {
+					continue
+				}
+				if asyncPerProcessHasMasterGFlags(sg) {
+					return fmt.Errorf(
+						"clusters[%d]: specific_gflags.per_process."+
+							"master_gflags is not valid on a Read Replica "+
+							"(ASYNC) cluster -- read replicas have no master "+
+							"processes. Move the master gflags to the PRIMARY "+
+							"cluster or remove them from the ASYNC cluster.",
+						i,
+					)
+				}
+				inh := sg.GetAttr("inherit_from_primary")
+				if inh != cty.NilVal && inh.IsKnown() && !inh.IsNull() && inh.True() {
+					if asyncHasGflagOverrides(sg) {
+						return fmt.Errorf(
+							"clusters[%d]: specific_gflags."+
+								"inherit_from_primary = true on a Read "+
+								"Replica disables per_process, per_az, and "+
+								"gflag_groups (YBA inherits everything from "+
+								"the PRIMARY). Either drop the overrides or "+
+								"set inherit_from_primary = false (or omit "+
+								"it).",
+							i,
+						)
+					}
+				}
 			}
 			return nil
 		},
@@ -3030,14 +3093,14 @@ func validateCommPortsNotRestricted(d *schema.ResourceData) error {
 
 // gflagsChanged returns true when newUI's gflags differ from oldUI's.
 // Compares the user-clean MASTER/TSERVER view; non-flat fields
-// (gflag_groups, inherit_from_primary, per_az) are only compared when
-// the customer authored specific_gflags in HCL (newUI.SpecificGFlags != nil),
-// so UI-set values aren't flagged as drift.
+// (gflag_groups, inherit_from_primary, per_az) are only compared when the
+// customer authored specific_gflags in HCL (newUI.SpecificGFlags != nil).
+// All comparisons treat nil and empty as equivalent.
 func gflagsChanged(oldUI, newUI client.UserIntent) bool {
-	if !reflect.DeepEqual(masterFromIntent(oldUI), masterFromIntent(newUI)) {
+	if !utils.SameStringMap(masterFromIntent(oldUI), masterFromIntent(newUI)) {
 		return true
 	}
-	if !reflect.DeepEqual(tserverFromIntent(oldUI), tserverFromIntent(newUI)) {
+	if !utils.SameStringMap(tserverFromIntent(oldUI), tserverFromIntent(newUI)) {
 		return true
 	}
 	if newUI.SpecificGFlags == nil {
@@ -3059,14 +3122,16 @@ func gflagsChanged(oldUI, newUI client.UserIntent) bool {
 	if newUI.SpecificGFlags.PerAZ != nil {
 		newPerAZ = *newUI.SpecificGFlags.PerAZ
 	}
-	if !reflect.DeepEqual(oldGroups, newGroups) {
+	if !utils.SameStringSet(oldGroups, newGroups) {
 		return true
 	}
 	if oldInherit != newInherit {
 		return true
 	}
-	if !reflect.DeepEqual(oldPerAZ, newPerAZ) {
-		return true
+	if len(oldPerAZ) > 0 || len(newPerAZ) > 0 {
+		if !reflect.DeepEqual(oldPerAZ, newPerAZ) {
+			return true
+		}
 	}
 	return false
 }

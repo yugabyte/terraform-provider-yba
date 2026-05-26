@@ -49,6 +49,20 @@ type YbaStructuredError struct {
 	Success *bool `json:"success,omitempty"`
 }
 
+// SameStringMap reports whether two string-string maps have the same keys
+// and values. Treats nil and empty as equivalent.
+func SameStringMap(a, b map[string]string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for k, v := range a {
+		if bv, ok := b[k]; !ok || bv != v {
+			return false
+		}
+	}
+	return true
+}
+
 // SameStringSet reports whether two string slices contain the same elements,
 // ignoring order and duplicates.
 func SameStringSet(a, b []string) bool {

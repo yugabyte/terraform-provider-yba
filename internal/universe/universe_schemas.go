@@ -574,8 +574,9 @@ func userIntentSchema() *schema.Resource {
 							Type:     schema.TypeBool,
 							Optional: true,
 							Computed: true,
-							Description: "Read-replica clusters: inherit all GFlags " +
-								"from the Primary cluster. Ignored on the Primary cluster.",
+							Description: "Read Replica (ASYNC) only: " +
+								"inherit all GFlags from the Primary cluster. " +
+								"Invalid on the PRIMARY cluster.",
 						},
 						"gflag_groups": {
 							Type:     schema.TypeList,
@@ -611,11 +612,14 @@ func userIntentSchema() *schema.Resource {
 							Elem: &schema.Resource{
 								Schema: map[string]*schema.Schema{
 									"master_gflags": {
-										Type:        schema.TypeMap,
-										Elem:        &schema.Schema{Type: schema.TypeString},
-										Optional:    true,
-										Computed:    true,
-										Description: "Master process GFlags for this cluster.",
+										Type:     schema.TypeMap,
+										Elem:     &schema.Schema{Type: schema.TypeString},
+										Optional: true,
+										Computed: true,
+										Description: "Master process GFlags for " +
+											"this cluster. Invalid on a Read " +
+											"Replica (ASYNC) cluster -- ASYNC " +
+											"clusters have no master processes.",
 									},
 									"tserver_gflags": {
 										Type:        schema.TypeMap,
