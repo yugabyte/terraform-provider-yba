@@ -3718,6 +3718,8 @@ func resourceUniverseUpdate(
 		}
 	}
 
+	// True once a cluster edit dispatches with communication_ports bundled in.
+	portsBundledInClusterEdit := false
 	if d.HasChange("clusters") {
 		clusters := d.Get("clusters").([]interface{})
 		updateUni, response, err := c.UniverseManagementAPI.GetUniverse(ctx, cUUID, d.Id()).
@@ -4366,6 +4368,7 @@ func resourceUniverseUpdate(
 						); diags != nil {
 							return diags
 						}
+						portsBundledInClusterEdit = true
 					} else if !smartResize {
 						// 3. Fallback abort: Only trigger if NO valid action was taken across both blocks
 						return diag.Errorf(
@@ -4604,6 +4607,7 @@ func resourceUniverseUpdate(
 						); diags != nil {
 							return diags
 						}
+						portsBundledInClusterEdit = true
 					} else if !smartResize {
 						// 3. Fallback abort: Only trigger if NO valid action was taken across both blocks
 						return diag.Errorf(
@@ -4665,10 +4669,9 @@ func resourceUniverseUpdate(
 		}
 	}
 
-	// Handle editable communication port changes that occurred without any cluster changes.
-	// When clusters also changed, ports are already bundled in the UpdatePrimaryCluster call
-	// above. This path covers the case where ONLY ports changed.
-	if d.HasChange("communication_ports") && !d.HasChange("clusters") {
+	// Apply port changes not already bundled into a cluster edit (gflag /
+	// software / TLS-only edits route elsewhere and don't carry ports).
+	if d.HasChange("communication_ports") && !portsBundledInClusterEdit {
 		fetchedUni, response, err := c.UniverseManagementAPI.GetUniverse(ctx, cUUID, d.Id()).
 			Execute()
 		if err != nil {
