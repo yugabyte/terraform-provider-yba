@@ -757,6 +757,9 @@ func IsUniverseTaskConflict(response *http.Response, err error) bool {
 		return false
 	}
 	body := OpenAPIErrorBody(err)
+	if body == "" && err != nil {
+		body = err.Error()
+	}
 	return strings.Contains(body, "cannot be queued") ||
 		strings.Contains(body, "currently in a locked state")
 }
