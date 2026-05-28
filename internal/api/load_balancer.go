@@ -11,39 +11,40 @@ import (
 )
 
 // UpdateLBConfig calls PUT /universes/{uuid}/update_lb_config with the
-// modified universeDetails payload. Returns the async task UUID.
+// modified universeDetails payload. Returns the async task UUID and the raw
+// HTTP response so callers can detect 409 universe-task conflicts.
 func (vc *VanillaClient) UpdateLBConfig(
 	cUUID, uUUID string,
 	universeDetails interface{},
 	token string,
-) (string, error) {
+) (string, *http.Response, error) {
 	reqBytes, err := json.Marshal(universeDetails)
 	if err != nil {
-		return "", fmt.Errorf("marshal update_lb_config request: %w", err)
+		return "", nil, fmt.Errorf("marshal update_lb_config request: %w", err)
 	}
 
 	path := fmt.Sprintf("api/v1/customers/%s/universes/%s/update_lb_config", cUUID, uUUID)
 	res, err := vc.makeRequest(http.MethodPut, path, bytes.NewBuffer(reqBytes), token)
 	if err != nil {
-		return "", fmt.Errorf("update_lb_config request failed: %w", err)
+		return "", nil, fmt.Errorf("update_lb_config request failed: %w", err)
 	}
 	defer res.Body.Close()
 
 	if httpErr := utils.CheckHTTPError(res, "UpdateLBConfig"); httpErr != nil {
-		return "", httpErr
+		return "", res, httpErr
 	}
 
 	body, err := io.ReadAll(res.Body)
 	if err != nil {
-		return "", fmt.Errorf("error reading update_lb_config response: %w", err)
+		return "", res, fmt.Errorf("error reading update_lb_config response: %w", err)
 	}
 
 	var resp struct {
 		TaskUUID string `json:"taskUUID"`
 	}
 	if err := json.Unmarshal(body, &resp); err != nil {
-		return "", fmt.Errorf("error parsing update_lb_config response: %w", err)
+		return "", res, fmt.Errorf("error parsing update_lb_config response: %w", err)
 	}
 
-	return resp.TaskUUID, nil
+	return resp.TaskUUID, res, nil
 }
