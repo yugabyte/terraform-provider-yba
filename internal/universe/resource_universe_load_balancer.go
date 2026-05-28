@@ -3,6 +3,7 @@ package universe
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-log/tflog"
@@ -63,17 +64,16 @@ func resourceUniverseLBCreate(
 	uUUID := d.Get("universe_uuid").(string)
 	lbMap := expandLBMap(d.Get("load_balancers").(map[string]interface{}))
 
-	taskUUID, err := applyLBConfig(ctx, c, uUUID, lbMap, true)
-	if err != nil {
-		return diag.FromErr(err)
-	}
-
 	d.SetId(uUUID)
 
-	tflog.Debug(ctx, fmt.Sprintf("Waiting for update_lb_config task %s", taskUUID))
-	if err := utils.WaitForTask(ctx, taskUUID, c.CustomerID, c.YugawareClient,
-		d.Timeout(schema.TimeoutCreate)); err != nil {
-		return diag.FromErr(err)
+	if diags := utils.DispatchAndWait(ctx, "UpdateLBConfig", c.CustomerID, c.YugawareClient,
+		d.Timeout(schema.TimeoutCreate),
+		utils.ResourceEntity, "Universe Load Balancer", "Create",
+		func() (string, *http.Response, error) {
+			return applyLBConfig(ctx, c, uUUID, lbMap, true)
+		},
+	); diags != nil {
+		return diags
 	}
 
 	return resourceUniverseLBRead(ctx, d, meta)
@@ -121,15 +121,14 @@ func resourceUniverseLBUpdate(
 	uUUID := d.Id()
 	lbMap := expandLBMap(d.Get("load_balancers").(map[string]interface{}))
 
-	taskUUID, err := applyLBConfig(ctx, c, uUUID, lbMap, true)
-	if err != nil {
-		return diag.FromErr(err)
-	}
-
-	tflog.Debug(ctx, fmt.Sprintf("Waiting for update_lb_config task %s", taskUUID))
-	if err := utils.WaitForTask(ctx, taskUUID, c.CustomerID, c.YugawareClient,
-		d.Timeout(schema.TimeoutUpdate)); err != nil {
-		return diag.FromErr(err)
+	if diags := utils.DispatchAndWait(ctx, "UpdateLBConfig", c.CustomerID, c.YugawareClient,
+		d.Timeout(schema.TimeoutUpdate),
+		utils.ResourceEntity, "Universe Load Balancer", "Update",
+		func() (string, *http.Response, error) {
+			return applyLBConfig(ctx, c, uUUID, lbMap, true)
+		},
+	); diags != nil {
+		return diags
 	}
 
 	return resourceUniverseLBRead(ctx, d, meta)
@@ -143,55 +142,48 @@ func resourceUniverseLBDelete(
 	c := meta.(*api.APIClient)
 	uUUID := d.Id()
 
-	taskUUID, err := applyLBConfig(ctx, c, uUUID, nil, false)
-	if err != nil {
-		return diag.FromErr(err)
-	}
-
-	tflog.Debug(ctx, fmt.Sprintf("Waiting for update_lb_config task %s (remove LB)", taskUUID))
-	if err := utils.WaitForTask(ctx, taskUUID, c.CustomerID, c.YugawareClient,
-		d.Timeout(schema.TimeoutDelete)); err != nil {
-		return diag.FromErr(err)
-	}
-
-	return nil
+	return utils.DispatchAndWait(ctx, "UpdateLBConfig", c.CustomerID, c.YugawareClient,
+		d.Timeout(schema.TimeoutDelete),
+		utils.ResourceEntity, "Universe Load Balancer", "Delete",
+		func() (string, *http.Response, error) {
+			return applyLBConfig(ctx, c, uUUID, nil, false)
+		},
+	)
 }
 
 // applyLBConfig fetches the universe, modifies LB settings on the
-// primary cluster, and calls the update_lb_config API.
+// primary cluster, and calls the update_lb_config API. Returns the raw
+// *http.Response so callers can detect 409 universe-task conflicts.
 func applyLBConfig(
 	ctx context.Context,
 	c *api.APIClient,
 	uUUID string,
 	lbMap map[string]string,
 	enableLB bool,
-) (string, error) {
+) (string, *http.Response, error) {
 	uni, response, err := c.YugawareClient.UniverseManagementAPI.
 		GetUniverse(ctx, c.CustomerID, uUUID).Execute()
 	if err != nil {
-		return "", utils.ErrorFromHTTPResponse(response, err,
+		return "", response, utils.ErrorFromHTTPResponse(response, err,
 			utils.ResourceEntity, "Universe Load Balancer", "Get Universe")
 	}
 
 	details := uni.UniverseDetails
 	cluster := findPrimaryCluster(details.Clusters)
 	if cluster == nil {
-		return "", fmt.Errorf("universe %s: no PRIMARY cluster found", uUUID)
+		return "", nil, fmt.Errorf("universe %s: no PRIMARY cluster found", uUUID)
 	}
 
 	cluster.UserIntent.EnableLB = &enableLB
 	setLBNamesOnPlacement(cluster, lbMap, enableLB)
 
-	tflog.Info(ctx, fmt.Sprintf(
-		"Calling update_lb_config on universe %s (enableLB=%t)", uUUID, enableLB))
-
-	taskUUID, err := c.VanillaClient.UpdateLBConfig(
+	taskUUID, resp, err := c.VanillaClient.UpdateLBConfig(
 		c.CustomerID, uUUID, details, c.APIKey)
 	if err != nil {
-		return "", fmt.Errorf("update_lb_config on universe %s: %w", uUUID, err)
+		return "", resp, fmt.Errorf("update_lb_config on universe %s: %w", uUUID, err)
 	}
 
-	return taskUUID, nil
+	return taskUUID, resp, nil
 }
 
 func findPrimaryCluster(clusters []client.Cluster) *client.Cluster {
