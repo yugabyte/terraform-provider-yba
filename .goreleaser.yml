@@ -66,4 +66,4 @@ release:
   # draft: true
 
 changelog:
-  skip: false
+  disable: false
