@@ -10,6 +10,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	client "github.com/yugabyte/platform-go-client"
+
 	"github.com/yugabyte/terraform-provider-yba/internal/api"
 	"github.com/yugabyte/terraform-provider-yba/internal/utils"
 )
@@ -178,7 +179,7 @@ func applyLBConfig(
 	setLBNamesOnPlacement(cluster, lbMap, enableLB)
 
 	taskUUID, resp, err := c.VanillaClient.UpdateLBConfig(
-		c.CustomerID, uUUID, details, c.APIKey)
+		ctx, c.CustomerID, uUUID, details, c.APIKey)
 	if err != nil {
 		return "", resp, fmt.Errorf("update_lb_config on universe %s: %w", uUUID, err)
 	}

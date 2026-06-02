@@ -508,15 +508,91 @@ func TestGetBundleDownloadCommands(t *testing.T) {
 
 func TestGetInstallCommandsWithConfig(t *testing.T) {
 	cmds := getInstallCommands("2024.1.0.0-b129", "linux", "x86_64", true, nil)
-	// Expected order: curl, tar, license add, mv settings.yml, install
-	if len(cmds) != 5 {
-		t.Fatalf("expected 5 commands when config=true, got %d: %v", len(cmds), cmds)
+	// Expected order: curl, tar, license add, mkdir /opt/yba-ctl,
+	// mv settings.yml, combined install (bash if-else).
+	if len(cmds) != 6 {
+		t.Fatalf("expected 6 commands when config=true, got %d: %v", len(cmds), cmds)
 	}
-	if !strings.Contains(cmds[3], "mv /tmp/settings.yml /opt/yba-ctl/yba-ctl.yml") {
-		t.Errorf("expected settings move at index 3, got %q", cmds[3])
+	if !strings.Contains(cmds[3], "mkdir -p /opt/yba-ctl") {
+		t.Errorf("expected /opt/yba-ctl mkdir at index 3, got %q", cmds[3])
 	}
-	if !strings.Contains(cmds[4], "yba-ctl install -f") {
-		t.Errorf("expected install command at index 4, got %q", cmds[4])
+	if !strings.Contains(cmds[4], "mv /tmp/settings.yml /opt/yba-ctl/yba-ctl.yml") {
+		t.Errorf("expected settings move at index 4, got %q", cmds[4])
+	}
+	last := cmds[len(cmds)-1]
+	if !strings.Contains(last, "yba-ctl install -f") {
+		t.Errorf("expected combined install command, got %q", last)
+	}
+	if !strings.Contains(last, "--without-data") {
+		t.Errorf("expected combined install to include --without-data branch, got %q", last)
+	}
+}
+
+// TestGetInstallCommandsWithoutConfig verifies that when no
+// application_settings input is supplied, the function does not stage
+// /opt/yba-ctl/yba-ctl.yml. The combined install must still be the last
+// command so callers that grep cmds[len-1] for the install flags keep
+// working.
+func TestGetInstallCommandsWithoutConfig(t *testing.T) {
+	cmds := getInstallCommands("2024.1.0.0-b129", "linux", "x86_64", false, nil)
+	if len(cmds) != 4 {
+		t.Fatalf("expected 4 commands when config=false, got %d: %v", len(cmds), cmds)
+	}
+	for i, cmd := range cmds {
+		if strings.Contains(cmd, "mkdir -p /opt/yba-ctl") {
+			t.Errorf("did not expect /opt/yba-ctl mkdir when config=false, found at %d: %q",
+				i, cmd)
+		}
+		if strings.Contains(cmd, "mv /tmp/settings.yml") {
+			t.Errorf("did not expect settings move when config=false, found at %d: %q",
+				i, cmd)
+		}
+	}
+	last := cmds[len(cmds)-1]
+	if !strings.Contains(last, "yba-ctl install -f") {
+		t.Errorf("expected install -f in last command, got %q", last)
+	}
+}
+
+// TestGetInstallCommandsDataDirBranch locks in the bash structure that
+// picks between fresh install and --without-data install. A regression
+// here would silently re-initialise storage on a host that booted with
+// a pre-populated /opt/yugabyte/data disk attached.
+func TestGetInstallCommandsDataDirBranch(t *testing.T) {
+	skip := []string{"diskAvailability"}
+	cmds := getInstallCommands("2024.1.0.0-b129", "linux", "x86_64", true, &skip)
+	last := cmds[len(cmds)-1]
+
+	wantSubstrings := []string{
+		`if [ -d /opt/yugabyte/data ]`,
+		`[ -n "$(sudo ls -A /opt/yugabyte/data 2>/dev/null)" ]`,
+		`yba-ctl install -f --without-data -s diskAvailability`,
+		`/opt/yba-ctl/yba-ctl start`,
+		`else sudo ./yba_installer_full-2024.1.0.0-b129/yba-ctl install -f -s diskAvailability;`,
+		`fi`,
+	}
+	for _, want := range wantSubstrings {
+		if !strings.Contains(last, want) {
+			t.Errorf("combined install missing %q, got %q", want, last)
+		}
+	}
+}
+
+// TestGetInstallCommandsDataDirBranchPreRelease confirms YBA_MODE=dev
+// propagates into both branches and the yba-ctl start fallback.
+func TestGetInstallCommandsDataDirBranchPreRelease(t *testing.T) {
+	cmds := getInstallCommands("2.25.0.0-b300", "linux", "x86_64", false, nil)
+	last := cmds[len(cmds)-1]
+
+	wantSubstrings := []string{
+		`sudo YBA_MODE=dev ./yba_installer_full-2.25.0.0-b300/yba-ctl install -f --without-data`,
+		`sudo YBA_MODE=dev /opt/yba-ctl/yba-ctl start`,
+		`else sudo YBA_MODE=dev ./yba_installer_full-2.25.0.0-b300/yba-ctl install -f;`,
+	}
+	for _, want := range wantSubstrings {
+		if !strings.Contains(last, want) {
+			t.Errorf("combined install missing %q, got %q", want, last)
+		}
 	}
 }
 
@@ -677,26 +753,37 @@ func TestGetDeleteCommands(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cmds := getDeleteCommands(tt.version)
-			if len(cmds) != 3 {
-				t.Fatalf("expected 3 commands (clean, rm yugabyte, rm tmp), got %d: %v",
+			if len(cmds) != 2 {
+				t.Fatalf("expected 2 commands (clean, rm tmp), got %d: %v",
 					len(cmds), cmds)
 			}
 			if !strings.Contains(cmds[0], "/opt/yba-ctl/yba-ctl clean") {
 				t.Errorf("expected clean command first, got %q", cmds[0])
+			}
+			// `--all` would wipe /opt/yugabyte/data which must outlive
+			// the resource when a separate data disk is mounted there.
+			if strings.Contains(cmds[0], "--all") {
+				t.Errorf("clean must not pass --all, got %q", cmds[0])
 			}
 			hasEnv := strings.Contains(cmds[0], "YBA_MODE=dev")
 			if hasEnv != tt.expectedEnv {
 				t.Errorf("YBA_MODE=dev presence = %v, expected %v in %q",
 					hasEnv, tt.expectedEnv, cmds[0])
 			}
-			if cmds[1] != "sudo rm -rf /opt/yugabyte" {
-				t.Errorf("expected rm -rf /opt/yugabyte, got %q", cmds[1])
+			if !strings.Contains(cmds[1], "/tmp/server.crt") ||
+				!strings.Contains(cmds[1], "/tmp/server.key") ||
+				!strings.Contains(cmds[1], "/tmp/license.lic") ||
+				!strings.Contains(cmds[1], "/tmp/settings.yml") {
+				t.Errorf("expected rm of all tmp files, got %q", cmds[1])
 			}
-			if !strings.Contains(cmds[2], "/tmp/server.crt") ||
-				!strings.Contains(cmds[2], "/tmp/server.key") ||
-				!strings.Contains(cmds[2], "/tmp/license.lic") ||
-				!strings.Contains(cmds[2], "/tmp/settings.yml") {
-				t.Errorf("expected rm of all tmp files, got %q", cmds[2])
+			// Regression: an earlier version of this function ran
+			// `sudo rm -rf /opt/yugabyte`, which would wipe the data
+			// disk on every destroy/replace cycle.
+			for i, cmd := range cmds {
+				if strings.Contains(cmd, "rm -rf /opt/yugabyte") {
+					t.Errorf("delete commands must not wipe /opt/yugabyte, found at %d: %q",
+						i, cmd)
+				}
 			}
 		})
 	}
