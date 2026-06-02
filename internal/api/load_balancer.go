@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -14,6 +15,7 @@ import (
 // modified universeDetails payload. Returns the async task UUID and the raw
 // HTTP response so callers can detect 409 universe-task conflicts.
 func (vc *VanillaClient) UpdateLBConfig(
+	ctx context.Context,
 	cUUID, uUUID string,
 	universeDetails interface{},
 	token string,
@@ -24,11 +26,11 @@ func (vc *VanillaClient) UpdateLBConfig(
 	}
 
 	path := fmt.Sprintf("api/v1/customers/%s/universes/%s/update_lb_config", cUUID, uUUID)
-	res, err := vc.makeRequest(http.MethodPut, path, bytes.NewBuffer(reqBytes), token)
+	res, err := vc.makeRequest(ctx, http.MethodPut, path, bytes.NewBuffer(reqBytes), token)
 	if err != nil {
 		return "", nil, fmt.Errorf("update_lb_config request failed: %w", err)
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 
 	if httpErr := utils.CheckHTTPError(res, "UpdateLBConfig"); httpErr != nil {
 		return "", res, httpErr
