@@ -63,7 +63,7 @@ documents:
 # Run unit tests (no YBA or cloud credentials required)
 .PHONY: test
 test:
-	go test ./internal/provider/... -v -run "^Test[^Acc]" $(TESTARGS)
+	go test ./... -skip '^TestAcc' $(TESTARGS)
 
 # Run acceptance tests (requires YBA and cloud credentials - see CONTRIBUTING.md)
 .PHONY: testacc acctest
