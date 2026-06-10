@@ -123,7 +123,7 @@ func testAccPreCheckS3(t *testing.T) {
 
 	for _, v := range requiredVars {
 		if os.Getenv(v) == "" {
-			t.Fatalf("%s must be set for S3 storage config acceptance tests", v)
+			t.Skipf("%s not set; skipping S3 storage config acceptance tests", v)
 		}
 	}
 }

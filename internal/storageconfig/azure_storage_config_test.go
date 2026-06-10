@@ -92,7 +92,7 @@ func testAccPreCheckAzureStorage(t *testing.T) {
 
 	for _, v := range requiredVars {
 		if os.Getenv(v) == "" {
-			t.Fatalf("%s must be set for Azure storage config acceptance tests", v)
+			t.Skipf("%s not set; skipping Azure storage config acceptance tests", v)
 		}
 	}
 }
