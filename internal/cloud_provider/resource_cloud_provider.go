@@ -542,7 +542,7 @@ func resourceCloudProviderDiff() schema.CustomizeDiffFunc {
 					configSettings = utils.MapFromSingletonList(
 						configInterface,
 					)
-					isIAM = configSettings["use_host_credentials"].(bool)
+					isIAM, _ = configSettings["use_host_credentials"].(bool)
 				}
 
 				// if not IAM GCP cloud provider, check for credentials in env
@@ -558,8 +558,10 @@ func resourceCloudProviderDiff() schema.CustomizeDiffFunc {
 					}
 				}
 
-				createVpc := configSettings["create_vpc"].(bool)
-				useHostVpc := configSettings["use_host_vpc"].(bool)
+				// Both are optional; absent => nil. Use comma-ok so a missing
+				// value defaults to false instead of panicking on the assertion.
+				createVpc, _ := configSettings["create_vpc"].(bool)
+				useHostVpc, _ := configSettings["use_host_vpc"].(bool)
 
 				if createVpc && useHostVpc {
 					return fmt.Errorf("create_vpc and use_host_vpc cannot be true at the same time")
@@ -669,11 +671,14 @@ func buildCloudInfo(
 				gcpCloudInfo.SetGceApplicationCredentials(credentials.(string))
 			}
 		}
-		projectID := configSettings["project_id"].(string)
+		// gcp_config_settings is optional; configSettings is nil when omitted.
+		// comma-ok so a missing project/shared-VPC defaults to "" (skipped)
+		// instead of panicking on the assertion.
+		projectID, _ := configSettings["project_id"].(string)
 		if len(projectID) > 0 {
 			gcpCloudInfo.SetGceProject(projectID)
 		}
-		sharedVPCProjectID := configSettings["shared_vpc_project_id"].(string)
+		sharedVPCProjectID, _ := configSettings["shared_vpc_project_id"].(string)
 		if len(sharedVPCProjectID) > 0 {
 			gcpCloudInfo.SetSharedVPCProject(sharedVPCProjectID)
 		}
@@ -812,14 +817,20 @@ func resourceCloudProviderCreate(
 		imageBundles = buildImageBundles(d.Get("image_bundles").([]interface{}))
 	}
 
+	// Only send an access key if the user supplied one; otherwise leave the list
+	// empty so YBA generates a keypair. Appending an empty key fails YBA's
+	// validatePrivateKeys (both fields are optional in the schema).
 	allAccessKeys := make([]client.AccessKey, 0)
-	accessKey := client.AccessKey{
-		KeyInfo: client.KeyInfo{
-			KeyPairName:          utils.GetStringPointer(d.Get("key_pair_name").(string)),
-			SshPrivateKeyContent: utils.GetStringPointer(d.Get("ssh_private_key_content").(string)),
-		},
+	keyPairName := d.Get("key_pair_name").(string)
+	sshPrivateKey := d.Get("ssh_private_key_content").(string)
+	if keyPairName != "" || sshPrivateKey != "" {
+		allAccessKeys = append(allAccessKeys, client.AccessKey{
+			KeyInfo: client.KeyInfo{
+				KeyPairName:          utils.GetStringPointer(keyPairName),
+				SshPrivateKeyContent: utils.GetStringPointer(sshPrivateKey),
+			},
+		})
 	}
-	allAccessKeys = append(allAccessKeys, accessKey)
 	req := client.Provider{
 		AllAccessKeys: allAccessKeys,
 		Code:          utils.GetStringPointer(d.Get("code").(string)),
