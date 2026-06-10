@@ -17,10 +17,15 @@
 package acctest
 
 import (
+	"context"
+	"fmt"
 	"os"
+	"os/exec"
+	"regexp"
 	"strings"
 	"testing"
 
+	sdkacctest "github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 
 	"github.com/yugabyte/terraform-provider-yba/internal/api"
@@ -30,10 +35,18 @@ import (
 const (
 	ybProviderName = "yba"
 
+	// Some GCP resources (e.g. yba_cloud_provider) read the SA key from the file
+	// at GOOGLE_APPLICATION_CREDENTIALS instead of inline. SetupGCPCredentialsFile
+	// materializes testGCPCredentials into a file and points this at it.
+	googleAppCredsEnv = "GOOGLE_APPLICATION_CREDENTIALS"
+
 	// TF_VAR_* env variables for GCP - used by Terraform to populate variables
 	testGCPCredentials = "TF_VAR_GCP_CREDENTIALS"
 	testGCPProject     = "TF_VAR_GCP_PROJECT_ID"
 	testGCPVPCNetwork  = "TF_VAR_GCP_VPC_NETWORK"
+	testGCPRegion      = "TF_VAR_GCP_REGION"
+	testGCPSubnetwork  = "TF_VAR_GCP_SUBNETWORK"
+	testGCPImage       = "TF_VAR_GCP_IMAGE"
 
 	// TF_VAR_* env variables for AWS - used by Terraform to populate variables
 	testAWSAccessKey       = "TF_VAR_AWS_ACCESS_KEY_ID"
@@ -81,6 +94,39 @@ func TestAPIKey() string {
 	return getEnvMulti("YBA_API_KEY", "YB_API_KEY")
 }
 
+// testPrefix isolates concurrent runs on a shared YBA. Honors TF_ACCTEST_PREFIX;
+// otherwise derives "acc-<branch>" from CI env (GITHUB_HEAD_REF on PRs, where
+// HEAD is detached; GITHUB_REF_NAME on pushes) or the local git branch. Only the
+// branch's last path segment is used ("user/feature" -> "feature") to keep names
+// short — they flow into YBA-derived identifiers stored in varchar(100) columns.
+func testPrefix() string {
+	if p := os.Getenv("TF_ACCTEST_PREFIX"); p != "" {
+		return p
+	}
+	branch := getEnvMulti("GITHUB_HEAD_REF", "GITHUB_REF_NAME")
+	if branch == "" {
+		out, _ := exec.CommandContext(
+			context.Background(), "git", "symbolic-ref", "--short", "-q", "HEAD").Output()
+		branch = string(out)
+	}
+	if i := strings.LastIndex(branch, "/"); i >= 0 {
+		branch = branch[i+1:]
+	}
+	re := regexp.MustCompile(`[^a-z0-9]+`)
+	slug := strings.Trim(re.ReplaceAllString(strings.ToLower(branch), "-"), "-")
+	if slug == "" {
+		return "acc"
+	}
+	return "acc-" + slug
+}
+
+// RandomName builds a unique acceptance-test resource name of the form
+// <prefix>-<kind>-<random>. The random suffix avoids collisions within a run;
+// testPrefix isolates concurrent runs by different branches against the same YBA.
+func RandomName(kind string) string {
+	return fmt.Sprintf("%s-%s-%s", testPrefix(), kind, sdkacctest.RandString(12))
+}
+
 func init() {
 	c, err := api.NewAPIClient(true, TestHost(), TestAPIKey())
 	if err != nil {
@@ -92,16 +138,55 @@ func init() {
 	}
 }
 
+// SetupGCPCredentialsFile materializes the inline GCP SA key (TF_VAR_GCP_CREDENTIALS)
+// to a 0600 file and points GOOGLE_APPLICATION_CREDENTIALS at it, for resources
+// that read the key from a file path rather than inline. It returns a cleanup
+// that removes the file; call both from a package TestMain so the file lives for
+// the whole run and is deleted after. No-op when the key isn't set or the env
+// var is already provided.
+//
+// The file gets a unique name per test binary. `go test ./...` runs packages
+// concurrently, so a fixed shared path would let one package's cleanup delete
+// the file while another package is still mid-apply.
+func SetupGCPCredentialsFile() (func(), error) {
+	creds := os.Getenv(testGCPCredentials)
+	if creds == "" || os.Getenv(googleAppCredsEnv) != "" {
+		return func() {}, nil
+	}
+	f, err := os.CreateTemp("", "yba-acctest-gcp-creds-*.json")
+	if err != nil {
+		return func() {}, err
+	}
+	path := f.Name()
+	if _, err := f.WriteString(creds); err != nil {
+		_ = f.Close()
+		_ = os.Remove(path)
+		return func() {}, err
+	}
+	if err := f.Close(); err != nil {
+		_ = os.Remove(path)
+		return func() {}, err
+	}
+	if err := os.Setenv(googleAppCredsEnv, path); err != nil {
+		_ = os.Remove(path)
+		return func() {}, err
+	}
+	return func() { _ = os.Remove(path) }, nil
+}
+
 // TestAccPreCheckGCP Preflight checks for GCP acceptance tests
 func TestAccPreCheckGCP(t *testing.T) {
 	requiredVars := []string{
 		testGCPCredentials,
 		testGCPProject,
 		testGCPVPCNetwork,
+		testGCPRegion,
+		testGCPSubnetwork,
+		testGCPImage,
 	}
 	for _, v := range requiredVars {
 		if os.Getenv(v) == "" {
-			t.Fatalf("%s must be set for GCP acceptance tests", v)
+			t.Skipf("%s not set; skipping GCP acceptance tests", v)
 		}
 	}
 }
@@ -117,7 +202,7 @@ func TestAccPreCheckAWS(t *testing.T) {
 	}
 	for _, v := range requiredVars {
 		if os.Getenv(v) == "" {
-			t.Fatalf("%s must be set for AWS acceptance tests", v)
+			t.Skipf("%s not set; skipping AWS acceptance tests", v)
 		}
 	}
 }
@@ -130,7 +215,7 @@ func TestAccPreCheckAWSMultiZone(t *testing.T) {
 	}
 	for _, v := range requiredVars {
 		if os.Getenv(v) == "" {
-			t.Fatalf("%s must be set for multi-zone AWS acceptance tests", v)
+			t.Skipf("%s not set; skipping multi-zone AWS acceptance tests", v)
 		}
 	}
 }
@@ -148,7 +233,7 @@ func TestAccPreCheckAzure(t *testing.T) {
 	}
 	for _, v := range requiredVars {
 		if os.Getenv(v) == "" {
-			t.Fatalf("%s must be set for Azure acceptance tests", v)
+			t.Skipf("%s not set; skipping Azure acceptance tests", v)
 		}
 	}
 }

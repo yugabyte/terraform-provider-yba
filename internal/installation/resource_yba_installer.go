@@ -141,7 +141,7 @@ func ResourceYBAInstaller() *schema.Resource {
 				Description: "Application settings file to configure YugabyteDB Anywhere. " +
 					"If left empty, the [default configuration]" +
 					"(https://github.com/yugabyte/terraform-provider-yba/tree/main" +
-					"/modules/resources/yba-ctl.yml)" +
+					"/acctest/resources/yba-ctl.yml)" +
 					" would be used for the application.",
 			},
 			"reconfigure": {

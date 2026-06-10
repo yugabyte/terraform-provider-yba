@@ -58,7 +58,7 @@ For further details on configuration and host requirements, refer to [Install YB
 
 ### Optional
 
-- `application_settings_file` (String) Application settings file to configure YugabyteDB Anywhere. If left empty, the [default configuration](https://github.com/yugabyte/terraform-provider-yba/tree/main/modules/resources/yba-ctl.yml) would be used for the application.
+- `application_settings_file` (String) Application settings file to configure YugabyteDB Anywhere. If left empty, the [default configuration](https://github.com/yugabyte/terraform-provider-yba/tree/main/acctest/resources/yba-ctl.yml) would be used for the application.
 - `host_architecture` (String) Architecture of the host Virtual Machine. Default is x86_64.
 - `host_os` (String) Operating System of the host Virtual Machine. Default is linux.
 - `reconfigure` (Boolean) Set to true for reconfiguration (If the contents of application_settings_file have been modified).

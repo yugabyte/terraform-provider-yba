@@ -33,7 +33,7 @@ func TestAccCustomer_Basic(t *testing.T) {
 	// After first run, the customer already exists
 	t.Skip("Customer acceptance tests require a fresh YBA instance - run manually")
 
-	rName := fmt.Sprintf("tf-acctest-customer-%s", sdkacctest.RandString(8))
+	rName := acctest.RandomName("customer")
 	rEmail := fmt.Sprintf("test-%s@yugabyte.com", sdkacctest.RandString(8))
 	rPassword := "TestPassword123!"
 
@@ -64,7 +64,7 @@ func TestAccCustomer_CodeVariations(t *testing.T) {
 
 	for _, code := range codes {
 		t.Run(code, func(t *testing.T) {
-			rName := fmt.Sprintf("tf-acctest-%s-%s", code, sdkacctest.RandString(6))
+			rName := acctest.RandomName(code)
 			rEmail := fmt.Sprintf("%s-%s@yugabyte.com", code, sdkacctest.RandString(6))
 			rPassword := "TestPassword123!"
 
