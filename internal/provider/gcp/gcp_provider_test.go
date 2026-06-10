@@ -19,10 +19,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"testing"
 	"time"
 
-	sdkacctest "github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
 	client "github.com/yugabyte/platform-go-client"
@@ -35,7 +35,7 @@ import (
 func TestAccGCPProvider_WithCredentials(t *testing.T) {
 	var provider client.Provider
 
-	rName := fmt.Sprintf("tf-acctest-gcp-%s", sdkacctest.RandString(12))
+	rName := acctest.RandomName("gcp")
 	resource.ParallelTest(t, resource.TestCase{
 		PreCheck: func() {
 			acctest.TestAccPreCheck(t)
@@ -64,7 +64,7 @@ func TestAccGCPProvider_WithCredentials(t *testing.T) {
 func TestAccGCPProvider_WithHostCredentials(t *testing.T) {
 	var provider client.Provider
 
-	rName := fmt.Sprintf("tf-acctest-gcp-host-%s", sdkacctest.RandString(12))
+	rName := acctest.RandomName("gcp-host")
 	resource.ParallelTest(t, resource.TestCase{
 		PreCheck: func() {
 			acctest.TestAccPreCheck(t)
@@ -86,15 +86,24 @@ func TestAccGCPProvider_WithHostCredentials(t *testing.T) {
 	})
 }
 
-// TestAccGCPProvider_WithSharedVPC tests GCP provider with shared VPC configuration
+// TestAccGCPProvider_WithSharedVPC tests GCP provider with shared VPC configuration.
+//
+// Requires a GCP Shared VPC host project (a separate project from GCP_PROJECT_ID),
+// surfaced as TF_VAR_GCP_SHARED_VPC_PROJECT_ID. The acctest/gcp fixture is a plain
+// single-project VPC and doesn't provision one, so this skips unless that var is
+// set. To enable: pre-create a Shared VPC host project, grant the yba SA
+// networkUser on its subnet, and export GCP_SHARED_VPC_PROJECT_ID.
 func TestAccGCPProvider_WithSharedVPC(t *testing.T) {
 	var provider client.Provider
 
-	rName := fmt.Sprintf("tf-acctest-gcp-vpc-%s", sdkacctest.RandString(12))
+	rName := acctest.RandomName("gcp-vpc")
 	resource.ParallelTest(t, resource.TestCase{
 		PreCheck: func() {
 			acctest.TestAccPreCheck(t)
 			acctest.TestAccPreCheckGCP(t)
+			if os.Getenv("TF_VAR_GCP_SHARED_VPC_PROJECT_ID") == "" {
+				t.Skip("TF_VAR_GCP_SHARED_VPC_PROJECT_ID not set; skipping Shared VPC test")
+			}
 		},
 		ProviderFactories: acctest.ProviderFactories,
 		CheckDestroy:      testAccCheckDestroyGCPProvider,
@@ -116,7 +125,7 @@ func TestAccGCPProvider_WithSharedVPC(t *testing.T) {
 func TestAccGCPProvider_Update(t *testing.T) {
 	var provider client.Provider
 
-	rName := fmt.Sprintf("tf-acctest-gcp-upd-%s", sdkacctest.RandString(12))
+	rName := acctest.RandomName("gcp-upd")
 	rNameUpdated := rName + "-updated"
 
 	resource.ParallelTest(t, resource.TestCase{
@@ -150,7 +159,7 @@ func TestAccGCPProvider_Update(t *testing.T) {
 func TestAccGCPProvider_WithFirewallTags(t *testing.T) {
 	var provider client.Provider
 
-	rName := fmt.Sprintf("tf-acctest-gcp-fw-%s", sdkacctest.RandString(12))
+	rName := acctest.RandomName("gcp-fw")
 	resource.ParallelTest(t, resource.TestCase{
 		PreCheck: func() {
 			acctest.TestAccPreCheck(t)
@@ -173,24 +182,41 @@ func TestAccGCPProvider_WithFirewallTags(t *testing.T) {
 
 func testAccCheckDestroyGCPProvider(s *terraform.State) error {
 	conn := acctest.APIClient.YugawareClient
+	cUUID := acctest.APIClient.CustomerID
 
 	for _, r := range s.RootModule().Resources {
 		if r.Type != "yba_gcp_provider" {
 			continue
 		}
-		time.Sleep(60 * time.Second)
-		cUUID := acctest.APIClient.CustomerID
-		res, response, err := conn.CloudProvidersAPI.GetListOfProviders(context.Background(),
-			cUUID).Execute()
-		if err != nil {
-			errMessage := utils.ErrorFromHTTPResponse(response, err, utils.TestEntity,
-				"GCP Provider Test", "Read")
-			return errMessage
-		}
-		for _, p := range res {
-			if p.GetUuid() == r.Primary.ID {
-				return errors.New("GCP provider is not destroyed")
+		// Provider deletion is async: YBA runs a delete task and the provider
+		// lingers in the list until it finishes. Poll until it's gone instead of
+		// a blind sleep, so this returns as soon as deletion completes (and fails
+		// fast with a clear error rather than hanging the suite).
+		const timeout = 90 * time.Second
+		const interval = 5 * time.Second
+		deadline := time.Now().Add(timeout)
+		for {
+			res, response, err := conn.CloudProvidersAPI.GetListOfProviders(context.Background(),
+				cUUID).Execute()
+			if err != nil {
+				return utils.ErrorFromHTTPResponse(response, err, utils.TestEntity,
+					"GCP Provider Test", "Read")
 			}
+			found := false
+			for _, p := range res {
+				if p.GetUuid() == r.Primary.ID {
+					found = true
+					break
+				}
+			}
+			if !found {
+				break
+			}
+			if time.Now().After(deadline) {
+				return fmt.Errorf(
+					"GCP provider %s is not destroyed after %s", r.Primary.ID, timeout)
+			}
+			time.Sleep(interval)
 		}
 	}
 
@@ -246,14 +272,25 @@ variable "GCP_PROJECT_ID" {
   description = "GCP project ID"
 }
 
+variable "GCP_REGION" {
+  type = string
+}
+
+variable "GCP_SUBNETWORK" {
+  type = string
+}
+
 resource "yba_gcp_provider" "test" {
   name        = "%s"
   credentials = var.GCP_CREDENTIALS
   project_id  = var.GCP_PROJECT_ID
   network     = var.GCP_VPC_NETWORK
   regions {
-    code = "us-west1"
-    shared_subnet = "default"
+    code = var.GCP_REGION
+    shared_subnet = var.GCP_SUBNETWORK
+  }
+  yba_managed_image_bundles {
+    arch = "x86_64"
   }
   air_gap_install = false
 }
@@ -275,16 +312,25 @@ variable "GCP_PROJECT_ID" {
   type = string
 }
 
+variable "GCP_REGION" {
+  type = string
+}
+
+variable "GCP_SUBNETWORK" {
+  type = string
+}
+
 resource "yba_gcp_provider" "test" {
   name                 = "%s"
   credentials          = var.GCP_CREDENTIALS
-  use_host_credentials = false
   project_id           = var.GCP_PROJECT_ID
   network              = var.GCP_VPC_NETWORK
-  ssh_keypair_name     = "test-keypair"
   regions {
-    code          = "us-west1"
-    shared_subnet = "default"
+    code          = var.GCP_REGION
+    shared_subnet = var.GCP_SUBNETWORK
+  }
+  yba_managed_image_bundles {
+    arch = "x86_64"
   }
   air_gap_install = false
 }
@@ -301,15 +347,25 @@ variable "GCP_PROJECT_ID" {
   type = string
 }
 
+variable "GCP_REGION" {
+  type = string
+}
+
+variable "GCP_SUBNETWORK" {
+  type = string
+}
+
 resource "yba_gcp_provider" "test" {
   name                 = "%s"
   use_host_credentials = true
   project_id           = var.GCP_PROJECT_ID
   network              = var.GCP_VPC_NETWORK
-  ssh_keypair_name     = "test-keypair"
   regions {
-    code = "us-west1"
-    shared_subnet = "default"
+    code = var.GCP_REGION
+    shared_subnet = var.GCP_SUBNETWORK
+  }
+  yba_managed_image_bundles {
+    arch = "x86_64"
   }
   air_gap_install = false
 }
@@ -336,16 +392,26 @@ variable "GCP_SHARED_VPC_PROJECT_ID" {
   description = "GCP shared VPC host project ID"
 }
 
+variable "GCP_REGION" {
+  type = string
+}
+
+variable "GCP_SUBNETWORK" {
+  type = string
+}
+
 resource "yba_gcp_provider" "test" {
   name                  = "%s"
   credentials           = var.GCP_CREDENTIALS
   project_id            = var.GCP_PROJECT_ID
   shared_vpc_project_id = var.GCP_SHARED_VPC_PROJECT_ID
   network               = var.GCP_VPC_NETWORK
-  ssh_keypair_name      = "test-keypair"
   regions {
-    code = "us-west1"
-    shared_subnet = "default"
+    code = var.GCP_REGION
+    shared_subnet = var.GCP_SUBNETWORK
+  }
+  yba_managed_image_bundles {
+    arch = "x86_64"
   }
   air_gap_install = false
 }
@@ -367,16 +433,26 @@ variable "GCP_PROJECT_ID" {
   type = string
 }
 
+variable "GCP_REGION" {
+  type = string
+}
+
+variable "GCP_SUBNETWORK" {
+  type = string
+}
+
 resource "yba_gcp_provider" "test" {
   name             = "%s"
   credentials      = var.GCP_CREDENTIALS
   project_id       = var.GCP_PROJECT_ID
   network          = var.GCP_VPC_NETWORK
   yb_firewall_tags = "yb-db-node"
-  ssh_keypair_name = "test-keypair"
   regions {
-    code = "us-west1"
-    shared_subnet = "default"
+    code = var.GCP_REGION
+    shared_subnet = var.GCP_SUBNETWORK
+  }
+  yba_managed_image_bundles {
+    arch = "x86_64"
   }
   air_gap_install = false
 }

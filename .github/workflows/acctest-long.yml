@@ -1,0 +1,47 @@
+name: Acceptance Tests (Long)
+# The long tier (TestAccLong*) runs multi-node universe deploys, ~15 min each.
+# Run on demand.
+on:
+  workflow_dispatch:
+
+jobs:
+  acctest-long:
+    name: Acceptance Tests (Long)
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    permissions:
+      contents: read
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v5
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      # Write the secret to acctest/env so `make acctest-long` sources it like a local run.
+      - name: Load test env
+        run: |
+          if [ -z "$ACCTEST_ENV" ]; then
+            echo "::error::ACCTEST_ENV secret is not set"
+            exit 1
+          fi
+          printf '%s' "$ACCTEST_ENV" > acctest/env
+        env:
+          ACCTEST_ENV: ${{ secrets.ACCTEST_ENV }}
+
+      - name: Install gotestsum
+        run: make gotestsum-install
+
+      - name: Long acceptance tests
+        run: make acctest-long
+        env:
+          GOTESTSUM_FORMAT: github-actions

@@ -27,7 +27,7 @@ import (
 
 // TestAccNFSStorageConfig_Basic tests basic NFS storage config creation
 func TestAccNFSStorageConfig_Basic(t *testing.T) {
-	rName := fmt.Sprintf("tf-acctest-nfs-%s", sdkacctest.RandString(8))
+	rName := acctest.RandomName("nfs")
 	backupLocation := fmt.Sprintf("/mnt/nfs/backups/%s", sdkacctest.RandString(8))
 
 	resource.Test(t, resource.TestCase{
@@ -54,8 +54,8 @@ func TestAccNFSStorageConfig_Basic(t *testing.T) {
 
 // TestAccNFSStorageConfig_Update tests updating an NFS storage config name
 func TestAccNFSStorageConfig_Update(t *testing.T) {
-	rName := fmt.Sprintf("tf-acctest-nfs-%s", sdkacctest.RandString(8))
-	rNameUpdated := fmt.Sprintf("tf-acctest-nfs-updated-%s", sdkacctest.RandString(8))
+	rName := acctest.RandomName("nfs")
+	rNameUpdated := acctest.RandomName("nfs-updated")
 	backupLocation := fmt.Sprintf("/mnt/nfs/backups/%s", sdkacctest.RandString(8))
 
 	resource.Test(t, resource.TestCase{

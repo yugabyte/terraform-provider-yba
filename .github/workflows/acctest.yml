@@ -1,0 +1,53 @@
+name: Acceptance Tests
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  # CI has no cloud access. The test env comes from the ACCTEST_ENV secret and
+  # runs against the standing fixture, which is kept running out of band.
+  acctest:
+    name: Acceptance Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions:
+      contents: read
+    # Fork PRs do not receive secrets, so skip them (fork is null on push/dispatch).
+    if: github.event.pull_request.head.repo.fork != true
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v5
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      # Write the secret to acctest/env so `make acctest` sources it like a local run.
+      - name: Load test env
+        run: |
+          if [ -z "$ACCTEST_ENV" ]; then
+            echo "::error::ACCTEST_ENV secret is not set"
+            exit 1
+          fi
+          printf '%s' "$ACCTEST_ENV" > acctest/env
+        env:
+          ACCTEST_ENV: ${{ secrets.ACCTEST_ENV }}
+
+      - name: Install gotestsum
+        run: make gotestsum-install
+
+      - name: Acceptance tests
+        run: make acctest
+        env:
+          GOTESTSUM_FORMAT: github-actions

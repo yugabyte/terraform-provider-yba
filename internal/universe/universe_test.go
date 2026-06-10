@@ -22,7 +22,6 @@ import (
 	"testing"
 	"time"
 
-	sdkacctest "github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
 	client "github.com/yugabyte/platform-go-client"
@@ -31,10 +30,10 @@ import (
 	"github.com/yugabyte/terraform-provider-yba/internal/utils"
 )
 
-func TestAccUniverse_GCP_UpdatePrimaryNodes(t *testing.T) {
+func TestAccLong_Universe_GCP_UpdatePrimaryNodes(t *testing.T) {
 	var universe client.UniverseResp
 
-	rName := fmt.Sprintf("tf-acctest-gcp-universe-%s", sdkacctest.RandString(12))
+	rName := acctest.RandomName("gcp-universe")
 	resource.ParallelTest(t, resource.TestCase{
 		PreCheck: func() {
 			acctest.TestAccPreCheck(t)
@@ -61,10 +60,10 @@ func TestAccUniverse_GCP_UpdatePrimaryNodes(t *testing.T) {
 	})
 }
 
-func TestAccUniverse_AWS_UpdatePrimaryNodes(t *testing.T) {
+func TestAccLong_Universe_AWS_UpdatePrimaryNodes(t *testing.T) {
 	var universe client.UniverseResp
 
-	rName := fmt.Sprintf("tf-acctest-aws-universe-%s", sdkacctest.RandString(12))
+	rName := acctest.RandomName("aws-universe")
 	resource.ParallelTest(t, resource.TestCase{
 		PreCheck: func() {
 			acctest.TestAccPreCheck(t)
@@ -91,10 +90,10 @@ func TestAccUniverse_AWS_UpdatePrimaryNodes(t *testing.T) {
 	})
 }
 
-func TestAccUniverse_Azure_UpdatePrimaryNodes(t *testing.T) {
+func TestAccLong_Universe_Azure_UpdatePrimaryNodes(t *testing.T) {
 	var universe client.UniverseResp
 
-	rName := fmt.Sprintf("tf-acctest-azu-universe-%s", sdkacctest.RandString(12))
+	rName := acctest.RandomName("azu-universe")
 	resource.ParallelTest(t, resource.TestCase{
 		PreCheck: func() {
 			acctest.TestAccPreCheck(t)
@@ -130,23 +129,38 @@ func testAccCheckDestroyProviderAndUniverse(s *terraform.State) error {
 			cUUID := acctest.APIClient.CustomerID
 			_, _, err := conn.UniverseManagementAPI.GetUniverse(context.Background(), cUUID,
 				r.Primary.ID).Execute()
-			if err == nil || acctest.IsResourceNotFoundError(err) {
+			// A 404 means the universe is gone (destroyed) — that is the success
+			// case. Only a successful GET means it still exists.
+			if err == nil {
 				return errors.New("Universe resource is not destroyed")
 			}
 		case "yba_cloud_provider":
-			time.Sleep(60 * time.Second)
+			// Provider deletion is async; poll until it disappears rather than
+			// sleeping a fixed interval (which can false-fail and leak the
+			// provider if deletion runs long).
 			cUUID := acctest.APIClient.CustomerID
-			res, response, err := conn.CloudProvidersAPI.GetListOfProviders(context.Background(),
-				cUUID).Execute()
-			if err != nil {
-				errMessage := utils.ErrorFromHTTPResponse(response, err, utils.TestEntity,
-					"Universe", "Read - Cloud Provider")
-				return errMessage
-			}
-			for _, p := range res {
-				if *p.Uuid == r.Primary.ID {
+			deadline := time.Now().Add(5 * time.Minute)
+			for {
+				res, response, err := conn.CloudProvidersAPI.GetListOfProviders(
+					context.Background(), cUUID).Execute()
+				if err != nil {
+					return utils.ErrorFromHTTPResponse(response, err, utils.TestEntity,
+						"Universe", "Read - Cloud Provider")
+				}
+				found := false
+				for _, p := range res {
+					if *p.Uuid == r.Primary.ID {
+						found = true
+						break
+					}
+				}
+				if !found {
+					break
+				}
+				if time.Now().After(deadline) {
 					return errors.New("Cloud provider is not destroyed")
 				}
+				time.Sleep(10 * time.Second)
 			}
 		}
 	}
@@ -220,7 +234,6 @@ func universeConfigWithProviderWithNodes(p string, name string, nodes int) strin
     		cluster_type = "PRIMARY"
     		user_intent {
       			universe_name      = "%s"
-      			provider_type      = "%s"
       			provider           = yba_cloud_provider.%s.id
       			region_list        = yba_cloud_provider.%s.regions[*].uuid
       			num_nodes          = %d
@@ -247,7 +260,7 @@ func universeConfigWithProviderWithNodes(p string, name string, nodes int) strin
   		}
   		communication_ports {}
 	}
-`, p, p, p, p, name, p, p, p, nodes, getUniverseInstanceType(p),
+`, p, p, p, p, name, p, p, nodes, getUniverseInstanceType(p),
 		getUniverseStorageType(p), p)
 }
 
@@ -264,7 +277,7 @@ func getUniverseStorageType(p string) string {
 func getUniverseInstanceType(p string) string {
 	switch p {
 	case "gcp":
-		return "n1-standard-1"
+		return "n2-standard-2"
 	case "aws":
 		return "c5.large"
 	}
@@ -278,13 +291,42 @@ func cloudProviderGCPConfig(name string) string {
 		description = "GCP VPC network to run acceptance testing"
 	}
 
+	variable "GCP_REGION" {
+		type        = string
+		description = "GCP region to run acceptance testing"
+	}
+
+	variable "GCP_CREDENTIALS" {
+		type        = string
+		sensitive   = true
+		description = "GCP service account credentials JSON"
+	}
+
+	variable "GCP_PROJECT_ID" {
+		type        = string
+		description = "GCP project ID"
+	}
+
+	variable "GCP_SUBNETWORK" {
+		type        = string
+		description = "GCP shared subnet for universe nodes"
+	}
+
 	resource "yba_cloud_provider" "gcp" {
   		code = "gcp"
-  		dest_vpc_id = var.GCP_VPC_NETWORK
-  		name        = "%s"
+  		name = "%s"
+  		gcp_config_settings {
+  			network      = var.GCP_VPC_NETWORK
+  			use_host_vpc = false
+  			project_id   = var.GCP_PROJECT_ID
+  			credentials  = var.GCP_CREDENTIALS
+  		}
   		regions {
-    		code = "us-west2"
-    		name = "us-west2"
+    		code = var.GCP_REGION
+    		name = var.GCP_REGION
+    		zones {
+    			subnet = var.GCP_SUBNETWORK
+    		}
   		}
   		ssh_port        = 22
   		air_gap_install = false
@@ -356,10 +398,10 @@ func cloudProviderAzureConfig(name string) string {
 `, name)
 }
 
-func TestAccUniverse_AWS_VMImageUpgrade(t *testing.T) {
+func TestAccLong_Universe_AWS_VMImageUpgrade(t *testing.T) {
 	var universeBefore, universeAfter client.UniverseResp
 
-	rName := fmt.Sprintf("tf-acctest-aws-universe-%s", sdkacctest.RandString(12))
+	rName := acctest.RandomName("aws-universe")
 	resource.ParallelTest(t, resource.TestCase{
 		PreCheck: func() {
 			acctest.TestAccPreCheck(t)

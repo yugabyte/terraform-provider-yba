@@ -20,7 +20,6 @@ import (
 	"os"
 	"testing"
 
-	sdkacctest "github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
 
 	"github.com/yugabyte/terraform-provider-yba/internal/acctest"
@@ -28,7 +27,7 @@ import (
 
 // TestAccGCSStorageConfig_Basic tests basic GCS storage config creation with credentials
 func TestAccGCSStorageConfig_Basic(t *testing.T) {
-	rName := fmt.Sprintf("tf-acctest-gcs-%s", sdkacctest.RandString(8))
+	rName := acctest.RandomName("gcs")
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:          func() { testAccPreCheckGCS(t) },
@@ -56,10 +55,10 @@ func TestAccGCSStorageConfig_Basic(t *testing.T) {
 func TestAccGCSStorageConfig_IAM(t *testing.T) {
 	t.Skip("GCP IAM test requires running on a GKE cluster with workload identity")
 
-	rName := fmt.Sprintf("tf-acctest-gcs-iam-%s", sdkacctest.RandString(8))
+	rName := acctest.RandomName("gcs-iam")
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:          func() { acctest.TestAccPreCheck(t) },
+		PreCheck:          func() { testAccPreCheckGCS(t) },
 		ProviderFactories: acctest.ProviderFactories,
 		CheckDestroy:      testAccCheckStorageConfigDestroy,
 		Steps: []resource.TestStep{
@@ -81,8 +80,8 @@ func TestAccGCSStorageConfig_IAM(t *testing.T) {
 
 // TestAccGCSStorageConfig_Update tests updating a GCS storage config
 func TestAccGCSStorageConfig_Update(t *testing.T) {
-	rName := fmt.Sprintf("tf-acctest-gcs-%s", sdkacctest.RandString(8))
-	rNameUpdated := fmt.Sprintf("tf-acctest-gcs-updated-%s", sdkacctest.RandString(8))
+	rName := acctest.RandomName("gcs")
+	rNameUpdated := acctest.RandomName("gcs-updated")
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:          func() { testAccPreCheckGCS(t) },
@@ -121,7 +120,7 @@ func testAccPreCheckGCS(t *testing.T) {
 
 	for _, v := range requiredVars {
 		if os.Getenv(v) == "" {
-			t.Fatalf("%s must be set for GCS storage config acceptance tests", v)
+			t.Skipf("%s not set; skipping GCS storage config acceptance tests", v)
 		}
 	}
 }
@@ -141,7 +140,6 @@ resource "yba_gcs_storage_config" "test" {
   name            = "%s"
   backup_location = var.GCS_BACKUP_LOCATION
   credentials     = var.GCP_CREDENTIALS
-  use_gcp_iam     = false
 }
 `, name)
 }

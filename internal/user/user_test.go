@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"testing"
 
-	sdkacctest "github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
 	client "github.com/yugabyte/platform-go-client"
@@ -33,7 +32,7 @@ import (
 func TestAccUser_Admin(t *testing.T) {
 	var user client.UserWithFeatures
 
-	rName := fmt.Sprintf("tf-acctest-admin-user-%s", sdkacctest.RandString(12))
+	rName := acctest.RandomName("admin-user")
 	resource.ParallelTest(t, resource.TestCase{
 		PreCheck:          func() { acctest.TestAccPreCheck(t) },
 		ProviderFactories: acctest.ProviderFactories,
@@ -52,7 +51,7 @@ func TestAccUser_Admin(t *testing.T) {
 func TestAccUser_ReadOnly(t *testing.T) {
 	var user client.UserWithFeatures
 
-	rName := fmt.Sprintf("tf-acctest-admin-user-%s", sdkacctest.RandString(12))
+	rName := acctest.RandomName("admin-user")
 	resource.ParallelTest(t, resource.TestCase{
 		PreCheck:          func() { acctest.TestAccPreCheck(t) },
 		ProviderFactories: acctest.ProviderFactories,

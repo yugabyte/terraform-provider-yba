@@ -3,7 +3,8 @@
 .DS_Store
 example.tf
 terraform.tfplan
-terraform.tfstate
+*.tfstate
+*.tfstate.*
 bin/
 dist/
 modules-dev/
@@ -14,7 +15,6 @@ website/build
 website/node_modules
 .vagrant/
 *.backup
-./*.tfstate
 .terraform/
 *.log
 *.bak
@@ -26,6 +26,8 @@ website/node_modules
 *.iml
 .cursor/
 .vscode/
+# Claude Code transient session state
+.claude/scheduled_tasks.lock
 .terraform.lock.hcl
 samples/
 
@@ -39,3 +41,13 @@ website/vendor
 *.winfile eol=crlf
 
 local/
+
+# YBA license file used by acctest fixtures (secret)
+*.lic
+
+# GCP service-account key fetched for local acctest runs (secret)
+*-creds.json
+.gcp-creds.json
+
+# Test env written by `make acctest-env` (secret: SA key + API token)
+acctest/env*

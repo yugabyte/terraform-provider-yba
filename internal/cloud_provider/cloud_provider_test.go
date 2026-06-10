@@ -22,7 +22,6 @@ import (
 	"testing"
 	"time"
 
-	sdkacctest "github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
 	client "github.com/yugabyte/platform-go-client"
@@ -34,7 +33,7 @@ import (
 func TestAccCloudProvider_GCP(t *testing.T) {
 	var provider client.Provider
 
-	rName := fmt.Sprintf("tf-acctest-gcp-provider-%s", sdkacctest.RandString(12))
+	rName := acctest.RandomName("gcp-provider")
 	resource.ParallelTest(t, resource.TestCase{
 		PreCheck: func() {
 			acctest.TestAccPreCheck(t)
@@ -56,7 +55,7 @@ func TestAccCloudProvider_GCP(t *testing.T) {
 func TestAccCloudProvider_AWS(t *testing.T) {
 	var provider client.Provider
 
-	rName := fmt.Sprintf("tf-acctest-aws-provider-%s", sdkacctest.RandString(12))
+	rName := acctest.RandomName("aws-provider")
 	resource.ParallelTest(t, resource.TestCase{
 		PreCheck: func() {
 			acctest.TestAccPreCheck(t)
@@ -78,7 +77,7 @@ func TestAccCloudProvider_AWS(t *testing.T) {
 func TestAccCloudProvider_Azure(t *testing.T) {
 	var provider client.Provider
 
-	rName := fmt.Sprintf("tf-acctest-azure-provider-%s", sdkacctest.RandString(12))
+	rName := acctest.RandomName("azure-provider")
 	resource.ParallelTest(t, resource.TestCase{
 		PreCheck: func() {
 			acctest.TestAccPreCheck(t)
@@ -158,13 +157,52 @@ func testAccCheckCloudProviderExists(
 
 func cloudProviderGCPConfig(name string) string {
 	return fmt.Sprintf(`
+	variable "GCP_PROJECT_ID" {
+		type = string
+	}
+
+	variable "GCP_VPC_NETWORK" {
+		type = string
+	}
+
+	variable "GCP_REGION" {
+		type = string
+	}
+
+	variable "GCP_SUBNETWORK" {
+		type = string
+	}
+
+	variable "GCP_IMAGE" {
+		type = string
+	}
+
 	resource "yba_cloud_provider" "gcp" {
  		code = "gcp"
-  		dest_vpc_id = "default"
-  		name        = "%s"
+  		name = "%s"
+  		gcp_config_settings {
+  			project_id   = var.GCP_PROJECT_ID
+  			network      = var.GCP_VPC_NETWORK
+  			create_vpc   = false
+  			use_host_vpc = false
+  		}
+  		image_bundles {
+  			name = "x86"
+  			details {
+  				arch            = "x86_64"
+  				ssh_user        = "ubuntu"
+  				ssh_port        = 22
+  				global_yb_image = var.GCP_IMAGE
+  			}
+  		}
   		regions {
-    		code = "us-west1"
-    		name = "us-west1"
+    		code = var.GCP_REGION
+    		name = var.GCP_REGION
+    		zones {
+      			code   = "${var.GCP_REGION}-a"
+      			name   = "${var.GCP_REGION}-a"
+      			subnet = var.GCP_SUBNETWORK
+    		}
   		}
   		ssh_port        = 22
   		air_gap_install = false
