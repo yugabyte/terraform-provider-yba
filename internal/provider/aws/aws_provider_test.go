@@ -68,7 +68,10 @@ func TestAccAWSProvider_WithIAM(t *testing.T) {
 	resource.ParallelTest(t, resource.TestCase{
 		PreCheck: func() {
 			acctest.TestAccPreCheck(t)
-			// No AWS credential check - using IAM
+			// Uses an IAM instance profile rather than credentials, but the config
+			// still needs the AWS network env (SG/VPC/subnet) — gate on it so the
+			// test skips when AWS isn't configured instead of failing at plan.
+			acctest.TestAccPreCheckAWS(t)
 		},
 		ProviderFactories: acctest.ProviderFactories,
 		CheckDestroy:      testAccCheckDestroyAWSProvider,
