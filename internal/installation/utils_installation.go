@@ -20,7 +20,7 @@ import (
 	"context"
 	"fmt"
 	"net"
-	"os"
+	"strings"
 	"time"
 
 	"github.com/bramvdbogaerde/go-scp"
@@ -91,12 +91,15 @@ func waitForIP(ctx context.Context, user string, ip string, pk string, timeout t
 	return c.(*ssh.Client), nil
 }
 
-func scpFile(ctx context.Context,
+// scpContent copies the given in-memory content to the remote host
+// under the supplied path. It does not create any temporary file on
+// the local filesystem.
+func scpContent(ctx context.Context,
 	sshClient *ssh.Client,
-	localFile string,
+	content string,
 	remoteFile string) error {
-	tflog.Info(ctx, fmt.Sprintf("Copying local file %s to remote host under filename %s", localFile,
-		remoteFile))
+	tflog.Info(ctx, fmt.Sprintf("Copying inline content (%d bytes) to remote host under "+
+		"filename %s", len(content), remoteFile))
 
 	c, err := scp.NewClientBySSH(sshClient)
 	if err != nil {
@@ -110,9 +113,6 @@ func scpFile(ctx context.Context,
 	}
 	defer c.Close()
 
-	f, _ := os.Open(localFile)
-	defer func() { _ = f.Close() }()
-
-	err = c.CopyFromFile(context.Background(), *f, remoteFile, "0666")
-	return err
+	reader := strings.NewReader(content)
+	return c.Copy(context.Background(), reader, remoteFile, "0666", int64(len(content)))
 }
