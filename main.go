@@ -17,9 +17,7 @@
 package main
 
 import (
-	"context"
 	"flag"
-	"log"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/plugin"
 
@@ -45,14 +43,10 @@ func main() {
 	)
 	flag.Parse()
 
-	opts := &plugin.ServeOpts{ProviderFunc: provider.New}
-
-	if debugMode {
-		err := plugin.Debug(context.Background(), "registry.terraform.io/yugabyte/yba", opts)
-		if err != nil {
-			log.Fatal(err.Error())
-		}
-		return
+	opts := &plugin.ServeOpts{
+		ProviderFunc: provider.New,
+		Debug:        debugMode,
+		ProviderAddr: "registry.terraform.io/yugabyte/yba",
 	}
 
 	plugin.Serve(opts)

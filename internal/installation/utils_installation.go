@@ -25,7 +25,7 @@ import (
 
 	"github.com/bramvdbogaerde/go-scp"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/retry"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -66,7 +66,7 @@ func runCommand(ctx context.Context, client *ssh.Client, cmd string) (string, er
 
 func waitForIP(ctx context.Context, user string, ip string, pk string, timeout time.Duration) (
 	*ssh.Client, error) {
-	wait := &resource.StateChangeConf{
+	wait := &retry.StateChangeConf{
 		Delay:   1 * time.Second,
 		Pending: []string{"Waiting"},
 		Target:  []string{"Ready"},
