@@ -21,13 +21,13 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	client "github.com/yugabyte/platform-go-client"
-	"golang.org/x/exp/slices"
 
 	"github.com/yugabyte/terraform-provider-yba/internal/provider/providerutil"
 	"github.com/yugabyte/terraform-provider-yba/internal/utils"

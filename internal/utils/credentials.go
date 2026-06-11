@@ -22,8 +22,6 @@ import (
 	"os"
 	"reflect"
 	"strings"
-
-	awsCreds "github.com/aws/aws-sdk-go/aws/credentials"
 )
 
 // GCPCredentials is a struct to hold values retrieved by parsing the GCE credentials json file
@@ -145,15 +143,26 @@ func GcpGetCredentialsAsMap() (map[string]interface{}, error) {
 	return gcsCredsMap, nil
 }
 
+// AWSCredentials holds the AWS access key pair read from the environment.
+type AWSCredentials struct {
+	AccessKeyID     string
+	SecretAccessKey string
+}
+
 // AwsCredentialsFromEnv retrives values of "AWS_ACCESS_KEY_ID" and "AWS_SECRET_ACCESS_KEY" from
 // env variables
-func AwsCredentialsFromEnv() (awsCreds.Value, error) {
-
-	awsCredentials, err := awsCreds.NewEnvCredentials().Get()
-	if err != nil {
-		return awsCreds.Value{}, fmt.Errorf("Error getting AWS env credentials: %w", err)
+func AwsCredentialsFromEnv() (AWSCredentials, error) {
+	accessKeyID, accessKeyPresent := os.LookupEnv(AWSAccessKeyEnv)
+	secretAccessKey, secretKeyPresent := os.LookupEnv(AWSSecretAccessKeyEnv)
+	if !accessKeyPresent || !secretKeyPresent {
+		return AWSCredentials{}, fmt.Errorf(
+			"Error getting AWS env credentials: %s and %s must both be set",
+			AWSAccessKeyEnv, AWSSecretAccessKeyEnv)
 	}
-	return awsCredentials, nil
+	return AWSCredentials{
+		AccessKeyID:     accessKeyID,
+		SecretAccessKey: secretAccessKey,
+	}, nil
 }
 
 // AzureStorageCredentialsFromEnv retrives value of "AZURE_STORAGE_SAS_TOKEN" from env variables

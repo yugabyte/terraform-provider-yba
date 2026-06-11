@@ -203,17 +203,17 @@ func testAccCheckNumNodes(universe *client.UniverseResp, expected int32) resourc
 }
 
 func universeGcpConfigWithNodes(name string, nodes int) string {
-	return cloudProviderGCPConfig(fmt.Sprintf(name+"-provider")) +
+	return cloudProviderGCPConfig(name+"-provider") +
 		universeConfigWithProviderWithNodes("gcp", name, nodes)
 }
 
 func universeAwsConfigWithNodes(name string, nodes int) string {
-	return cloudProviderAWSConfig(fmt.Sprintf(name+"-provider")) +
+	return cloudProviderAWSConfig(name+"-provider") +
 		universeConfigWithProviderWithNodes("aws", name, nodes)
 }
 
 func universeAzureConfigWithNodes(name string, nodes int) string {
-	return cloudProviderAzureConfig(fmt.Sprintf(name+"-provider")) +
+	return cloudProviderAzureConfig(name+"-provider") +
 		universeConfigWithProviderWithNodes("azu", name, nodes)
 }
 
@@ -465,7 +465,7 @@ func testAccCheckImageBundleUpdated(before *client.UniverseResp,
 }
 
 func universeAwsConfigWithImageBundle(name string, imageBundleUUID string) string {
-	return cloudProviderAWSConfigForVMImageUpgrade(fmt.Sprintf(name+"-provider")) +
+	return cloudProviderAWSConfigForVMImageUpgrade(name+"-provider") +
 		universeConfigWithProviderWithImageBundle("aws", name, imageBundleUUID)
 }
 
