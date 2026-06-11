@@ -31,7 +31,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/retry"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	client "github.com/yugabyte/platform-go-client"
 )
@@ -180,7 +180,7 @@ const TaskConflictRetryDelay = 10 * time.Second
 // WaitForTask waits for State change for a YBA task
 func WaitForTask(ctx context.Context, tUUID string, cUUID string, c *client.APIClient,
 	timeout time.Duration) error {
-	wait := &resource.StateChangeConf{
+	wait := &retry.StateChangeConf{
 		Delay:   1 * time.Second,
 		Pending: PendingTaskStates,
 		Target:  SuccessTaskStates,
@@ -767,7 +767,7 @@ func IsUniverseTaskConflict(response *http.Response, err error) bool {
 
 // RetryOnUniverseTaskConflict calls fn repeatedly whenever YBA returns a 409 Conflict
 // indicating that the requested task cannot be queued because another universe task is
-// already running. It delegates to resource.RetryContext so context cancellation,
+// already running. It delegates to retry.RetryContext so context cancellation,
 // exponential back-off, and overall timeout are all handled by the SDK.
 //
 // fn must capture its result variables via closure so the caller can inspect them after
@@ -791,7 +791,7 @@ func RetryOnUniverseTaskConflict(
 	fn func() (*http.Response, error),
 ) (*http.Response, error) {
 	var lastResponse *http.Response
-	retryErr := resource.RetryContext(ctx, timeout, func() *resource.RetryError {
+	retryErr := retry.RetryContext(ctx, timeout, func() *retry.RetryError {
 		resp, err := fn()
 		if resp != nil {
 			// platform-go-client SDK already drained and closed the body inside
@@ -806,9 +806,9 @@ func RetryOnUniverseTaskConflict(
 					"%s: universe task conflict (409), retrying in %s",
 					label, TaskConflictRetryDelay))
 				time.Sleep(TaskConflictRetryDelay)
-				return resource.RetryableError(err)
+				return retry.RetryableError(err)
 			}
-			return resource.NonRetryableError(err)
+			return retry.NonRetryableError(err)
 		}
 		return nil
 	})
@@ -871,7 +871,7 @@ func DispatchAndWait(
 	var taskUUID string
 	var lastResponse *http.Response
 
-	retryErr := resource.RetryContext(ctx, timeout, func() *resource.RetryError {
+	retryErr := retry.RetryContext(ctx, timeout, func() *retry.RetryError {
 		tUUID, resp, err := fn()
 		if resp != nil {
 			// platform-go-client SDK already drained and closed the body inside
@@ -886,9 +886,9 @@ func DispatchAndWait(
 					"%s: universe task conflict (409), retrying in %s",
 					label, TaskConflictRetryDelay))
 				time.Sleep(TaskConflictRetryDelay)
-				return resource.RetryableError(err)
+				return retry.RetryableError(err)
 			}
-			return resource.NonRetryableError(err)
+			return retry.NonRetryableError(err)
 		}
 		taskUUID = tUUID
 		return nil

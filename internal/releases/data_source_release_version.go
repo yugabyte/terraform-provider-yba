@@ -19,12 +19,12 @@ package releases
 
 import (
 	"context"
+	"slices"
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
-	"golang.org/x/exp/slices"
 
 	"github.com/yugabyte/terraform-provider-yba/internal/api"
 	"github.com/yugabyte/terraform-provider-yba/internal/utils"
@@ -101,30 +101,18 @@ func dataSourceReleaseVersionRead(
 			versionsPreview = append(versionsPreview, v)
 		}
 	}
-	// the function as described in the documentation is the less function,
-	// but for the purpose of getting the latest release, it's described as
-	// a function returning the greater of the 2 versions
-	slices.SortStableFunc(versionsStable, func(x, y string) bool {
+	// SortStableFunc expects a comparison function (negative when x should sort
+	// before y). To get the latest release first we sort descending, so we
+	// return the negated version comparison and treat errors as "equal".
+	sortDescending := func(x, y string) int {
 		compare, err := utils.CompareYbVersions(x, y)
 		if err != nil {
-			return false
+			return 0
 		}
-		if compare == 0 || compare == -1 {
-			return false
-		}
-		return true
-	})
-
-	slices.SortStableFunc(versionsPreview, func(x, y string) bool {
-		compare, err := utils.CompareYbVersions(x, y)
-		if err != nil {
-			return false
-		}
-		if compare == 0 || compare == -1 {
-			return false
-		}
-		return true
-	})
+		return -compare
+	}
+	slices.SortStableFunc(versionsStable, sortDescending)
+	slices.SortStableFunc(versionsPreview, sortDescending)
 
 	var versions []string
 	releaseTrack := d.Get("track").(string)
