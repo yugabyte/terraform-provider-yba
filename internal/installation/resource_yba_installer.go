@@ -22,6 +22,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
@@ -50,6 +51,17 @@ type installerFileSpec struct {
 	// remotePath is where the contents are written on the remote host.
 	remotePath string
 }
+
+const (
+	// GADownloadURL is the base URL for GA release versions (e.g. 2024.x, 2025.x).
+	GADownloadURL = "https://downloads.yugabyte.com/releases"
+	// PreReleaseDownloadURL is the base URL for pre-release/CI builds (e.g. 2.25.x).
+	PreReleaseDownloadURL = "https://releases.yugabyte.com"
+)
+
+// gaVersionRegex matches GA release version strings, which begin with a 4-digit
+// year followed by a dot (e.g. "2024.1.0.0", "2025.2.3.0-b50").
+var gaVersionRegex = regexp.MustCompile(`^20\d{2}\.`)
 
 var (
 	tlsCertificateSpec = installerFileSpec{
@@ -565,8 +577,8 @@ func resourceYBAInstallerUpdate(
 				"updating license")
 			return diag.FromErr(err)
 		}
-		folder, _, _ := getYBAInstallerPackageString(oldVersion, hostOS, hostArch)
-		commands = append(commands, getAddLicenseCommands(folder))
+		folder, _, _ := getYBAInstallerPackageNames(oldVersion, hostOS, hostArch)
+		commands = append(commands, getAddLicenseCommand(oldVersion, folder))
 	}
 
 	reconfigureRequested := d.Get("reconfigure").(bool)
@@ -584,7 +596,7 @@ func resourceYBAInstallerUpdate(
 				"reconfiguration")
 			return diag.FromErr(err)
 		}
-		commands = append(commands, getReconfigureCommands()...)
+		commands = append(commands, getReconfigureCommands(oldVersion)...)
 	}
 
 	if d.HasChange("yba_version") {
@@ -625,7 +637,8 @@ func resourceYBAInstallerDelete(
 	}
 	defer func() { _ = sshClient.Close() }()
 
-	for _, cmd := range getDeleteCommands() {
+	ybaVersion := d.Get("yba_version").(string)
+	for _, cmd := range getDeleteCommands(ybaVersion) {
 		m, err := runCommand(ctx, sshClient, cmd)
 		if err != nil {
 			tflog.Error(ctx, m)
@@ -636,85 +649,105 @@ func resourceYBAInstallerDelete(
 	return diags
 }
 
-func getYBAInstallerPackageString(version, os, arch string) (folder, bundle, v string) {
+// IsGAVersion returns true for GA release versions (e.g. 2024.x, 2025.x).
+// Pre-release / CI builds use the legacy 2.x scheme (e.g. 2.25.0.0).
+func IsGAVersion(version string) bool {
+	return gaVersionRegex.MatchString(version)
+}
+
+// getYBAInstallerPackageNames derives the package naming pieces for a version:
+// the extracted folder name, the tarball base name, and the build-stripped
+// version used in GA download paths.
+func getYBAInstallerPackageNames(version, os, arch string) (folder, bundle, v string) {
 	folder = fmt.Sprintf("yba_installer_full-%s", version)
+	// Pre-release bundles are named "centos" rather than "linux".
+	if !IsGAVersion(version) && os == "linux" {
+		os = "centos"
+	}
 	bundle = fmt.Sprintf("%s-%s-%s", folder, os, arch)
-	vParts := strings.Split(version, "-")
-	// Get the version without build number to access remote folder for releases
-	v = vParts[0]
+	// Strip the build number ("-bNNN") to get the remote folder for GA releases.
+	v = strings.Split(version, "-")[0]
 	return folder, bundle, v
 }
 
-func getYBAInstallerBundle(version, os, arch string) (string, []string) {
-	getBundle := make([]string, 0)
-	folder, bundle, v := getYBAInstallerPackageString(version, os, arch)
-	s := fmt.Sprintf("curl -O https://downloads.yugabyte.com/releases/%s/%s.tar.gz", v, bundle)
-	getBundle = append(getBundle, s)
-	s = fmt.Sprintf("tar -xf %s.tar.gz", bundle)
-	getBundle = append(getBundle, s)
-	return folder, getBundle
+// getYBAInstallerDownloadURL returns the tarball URL for the given version, OS and
+// arch. GA versions come from downloads.yugabyte.com under the build-stripped
+// version path. Pre-release builds come from releases.yugabyte.com under the full
+// version including the build number.
+func getYBAInstallerDownloadURL(version, os, arch string) string {
+	_, bundle, v := getYBAInstallerPackageNames(version, os, arch)
+	if IsGAVersion(version) {
+		return fmt.Sprintf("%s/%s/%s.tar.gz", GADownloadURL, v, bundle)
+	}
+	return fmt.Sprintf("%s/%s/%s.tar.gz", PreReleaseDownloadURL, version, bundle)
+}
+
+// getBundleDownloadCommands returns the extracted folder name and the commands
+// that download and unpack the YBA Installer tarball.
+func getBundleDownloadCommands(version, os, arch string) (string, []string) {
+	folder, bundle, _ := getYBAInstallerPackageNames(version, os, arch)
+	commands := []string{
+		fmt.Sprintf("curl -O %s", getYBAInstallerDownloadURL(version, os, arch)),
+		fmt.Sprintf("tar -xf %s.tar.gz", bundle),
+	}
+	return folder, commands
+}
+
+// ybaCtlSudo returns the shell prefix for invoking yba-ctl. Pre-release builds add
+// YBA_MODE=dev to bypass the strict version checks that reject non-GA versions.
+func ybaCtlSudo(version string) string {
+	if IsGAVersion(version) {
+		return "sudo"
+	}
+	return "sudo YBA_MODE=dev"
+}
+
+// getAddLicenseCommand returns the yba-ctl invocation that registers the license file.
+func getAddLicenseCommand(version, folder string) string {
+	return fmt.Sprintf("%s ./%s/yba-ctl license add -l /tmp/license.lic",
+		ybaCtlSudo(version), folder)
 }
 
 func getInstallCommands(
 	version, os, arch string,
 	config bool, skipPreflightCheckList *[]string) []string {
-	var s string
-	folder, installationCommands := getYBAInstallerBundle(version, os, arch)
-	s = getAddLicenseCommands(folder)
-	installationCommands = append(installationCommands, s)
+	folder, installationCommands := getBundleDownloadCommands(version, os, arch)
+	installationCommands = append(installationCommands, getAddLicenseCommand(version, folder))
 	if config {
-		k := "sudo mv /tmp/settings.yml /opt/yba-ctl/yba-ctl.yml"
-		installationCommands = append(installationCommands, k)
+		installationCommands = append(installationCommands,
+			"sudo mv /tmp/settings.yml /opt/yba-ctl/yba-ctl.yml")
 	}
-	s = fmt.Sprintf("sudo ./%s/yba-ctl install -f", folder)
+	s := fmt.Sprintf("%s ./%s/yba-ctl install -f", ybaCtlSudo(version), folder)
 	if skipPreflightCheckList != nil && len(*skipPreflightCheckList) != 0 {
-		skipPreflight := getSkipPreflightChecksSubCommand(*skipPreflightCheckList)
-		s = fmt.Sprintf("%s -s %s", s, skipPreflight)
+		s = fmt.Sprintf("%s -s %s", s, strings.Join(*skipPreflightCheckList, ","))
 	}
 	installationCommands = append(installationCommands, s)
 	return installationCommands
 }
 
-func getReconfigureCommands() []string {
+func getReconfigureCommands(version string) []string {
 	var reconfigureCommands = []string{"sudo mv /tmp/settings.yml /opt/yba-ctl/yba-ctl.yml"}
-	s := "sudo /opt/yba-ctl/yba-ctl reconfigure -f"
-	reconfigureCommands = append(reconfigureCommands, s)
+	reconfigureCommands = append(reconfigureCommands,
+		fmt.Sprintf("%s /opt/yba-ctl/yba-ctl reconfigure -f", ybaCtlSudo(version)))
 	return reconfigureCommands
 }
 
 func getUpgradeCommands(version, os, arch string, skipPreflightCheckList *[]string) []string {
-	var s string
-	folder, updateCommands := getYBAInstallerBundle(version, os, arch)
-	s = fmt.Sprintf("sudo ./%s/yba-ctl upgrade -f", folder)
+	folder, updateCommands := getBundleDownloadCommands(version, os, arch)
+	s := fmt.Sprintf("%s ./%s/yba-ctl upgrade -f", ybaCtlSudo(version), folder)
 	if skipPreflightCheckList != nil && len(*skipPreflightCheckList) != 0 {
-		skipPreflight := getSkipPreflightChecksSubCommand(*skipPreflightCheckList)
-		s = fmt.Sprintf("%s -s %s", s, skipPreflight)
+		s = fmt.Sprintf("%s -s %s", s, strings.Join(*skipPreflightCheckList, ","))
 	}
 	updateCommands = append(updateCommands, s)
 	return updateCommands
 }
 
-func getAddLicenseCommands(folder string) string {
-	return fmt.Sprintf("sudo ./%s/yba-ctl license add -l /tmp/license.lic", folder)
-}
-
-func getDeleteCommands() []string {
-	var deleteCommands = []string{"sudo /opt/yba-ctl/yba-ctl clean"}
-	s := "sudo rm -rf /opt/yugabyte"
-	deleteCommands = append(deleteCommands, s)
-	s = "sudo rm /tmp/server.crt /tmp/server.key /tmp/license.lic /tmp/settings.yml"
-	deleteCommands = append(deleteCommands, s)
-	return deleteCommands
-}
-
-func getSkipPreflightChecksSubCommand(commands []string) string {
-	var s string
-	for i, v := range commands {
-		if i == 0 {
-			s = v
-		} else {
-			s = fmt.Sprintf("%s,%s", s, v)
-		}
+func getDeleteCommands(version string) []string {
+	var deleteCommands = []string{
+		fmt.Sprintf("%s /opt/yba-ctl/yba-ctl clean", ybaCtlSudo(version)),
 	}
-	return s
+	deleteCommands = append(deleteCommands, "sudo rm -rf /opt/yugabyte")
+	deleteCommands = append(deleteCommands,
+		"sudo rm /tmp/server.crt /tmp/server.key /tmp/license.lic /tmp/settings.yml")
+	return deleteCommands
 }
