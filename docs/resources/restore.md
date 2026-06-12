@@ -69,6 +69,7 @@ For more details, see the [YugabyteDB Anywhere Restore Universe Data](https://do
 - `id` (String) The ID of this resource.
 
 <a id="nestedblock--backup_storage_info"></a>
+
 ### Nested Schema for `backup_storage_info`
 
 Required:
@@ -89,8 +90,8 @@ Optional:
 - `use_roles` (Boolean) Restore global YSQL roles. Allowed for PGSQL_TABLE_TYPE (YSQL) backups only.
 - `use_tablespaces` (Boolean) Restore tablespace information. Allowed for PGSQL_TABLE_TYPE (YSQL) backups only.
 
-
 <a id="nestedblock--timeouts"></a>
+
 ### Nested Schema for `timeouts`
 
 Optional:

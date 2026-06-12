@@ -51,6 +51,7 @@ data "yba_universe_schema" "ysql_tables" {
 - `ysql_database_names` (List of String) List of YSQL database names only.
 
 <a id="nestedatt--namespaces"></a>
+
 ### Nested Schema for `namespaces`
 
 Read-Only:
@@ -59,8 +60,8 @@ Read-Only:
 - `namespace_uuid` (String)
 - `table_type` (String)
 
-
 <a id="nestedatt--tables"></a>
+
 ### Nested Schema for `tables`
 
 Read-Only:

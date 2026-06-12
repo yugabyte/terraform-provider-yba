@@ -13,6 +13,7 @@ For information on adding node instances to on-premises providers, refer to [Add
 ~> **Warning:** The YugabyteDB Anywhere Terraform Provider offers a standalone On-Premises Node Instance (*yba_onprem_node_instance*) resource and also lets you declare node instances inline in the On-Premises Provider (*yba_onprem_provider*) resource. You cannot mix the two approaches for the same provider -- doing so causes a conflict and can remove the nodes the provider manages.
 
 ~> **Warning:** YBA automatically deletes on-premises nodes when you delete their provider. After the provider is gone, the *yba_onprem_node_instance* resource raises the following error:
+
 ```
 Error: Resource: Onprem Node Instance, Operation: Get - 400 Bad Request: Invalid node UUID: <node-uuid>
 ```
@@ -66,6 +67,7 @@ resource "yba_onprem_node_instance" "onprem_by_name" {
 - `zone_uuid` (String) Zone UUID of node.
 
 <a id="nestedblock--node_configs"></a>
+
 ### Nested Schema for `node_configs`
 
 Required:
@@ -73,8 +75,8 @@ Required:
 - `type` (String) Type of node configurations. For example: SSH_PORT("SSH port is open"), NODE_AGENT_ACCESS("Reachability of node agent server")
 - `value` (String) Value of node configuration.
 
-
 <a id="nestedblock--timeouts"></a>
+
 ### Nested Schema for `timeouts`
 
 Optional:

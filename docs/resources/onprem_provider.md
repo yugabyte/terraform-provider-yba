@@ -104,10 +104,10 @@ resource "yba_onprem_provider" "multi_region" {
 }
 ```
 
-
 To manually provision the nodes that will host the universe, set *details.skip_provisioning* to *true* and do one of the following:
 
 - Run the pre-provisioning script. The provider output exposes the *provision_instance_script* field under *details*. Follow the steps in [Manual setup with script](https://docs.yugabyte.com/stable/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises-script/) using the following command format:
+
   ```sh
   <Output of yba_onprem_provider.onprem.details[0].provision_instance_script> --ip <node instance ip> --mount_points <mount points>
   ```
@@ -154,6 +154,7 @@ To manually provision the nodes that will host the universe, set *details.skip_p
 - `version` (Number) Version of the provider.
 
 <a id="nestedblock--regions"></a>
+
 ### Nested Schema for `regions`
 
 Required:
@@ -172,6 +173,7 @@ Read-Only:
 - `uuid` (String) Region UUID.
 
 <a id="nestedblock--regions--zones"></a>
+
 ### Nested Schema for `regions.zones`
 
 Required:
@@ -183,9 +185,8 @@ Read-Only:
 - `name` (String) Zone name.
 - `uuid` (String) Zone UUID.
 
-
-
 <a id="nestedblock--access_keys"></a>
+
 ### Nested Schema for `access_keys`
 
 Optional:
@@ -199,6 +200,7 @@ Read-Only:
 - `expiration_date` (String)
 
 <a id="nestedblock--access_keys--key_info"></a>
+
 ### Nested Schema for `access_keys.key_info`
 
 Optional:
@@ -218,8 +220,8 @@ Read-Only:
 - `ssh_port` (Number)
 - `ssh_user` (String)
 
-
 <a id="nestedatt--access_keys--access_key_id"></a>
+
 ### Nested Schema for `access_keys.access_key_id`
 
 Read-Only:
@@ -227,9 +229,8 @@ Read-Only:
 - `keycode` (String)
 - `provider_uuid` (String)
 
-
-
 <a id="nestedblock--details"></a>
+
 ### Nested Schema for `details`
 
 Optional:
@@ -249,8 +250,8 @@ Read-Only:
 
 - `provision_instance_script` (String)
 
-
 <a id="nestedblock--instance_types"></a>
+
 ### Nested Schema for `instance_types`
 
 Required:
@@ -265,8 +266,8 @@ Optional:
 - `volume_size_gb` (Number) Volume size in GB. Default is 100.
 - `volume_type` (String) Volume type (e.g., EBS, SSD, HDD, NVME). Default is SSD.
 
-
 <a id="nestedblock--node_instances"></a>
+
 ### Nested Schema for `node_instances`
 
 Required:
@@ -280,8 +281,8 @@ Read-Only:
 
 - `in_use` (Boolean) Whether the node is currently in use.
 
-
 <a id="nestedblock--timeouts"></a>
+
 ### Nested Schema for `timeouts`
 
 Optional:

@@ -142,6 +142,7 @@ documented in the [Universe Edit Actions](../guides/universe-edit-actions.md) gu
 - `node_details_set` (List of Object) (see [below for nested schema](#nestedatt--node_details_set))
 
 <a id="nestedblock--clusters"></a>
+
 ### Nested Schema for `clusters`
 
 Required:
@@ -158,6 +159,7 @@ Read-Only:
 - `uuid` (String) Cluster UUID.
 
 <a id="nestedblock--clusters--user_intent"></a>
+
 ### Nested Schema for `clusters.user_intent`
 
 Required:
@@ -177,11 +179,12 @@ Optional:
 - `assign_public_ip` (Boolean) Assign Public IP to universe nodes. True by default.
 - `assign_static_ip` (Boolean) Flag indicating whether a static IP should be assigned.
 - `aws_arn_string` (String) IP ARN String.
-- `dedicated_masters` (Block List, Max: 1) When present, master processes run on dedicated nodes separate from TServer processes. Omitting this block runs masters co-located with TServers. Only valid on the PRIMARY cluster; setting it on a Read Replica (ASYNC) cluster is an error. Once set, dedicated mode cannot be toggled off after universe creation. 
+- `dedicated_masters` (Block List, Max: 1) When present, master processes run on dedicated nodes separate from TServer processes. Omitting this block runs masters co-located with TServers. Only valid on the PRIMARY cluster; setting it on a Read Replica (ASYNC) cluster is an error. Once set, dedicated mode cannot be toggled off after universe creation.
 
 Inheritance and ownership rules:
-  - An empty block (dedicated_masters {}) runs masters on dedicated nodes using the same instance_type and device_info as the TServer nodes. All master configuration tracks user_intent automatically.
-  - Once instance_type or device_info is explicitly set inside this block, those fields become the sole source of truth for master configuration. Subsequent changes to the TServer fields in user_intent do NOT propagate to the master block automatically; the operator is responsible for keeping them in sync. (see [below for nested schema](#nestedblock--clusters--user_intent--dedicated_masters))
+
+- An empty block (dedicated_masters {}) runs masters on dedicated nodes using the same instance_type and device_info as the TServer nodes. All master configuration tracks user_intent automatically.
+- Once instance_type or device_info is explicitly set inside this block, those fields become the sole source of truth for master configuration. Subsequent changes to the TServer fields in user_intent do NOT propagate to the master block automatically; the operator is responsible for keeping them in sync. (see [below for nested schema](#nestedblock--clusters--user_intent--dedicated_masters))
 - `enable_client_to_node_encrypt` (Boolean) Enable Encryption in Transit - Client to Node encryption. True by default.
 - `enable_ipv6` (Boolean) Enable IPv6.
 - `enable_node_to_node_encrypt` (Boolean) Enable Encryption in Transit - Node to Node encryption. True by default.
@@ -207,6 +210,7 @@ Read-Only:
 - `provider_type` (String) Cloud provider type. Derived from the referenced provider UUID via the provider API.
 
 <a id="nestedblock--clusters--user_intent--device_info"></a>
+
 ### Nested Schema for `clusters.user_intent.device_info`
 
 Required:
@@ -221,8 +225,8 @@ Optional:
 - `storage_type` (String) Storage type of volume. AWS: IO1, IO2, GP2, GP3. GCP: Scratch, Persistent, Hyperdisk_Balanced, Hyperdisk_Extreme. Azure: StandardSSD_LRS, Premium_LRS, PremiumV2_LRS, UltraSSD_LRS. Not applicable for on-prem providers.
 - `throughput` (Number) Disk throughput in MB/s. Required for storage types that support throughput provisioning: GP3, UltraSSD_LRS, PremiumV2_LRS, Hyperdisk_Balanced.
 
-
 <a id="nestedblock--clusters--user_intent--dedicated_masters"></a>
+
 ### Nested Schema for `clusters.user_intent.dedicated_masters`
 
 Optional:
@@ -231,6 +235,7 @@ Optional:
 - `instance_type` (String) Instance type for dedicated master nodes. When omitted (empty string), falls back to user_intent.instance_type and continues to track it on every apply. Once set to a non-empty value this field is owned by this block; changes to user_intent.instance_type no longer affect the master instance type.
 
 <a id="nestedblock--clusters--user_intent--dedicated_masters--device_info"></a>
+
 ### Nested Schema for `clusters.user_intent.dedicated_masters.device_info`
 
 Optional:
@@ -242,9 +247,8 @@ Optional:
 - `throughput` (Number) Disk throughput in MB/s for master nodes. Required for storage types that support throughput provisioning: GP3, UltraSSD_LRS, PremiumV2_LRS, Hyperdisk_Balanced. Inherited from user_intent.device_info on the first apply when unset. Once this device_info block is present in config, this field is no longer updated automatically when user_intent.device_info.throughput changes.
 - `volume_size` (Number) Volume size in GB for master nodes. Inherited from user_intent.device_info on the first apply when unset. Once this device_info block is present in config, this field is no longer updated automatically when user_intent.device_info.volume_size changes.
 
-
-
 <a id="nestedblock--clusters--user_intent--specific_gflags"></a>
+
 ### Nested Schema for `clusters.user_intent.specific_gflags`
 
 Optional:
@@ -255,6 +259,7 @@ Optional:
 - `per_process` (Block List, Max: 1) Per-process GFlags applied to every AZ in this cluster. (see [below for nested schema](#nestedblock--clusters--user_intent--specific_gflags--per_process))
 
 <a id="nestedblock--clusters--user_intent--specific_gflags--per_az"></a>
+
 ### Nested Schema for `clusters.user_intent.specific_gflags.per_az`
 
 Required:
@@ -266,8 +271,8 @@ Optional:
 - `master_gflags` (Map of String) Master GFlags for nodes in this AZ.
 - `tserver_gflags` (Map of String) TServer GFlags for nodes in this AZ.
 
-
 <a id="nestedblock--clusters--user_intent--specific_gflags--per_process"></a>
+
 ### Nested Schema for `clusters.user_intent.specific_gflags.per_process`
 
 Optional:
@@ -275,10 +280,8 @@ Optional:
 - `master_gflags` (Map of String) Master process GFlags for this cluster. Invalid on a Read Replica (ASYNC) cluster -- ASYNC clusters have no master processes.
 - `tserver_gflags` (Map of String) TServer process GFlags for this cluster.
 
-
-
-
 <a id="nestedblock--clusters--cloud_list"></a>
+
 ### Nested Schema for `clusters.cloud_list`
 
 Required:
@@ -294,6 +297,7 @@ Read-Only:
 - `code` (String) Cloud provider code (e.g. aws, gcp, azu, onprem). Derived from the provider UUID.
 
 <a id="nestedblock--clusters--cloud_list--region_list"></a>
+
 ### Nested Schema for `clusters.cloud_list.region_list`
 
 Required:
@@ -310,6 +314,7 @@ Read-Only:
 - `uuid` (String) Region UUID.
 
 <a id="nestedblock--clusters--cloud_list--region_list--az_list"></a>
+
 ### Nested Schema for `clusters.cloud_list.region_list.az_list`
 
 Required:
@@ -329,11 +334,8 @@ Read-Only:
 - `subnet` (String) Primary subnet ID for this zone, inherited from the provider.
 - `uuid` (String) Availability zone UUID.
 
-
-
-
-
 <a id="nestedblock--communication_ports"></a>
+
 ### Nested Schema for `communication_ports`
 
 Optional:
@@ -351,8 +353,8 @@ Optional:
 - `ysql_server_http_port` (Number) YSQL server HTTP port. Cannot be changed after universe creation.
 - `ysql_server_rpc_port` (Number) YSQL server RPC port. Cannot be changed after universe creation.
 
-
 <a id="nestedblock--db_version_upgrade_options"></a>
+
 ### Nested Schema for `db_version_upgrade_options`
 
 Optional:
@@ -360,8 +362,8 @@ Optional:
 - `finalize` (Boolean) Whether to finalize the DB version upgrade. When false (default), the upgrade pauses at PreFinalize state for a monitoring phase; set to true and re-apply to commit when ready. When true, FinalizeUpgrade is called automatically after the upgrade task completes.
 - `rollback` (Boolean) Set to true to roll back a pending DB version upgrade when db_version_upgrade_state is PreFinalize. Mutually exclusive with finalize = true. After rollback the universe returns to Ready state running the previous DB version. The provider automatically resets this field to false in state after a successful rollback.
 
-
 <a id="nestedblock--delete_options"></a>
+
 ### Nested Schema for `delete_options`
 
 Optional:
@@ -370,8 +372,8 @@ Optional:
 - `delete_certs` (Boolean) Flag indicating whether the certificates should be deleted with the universe. False by default.
 - `force_delete` (Boolean) Force delete universe with errors. False by default.
 
-
 <a id="nestedblock--full_move"></a>
+
 ### Nested Schema for `full_move`
 
 Optional:
@@ -379,8 +381,8 @@ Optional:
 - `allow` (Boolean) Explicit acknowledgment required to perform operations that trigger a FULL MOVE on the Primary or Read Replica Cluster: volume_size decrease (any instance type); num_volumes change with same instance type; storage_type change (any instance type). False by default; set to true when the full-move implications have been reviewed and accepted. Plan-time validation rejects full-move-triggering edits when allow = false, and apply-time pre-flight aborts when YBA returns FULL_MOVE as the only valid update option.
 - `force` (Boolean) When true, perform a FULL MOVE even when YBA reports that smart resize (in-place rolling update) is also available for the planned edit. Intended for specific one-off operations where the operator wants the stronger guarantees of a full rebuild (fresh nodes, no lingering state) over the speed and lower cost of smart resize. Requires allow = true; setting force = true with allow = false is rejected at plan time. Has no effect when YBA does not return FULL_MOVE as an option for the planned edit. Recommended usage: revert to force = false after the targeted operation completes. Leaving force = true in configuration routes every subsequent eligible edit through FULL MOVE, which requires 2x node capacity during migration and takes significantly longer than smart resize.
 
-
 <a id="nestedblock--node_restart_settings"></a>
+
 ### Nested Schema for `node_restart_settings`
 
 Optional:
@@ -389,8 +391,8 @@ Optional:
 - `sleep_after_tserver_restart_millis` (Number) Milliseconds to sleep after each TServer node restart. Must be 0 or a positive integer. Defaults to 180000 (3 minutes), matching the YugabyteDB Anywhere platform default.
 - `upgrade_option` (String) Node restart strategy applied to all upgrade operations. Allowed values: Rolling, Non-Rolling, Non-Restart. Defaults to Rolling (YugabyteDB Anywhere platform default). TLS toggle always uses Non-Rolling; ResizeNode and VMImageUpgrade always use Rolling, regardless of this setting.
 
-
 <a id="nestedblock--timeouts"></a>
+
 ### Nested Schema for `timeouts`
 
 Optional:
@@ -399,8 +401,8 @@ Optional:
 - `delete` (String)
 - `update` (String)
 
-
 <a id="nestedatt--node_details_set"></a>
+
 ### Nested Schema for `node_details_set`
 
 Read-Only:
@@ -442,6 +444,7 @@ Read-Only:
 - `ysql_server_rpc_port` (Number)
 
 <a id="nestedobjatt--node_details_set--cloud_info"></a>
+
 ### Nested Schema for `node_details_set.cloud_info`
 
 Read-Only:

@@ -237,6 +237,7 @@ The details for configuration are available in the [YugabyteDB Anywhere Configur
 - `vpc_type` (String) VPC type: EXISTING or NEW. Read-only.
 
 <a id="nestedblock--regions"></a>
+
 ### Nested Schema for `regions`
 
 Required:
@@ -257,6 +258,7 @@ Read-Only:
 - `uuid` (String) Region UUID.
 
 <a id="nestedblock--regions--zones"></a>
+
 ### Nested Schema for `regions.zones`
 
 Required:
@@ -273,9 +275,8 @@ Read-Only:
 - `name` (String) Azure availability zone name.
 - `uuid` (String) Zone UUID.
 
-
-
 <a id="nestedblock--image_bundles"></a>
+
 ### Nested Schema for `image_bundles`
 
 Required:
@@ -292,6 +293,7 @@ Read-Only:
 - `uuid` (String) Image bundle UUID.
 
 <a id="nestedblock--image_bundles--details"></a>
+
 ### Nested Schema for `image_bundles.details`
 
 Required:
@@ -303,9 +305,8 @@ Optional:
 - `global_yb_image` (String) Global YB image for the bundle.
 - `ssh_port` (Number) SSH port for the image. Default is 22.
 
-
-
 <a id="nestedblock--timeouts"></a>
+
 ### Nested Schema for `timeouts`
 
 Optional:
@@ -314,8 +315,8 @@ Optional:
 - `delete` (String)
 - `update` (String)
 
-
 <a id="nestedblock--yba_managed_image_bundles"></a>
+
 ### Nested Schema for `yba_managed_image_bundles`
 
 Required:

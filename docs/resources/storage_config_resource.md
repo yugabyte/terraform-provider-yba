@@ -95,22 +95,23 @@ The details for configuration are available in the [YugabyteDB Anywhere Configur
 - `id` (String) The ID of this resource.
 
 <a id="nestedblock--azure_credentials"></a>
+
 ### Nested Schema for `azure_credentials`
 
 Required:
 
 - `sas_token` (String, Sensitive) Azure SAS Token. Can also be set using environment variable AZURE_STORAGE_SAS_TOKEN.
 
-
 <a id="nestedblock--gcs_credentials"></a>
+
 ### Nested Schema for `gcs_credentials`
 
 Required:
 
 - `application_credentials` (String, Sensitive) Google Service Account JSON Credentials as string. Can also be set by providing the JSON file path with the environment variable GOOGLE_APPLICATION_CREDENTIALS.
 
-
 <a id="nestedblock--s3_credentials"></a>
+
 ### Nested Schema for `s3_credentials`
 
 Required:
@@ -118,8 +119,8 @@ Required:
 - `access_key_id` (String, Sensitive) S3 Access Key ID. Can also be set using environment variable AWS_ACCESS_KEY_ID.
 - `secret_access_key` (String, Sensitive) S3 Secret Access Key. Can also be set using environment variable AWS_SECRET_ACCESS_KEY.
 
-
 <a id="nestedblock--timeouts"></a>
+
 ### Nested Schema for `timeouts`
 
 Optional:
