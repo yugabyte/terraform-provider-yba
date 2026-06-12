@@ -13,7 +13,7 @@
 install:
 	@$(MAKE) -C .. install
 
-# Log in to GCP for the byoc-dev project (idempotent).
+# Log in to GCP and Azure for the byoc-dev project (idempotent).
 .PHONY: auth
 auth:
 	@./auth.sh
@@ -46,10 +46,16 @@ destroy-%: init-%
 	terraform -chdir=$* destroy # -auto-approve
 
 # Write the test env (TF_VAR_*, plus YBA_HOST/YBA_API_KEY for the shared client)
-# from the gcp fixture's test_env output into the gitignored, 0600 `env` file.
-env: auth init-gcp
+# into the gitignored, 0600 `env` file. Concatenates each fixture's test_env
+# output: gcp supplies the standing YBA endpoint and TF_VAR_GCP_*; azure supplies
+# TF_VAR_AZURE_*. The whole suite runs against the single gcp-hosted YBA.
+env: auth init-gcp init-azure
 	@echo "Generating '$@' file from the Terraform state"
-	@umask 077; terraform -chdir=gcp output -raw test_env > $@; printf '\n' >> $@
+	@umask 077; : > $@; \
+	for c in gcp azure; do \
+		terraform -chdir=$$c output -raw test_env >> $@; \
+		printf '\n' >> $@; \
+	done
 	@echo "Generated '$@' file"
 
 # Publish the env to a single GitHub Actions secret (ACCTEST_ENV) for CI.
