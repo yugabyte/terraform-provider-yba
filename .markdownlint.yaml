@@ -1,0 +1,15 @@
+# markdownlint config for the generated provider docs (docs/**/*.md).
+# `make documents` runs `markdownlint-cli2 --fix`, so committed docs satisfy
+# every enabled, auto-fixable rule. Rules below are disabled because they fire
+# on tfplugindocs output and are not auto-fixable.
+default: true
+
+MD013: false # line length: generated prose and tables exceed any sane width
+MD033: false # inline HTML: Registry docs legitimately use raw HTML
+MD040: false # fenced code language: some generated blocks omit a language
+MD060: false # table cell padding: cosmetic, not worth editing generated tables
+
+MD049:
+  style: asterisk # keep *emphasis* (never rewrite to _emphasis_)
+MD050:
+  style: asterisk # keep **strong**
