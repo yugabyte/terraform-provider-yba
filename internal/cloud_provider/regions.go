@@ -228,7 +228,7 @@ func buildRegions(
 				SecurityGroupId: utils.GetStringPointer(region["security_group_id"].(string)),
 			}
 			regionCloudInfo.SetAws(awsRegionInfo)
-		case "azure":
+		case "azu":
 			azureCloudInfo := client.AzureRegionCloudInfo{
 				YbImage:         utils.GetStringPointer(region["yb_image"].(string)),
 				Vnet:            utils.GetStringPointer(region["vnet_name"].(string)),
@@ -285,7 +285,7 @@ func flattenRegions(regions []client.Region, cloudCode string) (res []map[string
 			r["vnet_name"] = aws.GetVnet()
 			r["yb_image"] = aws.GetYbImage()
 			r["security_group_id"] = aws.GetSecurityGroupId()
-		case "azure":
+		case "azu":
 			details := region.GetDetails()
 			cloudInfo := details.GetCloudInfo()
 			azure := cloudInfo.GetAzu()
