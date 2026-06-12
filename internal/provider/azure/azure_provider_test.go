@@ -255,6 +255,9 @@ resource "yba_azure_provider" "test" {
       subnet = var.AZURE_SUBNET_ID
     }
   }
+  yba_managed_image_bundles {
+    arch = "x86_64"
+  }
   air_gap_install = false
 }
 `, name)
@@ -298,7 +301,6 @@ resource "yba_azure_provider" "test" {
   client_id        = var.AZURE_CLIENT_ID
   client_secret    = var.AZURE_CLIENT_SECRET
   resource_group   = var.AZURE_RG
-  ssh_keypair_name = "test-keypair"
   regions {
     code = "westus2"
     vnet = var.AZURE_VNET_ID
@@ -306,6 +308,9 @@ resource "yba_azure_provider" "test" {
       code   = "westus2-1"
       subnet = var.AZURE_SUBNET_ID
     }
+  }
+  yba_managed_image_bundles {
+    arch = "x86_64"
   }
   air_gap_install = false
 }
@@ -362,7 +367,6 @@ resource "yba_azure_provider" "test" {
   resource_group          = var.AZURE_RG
   network_subscription_id = var.AZURE_NETWORK_SUBSCRIPTION_ID
   network_resource_group  = var.AZURE_NETWORK_RG
-  ssh_keypair_name        = "test-keypair"
   regions {
     code = "westus2"
     vnet = var.AZURE_VNET_ID
@@ -370,6 +374,9 @@ resource "yba_azure_provider" "test" {
       code   = "westus2-1"
       subnet = var.AZURE_SUBNET_ID
     }
+  }
+  yba_managed_image_bundles {
+    arch = "x86_64"
   }
   air_gap_install = false
 }
@@ -422,7 +429,6 @@ resource "yba_azure_provider" "test" {
   client_id        = var.AZURE_CLIENT_ID
   client_secret    = var.AZURE_CLIENT_SECRET
   resource_group   = var.AZURE_RG
-  ssh_keypair_name = "test-keypair"
   regions {
     code = "westus2"
     vnet = var.AZURE_VNET_ID
@@ -438,6 +444,9 @@ resource "yba_azure_provider" "test" {
       code   = "westus2-3"
       subnet = var.AZURE_SUBNET_ID_3
     }
+  }
+  yba_managed_image_bundles {
+    arch = "x86_64"
   }
   air_gap_install = false
 }

@@ -269,7 +269,8 @@ func cloudProviderAzureConfig(name string) string {
     		name = "westus2"
 			vnet_name = var.AZURE_VNET_ID
 			zones {
-      			name = "westus2-1"
+      			code   = "westus2-1"
+      			name   = "westus2-1"
 	  			subnet = var.AZURE_SUBNET_ID
 			}
   		}
