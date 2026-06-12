@@ -8,8 +8,9 @@
 set -euo pipefail
 
 GCP_PROJECT="byoc-dev"
+AZURE_SUBSCRIPTION="byoc-dev"
 
-echo 'Authenticating to GCP'
+echo 'Authenticating in clouds'
 
 echo "==> GCP (project: $GCP_PROJECT)"
 active="$(gcloud auth list --filter=status:ACTIVE --format='value(account)' 2>/dev/null | head -1 || true)"
@@ -36,4 +37,17 @@ if ! grep -q "\"quota_project_id\": \"$GCP_PROJECT\"" "$adc_file" 2>/dev/null; t
 fi
 echo "    OK: account=$(gcloud config get-value account 2>/dev/null), project=$(gcloud config get-value project 2>/dev/null)"
 
-echo "GCP authenticated"
+echo "==> Azure (subscription: $AZURE_SUBSCRIPTION)"
+if az account show >/dev/null 2>&1; then
+	echo "    signed in"
+else
+	echo "    not signed in — opening az login"
+	az login >/dev/null
+fi
+if [ "$(az account show --query name -o tsv 2>/dev/null)" != "$AZURE_SUBSCRIPTION" ]; then
+	echo "    switching active subscription to $AZURE_SUBSCRIPTION"
+	az account set --subscription "$AZURE_SUBSCRIPTION"
+fi
+echo "    OK: subscription=$(az account show --query name -o tsv 2>/dev/null) ($(az account show --query id -o tsv 2>/dev/null))"
+
+echo "All clouds authenticated"

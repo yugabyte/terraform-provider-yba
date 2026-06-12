@@ -86,8 +86,9 @@ make -C acctest push-github-secrets
 | Path                 | What                                                          |
 | -------------------- | ------------------------------------------------------------- |
 | `gcp/`               | GCP fixture: VPC, IAM, a YBA VM + install, a backups bucket.   |
+| `azure/`             | Azure fixture: RG, VNet, service principal, a YBA VM + install, a backups account. |
 | `resources/`         | Shared install assets (`yba-ctl.yml`, VM startup scripts).    |
-| `auth.sh`            | Logs in to GCP for byoc-dev.                                  |
+| `auth.sh`            | Logs in to GCP and Azure for byoc-dev.                        |
 | `GNUmakefile`        | The fixture and env targets.                                  |
 
 ## Resource naming
