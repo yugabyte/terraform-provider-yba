@@ -30,6 +30,7 @@ data "yba_provider_regions" "regions" {
 - `regions_uuid` (List of String) List of region UUIDs associated with the provider.
 
 <a id="nestedatt--regions"></a>
+
 ### Nested Schema for `regions`
 
 Read-Only:
@@ -47,6 +48,7 @@ Read-Only:
 - `zones` (List of Object) (see [below for nested schema](#nestedobjatt--regions--zones))
 
 <a id="nestedobjatt--regions--zones"></a>
+
 ### Nested Schema for `regions.zones`
 
 Read-Only:

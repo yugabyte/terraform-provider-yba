@@ -64,7 +64,7 @@ lint-go-fix: $(GOLANGCI_LINT)
 
 # Aggregate lint targets (add more language-specific lints here as needed)
 .PHONY: lint
-lint: lint-go
+lint: lint-go lint-docs
 
 .PHONY: lint-fix fmt
 lint-fix fmt: lint-go-fix
@@ -73,10 +73,27 @@ lint-fix fmt: lint-go-fix
 .PHONY: fmtTf
 fmtTf:
 	terraform fmt -recursive
-# Generate documents
-.PHONY: documents
-documents:
+
+# Generate docs (alias: docs) from templates + the provider schema, then
+# markdownlint --fix so the committed docs satisfy lint-docs (config in
+# .markdownlint.yaml; markdownlint-cli2 pinned via MARKDOWNLINT_CLI2_VERSION).
+.PHONY: documents docs
+documents docs:
 	go run github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs generate --rendered-provider-name 'YugabyteDB Anywhere' --provider-name yba
+	npx --yes markdownlint-cli2@$(MARKDOWNLINT_CLI2_VERSION) --fix "docs/**/*.md"
+
+# Lint the generated docs:
+#   - regen reproduces the committed docs/ (no stale docs / hand-edits)
+#   - tfplugindocs validate (Terraform Registry doc rules)
+#   - markdownlint (markdown hygiene; config in .markdownlint.yaml)
+#   - misspell (common English typos in docs/ and templates/)
+.PHONY: lint-docs
+lint-docs:
+	$(MAKE) documents
+	@test -z "$$(git status --porcelain -- docs/)" || { git status --porcelain -- docs/; echo "docs/ out of sync (incl. new/untracked) - run 'make docs' and commit"; exit 1; }
+	go run github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs validate
+	npx --yes markdownlint-cli2@$(MARKDOWNLINT_CLI2_VERSION) "docs/**/*.md"
+	go run github.com/client9/misspell/cmd/misspell -error docs templates
 
 # Run unit tests (no YBA or cloud credentials required)
 .PHONY: test

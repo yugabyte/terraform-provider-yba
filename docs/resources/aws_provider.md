@@ -218,6 +218,7 @@ The details for configuration are available in the [YugabyteDB Anywhere Configur
 - `vpc_type` (String) VPC type: EXISTING or NEW. Read-only.
 
 <a id="nestedblock--regions"></a>
+
 ### Nested Schema for `regions`
 
 Required:
@@ -236,6 +237,7 @@ Read-Only:
 - `uuid` (String) Region UUID.
 
 <a id="nestedblock--regions--zones"></a>
+
 ### Nested Schema for `regions.zones`
 
 Required:
@@ -252,9 +254,8 @@ Read-Only:
 - `name` (String) AWS availability zone name. Read-only.
 - `uuid` (String) Zone UUID.
 
-
-
 <a id="nestedblock--image_bundles"></a>
+
 ### Nested Schema for `image_bundles`
 
 Required:
@@ -272,6 +273,7 @@ Read-Only:
 - `uuid` (String) Image bundle UUID.
 
 <a id="nestedblock--image_bundles--details"></a>
+
 ### Nested Schema for `image_bundles.details`
 
 Required:
@@ -285,9 +287,8 @@ Optional:
 - `ssh_port` (Number) SSH port for the image. Default is 22.
 - `use_imds_v2` (Boolean) Use IMDS v2 for the image. Default is true. Set to false to allow IMDSv1 (not recommended). Note: Terraform may show a cosmetic plan-time warning for this field when omitted from config - this is a known legacy SDK limitation and does not affect behaviour.
 
-
-
 <a id="nestedblock--timeouts"></a>
+
 ### Nested Schema for `timeouts`
 
 Optional:
@@ -296,8 +297,8 @@ Optional:
 - `delete` (String)
 - `update` (String)
 
-
 <a id="nestedblock--yba_managed_image_bundles"></a>
+
 ### Nested Schema for `yba_managed_image_bundles`
 
 Required:

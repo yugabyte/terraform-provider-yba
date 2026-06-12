@@ -1,0 +1,64 @@
+name: Lint (Docs)
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "docs/**"
+      - "templates/**"
+      - "examples/**"
+      - "internal/**/*.go" # schema Description fields feed .SchemaMarkdown
+      - "go.mod" # pins tfplugindocs + misspell
+      - "go.sum"
+      - "tools/tools.go" # declares the tfplugindocs/misspell tool imports
+      - "GNUmakefile"
+      - "versions.env"
+      - ".markdownlint.yaml"
+      - ".github/workflows/lint-docs.yml"
+  pull_request:
+    paths:
+      - "docs/**"
+      - "templates/**"
+      - "examples/**"
+      - "internal/**/*.go" # schema Description fields feed .SchemaMarkdown
+      - "go.mod" # pins tfplugindocs + misspell
+      - "go.sum"
+      - "tools/tools.go" # declares the tfplugindocs/misspell tool imports
+      - "GNUmakefile"
+      - "versions.env"
+      - ".markdownlint.yaml"
+      - ".github/workflows/lint-docs.yml"
+
+jobs:
+  lint-docs:
+    name: Lint (Docs)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Check out code into the Go module directory
+        uses: actions/checkout@v4
+
+      - name: Load tool versions from versions.env
+        run: cat versions.env >> "$GITHUB_ENV"
+
+      # tfplugindocs runs via `go run` inside `make documents`.
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: "go.mod"
+          cache-dependency-path: go.sum
+        id: go
+
+      # tfplugindocs exports the provider schema through the Terraform CLI.
+      # Without a terraform binary on PATH it tries to download one, which
+      # currently fails on an expired HashiCorp signing key.
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      # Regenerates docs and fails if the committed docs/ differ.
+      - name: Lint docs
+        run: make lint-docs

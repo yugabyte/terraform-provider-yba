@@ -66,6 +66,7 @@ resource "yba_customer_resource" "customer" {
 - `id` (String) The ID of this resource.
 
 <a id="nestedblock--timeouts"></a>
+
 ### Nested Schema for `timeouts`
 
 Optional:
