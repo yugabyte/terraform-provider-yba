@@ -1,0 +1,23 @@
+---
+page_title: "{{.Name}} {{.Type}} - {{.RenderedProviderName}}"
+description: |-
+{{ .Description | plainmarkdown | trimspace | prefixlines "  " }}
+---
+
+# {{.Name}} ({{.Type}})
+
+{{ .Description | trimspace }}
+
+## Example Usage
+
+{{ tffile "examples/resources/yba_runtime_config/resource.tf" }}
+
+{{ .SchemaMarkdown | trimspace }}
+
+## Import
+
+Runtime config keys can be imported using `<scope-uuid>/<key>`:
+
+```sh
+terraform import yba_runtime_config.allow_otlp 00000000-0000-0000-0000-000000000000/yb.telemetry.allow_otlp
+```

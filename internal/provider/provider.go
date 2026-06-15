@@ -34,6 +34,7 @@ import (
 	azureProvider "github.com/yugabyte/terraform-provider-yba/internal/provider/azure"
 	gcpProvider "github.com/yugabyte/terraform-provider-yba/internal/provider/gcp"
 	"github.com/yugabyte/terraform-provider-yba/internal/releases"
+	"github.com/yugabyte/terraform-provider-yba/internal/runtimeconfig"
 	"github.com/yugabyte/terraform-provider-yba/internal/storageconfig"
 	"github.com/yugabyte/terraform-provider-yba/internal/universe"
 	"github.com/yugabyte/terraform-provider-yba/internal/user"
@@ -133,6 +134,9 @@ func New() *schema.Provider {
 			"yba_gcs_storage_config":   storageconfig.ResourceGCSStorageConfig(),
 			"yba_azure_storage_config": storageconfig.ResourceAzureStorageConfig(),
 			"yba_nfs_storage_config":   storageconfig.ResourceNFSStorageConfig(),
+
+			// Runtime configuration: set individual YBA runtime config keys (e.g. feature flags).
+			"yba_runtime_config": runtimeconfig.ResourceRuntimeConfig(),
 		},
 		ConfigureContextFunc: providerConfigure,
 	}
