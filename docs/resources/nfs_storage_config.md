@@ -53,6 +53,7 @@ resource "yba_nfs_storage_config" "nfs_custom" {
 - `id` (String) The ID of this resource.
 
 <a id="nestedblock--region_locations"></a>
+
 ### Nested Schema for `region_locations`
 
 Required:
@@ -64,8 +65,8 @@ Optional:
 
 - `nfs_bucket` (String) NFS bucket/directory name for this region.
 
-
 <a id="nestedblock--timeouts"></a>
+
 ### Nested Schema for `timeouts`
 
 Optional:

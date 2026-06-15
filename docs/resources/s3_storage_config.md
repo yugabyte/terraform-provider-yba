@@ -69,6 +69,7 @@ resource "yba_s3_storage_config" "minio" {
 - `id` (String) The ID of this resource.
 
 <a id="nestedblock--iam_config"></a>
+
 ### Nested Schema for `iam_config`
 
 Optional:
@@ -79,8 +80,8 @@ Optional:
 - `session_duration_secs` (Number) Session duration in seconds for assume role (900-43200). Default: 3600.
 - `sts_region` (String) Region for STS endpoint.
 
-
 <a id="nestedblock--region_locations"></a>
+
 ### Nested Schema for `region_locations`
 
 Required:
@@ -93,8 +94,8 @@ Optional:
 - `aws_host_base` (String) S3-compatible endpoint for this region.
 - `signing_region` (String) AWS signing region for this location.
 
-
 <a id="nestedblock--timeouts"></a>
+
 ### Nested Schema for `timeouts`
 
 Optional:

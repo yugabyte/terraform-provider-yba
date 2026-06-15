@@ -61,7 +61,7 @@ Each input can be supplied either as an inline string or as a path to a local fi
 
 Use the inline form when the value is already available inside Terraform (for example as the output of a `tls_private_key` resource or a Terraform variable). This avoids the need to materialise temporary files via `local_sensitive_file` just to satisfy the provider, and keeps sensitive material off the local filesystem.
 
-To upgrade YugabyteDB Anywhere version, change *yba_version* to the desired version and run *terraform apply*. In case the upgarde fails mid-way, taint the resource in the *terraform.tfstate* file and rerun the *apply* command.
+To upgrade YugabyteDB Anywhere version, change *yba_version* to the desired version and run *terraform apply*. In case the upgrade fails mid-way, taint the resource in the *terraform.tfstate* file and rerun the *apply* command.
 
 -> **Note:** Changes to the inline `application_settings`, `tls_certificate`, or `tls_key` attributes (or their file-based equivalents) automatically trigger a reconfiguration on the next apply. The `reconfigure = true` flag is only needed when forcing reconfiguration without any tracked input change.
 
@@ -101,6 +101,7 @@ For further details on configuration and host requirements, refer to [Install YB
 - `id` (String) The ID of this resource.
 
 <a id="nestedblock--timeouts"></a>
+
 ### Nested Schema for `timeouts`
 
 Optional:

@@ -2,7 +2,6 @@
 page_title: "yba_customer_resource Resource - YugabyteDB Anywhere"
 description: |-
   Customer Resource. Registers a new customer/user in YugabyteDB Anywhere.
-  ~> Security Note: The api_token and password are stored in the Terraform state file (marked as sensitive). Use a secure backend (e.g., S3 with encryption, Terraform Cloud) and restrict access to your state files.
 ---
 
 # yba_customer_resource (Resource)
@@ -66,6 +65,7 @@ resource "yba_customer_resource" "customer" {
 - `id` (String) The ID of this resource.
 
 <a id="nestedblock--timeouts"></a>
+
 ### Nested Schema for `timeouts`
 
 Optional:

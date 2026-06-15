@@ -1,14 +1,15 @@
 ---
 page_title: "yba_backup_info Data Source - YugabyteDB Anywhere"
 description: |-
-  Fetch backup information for use in restore operations. Supports two lookup modes:
-    1. Direct lookup: provide backupuuid to read a specific backup (works for backups created outside Terraform).
-    2. Universe filter: provide universeuuid or universename (with optional daterangestart/daterange_end) to fetch the most recent matching backup.
+  Fetch backup information for use in restore operations.
 ---
 
 # yba_backup_info (Data Source)
 
-Fetch backup information for use in restore operations. Supports two lookup modes:
+Fetch backup information for use in restore operations.
+
+Supports two lookup modes:
+
   1. Direct lookup: provide backup_uuid to read a specific backup (works for backups created outside Terraform).
   2. Universe filter: provide universe_uuid or universe_name (with optional date_range_start/date_range_end) to fetch the most recent matching backup.
 
@@ -56,6 +57,7 @@ output "incremental_chain_uuids" {
 - `storage_location` (String) Storage location of the first keyspace in the backup. For multi-keyspace YCQL backups, use keyspace_details to access all locations.
 
 <a id="nestedatt--incremental_backup_chain"></a>
+
 ### Nested Schema for `incremental_backup_chain`
 
 Read-Only:
@@ -67,6 +69,7 @@ Read-Only:
 - `storage_location` (String)
 
 <a id="nestedobjatt--incremental_backup_chain--keyspace_details"></a>
+
 ### Nested Schema for `incremental_backup_chain.keyspace_details`
 
 Read-Only:
@@ -76,9 +79,8 @@ Read-Only:
 - `storage_location` (String)
 - `tables` (List of String)
 
-
-
 <a id="nestedatt--keyspace_details"></a>
+
 ### Nested Schema for `keyspace_details`
 
 Read-Only:

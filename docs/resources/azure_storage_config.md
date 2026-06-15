@@ -52,6 +52,7 @@ resource "yba_azure_storage_config" "azure_iam" {
 - `id` (String) The ID of this resource.
 
 <a id="nestedblock--region_locations"></a>
+
 ### Nested Schema for `region_locations`
 
 Required:
@@ -63,8 +64,8 @@ Optional:
 
 - `sas_token` (String, Sensitive) Azure SAS token for this region (if different from main). Stored in Terraform state - use an encrypted backend for security.
 
-
 <a id="nestedblock--timeouts"></a>
+
 ### Nested Schema for `timeouts`
 
 Optional:
