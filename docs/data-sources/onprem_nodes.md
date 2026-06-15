@@ -38,6 +38,7 @@ data "yba_onprem_nodes" "nodes" {
 - `nodes` (List of Object) Node instances associated with the provider and given filters. (see [below for nested schema](#nestedatt--nodes))
 
 <a id="nestedatt--nodes"></a>
+
 ### Nested Schema for `nodes`
 
 Read-Only:

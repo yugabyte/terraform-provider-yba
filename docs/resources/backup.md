@@ -75,6 +75,7 @@ For more details, see the [YugabyteDB Anywhere Back Up Data](https://docs.yugaby
 - `universe_name` (String) Name of the universe that this backup was created from.
 
 <a id="nestedblock--timeouts"></a>
+
 ### Nested Schema for `timeouts`
 
 Optional:
@@ -83,8 +84,8 @@ Optional:
 - `delete` (String)
 - `update` (String)
 
-
 <a id="nestedatt--keyspace_details"></a>
+
 ### Nested Schema for `keyspace_details`
 
 Read-Only:

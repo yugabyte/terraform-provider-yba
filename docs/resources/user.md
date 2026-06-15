@@ -38,6 +38,7 @@ resource "yba_user" "example" {
 - `is_primary` (Boolean) Flag indicating if this is the primary user for the customer.
 
 <a id="nestedblock--timeouts"></a>
+
 ### Nested Schema for `timeouts`
 
 Optional:

@@ -52,6 +52,7 @@ data "yba_provider_image_bundles" "named_bundle" {
 - `image_bundles` (List of Object) (see [below for nested schema](#nestedatt--image_bundles))
 
 <a id="nestedatt--image_bundles"></a>
+
 ### Nested Schema for `image_bundles`
 
 Read-Only:

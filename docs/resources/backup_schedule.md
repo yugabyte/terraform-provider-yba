@@ -97,6 +97,7 @@ of these returns a plan-time error.
 - `status` (String) Current status of the schedule: Active, Paused, or Stopped.
 
 <a id="nestedblock--timeouts"></a>
+
 ### Nested Schema for `timeouts`
 
 Optional:

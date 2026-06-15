@@ -52,6 +52,7 @@ resource "yba_gcs_storage_config" "gcs_iam" {
 - `id` (String) The ID of this resource.
 
 <a id="nestedblock--region_locations"></a>
+
 ### Nested Schema for `region_locations`
 
 Required:
@@ -59,8 +60,8 @@ Required:
 - `location` (String) GCS bucket URI for this region.
 - `region` (String) GCP region name (e.g., us-central1).
 
-
 <a id="nestedblock--timeouts"></a>
+
 ### Nested Schema for `timeouts`
 
 Optional:
