@@ -163,26 +163,28 @@ func resourceRuntimeConfigDelete(
 
 // resourceRuntimeConfigImport accepts an ID of the form `<scope-uuid>/<key>`
 // (or just `<key>`, in which case the global scope is assumed) and primes the
-// resource state for a follow-up read.
+// resource state for a follow-up read. A malformed ID (empty, or with an empty
+// scope or key such as `/key` or `scope/`) is rejected up front so import never
+// produces a resource that only fails on the next refresh.
 func resourceRuntimeConfigImport(
-	ctx context.Context, d *schema.ResourceData, _ interface{},
+	_ context.Context, d *schema.ResourceData, _ interface{},
 ) ([]*schema.ResourceData, error) {
-	parts := strings.SplitN(d.Id(), "/", 2)
-	if len(parts) == 1 {
-		if err := d.Set("scope", globalRuntimeScope); err != nil {
-			return nil, err
-		}
-		if err := d.Set("key", parts[0]); err != nil {
-			return nil, err
-		}
-		d.SetId(globalRuntimeScope + "/" + parts[0])
-	} else {
-		if err := d.Set("scope", parts[0]); err != nil {
-			return nil, err
-		}
-		if err := d.Set("key", parts[1]); err != nil {
-			return nil, err
-		}
+	id := d.Id()
+	scope, key := globalRuntimeScope, id
+	if s, k, ok := strings.Cut(id, "/"); ok {
+		scope, key = s, k
 	}
+	if scope == "" || key == "" {
+		return nil, fmt.Errorf(
+			"invalid import ID %q: expected %q or %q (for the global scope)",
+			id, "<scope-uuid>/<key>", "<key>")
+	}
+	if err := d.Set("scope", scope); err != nil {
+		return nil, err
+	}
+	if err := d.Set("key", key); err != nil {
+		return nil, err
+	}
+	d.SetId(scope + "/" + key)
 	return []*schema.ResourceData{d}, nil
 }

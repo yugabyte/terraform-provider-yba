@@ -18,6 +18,7 @@ package runtimeconfig_test
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
@@ -141,6 +142,42 @@ func testAccCheckRuntimeConfigReset(s *terraform.State) error {
 	return nil
 }
 
+// TestAccRuntimeConfig_NonMutableKey verifies the resource fails the apply
+// (rather than silently creating a broken resource) when the key is not a
+// mutable runtime config key on the target YBA. YBA returns 404
+// "No mutable key found" for both unknown keys and keys that exist but are not
+// runtime-mutable, so an obviously-bogus key gives a version-independent signal.
+func TestAccRuntimeConfig_NonMutableKey(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:          func() { acctest.TestAccPreCheck(t) },
+		ProviderFactories: acctest.ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config:      runtimeConfigConfig("yb.terraform.acctest.nonexistent_key", "true"),
+				ExpectError: regexp.MustCompile(`No mutable key found`),
+			},
+		},
+	})
+}
+
+// TestAccRuntimeConfig_InvalidScope verifies the apply fails when the key is
+// real and mutable but the chosen scope cannot hold it. YBA rejects the set with
+// 400 "Cannot set the key in this scope".
+func TestAccRuntimeConfig_InvalidScope(t *testing.T) {
+	const bogusScope = "99999999-9999-9999-9999-999999999999"
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:          func() { acctest.TestAccPreCheck(t) },
+		ProviderFactories: acctest.ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config:      runtimeConfigConfigWithScope(bogusScope, testKey, "true"),
+				ExpectError: regexp.MustCompile(`Cannot set the key in this scope`),
+			},
+		},
+	})
+}
+
 func runtimeConfigConfig(key, value string) string {
 	return fmt.Sprintf(`
 resource "yba_runtime_config" "test" {
@@ -148,4 +185,14 @@ resource "yba_runtime_config" "test" {
   value = %q
 }
 `, key, value)
+}
+
+func runtimeConfigConfigWithScope(scope, key, value string) string {
+	return fmt.Sprintf(`
+resource "yba_runtime_config" "test" {
+  scope = %q
+  key   = %q
+  value = %q
+}
+`, scope, key, value)
 }
