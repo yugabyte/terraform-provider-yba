@@ -1,14 +1,14 @@
 ---
 page_title: "yba_runtime_config Resource - YugabyteDB Anywhere"
 description: |-
-  YBA Runtime Config Resource. Sets a runtime configuration key on a specific scope. Use the global scope (00000000-0000-0000-0000-000000000000) for feature flags such as yb.telemetry.allow_otlp or yb.universe.metrics_export_enabled. Deleting the resource resets the key to its default by calling the YBA delete-key API.
+  YBA Runtime Config Resource. Sets a runtime configuration key on a specific scope. Use the global scope (00000000-0000-0000-0000-000000000000) for feature flags such as yb.telemetry.allow_s3 or yb.universe.metrics_export_enabled. Deleting the resource resets the key to its default by calling the YBA delete-key API.
   ~> Note: Most runtime config keys require a Super Admin user.
   ~> Note: Some keys are write-only on the YBA side; the read flow will reflect the most recent value YBA reports for the scope.
 ---
 
 # yba_runtime_config (Resource)
 
-YBA Runtime Config Resource. Sets a runtime configuration key on a specific scope. Use the global scope (`00000000-0000-0000-0000-000000000000`) for feature flags such as `yb.telemetry.allow_otlp` or `yb.universe.metrics_export_enabled`. Deleting the resource resets the key to its default by calling the YBA delete-key API.
+YBA Runtime Config Resource. Sets a runtime configuration key on a specific scope. Use the global scope (`00000000-0000-0000-0000-000000000000`) for feature flags such as `yb.telemetry.allow_s3` or `yb.universe.metrics_export_enabled`. Deleting the resource resets the key to its default by calling the YBA delete-key API.
 
 ~> **Note:** Most runtime config keys require a Super Admin user.
 
@@ -17,10 +17,10 @@ YBA Runtime Config Resource. Sets a runtime configuration key on a specific scop
 ## Example Usage
 
 ```terraform
-# Allow OTLP-typed telemetry providers globally. Required for OTLP and
-# Dynatrace export configurations to be usable in YBA.
-resource "yba_runtime_config" "allow_otlp" {
-  key   = "yb.telemetry.allow_otlp"
+# Allow the S3 telemetry exporter globally. Required before an S3-typed
+# telemetry provider can be used in YBA.
+resource "yba_runtime_config" "allow_s3" {
+  key   = "yb.telemetry.allow_s3"
   value = "true"
 }
 
@@ -37,7 +37,7 @@ resource "yba_runtime_config" "metrics_export_enabled" {
 
 ### Required
 
-- `key` (String) Runtime configuration key (e.g. `yb.telemetry.allow_otlp`).
+- `key` (String) Runtime configuration key (e.g. `yb.telemetry.allow_s3`).
 - `value` (String) Value of the runtime configuration key. Sent as plain text to YBA.
 
 ### Optional
@@ -65,5 +65,5 @@ Optional:
 Runtime config keys can be imported using `<scope-uuid>/<key>`:
 
 ```sh
-terraform import yba_runtime_config.allow_otlp 00000000-0000-0000-0000-000000000000/yb.telemetry.allow_otlp
+terraform import yba_runtime_config.allow_s3 00000000-0000-0000-0000-000000000000/yb.telemetry.allow_s3
 ```

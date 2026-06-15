@@ -120,11 +120,34 @@ func testPrefix() string {
 	return "acc-" + slug
 }
 
+// maxNameLen bounds the length of names produced by RandomName. Acceptance-test
+// names flow into YBA-derived identifiers (e.g. cloud-provider access-key codes)
+// that YBA stores in varchar(100) columns; an over-long name fails apply with
+// "value too long for type character varying(100)". Capping the whole name keeps
+// those identifiers comfortably under 100 regardless of branch-name length, so
+// contributors never have to keep branch names short by hand.
+const maxNameLen = 40
+
 // RandomName builds a unique acceptance-test resource name of the form
-// <prefix>-<kind>-<random>. The random suffix avoids collisions within a run;
-// testPrefix isolates concurrent runs by different branches against the same YBA.
+// <prefix>-<kind>-<random>, capped at maxNameLen. The random suffix avoids
+// collisions within a run and testPrefix isolates concurrent runs by different
+// branches against the same YBA; when a long branch prefix would overflow the
+// cap, only the prefix is trimmed (uniqueness still comes from the suffix).
 func RandomName(kind string) string {
-	return fmt.Sprintf("%s-%s-%s", testPrefix(), kind, sdkacctest.RandString(12))
+	tail := fmt.Sprintf("%s-%s", kind, sdkacctest.RandString(12))
+	prefix := testPrefix()
+
+	// Reserve one char for the separator between prefix and tail.
+	if budget := maxNameLen - len(tail) - 1; budget < len(prefix) {
+		if budget < 0 {
+			budget = 0
+		}
+		prefix = strings.TrimRight(prefix[:budget], "-")
+	}
+	if prefix == "" {
+		return tail
+	}
+	return fmt.Sprintf("%s-%s", prefix, tail)
 }
 
 func init() {

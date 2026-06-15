@@ -1,7 +1,7 @@
-# Allow OTLP-typed telemetry providers globally. Required for OTLP and
-# Dynatrace export configurations to be usable in YBA.
-resource "yba_runtime_config" "allow_otlp" {
-  key   = "yb.telemetry.allow_otlp"
+# Allow the S3 telemetry exporter globally. Required before an S3-typed
+# telemetry provider can be used in YBA.
+resource "yba_runtime_config" "allow_s3" {
+  key   = "yb.telemetry.allow_s3"
   value = "true"
 }
 

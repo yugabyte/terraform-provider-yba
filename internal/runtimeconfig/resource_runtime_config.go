@@ -38,8 +38,8 @@ const globalRuntimeScope = "00000000-0000-0000-0000-000000000000"
 
 // ResourceRuntimeConfig manages a single YBA runtime configuration key/value
 // pair. Useful for enabling feature flags such as
-// `yb.telemetry.allow_otlp` (required to allow OTLP-typed telemetry providers)
-// or `yb.universe.metrics_export_enabled` (required to enable metrics export
+// `yb.telemetry.allow_s3` (required to allow the S3 telemetry exporter) or
+// `yb.universe.metrics_export_enabled` (required to enable metrics export
 // per universe).
 //
 // The resource is intentionally kept generic so it can be reused for any
@@ -49,7 +49,7 @@ func ResourceRuntimeConfig() *schema.Resource {
 		Description: "YBA Runtime Config Resource. Sets a runtime configuration key on a " +
 			"specific scope. Use the global scope " +
 			"(`00000000-0000-0000-0000-000000000000`) for feature flags such as " +
-			"`yb.telemetry.allow_otlp` or `yb.universe.metrics_export_enabled`. " +
+			"`yb.telemetry.allow_s3` or `yb.universe.metrics_export_enabled`. " +
 			"Deleting the resource resets the key to its default by calling the " +
 			"YBA delete-key API.\n\n" +
 			"~> **Note:** Most runtime config keys require a Super Admin user.\n\n" +
@@ -84,7 +84,7 @@ func ResourceRuntimeConfig() *schema.Resource {
 				Type:        schema.TypeString,
 				Required:    true,
 				ForceNew:    true,
-				Description: "Runtime configuration key (e.g. `yb.telemetry.allow_otlp`).",
+				Description: "Runtime configuration key (e.g. `yb.telemetry.allow_s3`).",
 			},
 			"value": {
 				Type:        schema.TypeString,
