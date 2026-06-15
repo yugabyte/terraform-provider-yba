@@ -70,7 +70,7 @@ func keyspaceDetailsElem(includeBackupType bool) *schema.Resource {
 // Lists fetches backup information by direct UUID lookup or by universe + date filter.
 func Lists() *schema.Resource {
 	return &schema.Resource{
-		Description: "Fetch backup information for use in restore operations. " +
+		Description: "Fetch backup information for use in restore operations.\n\n" +
 			"Supports two lookup modes:\n" +
 			"  1. Direct lookup: provide backup_uuid to read a specific backup " +
 			"(works for backups created outside Terraform).\n" +
