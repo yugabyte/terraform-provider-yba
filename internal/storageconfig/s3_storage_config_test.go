@@ -164,11 +164,12 @@ variable "AWS_SECRET_ACCESS_KEY" {
 }
 
 resource "yba_s3_storage_config" "test" {
-  name                     = "%s"
-  backup_location          = var.S3_BACKUP_LOCATION
-  access_key_id            = var.AWS_ACCESS_KEY_ID
-  secret_access_key        = var.AWS_SECRET_ACCESS_KEY
-  use_iam_instance_profile = false
+  name              = "%s"
+  backup_location   = var.S3_BACKUP_LOCATION
+  access_key_id     = var.AWS_ACCESS_KEY_ID
+  secret_access_key = var.AWS_SECRET_ACCESS_KEY
+  # use_iam_instance_profile defaults to false and conflicts with access_key_id,
+  # so it is intentionally omitted; the check below asserts it reads back false.
 }
 `, name)
 }

@@ -16,7 +16,7 @@ You almost never touch the fixture. The normal job is just: **log in, run tests.
 From the repo root:
 
 ```bash
-make -C acctest auth   # 1. log in to GCP (browser, first time only)
+make -C acctest auth   # 1. log in to GCP, Azure and AWS (browser, first time only)
 make acctest           # 2. build the provider, fetch the env, run the suite
 ```
 
@@ -60,9 +60,14 @@ Only needed to first create the fixture, or to recreate/destroy it. It is slow
 and creates real billable resources.
 
 ```bash
-make -C acctest apply-gcp     # create or update the GCP fixture
+make -C acctest apply-gcp     # create or update a fixture (gcp / azure / aws)
 make -C acctest destroy-gcp   # tear it down
 ```
+
+Each cloud has its own fixture target (`apply-gcp`/`apply-azure`/`apply-aws` and
+the matching `destroy-*`). The AWS fixture authenticates with the `byoc-dev` AWS
+profile by default (override with the `aws_profile` var); the GCP and Azure ones
+use the active `gcloud`/`az` login from `make -C acctest auth`.
 
 Applying installs YBA via `yba_installer`, which needs a **YBA license file** at
 the repo root named `yugabyte_anywhere.lic` (gitignored — it is a secret, kept
@@ -87,8 +92,9 @@ make -C acctest push-github-secrets
 | -------------------- | ------------------------------------------------------------- |
 | `gcp/`               | GCP fixture: VPC, IAM, a YBA VM + install, a backups bucket.   |
 | `azure/`             | Azure fixture: RG, VNet, service principal, a YBA VM + install, a backups account. |
+| `aws/`               | AWS fixture: VPC, IAM (key user + instance role), a YBA VM + install, a backups bucket. |
 | `resources/`         | Shared install assets (`yba-ctl.yml`, VM startup scripts).    |
-| `auth.sh`            | Logs in to GCP and Azure for byoc-dev.                        |
+| `auth.sh`            | Logs in to GCP, Azure and AWS for byoc-dev.                   |
 | `GNUmakefile`        | The fixture and env targets.                                  |
 
 ## Resource naming
