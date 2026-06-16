@@ -101,13 +101,10 @@ func scpContent(ctx context.Context,
 	tflog.Info(ctx, fmt.Sprintf("Copying inline content (%d bytes) to remote host under "+
 		"filename %s", len(content), remoteFile))
 
+	// NewClientBySSH reuses the already-established SSH connection. Do NOT call
+	// c.Connect() afterwards: per go-scp's API it would dial a fresh session with
+	// an empty Host and nil ClientConfig, panicking on a nil-pointer deref.
 	c, err := scp.NewClientBySSH(sshClient)
-	if err != nil {
-		return err
-	}
-	defer c.Close()
-
-	err = c.Connect()
 	if err != nil {
 		return err
 	}
