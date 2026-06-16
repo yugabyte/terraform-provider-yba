@@ -62,6 +62,12 @@ func TestAccAWSProvider_WithCredentials(t *testing.T) {
 
 // TestAccAWSProvider_WithIAM tests AWS provider creation with IAM instance profile
 func TestAccAWSProvider_WithIAM(t *testing.T) {
+	// use_iam_instance_profile makes YBA authenticate with the YBA host's own
+	// AWS instance role, which only exists when YBA runs on AWS. The shared YBA
+	// this suite targets is gcp-hosted, so skip. Enabled in a follow-up that
+	// routes the AWS tests to the AWS fixture YBA.
+	t.Skip("requires the YBA host to run on AWS with an IAM instance role")
+
 	var provider client.Provider
 
 	rName := fmt.Sprintf("tf-acctest-aws-iam-%s", sdkacctest.RandString(12))
@@ -241,7 +247,6 @@ resource "yba_aws_provider" "test" {
   name              = "%s"
   access_key_id     = var.AWS_ACCESS_KEY_ID
   secret_access_key = var.AWS_SECRET_ACCESS_KEY
-  ssh_keypair_name  = "test-key"
   regions {
     code              = "us-west-2"
     security_group_id = var.AWS_SG_ID
@@ -250,6 +255,9 @@ resource "yba_aws_provider" "test" {
       code   = "us-west-2a"
       subnet = var.AWS_ZONE_SUBNET_ID
     }
+  }
+  yba_managed_image_bundles {
+    arch = "x86_64"
   }
   air_gap_install = false
 }
@@ -280,11 +288,11 @@ variable "AWS_SECRET_ACCESS_KEY" {
 }
 
 resource "yba_aws_provider" "test" {
-  name                     = "%s"
-  access_key_id            = var.AWS_ACCESS_KEY_ID
-  secret_access_key        = var.AWS_SECRET_ACCESS_KEY
-  use_iam_instance_profile = false
-  ssh_keypair_name         = "test-keypair"
+  name              = "%s"
+  access_key_id     = var.AWS_ACCESS_KEY_ID
+  secret_access_key = var.AWS_SECRET_ACCESS_KEY
+  # use_iam_instance_profile defaults to false and conflicts with access_key_id,
+  # so it is intentionally omitted; the check below asserts it reads back false.
   regions {
     code              = "us-west-2"
     security_group_id = var.AWS_SG_ID
@@ -293,6 +301,9 @@ resource "yba_aws_provider" "test" {
       code   = "us-west-2a"
       subnet = var.AWS_ZONE_SUBNET_ID
     }
+  }
+  yba_managed_image_bundles {
+    arch = "x86_64"
   }
   air_gap_install = false
 }
@@ -316,7 +327,6 @@ variable "AWS_ZONE_SUBNET_ID" {
 resource "yba_aws_provider" "test" {
   name                     = "%s"
   use_iam_instance_profile = true
-  ssh_keypair_name         = "test-keypair"
   regions {
     code              = "us-west-2"
     security_group_id = var.AWS_SG_ID
@@ -325,6 +335,9 @@ resource "yba_aws_provider" "test" {
       code   = "us-west-2a"
       subnet = var.AWS_ZONE_SUBNET_ID
     }
+  }
+  yba_managed_image_bundles {
+    arch = "x86_64"
   }
   air_gap_install = false
 }
@@ -363,7 +376,6 @@ resource "yba_aws_provider" "test" {
   name              = "%s"
   access_key_id     = var.AWS_ACCESS_KEY_ID
   secret_access_key = var.AWS_SECRET_ACCESS_KEY
-  ssh_keypair_name  = "test-keypair"
   regions {
     code              = "us-west-2"
     security_group_id = var.AWS_SG_ID
@@ -377,10 +389,14 @@ resource "yba_aws_provider" "test" {
     name           = "custom-bundle"
     use_as_default = true
     details {
-      arch            = "x86_64"
-      ssh_user     = "ec2-user"
-      ssh_port     = 22
+      arch     = "x86_64"
+      ssh_user = "ec2-user"
+      ssh_port = 22
       # use_imds_v2 defaults to true; omitted here to test the default behaviour
+      # Every custom bundle must supply an AMI for each configured region.
+      region_overrides = {
+        "us-west-2" = var.AWS_AMI_ID
+      }
     }
   }
   air_gap_install = false

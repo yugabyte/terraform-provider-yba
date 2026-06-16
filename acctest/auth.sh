@@ -9,6 +9,7 @@ set -euo pipefail
 
 GCP_PROJECT="byoc-dev"
 AZURE_SUBSCRIPTION="byoc-dev"
+AWS_PROFILE_NAME="${AWS_PROFILE:-byoc-dev}"
 
 echo 'Authenticating in clouds'
 
@@ -49,5 +50,15 @@ if [ "$(az account show --query name -o tsv 2>/dev/null)" != "$AZURE_SUBSCRIPTIO
 	az account set --subscription "$AZURE_SUBSCRIPTION"
 fi
 echo "    OK: subscription=$(az account show --query name -o tsv 2>/dev/null) ($(az account show --query id -o tsv 2>/dev/null))"
+
+echo "==> AWS (profile: $AWS_PROFILE_NAME)"
+export AWS_PROFILE="$AWS_PROFILE_NAME"
+if aws sts get-caller-identity >/dev/null 2>&1; then
+	echo "    signed in"
+else
+	echo "    not signed in — opening aws sso login"
+	aws sso login >/dev/null
+fi
+echo "    OK: account=$(aws sts get-caller-identity --query Account -o text 2>/dev/null), arn=$(aws sts get-caller-identity --query Arn -o text 2>/dev/null)"
 
 echo "All clouds authenticated"
