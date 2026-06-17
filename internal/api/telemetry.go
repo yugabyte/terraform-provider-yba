@@ -125,6 +125,33 @@ func (vc *VanillaClient) GetTelemetryProvider(
 	return &out, resp, nil
 }
 
+// ListTelemetryProviders returns every telemetry provider configured for the
+// customer. Sensitive config values are masked by YBA in this response, so it
+// is only suitable for lookups by name / metadata (the data source), not for
+// reconstructing a provider's secrets.
+func (vc *VanillaClient) ListTelemetryProviders(
+	ctx context.Context, cUUID, token string,
+) ([]TelemetryProvider, error) {
+	url := fmt.Sprintf("api/v1/customers/%s/telemetry_provider", cUUID)
+	resp, err := vc.makeRequest(ctx, http.MethodGet, url, nil, token)
+	if err != nil {
+		return nil, fmt.Errorf("list telemetry providers request failed: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if httpErr := vanillaHTTPError(resp, "Telemetry Provider", "List"); httpErr != nil {
+		return nil, httpErr
+	}
+	respBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+	out := []TelemetryProvider{}
+	if err = json.Unmarshal(respBytes, &out); err != nil {
+		return nil, fmt.Errorf("unmarshal telemetry provider list response: %w", err)
+	}
+	return out, nil
+}
+
 // DeleteTelemetryProvider deletes a telemetry provider by UUID. The delete
 // is idempotent: a 404 response, or a 4xx whose body matches one of
 // telemetryProviderMissingMarkers, returns nil so the destroy step can be

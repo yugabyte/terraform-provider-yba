@@ -290,6 +290,54 @@ func TestCreateTelemetryProviderError(t *testing.T) {
 	}
 }
 
+// TestListTelemetryProviders verifies the list call hits the collection
+// endpoint and round-trips the array body into TelemetryProvider values
+// (used by the yba_telemetry_provider data source).
+func TestListTelemetryProviders(t *testing.T) {
+	var gotPath string
+	vc, _ := newStubVanillaClient(t,
+		func(w http.ResponseWriter, r *http.Request) {
+			gotPath = r.URL.Path
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`[
+				{"uuid":"tp-1","name":"dd","config":{"type":"DATA_DOG"},"tags":{"env":"prod"}},
+				{"uuid":"tp-2","name":"otlp","config":{"type":"OTLP"}}
+			]`))
+		})
+
+	providers, err := vc.ListTelemetryProviders(context.Background(), "cust-1", "token")
+	if err != nil {
+		t.Fatalf("list error: %v", err)
+	}
+	if len(providers) != 2 {
+		t.Fatalf("expected 2 providers, got %d", len(providers))
+	}
+	if !strings.HasSuffix(gotPath, "/customers/cust-1/telemetry_provider") {
+		t.Errorf("unexpected path: %s", gotPath)
+	}
+	if providers[0].Name != "dd" || providers[0].Config["type"] != "DATA_DOG" {
+		t.Errorf("first provider not parsed: %+v", providers[0])
+	}
+	if providers[0].Tags["env"] != "prod" {
+		t.Errorf("tags not parsed: %+v", providers[0].Tags)
+	}
+}
+
+// TestListTelemetryProvidersError ensures a non-2xx list response surfaces an
+// error rather than an empty slice (which the data source would misread as
+// "not found").
+func TestListTelemetryProvidersError(t *testing.T) {
+	vc, _ := newStubVanillaClient(t,
+		func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte(`{"error":"boom"}`))
+		})
+	if _, err := vc.ListTelemetryProviders(
+		context.Background(), "cust", "token"); err == nil {
+		t.Fatal("expected error on 500 list response")
+	}
+}
+
 // TestErrTelemetryProviderMissingIsStable guards against accidental
 // renames or replacements of the sentinel — every consumer (the resource
 // Read flow, future agents extending the package) reaches for it via
