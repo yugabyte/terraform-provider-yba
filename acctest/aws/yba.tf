@@ -61,6 +61,37 @@ data "aws_ami" "almalinux" {
   }
 }
 
+# A second, older AMI for the VM-image-upgrade universe test, which needs two
+# distinct images (upgrade old -> new). Pinned one minor back so it stays
+# different from data.aws_ami.almalinux (the newest). Exported as
+# TF_VAR_AWS_AMI_ID_OLD; the newest is TF_VAR_AWS_AMI_ID_NEW.
+data "aws_ami" "almalinux_prev" {
+  most_recent = true
+  owners      = [var.base_image.owner]
+
+  filter {
+    name   = "name"
+    values = [var.base_image.prev_name_pattern]
+  }
+  filter {
+    name   = "architecture"
+    values = ["x86_64"]
+  }
+  filter {
+    name   = "virtualization-type"
+    values = ["hvm"]
+  }
+
+  # Fail loudly if the two patterns collapse to the same image (e.g. no newer
+  # minor exists yet), which would make the VM-image-upgrade test a no-op.
+  lifecycle {
+    postcondition {
+      condition     = self.id != data.aws_ami.almalinux.id
+      error_message = "base_image.prev_name_pattern resolved to the same AMI as base_image; pin it one minor back."
+    }
+  }
+}
+
 # EC2 key pair the installer's SSH key maps to.
 resource "aws_key_pair" "yba" {
   key_name   = "${var.prefix}-yba"

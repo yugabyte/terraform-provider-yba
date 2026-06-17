@@ -64,15 +64,20 @@ variable "operator_cidr_ranges" {
 # recent" tracks the newest published build. The same AMI is surfaced as
 # TF_VAR_AWS_AMI_ID for the provider tests' custom image bundles.
 variable "base_image" {
+  # name_pattern is the newer AMI (YBA VM boot image, TF_VAR_AWS_AMI_ID_NEW).
+  # prev_name_pattern is the older one (TF_VAR_AWS_AMI_ID_OLD). Both pinned per
+  # minor so they stay distinct. Bump as minors age out.
   description = "AlmaLinux 9 AMI lookup for the YBA VM and the image-bundle tests."
   type = object({
-    owner        = string
-    name_pattern = string
+    owner             = string
+    name_pattern      = string
+    prev_name_pattern = string
   })
   default = {
     # AlmaLinux OS Foundation's AWS account that publishes the official AMIs.
-    owner        = "764336703387"
-    name_pattern = "AlmaLinux OS 9*x86_64"
+    owner             = "764336703387"
+    name_pattern      = "AlmaLinux OS 9.8*x86_64"
+    prev_name_pattern = "AlmaLinux OS 9.7*x86_64"
   }
 }
 
