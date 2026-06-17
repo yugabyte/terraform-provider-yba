@@ -84,6 +84,11 @@ func ResourceTelemetryProvider() *schema.Resource {
 		ReadContext:   resourceTelemetryProviderRead,
 		DeleteContext: resourceTelemetryProviderDelete,
 
+		// Catch the conditional-auth footguns at plan time rather than
+		// letting YBA reject them after the credentials have already been
+		// committed to the Terraform state file.
+		CustomizeDiff: validateTelemetryProviderAuth,
+
 		Importer: &schema.ResourceImporter{
 			StateContext: schema.ImportStatePassthroughContext,
 		},
@@ -164,9 +169,9 @@ func ResourceTelemetryProvider() *schema.Resource {
 							ForceNew: true,
 							Default:  "NoAuth",
 							ValidateFunc: validation.StringInSlice([]string{
-								"NoAuth", "BasicAuth", "BearerAuth",
+								"NoAuth", "BasicAuth", "BearerToken",
 							}, false),
-							Description: "Authentication type. One of NoAuth, BasicAuth, BearerAuth.",
+							Description: "Authentication type. One of NoAuth, BasicAuth, BearerToken.",
 						},
 						"protocol": {
 							Type:         schema.TypeString,
@@ -209,7 +214,7 @@ func ResourceTelemetryProvider() *schema.Resource {
 							Optional:    true,
 							ForceNew:    true,
 							Sensitive:   true,
-							Description: "Bearer token (only used when auth_type=BearerAuth).",
+							Description: "Bearer token (only used when auth_type=BearerToken).",
 						},
 						"headers": {
 							Type:        schema.TypeMap,
@@ -500,8 +505,12 @@ func ResourceTelemetryProvider() *schema.Resource {
 							Type:     schema.TypeString,
 							Optional: true,
 							ForceNew: true,
-							Description: "Optional AWS partition " +
-								"(e.g. aws, aws-us-gov, aws-cn).",
+							ValidateFunc: validation.StringInSlice(
+								[]string{"hour", "minute"},
+								false,
+							),
+							Description: "Time granularity of the S3 object directory " +
+								"layout. One of `hour` or `minute` (YBA default: `minute`).",
 						},
 						"marshaler": {
 							Type:     schema.TypeString,
@@ -538,6 +547,44 @@ func ResourceTelemetryProvider() *schema.Resource {
 			},
 		},
 	}
+}
+
+// validateTelemetryProviderAuth runs at plan time (CustomizeDiff) and rejects
+// auth configurations that YBA would otherwise reject only after Terraform has
+// already written the (sensitive) credentials into state. OTLP supports
+// BasicAuth and BearerToken; Loki supports BasicAuth only. When the matching
+// credential fields are missing the provider build path silently sends empty
+// strings, which YBA either rejects ("Credentials are required when auth type
+// is basic.") or accepts as a broken exporter — neither is a good experience
+// to debug after the fact.
+func validateTelemetryProviderAuth(
+	_ context.Context, d *schema.ResourceDiff, _ interface{},
+) error {
+	if list, ok := d.Get("otlp").([]interface{}); ok && len(list) > 0 {
+		switch stringValue(d.Get("otlp.0.auth_type")) {
+		case "BasicAuth":
+			if stringValue(d.Get("otlp.0.basic_auth_username")) == "" ||
+				stringValue(d.Get("otlp.0.basic_auth_password")) == "" {
+				return fmt.Errorf("otlp: basic_auth_username and " +
+					"basic_auth_password are required when auth_type = \"BasicAuth\"")
+			}
+		case "BearerToken":
+			if stringValue(d.Get("otlp.0.bearer_token")) == "" {
+				return fmt.Errorf("otlp: bearer_token is required when " +
+					"auth_type = \"BearerToken\"")
+			}
+		}
+	}
+	if list, ok := d.Get("loki").([]interface{}); ok && len(list) > 0 {
+		if stringValue(d.Get("loki.0.auth_type")) == "BasicAuth" {
+			if stringValue(d.Get("loki.0.basic_auth_username")) == "" ||
+				stringValue(d.Get("loki.0.basic_auth_password")) == "" {
+				return fmt.Errorf("loki: basic_auth_username and " +
+					"basic_auth_password are required when auth_type = \"BasicAuth\"")
+			}
+		}
+	}
+	return nil
 }
 
 // telemetryProviderType returns the YBA ProviderType enum value for the
@@ -607,7 +654,7 @@ func buildTelemetryProviderConfig(d *schema.ResourceData) (map[string]interface{
 				"username": stringValue(c["basic_auth_username"]),
 				"password": stringValue(c["basic_auth_password"]),
 			}
-		case "BearerAuth":
+		case "BearerToken":
 			out["bearerToken"] = map[string]string{
 				"token": stringValue(c["bearer_token"]),
 			}

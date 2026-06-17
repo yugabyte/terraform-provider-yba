@@ -92,6 +92,13 @@ func ResourceUniverseTelemetryConfig() *schema.Resource {
 		UpdateContext: resourceUniverseTelemetryConfigUpdate,
 		DeleteContext: resourceUniverseTelemetryConfigDelete,
 
+		// Reject the same telemetry provider listed twice inside a single
+		// pipeline's exporter list at plan time. YBA would otherwise build a
+		// collector with two identical exporters (or reject the upgrade
+		// mid-restart); both are confusing to debug after the apply has
+		// already begun reconfiguring the universe.
+		CustomizeDiff: validateNoDuplicateExporters,
+
 		Timeouts: &schema.ResourceTimeout{
 			Create: schema.DefaultTimeout(telemetryUpgradeTimeout),
 			Update: schema.DefaultTimeout(telemetryUpgradeTimeout),
@@ -471,6 +478,49 @@ func metricsExporterSchema() *schema.Schema {
 		Optional: true,
 		Elem:     &schema.Resource{Schema: s},
 	}
+}
+
+// validateNoDuplicateExporters runs at plan time (CustomizeDiff) and rejects a
+// configuration that lists the same telemetry provider (exporter_uuid) more
+// than once within a single pipeline's exporter list. A provider may
+// legitimately appear across different pipelines (audit / query / metrics) of
+// the same universe, and the same provider may be shared by many universes —
+// only intra-list duplicates are a mistake.
+func validateNoDuplicateExporters(
+	_ context.Context, d *schema.ResourceDiff, _ interface{},
+) error {
+	for _, section := range []struct {
+		label string
+		path  string
+	}{
+		{"audit_logs", "audit_logs.0.exporter"},
+		{"query_logs", "query_logs.0.exporter"},
+		{"metrics", "metrics.0.exporter"},
+	} {
+		list, ok := d.Get(section.path).([]interface{})
+		if !ok {
+			continue
+		}
+		seen := make(map[string]struct{}, len(list))
+		for _, e := range list {
+			m, _ := e.(map[string]interface{})
+			if m == nil {
+				continue
+			}
+			uuid := stringValue(m["exporter_uuid"])
+			if uuid == "" {
+				continue
+			}
+			if _, dup := seen[uuid]; dup {
+				return fmt.Errorf(
+					"%s: exporter_uuid %q is listed more than once; each "+
+						"telemetry provider may appear at most once per pipeline",
+					section.label, uuid)
+			}
+			seen[uuid] = struct{}{}
+		}
+	}
+	return nil
 }
 
 // buildExportTelemetryConfigSpec assembles the typed v2 SDK request body for
