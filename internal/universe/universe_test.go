@@ -36,23 +36,23 @@ func TestAccLong_Universe_GCP_UpdatePrimaryNodes(t *testing.T) {
 	rName := acctest.RandomName("gcp-universe")
 	resource.ParallelTest(t, resource.TestCase{
 		PreCheck: func() {
-			acctest.TestAccPreCheck(t)
 			acctest.TestAccPreCheckGCP(t)
+			acctest.TestAccPreCheckCloudYBA(t, "GCP")
 		},
 		ProviderFactories: acctest.ProviderFactories,
-		CheckDestroy:      testAccCheckDestroyProviderAndUniverse,
+		CheckDestroy:      testAccCheckDestroyProviderAndUniverse("GCP"),
 		Steps: []resource.TestStep{
 			{
 				Config: universeGcpConfigWithNodes(rName, 3),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckUniverseExists("yba_universe.gcp", &universe),
+					testAccCheckUniverseExists("GCP", "yba_universe.gcp", &universe),
 					testAccCheckNumNodes(&universe, 3),
 				),
 			},
 			{
 				Config: universeGcpConfigWithNodes(rName, 4),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckUniverseExists("yba_universe.gcp", &universe),
+					testAccCheckUniverseExists("GCP", "yba_universe.gcp", &universe),
 					testAccCheckNumNodes(&universe, 4),
 				),
 			},
@@ -66,23 +66,23 @@ func TestAccLong_Universe_AWS_UpdatePrimaryNodes(t *testing.T) {
 	rName := acctest.RandomName("aws-universe")
 	resource.ParallelTest(t, resource.TestCase{
 		PreCheck: func() {
-			acctest.TestAccPreCheck(t)
 			acctest.TestAccPreCheckAWS(t)
+			acctest.TestAccPreCheckCloudYBA(t, "AWS")
 		},
 		ProviderFactories: acctest.ProviderFactories,
-		CheckDestroy:      testAccCheckDestroyProviderAndUniverse,
+		CheckDestroy:      testAccCheckDestroyProviderAndUniverse("AWS"),
 		Steps: []resource.TestStep{
 			{
 				Config: universeAwsConfigWithNodes(rName, 3),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckUniverseExists("yba_universe.aws", &universe),
+					testAccCheckUniverseExists("AWS", "yba_universe.aws", &universe),
 					testAccCheckNumNodes(&universe, 3),
 				),
 			},
 			{
 				Config: universeAwsConfigWithNodes(rName, 4),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckUniverseExists("yba_universe.aws", &universe),
+					testAccCheckUniverseExists("AWS", "yba_universe.aws", &universe),
 					testAccCheckNumNodes(&universe, 4),
 				),
 			},
@@ -96,23 +96,23 @@ func TestAccLong_Universe_Azure_UpdatePrimaryNodes(t *testing.T) {
 	rName := acctest.RandomName("azu-universe")
 	resource.ParallelTest(t, resource.TestCase{
 		PreCheck: func() {
-			acctest.TestAccPreCheck(t)
 			acctest.TestAccPreCheckAzure(t)
+			acctest.TestAccPreCheckCloudYBA(t, "AZURE")
 		},
 		ProviderFactories: acctest.ProviderFactories,
-		CheckDestroy:      testAccCheckDestroyProviderAndUniverse,
+		CheckDestroy:      testAccCheckDestroyProviderAndUniverse("AZURE"),
 		Steps: []resource.TestStep{
 			{
 				Config: universeAzureConfigWithNodes(rName, 3),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckUniverseExists("yba_universe.azu", &universe),
+					testAccCheckUniverseExists("AZURE", "yba_universe.azu", &universe),
 					testAccCheckNumNodes(&universe, 3),
 				),
 			},
 			{
 				Config: universeAzureConfigWithNodes(rName, 4),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckUniverseExists("yba_universe.azu", &universe),
+					testAccCheckUniverseExists("AZURE", "yba_universe.azu", &universe),
 					testAccCheckNumNodes(&universe, 4),
 				),
 			},
@@ -120,55 +120,61 @@ func TestAccLong_Universe_Azure_UpdatePrimaryNodes(t *testing.T) {
 	})
 }
 
-func testAccCheckDestroyProviderAndUniverse(s *terraform.State) error {
-	conn := acctest.APIClient.YugawareClient
+func testAccCheckDestroyProviderAndUniverse(cloud string) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		apiClient, err := acctest.APIClientForCloud(cloud)
+		if err != nil {
+			return err
+		}
+		conn := apiClient.YugawareClient
+		cUUID := apiClient.CustomerID
 
-	for _, r := range s.RootModule().Resources {
-		switch r.Type {
-		case "yba_universe":
-			cUUID := acctest.APIClient.CustomerID
-			_, _, err := conn.UniverseManagementAPI.GetUniverse(context.Background(), cUUID,
-				r.Primary.ID).Execute()
-			// A 404 means the universe is gone (destroyed) — that is the success
-			// case. Only a successful GET means it still exists.
-			if err == nil {
-				return errors.New("Universe resource is not destroyed")
-			}
-		case "yba_cloud_provider":
-			// Provider deletion is async; poll until it disappears rather than
-			// sleeping a fixed interval (which can false-fail and leak the
-			// provider if deletion runs long).
-			cUUID := acctest.APIClient.CustomerID
-			deadline := time.Now().Add(5 * time.Minute)
-			for {
-				res, response, err := conn.CloudProvidersAPI.GetListOfProviders(
-					context.Background(), cUUID).Execute()
-				if err != nil {
-					return utils.ErrorFromHTTPResponse(response, err, utils.TestEntity,
-						"Universe", "Read - Cloud Provider")
+		for _, r := range s.RootModule().Resources {
+			switch r.Type {
+			case "yba_universe":
+				_, _, err := conn.UniverseManagementAPI.GetUniverse(context.Background(), cUUID,
+					r.Primary.ID).Execute()
+				// A 404 means the universe is gone (destroyed) — that is the success
+				// case. Only a successful GET means it still exists.
+				if err == nil {
+					return errors.New("Universe resource is not destroyed")
 				}
-				found := false
-				for _, p := range res {
-					if *p.Uuid == r.Primary.ID {
-						found = true
+			case "yba_cloud_provider":
+				// Provider deletion is async; poll until it disappears rather than
+				// sleeping a fixed interval (which can false-fail and leak the
+				// provider if deletion runs long).
+				deadline := time.Now().Add(5 * time.Minute)
+				for {
+					res, response, err := conn.CloudProvidersAPI.GetListOfProviders(
+						context.Background(), cUUID).Execute()
+					if err != nil {
+						return utils.ErrorFromHTTPResponse(response, err, utils.TestEntity,
+							"Universe", "Read - Cloud Provider")
+					}
+					found := false
+					for _, p := range res {
+						if *p.Uuid == r.Primary.ID {
+							found = true
+							break
+						}
+					}
+					if !found {
 						break
 					}
+					if time.Now().After(deadline) {
+						return errors.New("Cloud provider is not destroyed")
+					}
+					time.Sleep(10 * time.Second)
 				}
-				if !found {
-					break
-				}
-				if time.Now().After(deadline) {
-					return errors.New("Cloud provider is not destroyed")
-				}
-				time.Sleep(10 * time.Second)
 			}
 		}
-	}
 
-	return nil
+		return nil
+	}
 }
 
-func testAccCheckUniverseExists(name string, universe *client.UniverseResp) resource.TestCheckFunc {
+func testAccCheckUniverseExists(
+	cloud, name string, universe *client.UniverseResp) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
 		r, ok := s.RootModule().Resources[name]
 		if !ok {
@@ -178,8 +184,12 @@ func testAccCheckUniverseExists(name string, universe *client.UniverseResp) reso
 			return errors.New("no ID is set for universe resource")
 		}
 
-		conn := acctest.APIClient.YugawareClient
-		cUUID := acctest.APIClient.CustomerID
+		apiClient, err := acctest.APIClientForCloud(cloud)
+		if err != nil {
+			return err
+		}
+		conn := apiClient.YugawareClient
+		cUUID := apiClient.CustomerID
 		res, response, err := conn.UniverseManagementAPI.GetUniverse(context.Background(), cUUID,
 			r.Primary.ID).Execute()
 		if err != nil {
@@ -203,17 +213,17 @@ func testAccCheckNumNodes(universe *client.UniverseResp, expected int32) resourc
 }
 
 func universeGcpConfigWithNodes(name string, nodes int) string {
-	return cloudProviderGCPConfig(name+"-provider") +
+	return acctest.YBAProviderBlock("GCP") + cloudProviderGCPConfig(name+"-provider") +
 		universeConfigWithProviderWithNodes("gcp", name, nodes)
 }
 
 func universeAwsConfigWithNodes(name string, nodes int) string {
-	return cloudProviderAWSConfig(name+"-provider") +
+	return acctest.YBAProviderBlock("AWS") + cloudProviderAWSConfig(name+"-provider") +
 		universeConfigWithProviderWithNodes("aws", name, nodes)
 }
 
 func universeAzureConfigWithNodes(name string, nodes int) string {
-	return cloudProviderAzureConfig(name+"-provider") +
+	return acctest.YBAProviderBlock("AZURE") + cloudProviderAzureConfig(name+"-provider") +
 		universeConfigWithProviderWithNodes("azu", name, nodes)
 }
 
@@ -275,13 +285,20 @@ func getUniverseStorageType(p string) string {
 }
 
 func getUniverseInstanceType(p string) string {
+	// All clouds use a current-gen, 2-vCPU instance — YugabyteDB's documented
+	// minimum is 2 cores / 2 GB RAM, and these tests only need a node to come up.
 	switch p {
 	case "gcp":
 		return "n2-standard-2"
 	case "aws":
-		return "c5.large"
+		return "c6i.large"
 	}
-	return "Standard_D4s_v3"
+	// Azure: current-gen v5. The v6 D-series fails YBA node provisioning
+	// (YNPProvisioning) in 2025.2.x — its NVMe-only data-disk layout differs from
+	// the SCSI layout the provisioner expects — so v5 is the newest size YBA can
+	// bring up here. Its Dsv5 family quota is separate from the Dsv3 the standing
+	// fixture YBA VM consumes.
+	return "Standard_D2s_v5"
 }
 
 func cloudProviderGCPConfig(name string) string {
@@ -404,24 +421,24 @@ func TestAccLong_Universe_AWS_VMImageUpgrade(t *testing.T) {
 	rName := acctest.RandomName("aws-universe")
 	resource.ParallelTest(t, resource.TestCase{
 		PreCheck: func() {
-			acctest.TestAccPreCheck(t)
 			acctest.TestAccPreCheckAWS(t)
+			acctest.TestAccPreCheckCloudYBA(t, "AWS")
 		},
 		ProviderFactories: acctest.ProviderFactories,
-		CheckDestroy:      testAccCheckDestroyProviderAndUniverse,
+		CheckDestroy:      testAccCheckDestroyProviderAndUniverse("AWS"),
 		Steps: []resource.TestStep{
 			{
 				Config: universeAwsConfigWithImageBundle(rName,
 					"${yba_aws_provider.aws.image_bundles[0].uuid}"),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckUniverseExists("yba_universe.aws", &universeBefore),
+					testAccCheckUniverseExists("AWS", "yba_universe.aws", &universeBefore),
 				),
 			},
 			{
 				Config: universeAwsConfigWithImageBundle(rName,
 					"${yba_aws_provider.aws.image_bundles[1].uuid}"),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckUniverseExists("yba_universe.aws", &universeAfter),
+					testAccCheckUniverseExists("AWS", "yba_universe.aws", &universeAfter),
 					testAccCheckImageBundleUpdated(&universeBefore, &universeAfter),
 				),
 			},
@@ -465,7 +482,8 @@ func testAccCheckImageBundleUpdated(before *client.UniverseResp,
 }
 
 func universeAwsConfigWithImageBundle(name string, imageBundleUUID string) string {
-	return cloudProviderAWSConfigForVMImageUpgrade(name+"-provider") +
+	return acctest.YBAProviderBlock("AWS") +
+		cloudProviderAWSConfigForVMImageUpgrade(name+"-provider") +
 		universeConfigWithProviderWithImageBundle("aws", name, imageBundleUUID)
 }
 
@@ -562,7 +580,6 @@ func universeConfigWithProviderWithImageBundle(p string, name string,
             cluster_type = "PRIMARY"
             user_intent {
                 universe_name      = "%s"
-                provider_type      = "%s"
                 provider           = yba_aws_provider.%s.id
                 region_list        = yba_aws_provider.%s.regions[*].uuid
                 num_nodes          = 1
@@ -593,12 +610,11 @@ func universeConfigWithProviderWithImageBundle(p string, name string,
             cluster_type = "ASYNC"
             user_intent {
                 universe_name      = "%s"
-                provider_type      = "%s"
                 provider           = yba_aws_provider.%s.id
                 region_list        = yba_aws_provider.%s.regions[*].uuid
                 num_nodes          = 1
                 replication_factor = 1
-                instance_type      = "c5.large"
+                instance_type      = "%s"
                 image_bundle_uuid  = "%s"
                 device_info {
                     num_volumes  = 1
@@ -613,6 +629,11 @@ func universeConfigWithProviderWithImageBundle(p string, name string,
         }
         communication_ports {}
     }
-`, p, p, name, p, p, p, getUniverseInstanceType(p), imageBundleUUID, getUniverseStorageType(p), p,
-		name, p, p, p, imageBundleUUID, getUniverseStorageType(p), p) // Map the new ASYNC arguments
+`,
+		// PRIMARY cluster
+		p, p, name, p, p, getUniverseInstanceType(p), imageBundleUUID,
+		getUniverseStorageType(p), p,
+		// ASYNC cluster
+		name, p, p, getUniverseInstanceType(p), imageBundleUUID,
+		getUniverseStorageType(p), p)
 }
