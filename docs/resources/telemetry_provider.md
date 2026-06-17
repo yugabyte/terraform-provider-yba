@@ -175,10 +175,10 @@ Required:
 
 Optional:
 
-- `auth_type` (String) Authentication type. One of NoAuth, BasicAuth, BearerAuth.
+- `auth_type` (String) Authentication type. One of NoAuth, BasicAuth, BearerToken.
 - `basic_auth_password` (String, Sensitive) BasicAuth password (only used when auth_type=BasicAuth).
 - `basic_auth_username` (String, Sensitive) BasicAuth username (only used when auth_type=BasicAuth).
-- `bearer_token` (String, Sensitive) Bearer token (only used when auth_type=BearerAuth).
+- `bearer_token` (String, Sensitive) Bearer token (only used when auth_type=BearerToken).
 - `compression` (String) Compression for OTLP exporter (e.g. gzip, none).
 - `headers` (Map of String) Additional headers to send on every OTLP request.
 - `logs_endpoint` (String) Override endpoint for log export (HTTP protocol only). When set, the value of `endpoint` is ignored for logs.
@@ -206,7 +206,7 @@ Optional:
 - `force_path_style` (Boolean) Force path-style addressing instead of the default virtual-hosted style.
 - `include_universe_and_node_in_prefix` (Boolean) Append `<universe-uuid>/<node-name>` to the directory prefix when writing objects.
 - `marshaler` (String) Optional marshaler used to serialize records (defaults to YBA's choice).
-- `partition` (String) Optional AWS partition (e.g. aws, aws-us-gov, aws-cn).
+- `partition` (String) Time granularity of the S3 object directory layout. One of `hour` or `minute` (YBA default: `minute`).
 - `role_arn` (String) Optional IAM role ARN to assume.
 
 
