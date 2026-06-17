@@ -107,6 +107,7 @@ func New() *schema.Provider {
 			"yba_universe_filter":        universe.UniverseFilter(),
 			"yba_universe_schema":        universe.DataSourceUniverseSchema(),
 			"yba_runtime_config":         runtimeconfig.DataSourceRuntimeConfig(),
+			"yba_telemetry_provider":     telemetry.DataSourceTelemetryProvider(),
 		},
 		ResourcesMap: map[string]*schema.Resource{
 			"yba_installer": installation.ResourceYBAInstaller(),
