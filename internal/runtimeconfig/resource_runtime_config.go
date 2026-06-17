@@ -95,6 +95,25 @@ func ResourceRuntimeConfig() *schema.Resource {
 	}
 }
 
+// fetchRuntimeConfigValue reads the current value of a runtime config key on a
+// scope. It is shared by the resource and data source reads. On any API error
+// it returns the translated YBA error; notFound is true only when YBA reports
+// the key is not set on the scope (HTTP 404). The resource treats notFound as
+// "removed from state" (and ignores the error), while the data source surfaces
+// the YBA error directly. The entity label (utils.ResourceEntity /
+// utils.DataSourceEntity) only shapes the error message.
+func fetchRuntimeConfigValue(
+	ctx context.Context, apiClient *api.APIClient, scope, key, entity string,
+) (value string, notFound bool, err error) {
+	v, response, e := apiClient.YugawareClient.RuntimeConfigurationAPI.
+		GetConfigurationKey(ctx, apiClient.CustomerID, scope, key).Execute()
+	if e != nil {
+		return "", utils.IsHTTPNotFound(response), utils.ErrorFromHTTPResponse(
+			response, e, entity, "Runtime Config", "Read")
+	}
+	return v, false, nil
+}
+
 func resourceRuntimeConfigCreateOrUpdate(
 	ctx context.Context, d *schema.ResourceData, meta interface{},
 ) diag.Diagnostics {
@@ -121,21 +140,19 @@ func resourceRuntimeConfigRead(
 	ctx context.Context, d *schema.ResourceData, meta interface{},
 ) diag.Diagnostics {
 	apiClient := meta.(*api.APIClient)
-	c := apiClient.YugawareClient
 	scope := d.Get("scope").(string)
 	key := d.Get("key").(string)
 
-	value, response, err := c.RuntimeConfigurationAPI.
-		GetConfigurationKey(ctx, apiClient.CustomerID, scope, key).Execute()
+	value, notFound, err := fetchRuntimeConfigValue(
+		ctx, apiClient, scope, key, utils.ResourceEntity)
+	if notFound {
+		tflog.Warn(ctx, fmt.Sprintf(
+			"Runtime config key %q not found in scope %q, removing from state", key, scope))
+		d.SetId("")
+		return nil
+	}
 	if err != nil {
-		if utils.IsHTTPNotFound(response) {
-			tflog.Warn(ctx, fmt.Sprintf(
-				"Runtime config key %q not found in scope %q, removing from state", key, scope))
-			d.SetId("")
-			return nil
-		}
-		return diag.FromErr(utils.ErrorFromHTTPResponse(response, err,
-			utils.ResourceEntity, "Runtime Config", "Read"))
+		return diag.FromErr(err)
 	}
 	if err := d.Set("value", value); err != nil {
 		return diag.FromErr(err)

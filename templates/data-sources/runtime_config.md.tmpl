@@ -1,0 +1,15 @@
+---
+page_title: "{{.Name}} {{.Type}} - {{.RenderedProviderName}}"
+description: |-
+{{ index (split (trimspace .Description) "\n\n") 0 | plainmarkdown | trimspace | prefixlines "  " }}
+---
+
+# {{.Name}} ({{.Type}})
+
+{{ .Description | trimspace }}
+
+## Example Usage
+
+{{ tffile "examples/data-sources/yba_runtime_config/data-source.tf" }}
+
+{{ .SchemaMarkdown | trimspace }}

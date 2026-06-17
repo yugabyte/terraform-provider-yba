@@ -16,54 +16,37 @@
 package runtimeconfig_test
 
 import (
-	"context"
 	"fmt"
 	"regexp"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
 
 	"github.com/yugabyte/terraform-provider-yba/internal/acctest"
-	"github.com/yugabyte/terraform-provider-yba/internal/utils"
-)
-
-const (
-	// globalScope is the well-known UUID YBA uses for global-scope runtime config.
-	globalScope = "00000000-0000-0000-0000-000000000000"
-
-	// testKey is a GLOBAL-scope boolean runtime config key that is safe to flip
-	// and reset on the shared standing YBA: it only guards whether platform
-	// downgrades are permitted (never consulted outside an upgrade/downgrade
-	// flow) and defaults to "false", so resetting it on destroy restores the
-	// fixture's prior state.
-	testKey = "yb.is_platform_downgrade_allowed"
-
-	// overrideValue is a non-default value the test applies so that the
-	// destroy-resets-to-default behavior is observable.
-	overrideValue = "true"
 )
 
 // TestAccRuntimeConfig_GlobalScope exercises the full lifecycle of a
-// yba_runtime_config resource on the global scope: create, in-place update,
-// import, and the delete path (which resets the key to its YBA-side default).
+// yba_runtime_config resource on the global scope using the Boolean key
+// (boolCase): create, in-place update, import, and the delete path (which resets
+// the key to its YBA-side default).
 func TestAccRuntimeConfig_GlobalScope(t *testing.T) {
 	resourceName := "yba_runtime_config.test"
-	id := globalScope + "/" + testKey
+	id := globalScope + "/" + boolCase.key
 
 	// Serial (not Parallel): runtime config keys are shared singletons on the
 	// standing YBA, so concurrent tests touching the same key would collide.
 	resource.Test(t, resource.TestCase{
 		PreCheck:          func() { acctest.TestAccPreCheck(t) },
 		ProviderFactories: acctest.ProviderFactories,
-		CheckDestroy:      testAccCheckRuntimeConfigReset,
+		CheckDestroy: testAccCheckRuntimeConfigValueAbsent(
+			globalScope, boolCase.key, boolCase.value),
 		Steps: []resource.TestStep{
 			{
 				// Create at the default value to exercise the create/set path.
-				Config: runtimeConfigConfig(testKey, "false"),
+				Config: runtimeConfigConfig(boolCase.key, "false"),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckRuntimeConfigValue(globalScope, testKey, "false"),
-					resource.TestCheckResourceAttr(resourceName, "key", testKey),
+					testAccCheckRuntimeConfigValue(globalScope, boolCase.key, "false"),
+					resource.TestCheckResourceAttr(resourceName, "key", boolCase.key),
 					resource.TestCheckResourceAttr(resourceName, "value", "false"),
 					resource.TestCheckResourceAttr(resourceName, "scope", globalScope),
 					resource.TestCheckResourceAttr(resourceName, "id", id),
@@ -72,10 +55,10 @@ func TestAccRuntimeConfig_GlobalScope(t *testing.T) {
 			{
 				// Update in place to a non-default value; verifies the update path
 				// and leaves an override for the destroy step to reset.
-				Config: runtimeConfigConfig(testKey, overrideValue),
+				Config: runtimeConfigConfig(boolCase.key, boolCase.value),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckRuntimeConfigValue(globalScope, testKey, overrideValue),
-					resource.TestCheckResourceAttr(resourceName, "value", overrideValue),
+					testAccCheckRuntimeConfigValue(globalScope, boolCase.key, boolCase.value),
+					resource.TestCheckResourceAttr(resourceName, "value", boolCase.value),
 				),
 			},
 			{
@@ -88,58 +71,53 @@ func TestAccRuntimeConfig_GlobalScope(t *testing.T) {
 	})
 }
 
-// testAccCheckRuntimeConfigValue asserts YBA reports the expected value for a
-// runtime config key, reading it back through the API independently of state.
-func testAccCheckRuntimeConfigValue(scope, key, expected string) resource.TestCheckFunc {
-	return func(_ *terraform.State) error {
-		c := acctest.APIClient.YugawareClient
-		cUUID := acctest.APIClient.CustomerID
-
-		value, response, err := c.RuntimeConfigurationAPI.
-			GetConfigurationKey(context.Background(), cUUID, scope, key).Execute()
-		if err != nil {
-			return utils.ErrorFromHTTPResponse(response, err, utils.TestEntity,
-				"Runtime Config", "Read")
-		}
-		if value != expected {
-			return fmt.Errorf("runtime config key %q in scope %q = %q, want %q",
-				key, scope, value, expected)
-		}
-		return nil
+// TestAccRuntimeConfig_TypeRoundTrip verifies that values backed by several YBA
+// data types round-trip without drift through a resource whose `value` is a
+// plain string. YBA stores values verbatim and returns them byte-for-byte, so:
+//   - the API reports back exactly the string we set (no type normalization),
+//   - re-applying the identical config is a no-op (PlanOnly step), and
+//   - import round-trips the state.
+//
+// It iterates the shared runtimeConfigCases table (see common_test.go), so it
+// covers the same Boolean/Duration/Integer/String keys as the data source test.
+// Subtests run serially (no t.Parallel): each key is a shared global singleton.
+func TestAccRuntimeConfig_TypeRoundTrip(t *testing.T) {
+	for _, tc := range runtimeConfigCases {
+		t.Run(tc.name, func(t *testing.T) { testRuntimeConfigTypeRoundTrip(t, tc) })
 	}
 }
 
-// testAccCheckRuntimeConfigReset verifies that destroy reset every managed key
-// to its YBA-side default: the non-default override the test applied must no
-// longer be present.
-func testAccCheckRuntimeConfigReset(s *terraform.State) error {
-	c := acctest.APIClient.YugawareClient
-	cUUID := acctest.APIClient.CustomerID
+func testRuntimeConfigTypeRoundTrip(t *testing.T, tc runtimeConfigCase) {
+	resourceName := "yba_runtime_config.test"
+	id := globalScope + "/" + tc.key
 
-	for _, r := range s.RootModule().Resources {
-		if r.Type != "yba_runtime_config" {
-			continue
-		}
-		scope := r.Primary.Attributes["scope"]
-		key := r.Primary.Attributes["key"]
-
-		value, response, err := c.RuntimeConfigurationAPI.
-			GetConfigurationKey(context.Background(), cUUID, scope, key).Execute()
-		if err != nil {
-			// A 404 means the override is gone entirely, a valid post-destroy state.
-			if acctest.IsResourceNotFoundError(err) {
-				continue
-			}
-			return utils.ErrorFromHTTPResponse(response, err, utils.TestEntity,
-				"Runtime Config", "Read")
-		}
-		if value == overrideValue {
-			return fmt.Errorf(
-				"runtime config key %q in scope %q still has overridden value %q after destroy",
-				key, scope, value)
-		}
-	}
-	return nil
+	resource.Test(t, resource.TestCase{
+		PreCheck:          func() { acctest.TestAccPreCheck(t) },
+		ProviderFactories: acctest.ProviderFactories,
+		CheckDestroy:      testAccCheckRuntimeConfigValueAbsent(globalScope, tc.key, tc.value),
+		Steps: []resource.TestStep{
+			{
+				Config: runtimeConfigConfig(tc.key, tc.value),
+				Check: resource.ComposeTestCheckFunc(
+					// YBA returns the value byte-for-byte: no type normalization.
+					testAccCheckRuntimeConfigValue(globalScope, tc.key, tc.value),
+					resource.TestCheckResourceAttr(resourceName, "value", tc.value),
+					resource.TestCheckResourceAttr(resourceName, "id", id),
+				),
+			},
+			{
+				// Re-applying the identical config must be a no-op: the string
+				// value round-trips with zero drift for every data type.
+				Config:   runtimeConfigConfig(tc.key, tc.value),
+				PlanOnly: true,
+			},
+			{
+				ResourceName:      resourceName,
+				ImportState:       true,
+				ImportStateVerify: true,
+			},
+		},
+	})
 }
 
 // TestAccRuntimeConfig_NonMutableKey verifies the resource fails the apply
@@ -171,8 +149,27 @@ func TestAccRuntimeConfig_InvalidScope(t *testing.T) {
 		ProviderFactories: acctest.ProviderFactories,
 		Steps: []resource.TestStep{
 			{
-				Config:      runtimeConfigConfigWithScope(bogusScope, testKey, "true"),
+				Config:      runtimeConfigConfigWithScope(bogusScope, boolCase.key, boolCase.value),
 				ExpectError: regexp.MustCompile(`Cannot set the key in this scope`),
+			},
+		},
+	})
+}
+
+// TestAccRuntimeConfig_MalformedValue verifies that when a value does not parse
+// for the key's data type, the apply fails surfacing YBA's validation error
+// rather than silently storing garbage. boolCase.key is a Boolean key, so
+// "notabool" cannot be parsed; YBA enables value validation by default
+// (runtime_config.data_validation.enabled) and returns 400 with
+// "<value> is not a valid value for desired key".
+func TestAccRuntimeConfig_MalformedValue(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		PreCheck:          func() { acctest.TestAccPreCheck(t) },
+		ProviderFactories: acctest.ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config:      runtimeConfigConfig(boolCase.key, "notabool"),
+				ExpectError: regexp.MustCompile(`is not a valid value for desired key`),
 			},
 		},
 	})

@@ -105,6 +105,7 @@ func New() *schema.Provider {
 			"yba_onprem_nodes":           onprem.NodeInstanceFilter(),
 			"yba_universe_filter":        universe.UniverseFilter(),
 			"yba_universe_schema":        universe.DataSourceUniverseSchema(),
+			"yba_runtime_config":         runtimeconfig.DataSourceRuntimeConfig(),
 		},
 		ResourcesMap: map[string]*schema.Resource{
 			"yba_installer": installation.ResourceYBAInstaller(),
