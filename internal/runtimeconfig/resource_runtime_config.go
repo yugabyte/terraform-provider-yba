@@ -1,0 +1,205 @@
+// Licensed to YugabyteDB, Inc. under one or more contributor license
+// agreements. See the NOTICE file distributed with this work for
+// additional information regarding copyright ownership. Yugabyte
+// licenses this file to you under the Mozilla License, Version 2.0
+// (the "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+// http://mozilla.org/MPL/2.0/.
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+
+// Package runtimeconfig implements the yba_runtime_config resource for managing
+// individual YugabyteDB Anywhere runtime configuration keys on a given scope.
+package runtimeconfig
+
+import (
+	"context"
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/hashicorp/terraform-plugin-log/tflog"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+
+	"github.com/yugabyte/terraform-provider-yba/internal/api"
+	"github.com/yugabyte/terraform-provider-yba/internal/utils"
+)
+
+// globalRuntimeScope is the well-known UUID that YBA uses for global-scope
+// runtime configuration. Documented at
+// https://docs.yugabyte.com/preview/yugabyte-platform/administer-yugabyte-platform/manage-runtime-config/
+const globalRuntimeScope = "00000000-0000-0000-0000-000000000000"
+
+// ResourceRuntimeConfig manages a single YBA runtime configuration key/value
+// pair. Useful for enabling feature flags such as
+// `yb.telemetry.allow_s3` (required to allow the S3 telemetry exporter) or
+// `yb.universe.metrics_export_enabled` (required to enable metrics export
+// per universe).
+//
+// The resource is intentionally kept generic so it can be reused for any
+// runtime configuration key, not just telemetry-related ones.
+func ResourceRuntimeConfig() *schema.Resource {
+	return &schema.Resource{
+		Description: "YBA Runtime Config Resource. Sets a runtime configuration key on a " +
+			"specific scope. Use the global scope " +
+			"(`00000000-0000-0000-0000-000000000000`) for feature flags such as " +
+			"`yb.telemetry.allow_s3` or `yb.universe.metrics_export_enabled`. " +
+			"Deleting the resource resets the key to its default by calling the " +
+			"YBA delete-key API.\n\n" +
+			"~> **Note:** Most runtime config keys require a Super Admin user.\n\n" +
+			"~> **Note:** Some keys are write-only on the YBA side; the read flow " +
+			"will reflect the most recent value YBA reports for the scope.",
+
+		CreateContext: resourceRuntimeConfigCreateOrUpdate,
+		ReadContext:   resourceRuntimeConfigRead,
+		UpdateContext: resourceRuntimeConfigCreateOrUpdate,
+		DeleteContext: resourceRuntimeConfigDelete,
+
+		Importer: &schema.ResourceImporter{
+			StateContext: resourceRuntimeConfigImport,
+		},
+
+		Timeouts: &schema.ResourceTimeout{
+			Create: schema.DefaultTimeout(2 * time.Minute),
+			Update: schema.DefaultTimeout(2 * time.Minute),
+			Delete: schema.DefaultTimeout(2 * time.Minute),
+			Read:   schema.DefaultTimeout(2 * time.Minute),
+		},
+
+		Schema: map[string]*schema.Schema{
+			"scope": {
+				Type:        schema.TypeString,
+				Optional:    true,
+				ForceNew:    true,
+				Default:     globalRuntimeScope,
+				Description: "Scope UUID for the runtime config. Defaults to the YBA global scope.",
+			},
+			"key": {
+				Type:        schema.TypeString,
+				Required:    true,
+				ForceNew:    true,
+				Description: "Runtime configuration key (e.g. `yb.telemetry.allow_s3`).",
+			},
+			"value": {
+				Type:        schema.TypeString,
+				Required:    true,
+				Description: "Value of the runtime configuration key. Sent as plain text to YBA.",
+			},
+		},
+	}
+}
+
+// fetchRuntimeConfigValue reads the current value of a runtime config key on a
+// scope. It is shared by the resource and data source reads. On any API error
+// it returns the translated YBA error; notFound is true only when YBA reports
+// the key is not set on the scope (HTTP 404). The resource treats notFound as
+// "removed from state" (and ignores the error), while the data source surfaces
+// the YBA error directly. The entity label (utils.ResourceEntity /
+// utils.DataSourceEntity) only shapes the error message.
+func fetchRuntimeConfigValue(
+	ctx context.Context, apiClient *api.APIClient, scope, key, entity string,
+) (value string, notFound bool, err error) {
+	v, response, e := apiClient.YugawareClient.RuntimeConfigurationAPI.
+		GetConfigurationKey(ctx, apiClient.CustomerID, scope, key).Execute()
+	if e != nil {
+		return "", utils.IsHTTPNotFound(response), utils.ErrorFromHTTPResponse(
+			response, e, entity, "Runtime Config", "Read")
+	}
+	return v, false, nil
+}
+
+func resourceRuntimeConfigCreateOrUpdate(
+	ctx context.Context, d *schema.ResourceData, meta interface{},
+) diag.Diagnostics {
+	apiClient := meta.(*api.APIClient)
+	c := apiClient.YugawareClient
+	scope := d.Get("scope").(string)
+	key := d.Get("key").(string)
+	value := d.Get("value").(string)
+
+	_, response, err := c.RuntimeConfigurationAPI.
+		SetKey(ctx, apiClient.CustomerID, scope, key).
+		NewValue(value).Execute()
+	if err != nil {
+		return diag.FromErr(utils.ErrorFromHTTPResponse(response, err,
+			utils.ResourceEntity, "Runtime Config", "Set"))
+	}
+	d.SetId(scope + "/" + key)
+	return resourceRuntimeConfigRead(ctx, d, meta)
+}
+
+func resourceRuntimeConfigRead(
+	ctx context.Context, d *schema.ResourceData, meta interface{},
+) diag.Diagnostics {
+	apiClient := meta.(*api.APIClient)
+	scope := d.Get("scope").(string)
+	key := d.Get("key").(string)
+
+	value, notFound, err := fetchRuntimeConfigValue(
+		ctx, apiClient, scope, key, utils.ResourceEntity)
+	if notFound {
+		tflog.Warn(ctx, fmt.Sprintf(
+			"Runtime config key %q not found in scope %q, removing from state", key, scope))
+		d.SetId("")
+		return nil
+	}
+	if err != nil {
+		return diag.FromErr(err)
+	}
+	if err := d.Set("value", value); err != nil {
+		return diag.FromErr(err)
+	}
+	return nil
+}
+
+func resourceRuntimeConfigDelete(
+	ctx context.Context, d *schema.ResourceData, meta interface{},
+) diag.Diagnostics {
+	apiClient := meta.(*api.APIClient)
+	c := apiClient.YugawareClient
+	scope := d.Get("scope").(string)
+	key := d.Get("key").(string)
+
+	_, response, err := c.RuntimeConfigurationAPI.
+		DeleteKey(ctx, apiClient.CustomerID, scope, key).Execute()
+	if err != nil && !utils.IsHTTPNotFound(response) {
+		return diag.FromErr(utils.ErrorFromHTTPResponse(response, err,
+			utils.ResourceEntity, "Runtime Config", "Delete"))
+	}
+	d.SetId("")
+	return nil
+}
+
+// resourceRuntimeConfigImport accepts an ID of the form `<scope-uuid>/<key>`
+// (or just `<key>`, in which case the global scope is assumed) and primes the
+// resource state for a follow-up read. A malformed ID (empty, or with an empty
+// scope or key such as `/key` or `scope/`) is rejected up front so import never
+// produces a resource that only fails on the next refresh.
+func resourceRuntimeConfigImport(
+	_ context.Context, d *schema.ResourceData, _ interface{},
+) ([]*schema.ResourceData, error) {
+	id := d.Id()
+	scope, key := globalRuntimeScope, id
+	if s, k, ok := strings.Cut(id, "/"); ok {
+		scope, key = s, k
+	}
+	if scope == "" || key == "" {
+		return nil, fmt.Errorf(
+			"invalid import ID %q: expected %q or %q (for the global scope)",
+			id, "<scope-uuid>/<key>", "<key>")
+	}
+	if err := d.Set("scope", scope); err != nil {
+		return nil, err
+	}
+	if err := d.Set("key", key); err != nil {
+		return nil, err
+	}
+	d.SetId(scope + "/" + key)
+	return []*schema.ResourceData{d}, nil
+}
