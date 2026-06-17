@@ -62,7 +62,8 @@ var telemetryConfigBlocks = []string{
 // universe can attach via `yba_universe_telemetry_config`.
 func ResourceTelemetryProvider() *schema.Resource {
 	return &schema.Resource{
-		Description: "Telemetry Provider Resource. Defines a reusable export destination " +
+		Description: experimentalAdmonition +
+			"Telemetry Provider Resource. Defines a reusable export destination " +
 			"(Datadog, OTLP, AWS CloudWatch, GCP Cloud Monitoring, Splunk, Loki, " +
 			"Dynatrace, S3) that universes can use to export audit logs, query " +
 			"logs, and metrics.\n\n" +
@@ -778,7 +779,9 @@ func resourceTelemetryProviderCreate(
 		return diag.Errorf("create telemetry provider returned an empty UUID")
 	}
 	d.SetId(resp.UUID)
-	return resourceTelemetryProviderRead(ctx, d, meta)
+	return append(
+		diag.Diagnostics{experimentalWarning("yba_telemetry_provider")},
+		resourceTelemetryProviderRead(ctx, d, meta)...)
 }
 
 func resourceTelemetryProviderRead(

@@ -1,19 +1,22 @@
 ---
 page_title: "yba_universe_telemetry_config Resource - YugabyteDB Anywhere"
 description: |-
+  ~> Experimental: This resource wraps a YugabyteDB Anywhere telemetry export API that is still experimental and may change in backward-incompatible ways across YBA releases. Pin your provider version and review release notes before upgrading.
   Universe Telemetry Config Resource. Attaches audit log, query log, and metrics export pipelines to a YBA universe via the unified export-telemetry-configs API. Each exporter references a yba_telemetry_provider (or any pre-existing telemetry provider UUID) and triggers a rolling/non-rolling restart of the universe to install or update the OpenTelemetry collector.
   ~> Note: OTLP-based exporters require the global runtime config yb.telemetry.allow_otlp to be set to true. Manage that with the yba_runtime_config resource.
-  ~> Note: This resource does not currently support importing an existing universe-level configuration; recreate the resource by applying the desired state.
+  ~> Note: Import an existing universe-level configuration with the universe UUID as the resource ID (terraform import yba_universe_telemetry_config.example <universe-uuid>); state is populated from the unified export-telemetry-configs GET API.
   ~> Dependency Note: When exporter_uuid is wired through a reference like yba_telemetry_provider.x.id, Terraform's dependency graph automatically orders create / replace / destroy of the provider before this resource — there is no need to add an explicit depends_on. The provider's own destroy step also proactively detaches itself from every referencing universe before deletion, so a plan that destroys-and-recreates a provider in the same apply is safe.
 ---
 
 # yba_universe_telemetry_config (Resource)
 
+~> **Experimental:** This resource wraps a YugabyteDB Anywhere telemetry export API that is still experimental and may change in backward-incompatible ways across YBA releases. Pin your provider version and review release notes before upgrading.
+
 Universe Telemetry Config Resource. Attaches audit log, query log, and metrics export pipelines to a YBA universe via the unified `export-telemetry-configs` API. Each exporter references a `yba_telemetry_provider` (or any pre-existing telemetry provider UUID) and triggers a rolling/non-rolling restart of the universe to install or update the OpenTelemetry collector.
 
 ~> **Note:** OTLP-based exporters require the global runtime config `yb.telemetry.allow_otlp` to be set to `true`. Manage that with the `yba_runtime_config` resource.
 
-~> **Note:** This resource does not currently support importing an existing universe-level configuration; recreate the resource by applying the desired state.
+~> **Note:** Import an existing universe-level configuration with the universe UUID as the resource ID (`terraform import yba_universe_telemetry_config.example <universe-uuid>`); state is populated from the unified `export-telemetry-configs` GET API.
 
 ~> **Dependency Note:** When `exporter_uuid` is wired through a reference like `yba_telemetry_provider.x.id`, Terraform's dependency graph automatically orders create / replace / destroy of the provider before this resource — there is **no need to add an explicit `depends_on`**. The provider's own destroy step also proactively detaches itself from every referencing universe before deletion, so a plan that destroys-and-recreates a provider in the same apply is safe.
 

@@ -198,6 +198,12 @@ type fakeYBA struct {
 	deleteFailFirst bool   // when set, the FIRST DELETE returns a 400 "in use"
 	relistOnSecond  []client.UniverseResp
 	listCallCount   int
+
+	// getConfig is returned by the GET export-telemetry-configs handler (used
+	// by the Read tests). getStatus, when non-zero, is returned instead.
+	getConfig *clientv2.TelemetryConfig
+	getStatus int
+	getBody   string
 }
 
 func (f *fakeYBA) handler() http.HandlerFunc {
@@ -214,6 +220,18 @@ func (f *fakeYBA) handler() http.HandlerFunc {
 			}
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(unis)
+		case r.Method == http.MethodGet && strings.Contains(path, "/export-telemetry-configs"):
+			if f.getStatus != 0 {
+				w.WriteHeader(f.getStatus)
+				_, _ = w.Write([]byte(f.getBody))
+				return
+			}
+			cfg := f.getConfig
+			if cfg == nil {
+				cfg = &clientv2.TelemetryConfig{}
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(cfg)
 		case r.Method == http.MethodPost && strings.Contains(path, "/export-telemetry-configs"):
 			// .../universes/{uniUUID}/export-telemetry-configs
 			parts := strings.Split(path, "/")
