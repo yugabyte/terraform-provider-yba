@@ -123,8 +123,6 @@ func resourceRuntimeConfigCreateOrUpdate(
 	key := d.Get("key").(string)
 	value := d.Get("value").(string)
 
-	tflog.Info(ctx, fmt.Sprintf(
-		"Setting runtime config %q in scope %q to %q", key, scope, value))
 	_, response, err := c.RuntimeConfigurationAPI.
 		SetKey(ctx, apiClient.CustomerID, scope, key).
 		NewValue(value).Execute()
