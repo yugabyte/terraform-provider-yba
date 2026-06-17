@@ -16,174 +16,162 @@
 package telemetry
 
 import (
-	client "github.com/yugabyte/platform-go-client"
+	clientv2 "github.com/yugabyte/platform-go-client/v2"
 )
 
-// flattenAuditLogConfig converts a YBA AuditLogConfig (camelCase) into the
-// nested-map shape expected by Terraform's `audit_logs` schema.
-func flattenAuditLogConfig(c *client.AuditLogConfig) []interface{} {
-	if c == nil {
+// The flatten helpers convert the typed v2 TelemetryConfig returned by the
+// unified GetExportTelemetryConfig endpoint back into the nested-map shapes
+// Terraform's schema expects. They are the exact mirror of the build* helpers
+// in resource_universe_telemetry_config.go: both operate on the same
+// platform-go-client/v2 types, so the read and write paths stay in lock-step
+// (a field added to one is an obvious omission in the other).
+//
+// Each top-level flattener returns nil for a nil section so the caller can
+// d.Set the empty slice and clear the block — that is what surfaces an
+// out-of-band "exporting disabled" change as drift instead of hiding it.
+
+func flattenAuditLogsSpec(a *clientv2.AuditLogsTelemetrySpec) []interface{} {
+	if a == nil {
 		return nil
 	}
 	out := map[string]interface{}{}
-	if y := c.YsqlAuditConfig; y != nil {
-		out["ysql_audit_config"] = []interface{}{flattenYsqlAuditConfig(y)}
+	if y := a.YsqlAuditConfig; y != nil {
+		out["ysql_audit_config"] = []interface{}{map[string]interface{}{
+			"enabled":                y.Enabled,
+			"classes":                stringSliceToInterface(y.Classes),
+			"log_catalog":            y.LogCatalog,
+			"log_client":             y.LogClient,
+			"log_level":              y.LogLevel,
+			"log_parameter":          y.LogParameter,
+			"log_parameter_max_size": int(y.LogParameterMaxSize),
+			"log_relation":           y.LogRelation,
+			"log_rows":               y.LogRows,
+			"log_statement":          y.LogStatement,
+			"log_statement_once":     y.LogStatementOnce,
+		}}
 	}
-	if y := c.YcqlAuditConfig; y != nil {
-		out["ycql_audit_config"] = []interface{}{flattenYcqlAuditConfig(y)}
+	if y := a.YcqlAuditConfig; y != nil {
+		out["ycql_audit_config"] = []interface{}{map[string]interface{}{
+			"enabled":             y.Enabled,
+			"log_level":           y.LogLevel,
+			"included_categories": stringSliceToInterface(y.IncludedCategories),
+			"excluded_categories": stringSliceToInterface(y.ExcludedCategories),
+			"included_keyspaces":  stringSliceToInterface(y.IncludedKeyspaces),
+			"excluded_keyspaces":  stringSliceToInterface(y.ExcludedKeyspaces),
+			"included_users":      stringSliceToInterface(y.IncludedUsers),
+			"excluded_users":      stringSliceToInterface(y.ExcludedUsers),
+		}}
 	}
-	if exporters := flattenLogExporters(c.UniverseLogsExporterConfig); len(exporters) > 0 {
-		out["exporter"] = exporters
-	}
-	return []interface{}{out}
-}
-
-func flattenYsqlAuditConfig(y *client.YSQLAuditConfig) map[string]interface{} {
-	return map[string]interface{}{
-		"enabled":                y.Enabled,
-		"classes":                stringSliceToInterface(y.Classes),
-		"log_catalog":            y.LogCatalog,
-		"log_client":             y.LogClient,
-		"log_level":              y.LogLevel,
-		"log_parameter":          y.LogParameter,
-		"log_parameter_max_size": int(y.LogParameterMaxSize),
-		"log_relation":           y.LogRelation,
-		"log_rows":               y.LogRows,
-		"log_statement":          y.LogStatement,
-		"log_statement_once":     y.LogStatementOnce,
-	}
-}
-
-func flattenYcqlAuditConfig(y *client.YCQLAuditConfig) map[string]interface{} {
-	return map[string]interface{}{
-		"enabled":             y.Enabled,
-		"log_level":           y.LogLevel,
-		"included_categories": stringSliceToInterface(y.IncludedCategories),
-		"excluded_categories": stringSliceToInterface(y.ExcludedCategories),
-		"included_keyspaces":  stringSliceToInterface(y.IncludedKeyspaces),
-		"excluded_keyspaces":  stringSliceToInterface(y.ExcludedKeyspaces),
-		"included_users":      stringSliceToInterface(y.IncludedUsers),
-		"excluded_users":      stringSliceToInterface(y.ExcludedUsers),
-	}
-}
-
-func flattenLogExporters(in []client.UniverseLogsExporterConfig) []interface{} {
-	out := make([]interface{}, 0, len(in))
-	for _, e := range in {
-		out = append(out, map[string]interface{}{
+	exporters := make([]interface{}, 0, len(a.Exporters))
+	for _, e := range a.Exporters {
+		exporters = append(exporters, map[string]interface{}{
 			"exporter_uuid":   e.ExporterUuid,
-			"additional_tags": stringStringMapToInterface(e.AdditionalTags),
+			"additional_tags": tagsToInterface(e.AdditionalTags),
 		})
 	}
-	return out
-}
-
-func flattenQueryLogConfig(c *client.QueryLogConfig) []interface{} {
-	if c == nil {
-		return nil
-	}
-	out := map[string]interface{}{}
-	if y := c.YsqlQueryLogConfig; y != nil {
-		out["ysql_query_log_config"] = []interface{}{flattenYsqlQueryLogConfig(y)}
-	}
-	if exporters := flattenQueryLogExporters(c.UniverseLogsExporterConfig); len(exporters) > 0 {
+	if len(exporters) > 0 {
 		out["exporter"] = exporters
 	}
 	return []interface{}{out}
 }
 
-func flattenYsqlQueryLogConfig(y *client.YSQLQueryLogConfig) map[string]interface{} {
-	return map[string]interface{}{
-		"enabled":                    y.Enabled,
-		"log_statement":              y.LogStatement,
-		"log_min_error_statement":    y.LogMinErrorStatement,
-		"log_error_verbosity":        y.LogErrorVerbosity,
-		"log_duration":               y.LogDuration,
-		"debug_print_plan":           y.DebugPrintPlan,
-		"log_connections":            y.LogConnections,
-		"log_disconnections":         y.LogDisconnections,
-		"log_min_duration_statement": int(y.LogMinDurationStatement),
-	}
-}
-
-func flattenQueryLogExporters(in []client.UniverseQueryLogsExporterConfig) []interface{} {
-	out := make([]interface{}, 0, len(in))
-	for _, e := range in {
-		entry := map[string]interface{}{
-			"exporter_uuid":   e.ExporterUuid,
-			"additional_tags": stringStringMapToInterface(e.AdditionalTags),
-		}
-		if e.SendBatchMaxSize != nil {
-			entry["send_batch_max_size"] = int(*e.SendBatchMaxSize)
-		}
-		if e.SendBatchSize != nil {
-			entry["send_batch_size"] = int(*e.SendBatchSize)
-		}
-		if e.SendBatchTimeoutSeconds != nil {
-			entry["send_batch_timeout_seconds"] = int(*e.SendBatchTimeoutSeconds)
-		}
-		if e.MemoryLimitMib != nil {
-			entry["memory_limit_mib"] = int(*e.MemoryLimitMib)
-		}
-		if e.MemoryLimitCheckIntervalSeconds != nil {
-			entry["memory_limit_check_interval_seconds"] = int(*e.MemoryLimitCheckIntervalSeconds)
-		}
-		out = append(out, entry)
-	}
-	return out
-}
-
-func flattenMetricsExportConfig(c *client.MetricsExportConfig) []interface{} {
-	if c == nil {
+func flattenQueryLogsSpec(q *clientv2.QueryLogsTelemetrySpec) []interface{} {
+	if q == nil {
 		return nil
 	}
 	out := map[string]interface{}{}
-	if c.ScrapeIntervalSeconds != nil {
-		out["scrape_interval_seconds"] = int(*c.ScrapeIntervalSeconds)
+	if y := q.YsqlQueryLogConfig; y != nil {
+		out["ysql_query_log_config"] = []interface{}{map[string]interface{}{
+			"enabled":                    y.Enabled,
+			"log_statement":              y.LogStatement,
+			"log_min_error_statement":    y.LogMinErrorStatement,
+			"log_error_verbosity":        y.LogErrorVerbosity,
+			"log_duration":               y.LogDuration,
+			"debug_print_plan":           y.DebugPrintPlan,
+			"log_connections":            y.LogConnections,
+			"log_disconnections":         y.LogDisconnections,
+			"log_min_duration_statement": int(y.LogMinDurationStatement),
+		}}
 	}
-	if c.ScrapeTimeoutSeconds != nil {
-		out["scrape_timeout_seconds"] = int(*c.ScrapeTimeoutSeconds)
+	exporters := make([]interface{}, 0, len(q.Exporters))
+	for _, e := range q.Exporters {
+		entry := map[string]interface{}{
+			"exporter_uuid":   e.ExporterUuid,
+			"additional_tags": tagsToInterface(e.AdditionalTags),
+		}
+		addBatchingFields(entry, e.SendBatchMaxSize, e.SendBatchSize,
+			e.SendBatchTimeoutSeconds, e.MemoryLimitMib, e.MemoryLimitCheckIntervalSeconds)
+		exporters = append(exporters, entry)
 	}
-	if c.CollectionLevel != nil {
-		out["collection_level"] = *c.CollectionLevel
-	}
-	if len(c.ScrapeConfigTargets) > 0 {
-		out["scrape_config_targets"] = stringSliceToInterface(c.ScrapeConfigTargets)
-	}
-	if exporters := flattenMetricsExporters(c.UniverseMetricsExporterConfig); len(exporters) > 0 {
+	if len(exporters) > 0 {
 		out["exporter"] = exporters
 	}
 	return []interface{}{out}
 }
 
-func flattenMetricsExporters(in []client.UniverseMetricsExporterConfig) []interface{} {
-	out := make([]interface{}, 0, len(in))
-	for _, e := range in {
+func flattenMetricsSpec(m *clientv2.MetricsTelemetrySpec) []interface{} {
+	if m == nil {
+		return nil
+	}
+	out := map[string]interface{}{}
+	if m.ScrapeIntervalSeconds != nil {
+		out["scrape_interval_seconds"] = int(*m.ScrapeIntervalSeconds)
+	}
+	if m.ScrapeTimeoutSeconds != nil {
+		out["scrape_timeout_seconds"] = int(*m.ScrapeTimeoutSeconds)
+	}
+	if m.CollectionLevel != nil {
+		out["collection_level"] = *m.CollectionLevel
+	}
+	if len(m.ScrapeConfigTargets) > 0 {
+		targets := make([]interface{}, 0, len(m.ScrapeConfigTargets))
+		for _, t := range m.ScrapeConfigTargets {
+			targets = append(targets, string(t))
+		}
+		out["scrape_config_targets"] = targets
+	}
+	exporters := make([]interface{}, 0, len(m.Exporters))
+	for _, e := range m.Exporters {
 		entry := map[string]interface{}{
 			"exporter_uuid":   e.ExporterUuid,
-			"additional_tags": stringStringMapToInterface(e.AdditionalTags),
+			"additional_tags": tagsToInterface(e.AdditionalTags),
 		}
-		if e.SendBatchMaxSize != nil {
-			entry["send_batch_max_size"] = int(*e.SendBatchMaxSize)
-		}
-		if e.SendBatchSize != nil {
-			entry["send_batch_size"] = int(*e.SendBatchSize)
-		}
-		if e.SendBatchTimeoutSeconds != nil {
-			entry["send_batch_timeout_seconds"] = int(*e.SendBatchTimeoutSeconds)
-		}
-		if e.MemoryLimitMib != nil {
-			entry["memory_limit_mib"] = int(*e.MemoryLimitMib)
-		}
-		if e.MemoryLimitCheckIntervalSeconds != nil {
-			entry["memory_limit_check_interval_seconds"] = int(*e.MemoryLimitCheckIntervalSeconds)
-		}
+		addBatchingFields(entry, e.SendBatchMaxSize, e.SendBatchSize,
+			e.SendBatchTimeoutSeconds, e.MemoryLimitMib, e.MemoryLimitCheckIntervalSeconds)
 		if e.MetricsPrefix != nil {
 			entry["metrics_prefix"] = *e.MetricsPrefix
 		}
-		out = append(out, entry)
+		exporters = append(exporters, entry)
 	}
-	return out
+	if len(exporters) > 0 {
+		out["exporter"] = exporters
+	}
+	return []interface{}{out}
+}
+
+// addBatchingFields writes the OTel batching/memory fields onto an exporter
+// map when present. Shared by the query-log and metrics exporters, which
+// carry the identical batching field set.
+func addBatchingFields(
+	entry map[string]interface{},
+	sendBatchMaxSize, sendBatchSize, sendBatchTimeoutSeconds,
+	memoryLimitMib, memoryLimitCheckIntervalSeconds *int32,
+) {
+	if sendBatchMaxSize != nil {
+		entry["send_batch_max_size"] = int(*sendBatchMaxSize)
+	}
+	if sendBatchSize != nil {
+		entry["send_batch_size"] = int(*sendBatchSize)
+	}
+	if sendBatchTimeoutSeconds != nil {
+		entry["send_batch_timeout_seconds"] = int(*sendBatchTimeoutSeconds)
+	}
+	if memoryLimitMib != nil {
+		entry["memory_limit_mib"] = int(*memoryLimitMib)
+	}
+	if memoryLimitCheckIntervalSeconds != nil {
+		entry["memory_limit_check_interval_seconds"] = int(*memoryLimitCheckIntervalSeconds)
+	}
 }
 
 func stringSliceToInterface(in []string) []interface{} {
@@ -194,9 +182,14 @@ func stringSliceToInterface(in []string) []interface{} {
 	return out
 }
 
-func stringStringMapToInterface(in map[string]string) map[string]interface{} {
-	out := make(map[string]interface{}, len(in))
-	for k, v := range in {
+// tagsToInterface flattens the *map[string]string additional_tags shape used
+// by every v2 exporter type into the map[string]interface{} Terraform stores.
+func tagsToInterface(in *map[string]string) map[string]interface{} {
+	out := map[string]interface{}{}
+	if in == nil {
+		return out
+	}
+	for k, v := range *in {
 		out[k] = v
 	}
 	return out

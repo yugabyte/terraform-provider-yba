@@ -212,12 +212,12 @@ func buildDetachSpec(
 // enabled YSQL/YCQL audit config (so the caller can drop the section and
 // disable audit log export entirely).
 func auditConfigToSpec(a *client.AuditLogConfig, skipUUID string) *clientv2.AuditLogsTelemetrySpec {
-	exporters := make([]clientv2.TelemetryExporterEntry, 0, len(a.UniverseLogsExporterConfig))
+	exporters := make([]clientv2.UniverseLogsExporterConfig, 0, len(a.UniverseLogsExporterConfig))
 	for _, e := range a.UniverseLogsExporterConfig {
 		if e.ExporterUuid == skipUUID {
 			continue
 		}
-		entry := clientv2.TelemetryExporterEntry{ExporterUuid: e.ExporterUuid}
+		entry := clientv2.UniverseLogsExporterConfig{ExporterUuid: e.ExporterUuid}
 		if len(e.AdditionalTags) > 0 {
 			tags := map[string]string{}
 			for k, v := range e.AdditionalTags {
@@ -264,12 +264,16 @@ func auditConfigToSpec(a *client.AuditLogConfig, skipUUID string) *clientv2.Audi
 // queryConfigToSpec mirrors auditConfigToSpec for QueryLogConfig,
 // preserving per-exporter batching/memory fields.
 func queryConfigToSpec(q *client.QueryLogConfig, skipUUID string) *clientv2.QueryLogsTelemetrySpec {
-	exporters := make([]clientv2.TelemetryExporterEntry, 0, len(q.UniverseLogsExporterConfig))
+	exporters := make(
+		[]clientv2.UniverseQueryLogsExporterConfig,
+		0,
+		len(q.UniverseLogsExporterConfig),
+	)
 	for _, e := range q.UniverseLogsExporterConfig {
 		if e.ExporterUuid == skipUUID {
 			continue
 		}
-		entry := clientv2.TelemetryExporterEntry{
+		entry := clientv2.UniverseQueryLogsExporterConfig{
 			ExporterUuid:                    e.ExporterUuid,
 			SendBatchMaxSize:                e.SendBatchMaxSize,
 			SendBatchSize:                   e.SendBatchSize,
@@ -312,12 +316,16 @@ func metricsConfigToSpec(
 	m *client.MetricsExportConfig,
 	skipUUID string,
 ) *clientv2.MetricsTelemetrySpec {
-	exporters := make([]clientv2.TelemetryExporterEntry, 0, len(m.UniverseMetricsExporterConfig))
+	exporters := make(
+		[]clientv2.UniverseMetricsExporterConfig,
+		0,
+		len(m.UniverseMetricsExporterConfig),
+	)
 	for _, e := range m.UniverseMetricsExporterConfig {
 		if e.ExporterUuid == skipUUID {
 			continue
 		}
-		entry := clientv2.TelemetryExporterEntry{
+		entry := clientv2.UniverseMetricsExporterConfig{
 			ExporterUuid:                    e.ExporterUuid,
 			SendBatchMaxSize:                e.SendBatchMaxSize,
 			SendBatchSize:                   e.SendBatchSize,

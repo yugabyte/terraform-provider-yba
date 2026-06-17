@@ -19,6 +19,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-log/tflog"
@@ -55,10 +56,9 @@ var allowedCollectionLevels = []string{"ALL", "NORMAL", "TABLE_OFF", "MINIMAL", 
 //
 //   - Create / Update: POST /api/v2/customers/{c}/universes/{u}/export-telemetry-configs
 //     with a `telemetry_config` body that contains all configured exporters.
-//   - Read: GET   /api/v1/customers/{c}/universes/{u} and inspect
-//     `universeDetails.clusters[0].userIntent.{auditLogConfig,
-//     queryLogConfig, metricsExportConfig}` (synced by YBA after the task
-//     completes).
+//   - Read: GET  /api/v2/customers/{c}/universes/{u}/export-telemetry-configs,
+//     which returns the same typed `telemetry_config` shape we POST (so read
+//     and write are mirror images over the v2 SDK).
 //   - Delete: POST the same unified endpoint with `telemetry_config: {}` to
 //     disable all exporters on the universe.
 //
@@ -66,7 +66,8 @@ var allowedCollectionLevels = []string{"ALL", "NORMAL", "TABLE_OFF", "MINIMAL", 
 // blocks until the task reaches a terminal state via `utils.WaitForTask`.
 func ResourceUniverseTelemetryConfig() *schema.Resource {
 	return &schema.Resource{
-		Description: "Universe Telemetry Config Resource. Attaches audit log, query log, " +
+		Description: experimentalAdmonition +
+			"Universe Telemetry Config Resource. Attaches audit log, query log, " +
 			"and metrics export pipelines to a YBA universe via the unified " +
 			"`export-telemetry-configs` API. Each exporter references a " +
 			"`yba_telemetry_provider` (or any pre-existing telemetry provider " +
@@ -75,9 +76,10 @@ func ResourceUniverseTelemetryConfig() *schema.Resource {
 			"~> **Note:** OTLP-based exporters require the global runtime config " +
 			"`yb.telemetry.allow_otlp` to be set to `true`. Manage that with the " +
 			"`yba_runtime_config` resource.\n\n" +
-			"~> **Note:** This resource does not currently support importing an " +
-			"existing universe-level configuration; recreate the resource by " +
-			"applying the desired state.\n\n" +
+			"~> **Note:** Import an existing universe-level configuration with the " +
+			"universe UUID as the resource ID " +
+			"(`terraform import yba_universe_telemetry_config.example <universe-uuid>`); " +
+			"state is populated from the unified `export-telemetry-configs` GET API.\n\n" +
 			"~> **Dependency Note:** When `exporter_uuid` is wired through a " +
 			"reference like `yba_telemetry_provider.x.id`, Terraform's dependency " +
 			"graph automatically orders create / replace / destroy of the provider " +
@@ -98,6 +100,12 @@ func ResourceUniverseTelemetryConfig() *schema.Resource {
 		// mid-restart); both are confusing to debug after the apply has
 		// already begun reconfiguring the universe.
 		CustomizeDiff: validateNoDuplicateExporters,
+
+		// Import by universe UUID; Read repopulates state from the unified
+		// GetExportTelemetryConfig endpoint.
+		Importer: &schema.ResourceImporter{
+			StateContext: schema.ImportStatePassthroughContext,
+		},
 
 		Timeouts: &schema.ResourceTimeout{
 			Create: schema.DefaultTimeout(telemetryUpgradeTimeout),
@@ -580,7 +588,7 @@ func buildQueryLogs(in interface{}) *clientv2.QueryLogsTelemetrySpec {
 	}
 	return &clientv2.QueryLogsTelemetrySpec{
 		YsqlQueryLogConfig: buildYsqlQueryLogConfig(m["ysql_query_log_config"]),
-		Exporters:          buildBatchedExporters(m["exporter"], false /* withMetricsPrefix */),
+		Exporters:          buildQueryExporters(m["exporter"]),
 	}
 }
 
@@ -593,7 +601,7 @@ func buildMetrics(in interface{}) *clientv2.MetricsTelemetrySpec {
 		ScrapeIntervalSeconds: utils.GetInt32Pointer(int32(intValue(m["scrape_interval_seconds"]))),
 		ScrapeTimeoutSeconds:  utils.GetInt32Pointer(int32(intValue(m["scrape_timeout_seconds"]))),
 		CollectionLevel:       utils.GetStringPointer(stringValue(m["collection_level"])),
-		Exporters:             buildBatchedExporters(m["exporter"], true /* withMetricsPrefix */),
+		Exporters:             buildMetricsExporters(m["exporter"]),
 	}
 	for _, t := range stringList(m["scrape_config_targets"]) {
 		out.ScrapeConfigTargets = append(
@@ -659,21 +667,33 @@ func buildYsqlQueryLogConfig(in interface{}) *clientv2.YSQLQueryLogConfig {
 	}
 }
 
-// buildAuditExporters builds exporter entries for audit logs. The audit log
-// pipeline does not honour the batching/memory fields, so we only emit
-// exporter_uuid and additional_tags.
-func buildAuditExporters(in interface{}) []clientv2.TelemetryExporterEntry {
+// exporterRows normalizes a TypeList of exporter blocks to a slice of maps,
+// dropping nil entries. Shared by the three pipeline-specific exporter
+// builders below, which exist as separate functions because the v2 SDK models
+// each pipeline's exporter with a distinct type (audit logs carry no
+// batching fields; metrics additionally carry metrics_prefix).
+func exporterRows(in interface{}) []map[string]interface{} {
 	list, ok := in.([]interface{})
 	if !ok {
 		return nil
 	}
-	out := make([]clientv2.TelemetryExporterEntry, 0, len(list))
+	out := make([]map[string]interface{}, 0, len(list))
 	for _, e := range list {
-		m, _ := e.(map[string]interface{})
-		if m == nil {
-			continue
+		if m, _ := e.(map[string]interface{}); m != nil {
+			out = append(out, m)
 		}
-		entry := clientv2.TelemetryExporterEntry{
+	}
+	return out
+}
+
+// buildAuditExporters builds exporter entries for audit logs. The audit log
+// pipeline does not honour the batching/memory fields, so we only emit
+// exporter_uuid and additional_tags.
+func buildAuditExporters(in interface{}) []clientv2.UniverseLogsExporterConfig {
+	rows := exporterRows(in)
+	out := make([]clientv2.UniverseLogsExporterConfig, 0, len(rows))
+	for _, m := range rows {
+		entry := clientv2.UniverseLogsExporterConfig{
 			ExporterUuid: stringValue(m["exporter_uuid"]),
 		}
 		if tags := stringMap(m["additional_tags"]); len(tags) > 0 {
@@ -684,25 +704,13 @@ func buildAuditExporters(in interface{}) []clientv2.TelemetryExporterEntry {
 	return out
 }
 
-// buildBatchedExporters builds exporter entries that include the OTel
-// batching/memory fields used by query logs and metrics. When
-// `withMetricsPrefix` is true the optional `metrics_prefix` field is also
-// emitted.
-func buildBatchedExporters(
-	in interface{},
-	withMetricsPrefix bool,
-) []clientv2.TelemetryExporterEntry {
-	list, ok := in.([]interface{})
-	if !ok {
-		return nil
-	}
-	out := make([]clientv2.TelemetryExporterEntry, 0, len(list))
-	for _, e := range list {
-		m, _ := e.(map[string]interface{})
-		if m == nil {
-			continue
-		}
-		entry := clientv2.TelemetryExporterEntry{
+// buildQueryExporters builds query-log exporter entries, which carry the OTel
+// batching/memory fields but not metrics_prefix.
+func buildQueryExporters(in interface{}) []clientv2.UniverseQueryLogsExporterConfig {
+	rows := exporterRows(in)
+	out := make([]clientv2.UniverseQueryLogsExporterConfig, 0, len(rows))
+	for _, m := range rows {
+		entry := clientv2.UniverseQueryLogsExporterConfig{
 			ExporterUuid: stringValue(m["exporter_uuid"]),
 			SendBatchMaxSize: utils.GetInt32Pointer(
 				int32(intValue(m["send_batch_max_size"])),
@@ -723,8 +731,40 @@ func buildBatchedExporters(
 		if tags := stringMap(m["additional_tags"]); len(tags) > 0 {
 			entry.AdditionalTags = &tags
 		}
-		if withMetricsPrefix {
-			entry.MetricsPrefix = utils.GetStringPointer(stringValue(m["metrics_prefix"]))
+		out = append(out, entry)
+	}
+	return out
+}
+
+// buildMetricsExporters builds metric exporter entries, which carry the OTel
+// batching/memory fields plus the optional metrics_prefix.
+func buildMetricsExporters(in interface{}) []clientv2.UniverseMetricsExporterConfig {
+	rows := exporterRows(in)
+	out := make([]clientv2.UniverseMetricsExporterConfig, 0, len(rows))
+	for _, m := range rows {
+		entry := clientv2.UniverseMetricsExporterConfig{
+			ExporterUuid: stringValue(m["exporter_uuid"]),
+			SendBatchMaxSize: utils.GetInt32Pointer(
+				int32(intValue(m["send_batch_max_size"])),
+			),
+			SendBatchSize: utils.GetInt32Pointer(
+				int32(intValue(m["send_batch_size"])),
+			),
+			SendBatchTimeoutSeconds: utils.GetInt32Pointer(
+				int32(intValue(m["send_batch_timeout_seconds"])),
+			),
+			MemoryLimitMib: utils.GetInt32Pointer(
+				int32(intValue(m["memory_limit_mib"])),
+			),
+			MemoryLimitCheckIntervalSeconds: utils.GetInt32Pointer(
+				int32(intValue(m["memory_limit_check_interval_seconds"])),
+			),
+			MetricsPrefix: utils.GetStringPointer(
+				stringValue(m["metrics_prefix"]),
+			),
+		}
+		if tags := stringMap(m["additional_tags"]); len(tags) > 0 {
+			entry.AdditionalTags = &tags
 		}
 		out = append(out, entry)
 	}
@@ -773,7 +813,9 @@ func resourceUniverseTelemetryConfigCreate(
 		return diags
 	}
 	d.SetId(universeUUID)
-	return resourceUniverseTelemetryConfigRead(ctx, d, meta)
+	return append(
+		diag.Diagnostics{experimentalWarning("yba_universe_telemetry_config")},
+		resourceUniverseTelemetryConfigRead(ctx, d, meta)...)
 }
 
 func resourceUniverseTelemetryConfigUpdate(
@@ -786,7 +828,9 @@ func resourceUniverseTelemetryConfigUpdate(
 		d.Timeout(schema.TimeoutUpdate), "Update"); diags != nil {
 		return diags
 	}
-	return resourceUniverseTelemetryConfigRead(ctx, d, meta)
+	return append(
+		diag.Diagnostics{experimentalWarning("yba_universe_telemetry_config")},
+		resourceUniverseTelemetryConfigRead(ctx, d, meta)...)
 }
 
 // resourceUniverseTelemetryConfigDelete asks YBA to disable every exporter
@@ -862,44 +906,60 @@ func dispatchExportTelemetryConfig(
 		})
 }
 
-// resourceUniverseTelemetryConfigRead reads the universe details and
-// populates the state with the audit/query/metrics export configs YBA
-// synced after the unified export task completes.
+// resourceUniverseTelemetryConfigRead reads the universe's current export
+// telemetry config via the dedicated v2 GetExportTelemetryConfig endpoint and
+// populates state from it. Using the typed v2 endpoint (rather than
+// spelunking universeDetails.clusters[0].userIntent over the v1 client) keeps
+// the read path a mirror of the write path — both speak the same
+// clientv2.TelemetryConfig — and is what makes import possible.
+//
+// Each section is set unconditionally (the flatten helpers return nil for an
+// absent section), so an exporter disabled out-of-band surfaces as drift
+// instead of lingering in state.
 func resourceUniverseTelemetryConfigRead(
 	ctx context.Context, d *schema.ResourceData, meta interface{},
 ) diag.Diagnostics {
 	apiClient := meta.(*api.APIClient)
-	c := apiClient.YugawareClient
-	uni, response, err := c.UniverseManagementAPI.GetUniverse(ctx, apiClient.CustomerID, d.Id()).
-		Execute()
+	universeUUID := d.Id()
+	config, response, err := apiClient.YugawareClientV2.UniverseAPI.
+		GetExportTelemetryConfig(ctx, apiClient.CustomerID, universeUUID).Execute()
 	if err != nil {
-		if utils.IsHTTPNotFound(response) {
+		if utils.IsHTTPNotFound(response) || universeMissing(err) {
 			tflog.Warn(ctx, fmt.Sprintf(
-				"universe %s not found, removing telemetry config from state", d.Id()))
+				"universe %s not found, removing telemetry config from state", universeUUID))
 			d.SetId("")
 			return nil
 		}
 		return diag.FromErr(utils.ErrorFromHTTPResponse(response, err,
 			utils.ResourceEntity, "Universe Telemetry Config", "Read"))
 	}
-	if err := d.Set("universe_uuid", uni.GetUniverseUUID()); err != nil {
+	if config == nil {
+		config = &clientv2.TelemetryConfig{}
+	}
+	if err := d.Set("universe_uuid", universeUUID); err != nil {
 		return diag.FromErr(err)
 	}
-	clusters := uni.GetUniverseDetails().Clusters
-	if len(clusters) == 0 {
-		return nil
+	if err := d.Set("audit_logs", flattenAuditLogsSpec(config.AuditLogs)); err != nil {
+		return diag.FromErr(err)
 	}
-	intent := clusters[0].UserIntent
-	if a := intent.AuditLogConfig; a != nil {
-		_ = d.Set("audit_logs", flattenAuditLogConfig(a))
+	if err := d.Set("query_logs", flattenQueryLogsSpec(config.QueryLogs)); err != nil {
+		return diag.FromErr(err)
 	}
-	if q := intent.QueryLogConfig; q != nil {
-		_ = d.Set("query_logs", flattenQueryLogConfig(q))
-	}
-	if m := intent.MetricsExportConfig; m != nil {
-		_ = d.Set("metrics", flattenMetricsExportConfig(m))
+	if err := d.Set("metrics", flattenMetricsSpec(config.Metrics)); err != nil {
+		return diag.FromErr(err)
 	}
 	return nil
+}
+
+// universeMissing reports whether an error from the v2 telemetry endpoints
+// means the universe no longer exists. YBA's Universe.getOrBadRequest surfaces
+// a deleted universe with a non-404 status and a "Cannot find universe" body,
+// so inspecting the status alone is not enough — we also match the body via
+// the generated-client error.
+func universeMissing(err error) bool {
+	body := utils.OpenAPIErrorBody(err)
+	return strings.Contains(body, "Cannot find universe") ||
+		strings.Contains(body, "does not exist")
 }
 
 // intValue converts a Terraform int (which decodes to int) to a JSON-friendly

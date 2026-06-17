@@ -20,7 +20,7 @@ import (
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	client "github.com/yugabyte/platform-go-client"
+	clientv2 "github.com/yugabyte/platform-go-client/v2"
 
 	"github.com/yugabyte/terraform-provider-yba/internal/utils"
 )
@@ -85,12 +85,13 @@ func TestBuildSpecMultipleExportersAllSections(t *testing.T) {
 		t.Errorf("metrics exporters = %d want 3", len(tc.Metrics.Exporters))
 	}
 
-	// Audit exporters must NOT carry batching fields; the audit pipeline does
-	// not honour them, so emitting them would be misleading at best.
+	// Audit exporters use the UniverseLogsExporterConfig type, which the v2
+	// SDK models WITHOUT batching fields — so the audit pipeline structurally
+	// cannot carry them (exporter_uuid + additional_tags only). The other two
+	// pipelines use their own types that DO carry batching.
 	for _, e := range tc.AuditLogs.Exporters {
-		if e.SendBatchMaxSize != nil || e.MemoryLimitMib != nil {
-			t.Errorf("audit exporter %q must not carry batching fields: %+v",
-				e.ExporterUuid, e)
+		if e.ExporterUuid == "" {
+			t.Errorf("audit exporter missing uuid: %+v", e)
 		}
 	}
 	// Query/metrics exporters DO carry batching fields (schema defaults fill
@@ -209,27 +210,30 @@ func equalStrings(a, b []string) bool {
 func TestFlattenRoundTripNoPhantomDiff(t *testing.T) {
 	res := ResourceUniverseTelemetryConfig()
 
-	audit := &client.AuditLogConfig{
-		YsqlAuditConfig: &client.YSQLAuditConfig{
+	auditTags := map[string]string{"env": "prod"}
+	audit := &clientv2.AuditLogsTelemetrySpec{
+		YsqlAuditConfig: &clientv2.YSQLAuditConfig{
 			Enabled:  true,
 			Classes:  []string{"WRITE", "READ", "DDL"}, // server order differs
 			LogLevel: "WARNING",
 		},
-		YcqlAuditConfig: &client.YCQLAuditConfig{
+		YcqlAuditConfig: &clientv2.YCQLAuditConfig{
 			Enabled:            true,
 			LogLevel:           "ERROR",
 			IncludedCategories: []string{"DML", "DDL"},
 		},
-		UniverseLogsExporterConfig: []client.UniverseLogsExporterConfig{
-			{ExporterUuid: "exp-1", AdditionalTags: map[string]string{"env": "prod"}},
+		Exporters: []clientv2.UniverseLogsExporterConfig{
+			{ExporterUuid: "exp-1", AdditionalTags: &auditTags},
 		},
 	}
-	metrics := &client.MetricsExportConfig{
+	metrics := &clientv2.MetricsTelemetrySpec{
 		ScrapeIntervalSeconds: utils.GetInt32Pointer(45),
 		ScrapeTimeoutSeconds:  utils.GetInt32Pointer(15),
 		CollectionLevel:       utils.GetStringPointer("NORMAL"),
-		ScrapeConfigTargets:   []string{"TSERVER_EXPORT", "MASTER_EXPORT"},
-		UniverseMetricsExporterConfig: []client.UniverseMetricsExporterConfig{
+		ScrapeConfigTargets: []clientv2.ScrapeConfigTargetType{
+			"TSERVER_EXPORT", "MASTER_EXPORT",
+		},
+		Exporters: []clientv2.UniverseMetricsExporterConfig{
 			{
 				ExporterUuid:   "exp-1",
 				SendBatchSize:  utils.GetInt32Pointer(200),
@@ -241,10 +245,10 @@ func TestFlattenRoundTripNoPhantomDiff(t *testing.T) {
 
 	d := schema.TestResourceDataRaw(t, res.Schema,
 		map[string]interface{}{"universe_uuid": "uni-1"})
-	if err := d.Set("audit_logs", flattenAuditLogConfig(audit)); err != nil {
+	if err := d.Set("audit_logs", flattenAuditLogsSpec(audit)); err != nil {
 		t.Fatalf("set audit_logs: %v", err)
 	}
-	if err := d.Set("metrics", flattenMetricsExportConfig(metrics)); err != nil {
+	if err := d.Set("metrics", flattenMetricsSpec(metrics)); err != nil {
 		t.Fatalf("set metrics: %v", err)
 	}
 

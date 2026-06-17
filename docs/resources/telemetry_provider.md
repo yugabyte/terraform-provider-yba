@@ -1,12 +1,15 @@
 ---
 page_title: "yba_telemetry_provider Resource - YugabyteDB Anywhere"
 description: |-
+  ~> Experimental: This resource wraps a YugabyteDB Anywhere telemetry export API that is still experimental and may change in backward-incompatible ways across YBA releases. Pin your provider version and review release notes before upgrading.
   Telemetry Provider Resource. Defines a reusable export destination (Datadog, OTLP, AWS CloudWatch, GCP Cloud Monitoring, Splunk, Loki, Dynatrace, S3) that universes can use to export audit logs, query logs, and metrics.
   ~> Note: YBA does not allow editing a telemetry provider in place. Any change to a config field forces Terraform to destroy and recreate the resource. YBA also refuses to delete a provider that is still referenced by a universe's telemetry config, so the destroy step first enumerates every universe whose audit / query / metrics exporter list references this provider and rewrites that list with the provider removed (via a rolling-upgrade task on each universe). Once every detach task reaches a terminal state, the provider itself is deleted. The universes themselves are never destroyed — only their OpenTelemetry collector configuration is updated.
   ~> Security Note: Credentials such as API keys, tokens, and secret access keys are stored in the Terraform state file (marked sensitive). Use a secure backend and restrict access to your state files.
 ---
 
 # yba_telemetry_provider (Resource)
+
+~> **Experimental:** This resource wraps a YugabyteDB Anywhere telemetry export API that is still experimental and may change in backward-incompatible ways across YBA releases. Pin your provider version and review release notes before upgrading.
 
 Telemetry Provider Resource. Defines a reusable export destination (Datadog, OTLP, AWS CloudWatch, GCP Cloud Monitoring, Splunk, Loki, Dynatrace, S3) that universes can use to export audit logs, query logs, and metrics.
 
