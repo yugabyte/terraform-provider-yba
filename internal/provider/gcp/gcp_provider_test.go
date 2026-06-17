@@ -38,8 +38,8 @@ func TestAccGCPProvider_WithCredentials(t *testing.T) {
 	rName := acctest.RandomName("gcp")
 	resource.ParallelTest(t, resource.TestCase{
 		PreCheck: func() {
-			acctest.TestAccPreCheck(t)
 			acctest.TestAccPreCheckGCP(t)
+			acctest.TestAccPreCheckCloudYBA(t, "GCP")
 		},
 		ProviderFactories: acctest.ProviderFactories,
 		CheckDestroy:      testAccCheckDestroyGCPProvider,
@@ -67,7 +67,7 @@ func TestAccGCPProvider_WithHostCredentials(t *testing.T) {
 	rName := acctest.RandomName("gcp-host")
 	resource.ParallelTest(t, resource.TestCase{
 		PreCheck: func() {
-			acctest.TestAccPreCheck(t)
+			acctest.TestAccPreCheckCloudYBA(t, "GCP")
 			// No GCP credential check - using host credentials
 		},
 		ProviderFactories: acctest.ProviderFactories,
@@ -99,8 +99,8 @@ func TestAccGCPProvider_WithSharedVPC(t *testing.T) {
 	rName := acctest.RandomName("gcp-vpc")
 	resource.ParallelTest(t, resource.TestCase{
 		PreCheck: func() {
-			acctest.TestAccPreCheck(t)
 			acctest.TestAccPreCheckGCP(t)
+			acctest.TestAccPreCheckCloudYBA(t, "GCP")
 			if os.Getenv("TF_VAR_GCP_SHARED_VPC_PROJECT_ID") == "" {
 				t.Skip("TF_VAR_GCP_SHARED_VPC_PROJECT_ID not set; skipping Shared VPC test")
 			}
@@ -130,8 +130,8 @@ func TestAccGCPProvider_Update(t *testing.T) {
 
 	resource.ParallelTest(t, resource.TestCase{
 		PreCheck: func() {
-			acctest.TestAccPreCheck(t)
 			acctest.TestAccPreCheckGCP(t)
+			acctest.TestAccPreCheckCloudYBA(t, "GCP")
 		},
 		ProviderFactories: acctest.ProviderFactories,
 		CheckDestroy:      testAccCheckDestroyGCPProvider,
@@ -162,8 +162,8 @@ func TestAccGCPProvider_WithFirewallTags(t *testing.T) {
 	rName := acctest.RandomName("gcp-fw")
 	resource.ParallelTest(t, resource.TestCase{
 		PreCheck: func() {
-			acctest.TestAccPreCheck(t)
 			acctest.TestAccPreCheckGCP(t)
+			acctest.TestAccPreCheckCloudYBA(t, "GCP")
 		},
 		ProviderFactories: acctest.ProviderFactories,
 		CheckDestroy:      testAccCheckDestroyGCPProvider,
@@ -181,8 +181,12 @@ func TestAccGCPProvider_WithFirewallTags(t *testing.T) {
 }
 
 func testAccCheckDestroyGCPProvider(s *terraform.State) error {
-	conn := acctest.APIClient.YugawareClient
-	cUUID := acctest.APIClient.CustomerID
+	apiClient, err := acctest.APIClientForCloud("GCP")
+	if err != nil {
+		return err
+	}
+	conn := apiClient.YugawareClient
+	cUUID := apiClient.CustomerID
 
 	for _, r := range s.RootModule().Resources {
 		if r.Type != "yba_gcp_provider" {
@@ -235,8 +239,12 @@ func testAccCheckGCPProviderExists(
 			return errors.New("no ID is set for GCP provider resource")
 		}
 
-		conn := acctest.APIClient.YugawareClient
-		cUUID := acctest.APIClient.CustomerID
+		apiClient, err := acctest.APIClientForCloud("GCP")
+		if err != nil {
+			return err
+		}
+		conn := apiClient.YugawareClient
+		cUUID := apiClient.CustomerID
 		res, response, err := conn.CloudProvidersAPI.GetListOfProviders(context.Background(),
 			cUUID).Execute()
 		if err != nil {
@@ -255,7 +263,7 @@ func testAccCheckGCPProviderExists(
 }
 
 func gcpProviderConfigBasic(name string) string {
-	return fmt.Sprintf(`
+	return acctest.YBAProviderBlock("GCP") + fmt.Sprintf(`
 variable "GCP_VPC_NETWORK" {
   type        = string
   description = "GCP VPC network to run acceptance testing"
@@ -298,7 +306,7 @@ resource "yba_gcp_provider" "test" {
 }
 
 func gcpProviderConfigWithCredentials(name string) string {
-	return fmt.Sprintf(`
+	return acctest.YBAProviderBlock("GCP") + fmt.Sprintf(`
 variable "GCP_VPC_NETWORK" {
   type = string
 }
@@ -338,7 +346,7 @@ resource "yba_gcp_provider" "test" {
 }
 
 func gcpProviderConfigWithHostCredentials(name string) string {
-	return fmt.Sprintf(`
+	return acctest.YBAProviderBlock("GCP") + fmt.Sprintf(`
 variable "GCP_VPC_NETWORK" {
   type = string
 }
@@ -373,7 +381,7 @@ resource "yba_gcp_provider" "test" {
 }
 
 func gcpProviderConfigWithSharedVPC(name string) string {
-	return fmt.Sprintf(`
+	return acctest.YBAProviderBlock("GCP") + fmt.Sprintf(`
 variable "GCP_VPC_NETWORK" {
   type = string
 }
@@ -419,7 +427,7 @@ resource "yba_gcp_provider" "test" {
 }
 
 func gcpProviderConfigWithFirewallTags(name string) string {
-	return fmt.Sprintf(`
+	return acctest.YBAProviderBlock("GCP") + fmt.Sprintf(`
 variable "GCP_VPC_NETWORK" {
   type = string
 }

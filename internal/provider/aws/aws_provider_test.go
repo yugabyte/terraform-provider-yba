@@ -22,7 +22,6 @@ import (
 	"testing"
 	"time"
 
-	sdkacctest "github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
 	client "github.com/yugabyte/platform-go-client"
@@ -35,11 +34,11 @@ import (
 func TestAccAWSProvider_WithCredentials(t *testing.T) {
 	var provider client.Provider
 
-	rName := fmt.Sprintf("tf-acctest-aws-%s", sdkacctest.RandString(12))
+	rName := acctest.RandomName("aws")
 	resource.ParallelTest(t, resource.TestCase{
 		PreCheck: func() {
-			acctest.TestAccPreCheck(t)
 			acctest.TestAccPreCheckAWS(t)
+			acctest.TestAccPreCheckCloudYBA(t, "AWS")
 		},
 		ProviderFactories: acctest.ProviderFactories,
 		CheckDestroy:      testAccCheckDestroyAWSProvider,
@@ -62,22 +61,16 @@ func TestAccAWSProvider_WithCredentials(t *testing.T) {
 
 // TestAccAWSProvider_WithIAM tests AWS provider creation with IAM instance profile
 func TestAccAWSProvider_WithIAM(t *testing.T) {
-	// use_iam_instance_profile makes YBA authenticate with the YBA host's own
-	// AWS instance role, which only exists when YBA runs on AWS. The shared YBA
-	// this suite targets is gcp-hosted, so skip. Enabled in a follow-up that
-	// routes the AWS tests to the AWS fixture YBA.
-	t.Skip("requires the YBA host to run on AWS with an IAM instance role")
-
 	var provider client.Provider
 
-	rName := fmt.Sprintf("tf-acctest-aws-iam-%s", sdkacctest.RandString(12))
+	rName := acctest.RandomName("aws-iam")
 	resource.ParallelTest(t, resource.TestCase{
 		PreCheck: func() {
-			acctest.TestAccPreCheck(t)
 			// Uses an IAM instance profile rather than credentials, but the config
 			// still needs the AWS network env (SG/VPC/subnet) — gate on it so the
 			// test skips when AWS isn't configured instead of failing at plan.
 			acctest.TestAccPreCheckAWS(t)
+			acctest.TestAccPreCheckCloudYBA(t, "AWS")
 		},
 		ProviderFactories: acctest.ProviderFactories,
 		CheckDestroy:      testAccCheckDestroyAWSProvider,
@@ -99,11 +92,11 @@ func TestAccAWSProvider_WithIAM(t *testing.T) {
 func TestAccAWSProvider_WithImageBundles(t *testing.T) {
 	var provider client.Provider
 
-	rName := fmt.Sprintf("tf-acctest-aws-ib-%s", sdkacctest.RandString(12))
+	rName := acctest.RandomName("aws-ib")
 	resource.ParallelTest(t, resource.TestCase{
 		PreCheck: func() {
-			acctest.TestAccPreCheck(t)
 			acctest.TestAccPreCheckAWS(t)
+			acctest.TestAccPreCheckCloudYBA(t, "AWS")
 		},
 		ProviderFactories: acctest.ProviderFactories,
 		CheckDestroy:      testAccCheckDestroyAWSProvider,
@@ -128,13 +121,13 @@ func TestAccAWSProvider_WithImageBundles(t *testing.T) {
 func TestAccAWSProvider_Update(t *testing.T) {
 	var provider client.Provider
 
-	rName := fmt.Sprintf("tf-acctest-aws-upd-%s", sdkacctest.RandString(12))
+	rName := acctest.RandomName("aws-upd")
 	rNameUpdated := rName + "-updated"
 
 	resource.ParallelTest(t, resource.TestCase{
 		PreCheck: func() {
-			acctest.TestAccPreCheck(t)
 			acctest.TestAccPreCheckAWS(t)
+			acctest.TestAccPreCheckCloudYBA(t, "AWS")
 		},
 		ProviderFactories: acctest.ProviderFactories,
 		CheckDestroy:      testAccCheckDestroyAWSProvider,
@@ -159,14 +152,18 @@ func TestAccAWSProvider_Update(t *testing.T) {
 }
 
 func testAccCheckDestroyAWSProvider(s *terraform.State) error {
-	conn := acctest.APIClient.YugawareClient
+	apiClient, err := acctest.APIClientForCloud("AWS")
+	if err != nil {
+		return err
+	}
+	conn := apiClient.YugawareClient
 
 	for _, r := range s.RootModule().Resources {
 		if r.Type != "yba_aws_provider" {
 			continue
 		}
 		time.Sleep(60 * time.Second)
-		cUUID := acctest.APIClient.CustomerID
+		cUUID := apiClient.CustomerID
 		res, response, err := conn.CloudProvidersAPI.GetListOfProviders(context.Background(),
 			cUUID).Execute()
 		if err != nil {
@@ -196,8 +193,12 @@ func testAccCheckAWSProviderExists(
 			return errors.New("no ID is set for AWS provider resource")
 		}
 
-		conn := acctest.APIClient.YugawareClient
-		cUUID := acctest.APIClient.CustomerID
+		apiClient, err := acctest.APIClientForCloud("AWS")
+		if err != nil {
+			return err
+		}
+		conn := apiClient.YugawareClient
+		cUUID := apiClient.CustomerID
 		res, response, err := conn.CloudProvidersAPI.GetListOfProviders(context.Background(),
 			cUUID).Execute()
 		if err != nil {
@@ -216,7 +217,7 @@ func testAccCheckAWSProviderExists(
 }
 
 func awsProviderConfigBasic(name string) string {
-	return fmt.Sprintf(`
+	return acctest.YBAProviderBlock("AWS") + fmt.Sprintf(`
 variable "AWS_SG_ID" {
   type        = string
   description = "AWS sg-id to run acceptance testing"
@@ -265,7 +266,7 @@ resource "yba_aws_provider" "test" {
 }
 
 func awsProviderConfigWithCredentials(name string) string {
-	return fmt.Sprintf(`
+	return acctest.YBAProviderBlock("AWS") + fmt.Sprintf(`
 variable "AWS_SG_ID" {
   type = string
 }
@@ -311,7 +312,7 @@ resource "yba_aws_provider" "test" {
 }
 
 func awsProviderConfigWithIAM(name string) string {
-	return fmt.Sprintf(`
+	return acctest.YBAProviderBlock("AWS") + fmt.Sprintf(`
 variable "AWS_SG_ID" {
   type = string
 }
@@ -345,7 +346,7 @@ resource "yba_aws_provider" "test" {
 }
 
 func awsProviderConfigWithImageBundles(name string) string {
-	return fmt.Sprintf(`
+	return acctest.YBAProviderBlock("AWS") + fmt.Sprintf(`
 variable "AWS_SG_ID" {
   type = string
 }
@@ -409,11 +410,11 @@ resource "yba_aws_provider" "test" {
 func TestAccAWSProvider_MultiZoneWithRegionOverrides(t *testing.T) {
 	var provider client.Provider
 
-	rName := fmt.Sprintf("tf-acctest-aws-mz-%s", sdkacctest.RandString(12))
+	rName := acctest.RandomName("aws-mz")
 	resource.ParallelTest(t, resource.TestCase{
 		PreCheck: func() {
-			acctest.TestAccPreCheck(t)
 			acctest.TestAccPreCheckAWS(t)
+			acctest.TestAccPreCheckCloudYBA(t, "AWS")
 			acctest.TestAccPreCheckAWSMultiZone(t)
 		},
 		ProviderFactories: acctest.ProviderFactories,
@@ -462,7 +463,7 @@ func TestAccAWSProvider_MultiZoneWithRegionOverrides(t *testing.T) {
 //	--image-bundle-region-override image-bundle-name=test-cli::region=... \
 //	--image-bundle-region-override image-bundle-name=test-cli::region=...
 func awsProviderConfigMultiZoneWithRegionOverrides(name string) string {
-	return fmt.Sprintf(`
+	return acctest.YBAProviderBlock("AWS") + fmt.Sprintf(`
 variable "AWS_SG_ID" {
   type        = string
   description = "AWS Security Group ID"
