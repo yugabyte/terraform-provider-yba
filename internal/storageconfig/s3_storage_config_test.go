@@ -55,12 +55,12 @@ func TestAccS3StorageConfig_Basic(t *testing.T) {
 
 // TestAccS3StorageConfig_IAM tests S3 storage config with IAM instance profile
 func TestAccS3StorageConfig_IAM(t *testing.T) {
-	t.Skip("IAM instance profile test requires running on an AWS instance with IAM role")
-
 	rName := fmt.Sprintf("tf-acctest-s3-iam-%s", sdkacctest.RandString(8))
 
 	resource.Test(t, resource.TestCase{
-		PreCheck:          func() { acctest.TestAccPreCheck(t) },
+		// use_iam_instance_profile makes YBA reach S3 with the YBA host's own AWS
+		// instance role. testAccPreCheckS3 already targets the AWS fixture YBA.
+		PreCheck:          func() { testAccPreCheckS3(t) },
 		ProviderFactories: acctest.ProviderFactories,
 		CheckDestroy:      testAccCheckStorageConfigDestroy,
 		Steps: []resource.TestStep{
@@ -113,7 +113,8 @@ func TestAccS3StorageConfig_Update(t *testing.T) {
 }
 
 func testAccPreCheckS3(t *testing.T) {
-	acctest.TestAccPreCheck(t)
+	// S3 storage configs run against the AWS fixture YBA.
+	acctest.TestAccPreCheckCloudYBA(t, "AWS")
 
 	requiredVars := []string{
 		"TF_VAR_S3_BACKUP_LOCATION",
@@ -148,7 +149,7 @@ func testAccCheckStorageConfigDestroy(s *terraform.State) error {
 }
 
 func testAccS3StorageConfigWithCredentials(name string) string {
-	return fmt.Sprintf(`
+	return acctest.YBAProviderBlock("AWS") + fmt.Sprintf(`
 variable "S3_BACKUP_LOCATION" {
   type = string
 }
@@ -175,7 +176,7 @@ resource "yba_s3_storage_config" "test" {
 }
 
 func testAccS3StorageConfigWithIAM(name string) string {
-	return fmt.Sprintf(`
+	return acctest.YBAProviderBlock("AWS") + fmt.Sprintf(`
 variable "S3_BACKUP_LOCATION" {
   type = string
 }

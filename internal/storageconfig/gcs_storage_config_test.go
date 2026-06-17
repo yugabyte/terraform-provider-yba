@@ -53,11 +53,11 @@ func TestAccGCSStorageConfig_Basic(t *testing.T) {
 
 // TestAccGCSStorageConfig_IAM tests GCS storage config with GCP IAM (workload identity)
 func TestAccGCSStorageConfig_IAM(t *testing.T) {
-	t.Skip("GCP IAM test requires running on a GKE cluster with workload identity")
-
 	rName := acctest.RandomName("gcs-iam")
 
 	resource.Test(t, resource.TestCase{
+		// use_gcp_iam makes YBA reach GCS with the YBA host's own service account.
+		// testAccPreCheckGCS already targets the GCP fixture YBA.
 		PreCheck:          func() { testAccPreCheckGCS(t) },
 		ProviderFactories: acctest.ProviderFactories,
 		CheckDestroy:      testAccCheckStorageConfigDestroy,
@@ -111,7 +111,8 @@ func TestAccGCSStorageConfig_Update(t *testing.T) {
 }
 
 func testAccPreCheckGCS(t *testing.T) {
-	acctest.TestAccPreCheck(t)
+	// GCS storage configs run against the GCP fixture YBA.
+	acctest.TestAccPreCheckCloudYBA(t, "GCP")
 
 	requiredVars := []string{
 		"TF_VAR_GCS_BACKUP_LOCATION",
@@ -126,7 +127,7 @@ func testAccPreCheckGCS(t *testing.T) {
 }
 
 func testAccGCSStorageConfigWithCredentials(name string) string {
-	return fmt.Sprintf(`
+	return acctest.YBAProviderBlock("GCP") + fmt.Sprintf(`
 variable "GCS_BACKUP_LOCATION" {
   type = string
 }
@@ -145,7 +146,7 @@ resource "yba_gcs_storage_config" "test" {
 }
 
 func testAccGCSStorageConfigWithIAM(name string) string {
-	return fmt.Sprintf(`
+	return acctest.YBAProviderBlock("GCP") + fmt.Sprintf(`
 variable "GCS_BACKUP_LOCATION" {
   type = string
 }
