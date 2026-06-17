@@ -23,6 +23,7 @@ import (
 	"os/exec"
 	"regexp"
 	"strings"
+	"sync"
 	"testing"
 
 	sdkacctest "github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
@@ -70,8 +71,13 @@ const (
 var (
 	// ProviderFactories maps schema.Provider to errors generated
 	ProviderFactories map[string]func() (*schema.Provider, error)
-	// APIClient variable
+	// APIClient is the shared YBA client (YBA_HOST), used by storage-config,
+	// user, and customer tests. Provider tests use APIClientForCloud instead.
 	APIClient *api.APIClient
+
+	// cloudClients caches one YBA client per cloud, keyed by cloud code.
+	cloudClients   = map[string]*api.APIClient{}
+	cloudClientsMu sync.Mutex
 )
 
 // getEnvMulti returns the first non-empty value from the given env var names
@@ -92,6 +98,56 @@ func TestHost() string {
 // TestAPIKey returns YBA_API_KEY or YB_API_KEY
 func TestAPIKey() string {
 	return getEnvMulti("YBA_API_KEY", "YB_API_KEY")
+}
+
+// CloudYBAHost returns TF_VAR_<CLOUD>_YBA_HOST (cloud is the upper-case code,
+// e.g. "AWS"). Each cloud has its own YBA. Provider tests must target the YBA
+// running on that cloud, because use_iam_instance_profile authenticates with
+// the YBA host's own instance role, which only exists on a same-cloud YBA.
+func CloudYBAHost(cloud string) string { return os.Getenv("TF_VAR_" + cloud + "_YBA_HOST") }
+
+// CloudYBAAPIKey returns TF_VAR_<CLOUD>_YBA_API_KEY. See CloudYBAHost.
+func CloudYBAAPIKey(cloud string) string { return os.Getenv("TF_VAR_" + cloud + "_YBA_API_KEY") }
+
+// APIClientForCloud builds and caches the YBA client for a cloud. Check and
+// Destroy helpers use it to read back state from the YBA the test wrote to.
+func APIClientForCloud(cloud string) (*api.APIClient, error) {
+	cloudClientsMu.Lock()
+	defer cloudClientsMu.Unlock()
+	if c, ok := cloudClients[cloud]; ok {
+		return c, nil
+	}
+	c, err := api.NewAPIClient(true, CloudYBAHost(cloud), CloudYBAAPIKey(cloud))
+	if err != nil {
+		return nil, err
+	}
+	cloudClients[cloud] = c
+	return c, nil
+}
+
+// YBAProviderBlock returns an HCL provider block plus its variable declarations,
+// pointing the provider at the cloud's YBA. Prepend it to a cloud's test config.
+//
+// The endpoint lives in the config rather than a process-global YBA_HOST. The
+// provider reads its endpoint at configure time, so a shared env var would race
+// across parallel tests targeting different YBAs.
+func YBAProviderBlock(cloud string) string {
+	return fmt.Sprintf(`
+variable "%[1]s_YBA_HOST" {
+  type = string
+}
+
+variable "%[1]s_YBA_API_KEY" {
+  type      = string
+  sensitive = true
+}
+
+provider "yba" {
+  host         = var.%[1]s_YBA_HOST
+  api_token    = var.%[1]s_YBA_API_KEY
+  enable_https = true
+}
+`, cloud)
 }
 
 // testPrefix isolates concurrent runs on a shared YBA. Honors TF_ACCTEST_PREFIX;
@@ -151,14 +207,21 @@ func RandomName(kind string) string {
 }
 
 func init() {
+	ProviderFactories = map[string]func() (*schema.Provider, error){
+		ybProviderName: func() (*schema.Provider, error) { return provider.New(), nil },
+	}
+	// Build the shared client only when a shared YBA is set, so importing this
+	// package never panics on an empty YBA_HOST. Tests that use the shared client
+	// gate on TestAccPreCheck (which fails fast on an empty host), so they never
+	// hit a nil client.
+	if TestHost() == "" {
+		return
+	}
 	c, err := api.NewAPIClient(true, TestHost(), TestAPIKey())
 	if err != nil {
 		panic(err)
 	}
 	APIClient = c
-	ProviderFactories = map[string]func() (*schema.Provider, error){
-		ybProviderName: func() (*schema.Provider, error) { return provider.New(), nil },
-	}
 }
 
 // SetupGCPCredentialsFile materializes the inline GCP SA key (TF_VAR_GCP_CREDENTIALS)
@@ -210,6 +273,18 @@ func TestAccPreCheckGCP(t *testing.T) {
 	for _, v := range requiredVars {
 		if os.Getenv(v) == "" {
 			t.Skipf("%s not set; skipping GCP acceptance tests", v)
+		}
+	}
+}
+
+// TestAccPreCheckCloudYBA skips unless the cloud's YBA endpoint is set
+// (TF_VAR_<CLOUD>_YBA_HOST and _API_KEY). Without a same-cloud fixture YBA the
+// tests would fail at apply, so they skip instead.
+func TestAccPreCheckCloudYBA(t *testing.T, cloud string) {
+	for _, suffix := range []string{"_YBA_HOST", "_YBA_API_KEY"} {
+		v := "TF_VAR_" + cloud + suffix
+		if os.Getenv(v) == "" {
+			t.Skipf("%s not set; skipping %s tests that target the %s YBA", v, cloud, cloud)
 		}
 	}
 }
