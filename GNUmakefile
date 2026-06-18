@@ -110,16 +110,12 @@ acctest: install $(GOTESTSUM) acctest/env
 
 # Run the long acceptance tier (TestAccLong*). These deploy real multi-node
 # universes and take ~15 min each, so they stay out of `make acctest`. Same env
-# handling as acctest.
-#
-# For now this runs the GCP universe test only. The AWS/Azure long tests are
-# skipped until each cloud's universe test targets its own standing YBA (the
-# per-cloud-YBA wiring is a separate change); running them against the GCP YBA
-# is not a meaningful test.
+# handling as acctest. Each cloud's universe test targets its own standing YBA,
+# so all three (GCP/AWS/Azure) run.
 .PHONY: acctest-long
 acctest-long: install $(GOTESTSUM) acctest/env
 	@set -a; . ./acctest/env; set +a; \
-	TF_ACC=1 $(GOTESTSUM) -- -timeout 160m ./... -run '^TestAccLong' -skip '_(AWS|Azure)_'
+	TF_ACC=1 $(GOTESTSUM) -- -timeout 90m ./... -run '^TestAccLong'
 
 acctest/env:
 	$(MAKE) -C acctest env
