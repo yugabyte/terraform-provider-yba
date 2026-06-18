@@ -1,7 +1,8 @@
 name: Acceptance Tests (Long)
-# The long tier (TestAccLong*) runs multi-node universe deploys, ~15 min each.
-# Runs automatically on pushes to main (post-merge), and on demand. Not run on
-# PRs — too slow and expensive to gate every PR.
+# The long tier (TestAccLong*) runs real universe deploys, ~15 min each
+# (e.g. the universe telemetry edit-flow test). It runs automatically on merges
+# to main, and on manual dispatch so a developer can exercise it against a PR
+# branch from the Actions tab (or `gh workflow run acctest-long.yml --ref <branch>`).
 on:
   push:
     branches:
