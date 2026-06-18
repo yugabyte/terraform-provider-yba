@@ -51,6 +51,3 @@ local/
 
 # Test env written by `make acctest-env` (secret: SA key + API token)
 acctest/env*
-
-# SSH keypair the azure fixture generates in-apply when ssh_private_key_file=""
-acctest/*/.ssh-*

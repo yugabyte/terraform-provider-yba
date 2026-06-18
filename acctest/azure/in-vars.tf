@@ -93,12 +93,6 @@ variable "yba_vm_size" {
   default     = "Standard_D4s_v3"
 }
 
-variable "ssh_private_key_file" {
-  description = "Path to the SSH private key used to install YBA; its .pub is added to the VM. ~ is expanded. Mirrors gcp/aws: an existing key is required because yba_installer validates the private-key path exists at plan time, so a key generated in the same apply cannot satisfy it. (Setting this to \"\" triggers in-apply key generation, which fails that plan-time check.)"
-  type        = string
-  default     = "~/.ssh/id_rsa"
-}
-
 variable "yba_admin_user" {
   description = "Admin (SSH) user created on the YBA VM. The installer connects as this user."
   type        = string

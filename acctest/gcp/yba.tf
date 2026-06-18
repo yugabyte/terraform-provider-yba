@@ -7,9 +7,19 @@
 # `make acctest` just consumes it. Tear down with the base.
 
 locals {
-  ssh_private_key_file = pathexpand(var.ssh_private_key_file)
-  ssh_public_key_file  = "${local.ssh_private_key_file}.pub"
-  yba_ssh_host         = google_compute_address.yba.address
+  yba_ssh_host = google_compute_address.yba.address
+}
+
+# Dedicated SSH keypair for the standing YBA VM, generated once and kept in the
+# shared remote state (alongside random_password.customer). The public half goes
+# on the VM and the private half is fed to the installer inline via
+# ssh_private_key, so applies don't depend on (or drift against) any developer's
+# ~/.ssh keypair. Passing it inline (not as a file path) sidesteps the
+# installer's plan-time file-existence check, which a key generated in the same
+# apply can't satisfy.
+resource "tls_private_key" "yba" {
+  algorithm = "RSA"
+  rsa_bits  = 4096
 }
 
 # Resolve base_image (a family reference) to a concrete image. YBA's image-bundle
@@ -66,9 +76,9 @@ resource "google_compute_instance" "yba" {
     }
   }
 
-  # Standard gcloud keypair (matches the private key the installer uses).
+  # Public half of the generated keypair (the installer uses the private half).
   metadata = {
-    ssh-keys       = "yugabyte:${file(local.ssh_public_key_file)}"
+    ssh-keys       = "yugabyte:${tls_private_key.yba.public_key_openssh}"
     startup-script = file("${path.module}/../resources/gcp-bootscript.sh")
   }
 
@@ -88,15 +98,15 @@ resource "random_password" "customer" {
   override_special = "!#$%*-_"
 }
 
-# Install YugabyteDB Anywhere on the VM over SSH. The provider takes file
-# paths (validated to exist at plan time): the SSH key is the standard gcloud
-# keypair, the license is at the repo root, and yba-ctl.yml is in acctest/resources.
+# Install YugabyteDB Anywhere on the VM over SSH. The SSH key is the generated
+# keypair (passed inline); the license file is at the repo root and yba-ctl.yml
+# is in acctest/resources (both validated to exist at plan time).
 resource "yba_installer" "install" {
   provider = yba.bootstrap
 
   ssh_host_ip               = local.yba_ssh_host
   ssh_user                  = "yugabyte"
-  ssh_private_key_file_path = local.ssh_private_key_file
+  ssh_private_key           = tls_private_key.yba.private_key_openssh
   yba_license_file          = "${path.module}/../../yugabyte_anywhere.lic"
   application_settings_file = "${path.module}/../resources/yba-ctl.yml"
   yba_version               = var.yba_version

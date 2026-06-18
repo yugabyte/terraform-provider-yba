@@ -71,12 +71,6 @@ variable "yba_machine_type" {
   default     = "n2-standard-4"
 }
 
-variable "ssh_private_key_file" {
-  description = "Path to the SSH private key used to install YBA; its .pub is added to the VM. ~ is expanded."
-  type        = string
-  default     = "~/.ssh/google_compute_engine"
-}
-
 variable "yba_username" {
   description = "Username (email) for the initial YBA superuser (customer). Published as the yba_username output."
   type        = string

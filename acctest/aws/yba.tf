@@ -7,37 +7,20 @@
 # output so `make acctest` just consumes it. Tear down with the base.
 # Mirrors acctest/gcp and acctest/azure.
 
-# SSH key for the installer. If var.ssh_private_key_file is set, reuse that
-# existing key (mirrors gcp/azure); otherwise generate a fresh RSA key and
-# write both halves into the working directory so the installer can read the
-# private half over the filesystem.
 locals {
-  generate_ssh_key     = var.ssh_private_key_file == ""
-  generated_key_path   = "${path.module}/.ssh-yba"
-  ssh_private_key_file = local.generate_ssh_key ? local.generated_key_path : pathexpand(var.ssh_private_key_file)
-  ssh_public_key_file  = "${local.ssh_private_key_file}.pub"
-  ssh_public_key       = local.generate_ssh_key ? tls_private_key.yba[0].public_key_openssh : file(local.ssh_public_key_file)
-  yba_ssh_host         = aws_eip.yba.public_ip
+  yba_ssh_host = aws_eip.yba.public_ip
 }
 
+# Dedicated SSH keypair for the standing YBA VM, generated once and kept in the
+# shared remote state (alongside random_password.customer). The public half goes
+# on the VM and the private half is fed to the installer inline via
+# ssh_private_key, so applies don't depend on (or drift against) any developer's
+# ~/.ssh keypair. Passing it inline (not as a file path) sidesteps the
+# installer's plan-time file-existence check, which a key generated in the same
+# apply can't satisfy.
 resource "tls_private_key" "yba" {
-  count     = local.generate_ssh_key ? 1 : 0
   algorithm = "RSA"
   rsa_bits  = 4096
-}
-
-resource "local_sensitive_file" "ssh_private_key" {
-  count           = local.generate_ssh_key ? 1 : 0
-  content         = tls_private_key.yba[0].private_key_openssh
-  filename        = local.generated_key_path
-  file_permission = "0600"
-}
-
-resource "local_file" "ssh_public_key" {
-  count           = local.generate_ssh_key ? 1 : 0
-  content         = tls_private_key.yba[0].public_key_openssh
-  filename        = "${local.generated_key_path}.pub"
-  file_permission = "0644"
 }
 
 # Resolve base_image (an owner + name pattern) to a concrete AMI. Exposed as
@@ -64,7 +47,7 @@ data "aws_ami" "almalinux" {
 # EC2 key pair the installer's SSH key maps to.
 resource "aws_key_pair" "yba" {
   key_name   = "${var.prefix}-yba"
-  public_key = local.ssh_public_key
+  public_key = tls_private_key.yba.public_key_openssh
 }
 
 # Stable public IP for the YBA VM: a fixed address for the installer (SSH) and
@@ -129,16 +112,16 @@ resource "random_password" "customer" {
   override_special = "!#$%*-_"
 }
 
-# Install YugabyteDB Anywhere on the VM over SSH. The provider takes file paths
-# (validated to exist at plan time): the SSH key is the generated/provided
-# private half, the license is at the repo root, and yba-ctl.yml is in
-# acctest/resources. The installer connects as the VM admin user.
+# Install YugabyteDB Anywhere on the VM over SSH. The SSH key is the generated
+# keypair (passed inline); the license file is at the repo root and yba-ctl.yml
+# is in acctest/resources (both validated to exist at plan time). The installer
+# connects as the VM admin user.
 resource "yba_installer" "install" {
   provider = yba.bootstrap
 
   ssh_host_ip               = local.yba_ssh_host
   ssh_user                  = var.yba_admin_user
-  ssh_private_key_file_path = local.ssh_private_key_file
+  ssh_private_key           = tls_private_key.yba.private_key_openssh
   yba_license_file          = "${path.module}/../../yugabyte_anywhere.lic"
   application_settings_file = "${path.module}/../resources/yba-ctl.yml"
   yba_version               = var.yba_version
@@ -155,7 +138,6 @@ resource "yba_installer" "install" {
     aws_eip_association.yba,
     aws_security_group.main,
     aws_route_table_association.yba,
-    local_sensitive_file.ssh_private_key,
   ]
 }
 
