@@ -20,6 +20,7 @@ locals {
     TF_VAR_GCP_REGION='${var.gcp_region}'
     TF_VAR_GCP_SUBNETWORK='${google_compute_subnetwork.ybdb.name}'
     TF_VAR_GCP_IMAGE='${data.google_compute_image.ybdb.self_link}'
+    TF_VAR_GCP_YBA_VERSION='${var.yba_version}'
     TF_VAR_GCS_BACKUP_LOCATION='gs://${google_storage_bucket.backups.name}'
     TF_VAR_GCP_YBA_HOST='${google_compute_address.yba.address}'
     TF_VAR_GCP_YBA_API_KEY='${yba_customer_resource.customer.api_token}'
