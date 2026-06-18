@@ -83,7 +83,8 @@ func TestAccAzureStorageConfig_Update(t *testing.T) {
 }
 
 func testAccPreCheckAzureStorage(t *testing.T) {
-	acctest.TestAccPreCheck(t)
+	// Azure storage configs run against the Azure fixture YBA.
+	acctest.TestAccPreCheckCloudYBA(t, "AZURE")
 
 	requiredVars := []string{
 		"TF_VAR_AZURE_BACKUP_LOCATION",
@@ -98,7 +99,7 @@ func testAccPreCheckAzureStorage(t *testing.T) {
 }
 
 func testAccAzureStorageConfig(name string) string {
-	return fmt.Sprintf(`
+	return acctest.YBAProviderBlock("AZURE") + fmt.Sprintf(`
 variable "AZURE_BACKUP_LOCATION" {
   type = string
 }

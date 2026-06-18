@@ -6,8 +6,11 @@
 # sources it; `make -C acctest push-github-secrets` publishes it (CI writes it
 # back to acctest/env and sources it the same way).
 #
-# The YBA endpoint is exported as un-prefixed YBA_HOST/YBA_API_KEY — the shared
-# client read by the package init and used by every acceptance test.
+# The YBA endpoint is exported twice. Un-prefixed YBA_HOST/YBA_API_KEY is the
+# shared client read by the package init and used by the non-provider tests
+# (storage-config, cloud_provider, user, customer). The prefixed
+# TF_VAR_GCP_YBA_HOST/TF_VAR_GCP_YBA_API_KEY points the GCP provider tests at
+# this same YBA, mirroring how aws/azure target their own fixture YBAs.
 
 locals {
   test_env = <<-EOT
@@ -18,6 +21,8 @@ locals {
     TF_VAR_GCP_SUBNETWORK='${google_compute_subnetwork.ybdb.name}'
     TF_VAR_GCP_IMAGE='${data.google_compute_image.ybdb.self_link}'
     TF_VAR_GCS_BACKUP_LOCATION='gs://${google_storage_bucket.backups.name}'
+    TF_VAR_GCP_YBA_HOST='${google_compute_address.yba.address}'
+    TF_VAR_GCP_YBA_API_KEY='${yba_customer_resource.customer.api_token}'
     YBA_HOST='${google_compute_address.yba.address}'
     YBA_API_KEY='${yba_customer_resource.customer.api_token}'
   EOT

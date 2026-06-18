@@ -112,12 +112,6 @@ acctest: install $(GOTESTSUM) acctest/env
 # universes and take ~15 min each, so they stay out of `make acctest`. Same env
 # handling as acctest.
 #
-# -timeout must comfortably exceed one test's create + update + delete (the
-# universe resource alone allows 60m create / 60m update / 30m delete). If the
-# go-test binary timeout fires mid-test the binary is SIGKILL'd, so the SDK's
-# automatic terraform destroy never runs and the universe (whose nodes are not
-# TF-managed) leaks. 160m covers the worst case and stays under the 180m CI job.
-#
 # For now this runs the GCP universe test only. The AWS/Azure long tests are
 # skipped until each cloud's universe test targets its own standing YBA (the
 # per-cloud-YBA wiring is a separate change); running them against the GCP YBA

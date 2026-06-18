@@ -1,7 +1,11 @@
 name: Acceptance Tests (Long)
 # The long tier (TestAccLong*) runs multi-node universe deploys, ~15 min each.
-# Run on demand.
+# Runs automatically on pushes to main (post-merge), and on demand. Not run on
+# PRs — too slow and expensive to gate every PR.
 on:
+  push:
+    branches:
+      - main
   workflow_dispatch:
 
 jobs:

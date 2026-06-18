@@ -22,7 +22,6 @@ import (
 	"testing"
 	"time"
 
-	sdkacctest "github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
 	client "github.com/yugabyte/platform-go-client"
@@ -35,11 +34,11 @@ import (
 func TestAccAzureProvider_WithCredentials(t *testing.T) {
 	var provider client.Provider
 
-	rName := fmt.Sprintf("tf-acctest-azure-%s", sdkacctest.RandString(12))
+	rName := acctest.RandomName("azure")
 	resource.ParallelTest(t, resource.TestCase{
 		PreCheck: func() {
-			acctest.TestAccPreCheck(t)
 			acctest.TestAccPreCheckAzure(t)
+			acctest.TestAccPreCheckCloudYBA(t, "AZURE")
 		},
 		ProviderFactories: acctest.ProviderFactories,
 		CheckDestroy:      testAccCheckDestroyAzureProvider,
@@ -62,11 +61,11 @@ func TestAccAzureProvider_WithCredentials(t *testing.T) {
 func TestAccAzureProvider_WithNetworkConfig(t *testing.T) {
 	var provider client.Provider
 
-	rName := fmt.Sprintf("tf-acctest-azure-net-%s", sdkacctest.RandString(12))
+	rName := acctest.RandomName("azure-net")
 	resource.ParallelTest(t, resource.TestCase{
 		PreCheck: func() {
-			acctest.TestAccPreCheck(t)
 			acctest.TestAccPreCheckAzure(t)
+			acctest.TestAccPreCheckCloudYBA(t, "AZURE")
 		},
 		ProviderFactories: acctest.ProviderFactories,
 		CheckDestroy:      testAccCheckDestroyAzureProvider,
@@ -90,13 +89,13 @@ func TestAccAzureProvider_WithNetworkConfig(t *testing.T) {
 func TestAccAzureProvider_Update(t *testing.T) {
 	var provider client.Provider
 
-	rName := fmt.Sprintf("tf-acctest-azure-upd-%s", sdkacctest.RandString(12))
+	rName := acctest.RandomName("azure-upd")
 	rNameUpdated := rName + "-updated"
 
 	resource.ParallelTest(t, resource.TestCase{
 		PreCheck: func() {
-			acctest.TestAccPreCheck(t)
 			acctest.TestAccPreCheckAzure(t)
+			acctest.TestAccPreCheckCloudYBA(t, "AZURE")
 		},
 		ProviderFactories: acctest.ProviderFactories,
 		CheckDestroy:      testAccCheckDestroyAzureProvider,
@@ -124,11 +123,11 @@ func TestAccAzureProvider_Update(t *testing.T) {
 func TestAccAzureProvider_MultipleZones(t *testing.T) {
 	var provider client.Provider
 
-	rName := fmt.Sprintf("tf-acctest-azure-mz-%s", sdkacctest.RandString(12))
+	rName := acctest.RandomName("azure-mz")
 	resource.ParallelTest(t, resource.TestCase{
 		PreCheck: func() {
-			acctest.TestAccPreCheck(t)
 			acctest.TestAccPreCheckAzure(t)
+			acctest.TestAccPreCheckCloudYBA(t, "AZURE")
 		},
 		ProviderFactories: acctest.ProviderFactories,
 		CheckDestroy:      testAccCheckDestroyAzureProvider,
@@ -146,14 +145,18 @@ func TestAccAzureProvider_MultipleZones(t *testing.T) {
 }
 
 func testAccCheckDestroyAzureProvider(s *terraform.State) error {
-	conn := acctest.APIClient.YugawareClient
+	apiClient, err := acctest.APIClientForCloud("AZURE")
+	if err != nil {
+		return err
+	}
+	conn := apiClient.YugawareClient
 
 	for _, r := range s.RootModule().Resources {
 		if r.Type != "yba_azure_provider" {
 			continue
 		}
 		time.Sleep(60 * time.Second)
-		cUUID := acctest.APIClient.CustomerID
+		cUUID := apiClient.CustomerID
 		res, response, err := conn.CloudProvidersAPI.GetListOfProviders(context.Background(),
 			cUUID).Execute()
 		if err != nil {
@@ -183,8 +186,12 @@ func testAccCheckAzureProviderExists(
 			return errors.New("no ID is set for Azure provider resource")
 		}
 
-		conn := acctest.APIClient.YugawareClient
-		cUUID := acctest.APIClient.CustomerID
+		apiClient, err := acctest.APIClientForCloud("AZURE")
+		if err != nil {
+			return err
+		}
+		conn := apiClient.YugawareClient
+		cUUID := apiClient.CustomerID
 		res, response, err := conn.CloudProvidersAPI.GetListOfProviders(context.Background(),
 			cUUID).Execute()
 		if err != nil {
@@ -203,7 +210,7 @@ func testAccCheckAzureProviderExists(
 }
 
 func azureProviderConfigBasic(name string) string {
-	return fmt.Sprintf(`
+	return acctest.YBAProviderBlock("AZURE") + fmt.Sprintf(`
 variable "AZURE_SUBSCRIPTION_ID" {
   type        = string
   description = "Azure subscription ID"
@@ -264,7 +271,7 @@ resource "yba_azure_provider" "test" {
 }
 
 func azureProviderConfigWithCredentials(name string) string {
-	return fmt.Sprintf(`
+	return acctest.YBAProviderBlock("AZURE") + fmt.Sprintf(`
 variable "AZURE_SUBSCRIPTION_ID" {
   type = string
 }
@@ -318,7 +325,7 @@ resource "yba_azure_provider" "test" {
 }
 
 func azureProviderConfigWithNetworkConfig(name string) string {
-	return fmt.Sprintf(`
+	return acctest.YBAProviderBlock("AZURE") + fmt.Sprintf(`
 variable "AZURE_SUBSCRIPTION_ID" {
   type = string
 }
@@ -384,7 +391,7 @@ resource "yba_azure_provider" "test" {
 }
 
 func azureProviderConfigMultipleZones(name string) string {
-	return fmt.Sprintf(`
+	return acctest.YBAProviderBlock("AZURE") + fmt.Sprintf(`
 variable "AZURE_SUBSCRIPTION_ID" {
   type = string
 }
