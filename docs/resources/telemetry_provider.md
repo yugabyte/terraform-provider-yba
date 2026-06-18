@@ -187,7 +187,7 @@ Optional:
 - `logs_endpoint` (String) Override endpoint for log export (HTTP protocol only). When set, the value of `endpoint` is ignored for logs.
 - `metrics_endpoint` (String) Override endpoint for metric export (HTTP protocol only). When set, the value of `endpoint` is ignored for metrics.
 - `protocol` (String) Transport protocol. One of gRPC, HTTP.
-- `timeout_seconds` (Number) Timeout in seconds for the OTLP exporter.
+- `timeout_seconds` (Number) Timeout in seconds for the OTLP exporter. Must be positive.
 
 
 <a id="nestedblock--s3"></a>

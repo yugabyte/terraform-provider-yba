@@ -115,6 +115,43 @@ func TestUniverseTelemetryConfigReadEmpty(t *testing.T) {
 	}
 }
 
+// TestUniverseTelemetryConfigCreate drives Create end to end against the fake
+// YBA: build spec -> dispatch -> wait-for-task -> read-back. It asserts the
+// resource id is set and state is populated from the GET API, with no errors.
+func TestUniverseTelemetryConfigCreate(t *testing.T) {
+	f := &fakeYBA{
+		getConfig: &clientv2.TelemetryConfig{
+			Metrics: &clientv2.MetricsTelemetrySpec{
+				Exporters: []clientv2.UniverseMetricsExporterConfig{
+					{ExporterUuid: "exp-1"},
+				},
+			},
+		},
+	}
+	apiClient := newDetachTestClient(t, f)
+
+	res := ResourceUniverseTelemetryConfig()
+	d := schema.TestResourceDataRaw(t, res.Schema, map[string]interface{}{
+		"universe_uuid": "uni-1",
+		"metrics": []interface{}{map[string]interface{}{
+			"exporter": []interface{}{
+				map[string]interface{}{"exporter_uuid": "exp-1"},
+			},
+		}},
+	})
+
+	if diags := resourceUniverseTelemetryConfigCreate(
+		context.Background(), d, apiClient); diags.HasError() {
+		t.Fatalf("create returned errors: %v", diags)
+	}
+	if d.Id() != "uni-1" {
+		t.Errorf("id = %q want uni-1", d.Id())
+	}
+	if got := d.Get("metrics.0.exporter.0.exporter_uuid"); got != "exp-1" {
+		t.Errorf("metrics exporter not populated from read-back: %v", got)
+	}
+}
+
 // TestUniverseTelemetryConfigReadUniverseGone verifies that a deleted universe
 // (404, or YBA's non-404 "Cannot find universe" body) removes the resource
 // from state so Terraform plans a recreate instead of erroring forever.
