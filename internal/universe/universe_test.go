@@ -293,12 +293,7 @@ func getUniverseInstanceType(p string) string {
 	case "aws":
 		return "c6i.large"
 	}
-	// Azure: current-gen v5. The v6 D-series fails YBA node provisioning
-	// (YNPProvisioning) in 2025.2.x — its NVMe-only data-disk layout differs from
-	// the SCSI layout the provisioner expects — so v5 is the newest size YBA can
-	// bring up here. Its Dsv5 family quota is separate from the Dsv3 the standing
-	// fixture YBA VM consumes.
-	return "Standard_D2s_v5"
+	return "Standard_D2s_v4"
 }
 
 func cloudProviderGCPConfig(name string) string {
