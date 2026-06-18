@@ -85,10 +85,10 @@ func ResourceTelemetryProvider() *schema.Resource {
 		ReadContext:   resourceTelemetryProviderRead,
 		DeleteContext: resourceTelemetryProviderDelete,
 
-		// Catch the conditional-auth footguns at plan time rather than
-		// letting YBA reject them after the credentials have already been
-		// committed to the Terraform state file.
-		CustomizeDiff: validateTelemetryProviderAuth,
+		// Catch the OTLP/Loki conditional-config footguns at plan time rather
+		// than letting YBA reject them after the credentials have already
+		// been committed to the Terraform state file.
+		CustomizeDiff: validateTelemetryProviderConfig,
 
 		Importer: &schema.ResourceImporter{
 			StateContext: schema.ImportStatePassthroughContext,
@@ -190,11 +190,12 @@ func ResourceTelemetryProvider() *schema.Resource {
 							Description: "Compression for OTLP exporter (e.g. gzip, none).",
 						},
 						"timeout_seconds": {
-							Type:        schema.TypeInt,
-							Optional:    true,
-							ForceNew:    true,
-							Default:     5,
-							Description: "Timeout in seconds for the OTLP exporter.",
+							Type:         schema.TypeInt,
+							Optional:     true,
+							ForceNew:     true,
+							Default:      5,
+							ValidateFunc: validation.IntAtLeast(1),
+							Description:  "Timeout in seconds for the OTLP exporter. Must be positive.",
 						},
 						"basic_auth_username": {
 							Type:        schema.TypeString,
@@ -550,15 +551,18 @@ func ResourceTelemetryProvider() *schema.Resource {
 	}
 }
 
-// validateTelemetryProviderAuth runs at plan time (CustomizeDiff) and rejects
-// auth configurations that YBA would otherwise reject only after Terraform has
-// already written the (sensitive) credentials into state. OTLP supports
-// BasicAuth and BearerToken; Loki supports BasicAuth only. When the matching
-// credential fields are missing the provider build path silently sends empty
-// strings, which YBA either rejects ("Credentials are required when auth type
-// is basic.") or accepts as a broken exporter — neither is a good experience
-// to debug after the fact.
-func validateTelemetryProviderAuth(
+// validateTelemetryProviderConfig runs at plan time (CustomizeDiff) and
+// rejects the OTLP/Loki misconfigurations that YBA would otherwise only reject
+// after Terraform has already written the (sensitive) credentials into state.
+// Each check mirrors a rule in YBA's OTLPConfig/LokiConfig validateConfigFields
+// so the message points at the exact field the user got wrong:
+//
+//   - BasicAuth requires both basic_auth credential fields (OTLP and Loki).
+//   - BearerToken requires bearer_token (OTLP only).
+//   - logs_endpoint / metrics_endpoint are only honoured for protocol = HTTP;
+//     setting them under the default gRPC protocol is a silent no-op on the
+//     server side, so we surface it as an explicit mistake.
+func validateTelemetryProviderConfig(
 	_ context.Context, d *schema.ResourceDiff, _ interface{},
 ) error {
 	if list, ok := d.Get("otlp").([]interface{}); ok && len(list) > 0 {
@@ -573,6 +577,16 @@ func validateTelemetryProviderAuth(
 			if stringValue(d.Get("otlp.0.bearer_token")) == "" {
 				return fmt.Errorf("otlp: bearer_token is required when " +
 					"auth_type = \"BearerToken\"")
+			}
+		}
+		if protocol := stringValue(d.Get("otlp.0.protocol")); protocol != "HTTP" {
+			for _, field := range []string{"logs_endpoint", "metrics_endpoint"} {
+				if stringValue(d.Get("otlp.0."+field)) != "" {
+					return fmt.Errorf(
+						"otlp: %s is only honoured when protocol = \"HTTP\" "+
+							"(current protocol is %q); remove %s or set protocol = \"HTTP\"",
+						field, protocol, field)
+				}
 			}
 		}
 	}

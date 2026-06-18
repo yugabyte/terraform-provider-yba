@@ -136,6 +136,42 @@ func TestValidateTelemetryProviderAuthPlanTime(t *testing.T) {
 				}},
 			},
 		},
+		{
+			name: "otlp logs_endpoint under gRPC rejected",
+			raw: map[string]interface{}{
+				"name": "x",
+				"otlp": []interface{}{map[string]interface{}{
+					"endpoint":      "https://collector",
+					"logs_endpoint": "https://collector/logs",
+					// protocol defaults to gRPC
+				}},
+			},
+			wantErr: "logs_endpoint is only honoured when protocol = \"HTTP\"",
+		},
+		{
+			name: "otlp metrics_endpoint under gRPC rejected",
+			raw: map[string]interface{}{
+				"name": "x",
+				"otlp": []interface{}{map[string]interface{}{
+					"endpoint":         "https://collector",
+					"protocol":         "gRPC",
+					"metrics_endpoint": "https://collector/metrics",
+				}},
+			},
+			wantErr: "metrics_endpoint is only honoured when protocol = \"HTTP\"",
+		},
+		{
+			name: "otlp endpoint overrides under HTTP accepted",
+			raw: map[string]interface{}{
+				"name": "x",
+				"otlp": []interface{}{map[string]interface{}{
+					"endpoint":         "https://collector",
+					"protocol":         "HTTP",
+					"logs_endpoint":    "https://collector/logs",
+					"metrics_endpoint": "https://collector/metrics",
+				}},
+			},
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -317,6 +353,20 @@ func TestS3PartitionEnum(t *testing.T) {
 		if _, errs := vf(bad, "partition"); len(errs) == 0 {
 			t.Errorf("partition %q must be rejected", bad)
 		}
+	}
+}
+
+// TestOTLPTimeoutPositive verifies the timeout_seconds field rejects
+// non-positive values at plan time (YBA: "timeoutSeconds must be positive.").
+func TestOTLPTimeoutPositive(t *testing.T) {
+	vf := nestedValidate(t, ResourceTelemetryProvider(), "otlp", "timeout_seconds")
+	for _, bad := range []int{0, -1} {
+		if _, errs := vf(bad, "timeout_seconds"); len(errs) == 0 {
+			t.Errorf("timeout_seconds %d must be rejected", bad)
+		}
+	}
+	if _, errs := vf(5, "timeout_seconds"); len(errs) > 0 {
+		t.Errorf("timeout_seconds 5 should be valid, got %v", errs)
 	}
 }
 
