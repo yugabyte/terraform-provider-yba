@@ -9,7 +9,7 @@ gcp_region     = "us-west1"
 
 # YBA version to install on the acceptance-test VM. Must be a valid downloadable
 # build (provider requires >= 2024.2.0.0). Update to the build you want to test.
-yba_version = "2025.2.3.1-b2"
+yba_version = "2.31.0.0-b164"
 
 yba_cidr  = "10.0.1.0/24"
 ybdb_cidr = "10.0.2.0/24"

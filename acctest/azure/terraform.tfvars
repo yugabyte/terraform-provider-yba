@@ -11,7 +11,7 @@ azure_region          = "westus2"
 
 # YBA version to install on the acceptance-test VM. Must be a valid downloadable
 # build (provider requires >= 2024.2.0.0). Update to the build you want to test.
-yba_version = "2025.2.3.1-b2"
+yba_version = "2.31.0.0-b164"
 
 vnet_cidr       = "10.0.0.0/16"
 yba_subnet_cidr = "10.0.1.0/24"
