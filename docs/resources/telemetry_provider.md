@@ -108,6 +108,7 @@ resource "yba_telemetry_provider" "audit_archive" {
 - `type` (String) Telemetry provider type, derived from the configured block.
 
 <a id="nestedblock--aws_cloud_watch"></a>
+
 ### Nested Schema for `aws_cloud_watch`
 
 Required:
@@ -123,8 +124,8 @@ Optional:
 - `endpoint` (String) Optional override endpoint URL (e.g. for VPC endpoints).
 - `role_arn` (String) Optional IAM role ARN to assume.
 
-
 <a id="nestedblock--data_dog"></a>
+
 ### Nested Schema for `data_dog`
 
 Required:
@@ -132,8 +133,8 @@ Required:
 - `api_key` (String, Sensitive) Datadog API key.
 - `site` (String) Datadog site (e.g. datadoghq.com, datadoghq.eu).
 
-
 <a id="nestedblock--dynatrace"></a>
+
 ### Nested Schema for `dynatrace`
 
 Required:
@@ -141,8 +142,8 @@ Required:
 - `api_token` (String, Sensitive) Dynatrace ingest access token.
 - `endpoint` (String) Dynatrace OTLP ingest base URL (e.g. https://<env>.live.dynatrace.com/api/v2/otlp).
 
-
 <a id="nestedblock--gcp_cloud_monitoring"></a>
+
 ### Nested Schema for `gcp_cloud_monitoring`
 
 Required:
@@ -153,8 +154,8 @@ Optional:
 
 - `project` (String) GCP project ID. If empty, the project_id from the service-account credentials is used.
 
-
 <a id="nestedblock--loki"></a>
+
 ### Nested Schema for `loki`
 
 Required:
@@ -168,8 +169,8 @@ Optional:
 - `basic_auth_username` (String, Sensitive) BasicAuth username (only used when auth_type=BasicAuth).
 - `organization_id` (String) Optional Loki organization (tenant) ID header.
 
-
 <a id="nestedblock--otlp"></a>
+
 ### Nested Schema for `otlp`
 
 Required:
@@ -189,8 +190,8 @@ Optional:
 - `protocol` (String) Transport protocol. One of gRPC, HTTP.
 - `timeout_seconds` (Number) Timeout in seconds for the OTLP exporter. Must be positive.
 
-
 <a id="nestedblock--s3"></a>
+
 ### Nested Schema for `s3`
 
 Required:
@@ -212,8 +213,8 @@ Optional:
 - `partition` (String) Time granularity of the S3 object directory layout. One of `hour` or `minute` (YBA default: `minute`).
 - `role_arn` (String) Optional IAM role ARN to assume.
 
-
 <a id="nestedblock--splunk"></a>
+
 ### Nested Schema for `splunk`
 
 Required:
@@ -227,8 +228,8 @@ Optional:
 - `source` (String) Optional Splunk source field.
 - `source_type` (String) Optional Splunk source type field.
 
-
 <a id="nestedblock--timeouts"></a>
+
 ### Nested Schema for `timeouts`
 
 Optional:

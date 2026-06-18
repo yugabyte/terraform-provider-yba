@@ -132,6 +132,7 @@ resource "yba_universe_telemetry_config" "main" {
 - `id` (String) The ID of this resource.
 
 <a id="nestedblock--audit_logs"></a>
+
 ### Nested Schema for `audit_logs`
 
 Optional:
@@ -141,6 +142,7 @@ Optional:
 - `ysql_audit_config` (Block List, Max: 1) (see [below for nested schema](#nestedblock--audit_logs--ysql_audit_config))
 
 <a id="nestedblock--audit_logs--exporter"></a>
+
 ### Nested Schema for `audit_logs.exporter`
 
 Required:
@@ -151,8 +153,8 @@ Optional:
 
 - `additional_tags` (Map of String) Additional string tags appended to each audit log record.
 
-
 <a id="nestedblock--audit_logs--ycql_audit_config"></a>
+
 ### Nested Schema for `audit_logs.ycql_audit_config`
 
 Optional:
@@ -166,8 +168,8 @@ Optional:
 - `included_users` (Set of String)
 - `log_level` (String)
 
-
 <a id="nestedblock--audit_logs--ysql_audit_config"></a>
+
 ### Nested Schema for `audit_logs.ysql_audit_config`
 
 Optional:
@@ -184,9 +186,8 @@ Optional:
 - `log_statement` (Boolean)
 - `log_statement_once` (Boolean)
 
-
-
 <a id="nestedblock--metrics"></a>
+
 ### Nested Schema for `metrics`
 
 Optional:
@@ -198,6 +199,7 @@ Optional:
 - `scrape_timeout_seconds` (Number)
 
 <a id="nestedblock--metrics--exporter"></a>
+
 ### Nested Schema for `metrics.exporter`
 
 Required:
@@ -214,9 +216,8 @@ Optional:
 - `send_batch_size` (Number)
 - `send_batch_timeout_seconds` (Number)
 
-
-
 <a id="nestedblock--query_logs"></a>
+
 ### Nested Schema for `query_logs`
 
 Optional:
@@ -225,6 +226,7 @@ Optional:
 - `ysql_query_log_config` (Block List, Max: 1) (see [below for nested schema](#nestedblock--query_logs--ysql_query_log_config))
 
 <a id="nestedblock--query_logs--exporter"></a>
+
 ### Nested Schema for `query_logs.exporter`
 
 Required:
@@ -240,8 +242,8 @@ Optional:
 - `send_batch_size` (Number)
 - `send_batch_timeout_seconds` (Number)
 
-
 <a id="nestedblock--query_logs--ysql_query_log_config"></a>
+
 ### Nested Schema for `query_logs.ysql_query_log_config`
 
 Optional:
@@ -256,9 +258,8 @@ Optional:
 - `log_min_error_statement` (String)
 - `log_statement` (String)
 
-
-
 <a id="nestedblock--timeouts"></a>
+
 ### Nested Schema for `timeouts`
 
 Optional:
@@ -268,8 +269,8 @@ Optional:
 - `read` (String)
 - `update` (String)
 
-
 <a id="nestedblock--upgrade_options"></a>
+
 ### Nested Schema for `upgrade_options`
 
 Optional:
