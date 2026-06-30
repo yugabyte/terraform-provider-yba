@@ -524,16 +524,34 @@ func TestAuditAndQueryLogEnums(t *testing.T) {
 
 	cases := []struct {
 		name string
-		vf   schema.SchemaValidateFunc
+		// schema.SchemaValidateFunc is the (non-Diag) type every ValidateFunc in
+		// this provider uses (validation.StringInSlice / IntBetween all return
+		// it), so the test must reference it to read .ValidateFunc back.
+		vf   schema.SchemaValidateFunc //nolint:staticcheck // SA1019: matches the schema's ValidateFunc type
 		good string
 		bad  string
 	}{
 		{"ysql audit log_level", ysqlAudit.Schema["log_level"].ValidateFunc, "LOG", "TRACE"},
-		{"ysql audit classes", ysqlAudit.Schema["classes"].Elem.(*schema.Schema).ValidateFunc, "DDL", "EVERYTHING"},
+		{
+			"ysql audit classes",
+			ysqlAudit.Schema["classes"].Elem.(*schema.Schema).ValidateFunc,
+			"DDL",
+			"EVERYTHING",
+		},
 		{"ycql audit log_level", ycqlAudit.Schema["log_level"].ValidateFunc, "ERROR", "LOG"},
-		{"ycql included_categories", ycqlAudit.Schema["included_categories"].Elem.(*schema.Schema).ValidateFunc, "DML", "NONSENSE"},
+		{
+			"ycql included_categories",
+			ycqlAudit.Schema["included_categories"].Elem.(*schema.Schema).ValidateFunc,
+			"DML",
+			"NONSENSE",
+		},
 		{"query log_statement", ysqlQuery.Schema["log_statement"].ValidateFunc, "DDL", "SOME"},
-		{"query log_error_verbosity", ysqlQuery.Schema["log_error_verbosity"].ValidateFunc, "TERSE", "LOUD"},
+		{
+			"query log_error_verbosity",
+			ysqlQuery.Schema["log_error_verbosity"].ValidateFunc,
+			"TERSE",
+			"LOUD",
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
