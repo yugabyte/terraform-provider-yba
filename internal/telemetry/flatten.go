@@ -36,8 +36,10 @@ func flattenAuditLogsSpec(a *clientv2.AuditLogsTelemetrySpec) []interface{} {
 	}
 	out := map[string]interface{}{}
 	if y := a.YsqlAuditConfig; y != nil {
+		// `enabled` is intentionally not surfaced: it is readOnly in the API and
+		// derived from this block's presence, so exposing it would create a
+		// perpetual diff (server always reports true). See buildYsqlAuditConfig.
 		out["ysql_audit_config"] = []interface{}{map[string]interface{}{
-			"enabled":                y.Enabled,
 			"classes":                stringSliceToInterface(y.Classes),
 			"log_catalog":            y.LogCatalog,
 			"log_client":             y.LogClient,
@@ -52,7 +54,6 @@ func flattenAuditLogsSpec(a *clientv2.AuditLogsTelemetrySpec) []interface{} {
 	}
 	if y := a.YcqlAuditConfig; y != nil {
 		out["ycql_audit_config"] = []interface{}{map[string]interface{}{
-			"enabled":             y.Enabled,
 			"log_level":           y.LogLevel,
 			"included_categories": stringSliceToInterface(y.IncludedCategories),
 			"excluded_categories": stringSliceToInterface(y.ExcludedCategories),
@@ -82,7 +83,6 @@ func flattenQueryLogsSpec(q *clientv2.QueryLogsTelemetrySpec) []interface{} {
 	out := map[string]interface{}{}
 	if y := q.YsqlQueryLogConfig; y != nil {
 		out["ysql_query_log_config"] = []interface{}{map[string]interface{}{
-			"enabled":                    y.Enabled,
 			"log_statement":              y.LogStatement,
 			"log_min_error_statement":    y.LogMinErrorStatement,
 			"log_error_verbosity":        y.LogErrorVerbosity,

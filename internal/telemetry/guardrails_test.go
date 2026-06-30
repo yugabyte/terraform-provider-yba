@@ -22,6 +22,8 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
+
+	"github.com/yugabyte/terraform-provider-yba/internal/api"
 )
 
 // diffErr runs the resource's full diff (which executes CustomizeDiff) against
@@ -30,8 +32,17 @@ import (
 // way to exercise CustomizeDiff the way Terraform core does at plan time.
 func diffErr(t *testing.T, res *schema.Resource, raw map[string]interface{}) error {
 	t.Helper()
+	return diffErrMeta(t, res, raw, nil)
+}
+
+// diffErrMeta is diffErr with an explicit provider meta, so cross-resource
+// CustomizeDiff checks (which read the *api.APIClient meta) can be exercised.
+func diffErrMeta(
+	t *testing.T, res *schema.Resource, raw map[string]interface{}, meta interface{},
+) error {
+	t.Helper()
 	_, err := res.Diff(
-		context.Background(), nil, terraform.NewResourceConfigRaw(raw), nil)
+		context.Background(), nil, terraform.NewResourceConfigRaw(raw), meta)
 	return err
 }
 
@@ -262,6 +273,16 @@ func TestValidateNoDuplicateExportersPlanTime(t *testing.T) {
 				}},
 			},
 		},
+		{
+			name: "empty exporter_uuid rejected",
+			raw: map[string]interface{}{
+				"universe_uuid": "u",
+				"audit_logs": []interface{}{map[string]interface{}{
+					"exporter": exp(""),
+				}},
+			},
+			wantErr: "audit_logs: exporter #1 has an empty exporter_uuid",
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -280,6 +301,85 @@ func TestValidateNoDuplicateExportersPlanTime(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestSingleManagerPerUniversePlanTime proves the duplicate-universe guard:
+// two yba_universe_telemetry_config resources that claim the same universe in
+// one Terraform run (they share the provider meta) are rejected at plan time,
+// while a single resource — or two resources for different universes — is
+// accepted. A re-plan of the identical config is also accepted, so the guard
+// never false-positives when Terraform re-evaluates the same resource.
+func TestSingleManagerPerUniversePlanTime(t *testing.T) {
+	res := ResourceUniverseTelemetryConfig()
+	audit := func(uuid string) map[string]interface{} {
+		return map[string]interface{}{
+			"universe_uuid": "uni-1",
+			"audit_logs": []interface{}{map[string]interface{}{
+				"exporter": []interface{}{
+					map[string]interface{}{"exporter_uuid": uuid},
+				},
+			}},
+		}
+	}
+	metrics := func(uuid string) map[string]interface{} {
+		return map[string]interface{}{
+			"universe_uuid": "uni-1",
+			"metrics": []interface{}{map[string]interface{}{
+				"exporter": []interface{}{
+					map[string]interface{}{"exporter_uuid": uuid},
+				},
+			}},
+		}
+	}
+
+	t.Run("two resources for the same universe rejected", func(t *testing.T) {
+		meta := &api.APIClient{} // shared per-run registry key
+		if err := diffErrMeta(t, res, audit("a"), meta); err != nil {
+			t.Fatalf("first resource should be accepted, got: %v", err)
+		}
+		// A second, differently-configured resource for the same universe is
+		// the foot-gun: it would overwrite the first on every apply.
+		err := diffErrMeta(t, res, metrics("m"), meta)
+		if err == nil {
+			t.Fatal("expected the second resource for uni-1 to be rejected")
+		}
+		if !strings.Contains(err.Error(), "already managed by another") {
+			t.Errorf("error %q does not explain the duplicate", err.Error())
+		}
+	})
+
+	t.Run("re-planning the identical resource is accepted", func(t *testing.T) {
+		meta := &api.APIClient{}
+		if err := diffErrMeta(t, res, audit("a"), meta); err != nil {
+			t.Fatalf("first plan should be accepted, got: %v", err)
+		}
+		if err := diffErrMeta(t, res, audit("a"), meta); err != nil {
+			t.Fatalf("re-planning the same resource must not be flagged, got: %v", err)
+		}
+	})
+
+	t.Run("different universes accepted", func(t *testing.T) {
+		meta := &api.APIClient{}
+		if err := diffErrMeta(t, res, audit("a"), meta); err != nil {
+			t.Fatalf("uni-1 should be accepted, got: %v", err)
+		}
+		other := metrics("m")
+		other["universe_uuid"] = "uni-2"
+		if err := diffErrMeta(t, res, other, meta); err != nil {
+			t.Fatalf("a different universe must be accepted, got: %v", err)
+		}
+	})
+
+	t.Run("no meta skips the cross-resource check", func(t *testing.T) {
+		// Unit tests that exercise other rules pass nil meta; the registry must
+		// not panic or falsely reject there.
+		if err := diffErrMeta(t, res, audit("a"), nil); err != nil {
+			t.Fatalf("nil meta must skip the claim check, got: %v", err)
+		}
+		if err := diffErrMeta(t, res, audit("a"), nil); err != nil {
+			t.Fatalf("nil meta must skip the claim check, got: %v", err)
+		}
+	})
 }
 
 // nestedValidate returns the ValidateFunc registered on a field inside a
@@ -399,5 +499,53 @@ func TestMetricsEnums(t *testing.T) {
 	}
 	if _, errs := target("BOGUS_EXPORT", "scrape_config_targets"); len(errs) == 0 {
 		t.Error("scrape_config_targets \"BOGUS_EXPORT\" must be rejected")
+	}
+
+	// scrape_config_targets must be Computed: YBA fills an empty set with all
+	// supported targets, so an unset config has to absorb that server value
+	// rather than perpetually diff against it.
+	if !metricsElem.Schema["scrape_config_targets"].Computed {
+		t.Error("scrape_config_targets must be Computed so the YBA-filled " +
+			"\"all targets\" default does not perpetually diff")
+	}
+}
+
+// TestAuditAndQueryLogEnums guards the plan-time enum validation added for the
+// audit and query-log string fields, mirroring the YBA OpenAPI enums. A typo
+// should be rejected at plan time with the valid set rather than failing
+// mid-apply when YBA rejects the rolling upgrade.
+func TestAuditAndQueryLogEnums(t *testing.T) {
+	res := ResourceUniverseTelemetryConfig()
+	auditElem := res.Schema["audit_logs"].Elem.(*schema.Resource)
+	ysqlAudit := auditElem.Schema["ysql_audit_config"].Elem.(*schema.Resource)
+	ycqlAudit := auditElem.Schema["ycql_audit_config"].Elem.(*schema.Resource)
+	ysqlQuery := res.Schema["query_logs"].Elem.(*schema.Resource).
+		Schema["ysql_query_log_config"].Elem.(*schema.Resource)
+
+	cases := []struct {
+		name string
+		vf   schema.SchemaValidateFunc
+		good string
+		bad  string
+	}{
+		{"ysql audit log_level", ysqlAudit.Schema["log_level"].ValidateFunc, "LOG", "TRACE"},
+		{"ysql audit classes", ysqlAudit.Schema["classes"].Elem.(*schema.Schema).ValidateFunc, "DDL", "EVERYTHING"},
+		{"ycql audit log_level", ycqlAudit.Schema["log_level"].ValidateFunc, "ERROR", "LOG"},
+		{"ycql included_categories", ycqlAudit.Schema["included_categories"].Elem.(*schema.Schema).ValidateFunc, "DML", "NONSENSE"},
+		{"query log_statement", ysqlQuery.Schema["log_statement"].ValidateFunc, "DDL", "SOME"},
+		{"query log_error_verbosity", ysqlQuery.Schema["log_error_verbosity"].ValidateFunc, "TERSE", "LOUD"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.vf == nil {
+				t.Fatalf("%s must have a ValidateFunc", tc.name)
+			}
+			if _, errs := tc.vf(tc.good, tc.name); len(errs) > 0 {
+				t.Errorf("%s %q should be valid, got %v", tc.name, tc.good, errs)
+			}
+			if _, errs := tc.vf(tc.bad, tc.name); len(errs) == 0 {
+				t.Errorf("%s %q must be rejected", tc.name, tc.bad)
+			}
+		})
 	}
 }

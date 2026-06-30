@@ -5,6 +5,7 @@ description: |-
   Universe Telemetry Config Resource. Attaches audit log, query log, and metrics export pipelines to a YBA universe via the unified export-telemetry-configs API. Each exporter references a yba_telemetry_provider (or any pre-existing telemetry provider UUID) and triggers a rolling/non-rolling restart of the universe to install or update the OpenTelemetry collector.
   ~> Note: OTLP-based exporters require the global runtime config yb.telemetry.allow_otlp to be set to true. Manage that with the yba_runtime_config resource.
   ~> Note: Import an existing universe-level configuration with the universe UUID as the resource ID (terraform import yba_universe_telemetry_config.example <universe-uuid>); state is populated from the unified export-telemetry-configs GET API.
+  ~> One resource per universe: YBA stores a single telemetry configuration per universe and this resource owns it wholesale — Terraform is the source of truth. On apply it replaces whatever the universe currently has (including anything configured out-of-band in the YBA UI), so manage all three pipelines (audit_logs, query_logs, metrics) from a single yba_universe_telemetry_config block. Declaring two resources for the same universe_uuid is rejected at plan time (they would otherwise overwrite each other on every apply). On destroy the resource disables every exporter on the universe, but only if a configuration still exists server-side — an already-empty universe is left untouched.
   ~> Dependency Note: When exporter_uuid is wired through a reference like yba_telemetry_provider.x.id, Terraform's dependency graph automatically orders create / replace / destroy of the provider before this resource — there is no need to add an explicit depends_on. The provider's own destroy step also proactively detaches itself from every referencing universe before deletion, so a plan that destroys-and-recreates a provider in the same apply is safe.
 ---
 
@@ -18,6 +19,8 @@ Universe Telemetry Config Resource. Attaches audit log, query log, and metrics e
 
 ~> **Note:** Import an existing universe-level configuration with the universe UUID as the resource ID (`terraform import yba_universe_telemetry_config.example <universe-uuid>`); state is populated from the unified `export-telemetry-configs` GET API.
 
+~> **One resource per universe:** YBA stores a single telemetry configuration per universe and this resource owns it wholesale — Terraform is the source of truth. On apply it **replaces** whatever the universe currently has (including anything configured out-of-band in the YBA UI), so manage all three pipelines (`audit_logs`, `query_logs`, `metrics`) from a **single** `yba_universe_telemetry_config` block. Declaring two resources for the same `universe_uuid` is rejected at plan time (they would otherwise overwrite each other on every apply). On destroy the resource disables every exporter on the universe, but only if a configuration still exists server-side — an already-empty universe is left untouched.
+
 ~> **Dependency Note:** When `exporter_uuid` is wired through a reference like `yba_telemetry_provider.x.id`, Terraform's dependency graph automatically orders create / replace / destroy of the provider before this resource — there is **no need to add an explicit `depends_on`**. The provider's own destroy step also proactively detaches itself from every referencing universe before deletion, so a plan that destroys-and-recreates a provider in the same apply is safe.
 
 ## Example Usage
@@ -28,7 +31,6 @@ resource "yba_universe_telemetry_config" "main" {
 
   audit_logs {
     ysql_audit_config {
-      enabled                = true
       classes                = ["READ", "WRITE", "FUNCTION", "ROLE", "DDL", "MISC", "MISC_SET"]
       log_catalog            = true
       log_client             = true
@@ -42,7 +44,6 @@ resource "yba_universe_telemetry_config" "main" {
     }
 
     ycql_audit_config {
-      enabled             = true
       log_level           = "WARNING"
       included_categories = ["QUERY", "DML", "DDL", "DCL", "AUTH", "PREPARE", "ERROR", "OTHER"]
     }
@@ -57,7 +58,6 @@ resource "yba_universe_telemetry_config" "main" {
 
   query_logs {
     ysql_query_log_config {
-      enabled                    = true
       log_statement              = "ALL"
       log_min_error_statement    = "ERROR"
       log_error_verbosity        = "VERBOSE"
@@ -91,6 +91,8 @@ resource "yba_universe_telemetry_config" "main" {
       "OTEL_EXPORT",
     ]
 
+    # Repeat the exporter block per destination — each becomes one entry in the
+    # API's exporters array (metrics here fan out to both Prometheus and Datadog).
     exporter {
       exporter_uuid = yba_telemetry_provider.prometheus.id
       additional_tags = {
@@ -102,10 +104,38 @@ resource "yba_universe_telemetry_config" "main" {
       memory_limit_mib           = 2048
       metrics_prefix             = "ybdb."
     }
+    exporter {
+      exporter_uuid  = yba_telemetry_provider.datadog.id
+      metrics_prefix = "ddog."
+    }
   }
 
   upgrade_options {
     rolling_upgrade = false
+  }
+}
+```
+
+### Multiple exporters per pipeline
+
+Each pipeline (`audit_logs`, `query_logs`, `metrics`) accepts the `exporter` block more than once. Repeat it to fan a pipeline out to multiple telemetry destinations — each block becomes one entry in the API's `exporters` array:
+
+```terraform
+# Repeat the `exporter` block to fan a single pipeline out to multiple telemetry
+# destinations. Each block becomes one entry in the API's `exporters` array, so
+# the metrics below are shipped to BOTH Prometheus and Datadog.
+resource "yba_universe_telemetry_config" "fanout" {
+  universe_uuid = yba_universe.main.id
+
+  metrics {
+    exporter {
+      exporter_uuid  = yba_telemetry_provider.prometheus.id
+      metrics_prefix = "ybdb."
+    }
+    exporter {
+      exporter_uuid  = yba_telemetry_provider.datadog.id
+      metrics_prefix = "ddog."
+    }
   }
 }
 ```
@@ -137,9 +167,9 @@ resource "yba_universe_telemetry_config" "main" {
 
 Optional:
 
-- `exporter` (Block List) List of exporters that receive audit logs. (see [below for nested schema](#nestedblock--audit_logs--exporter))
-- `ycql_audit_config` (Block List, Max: 1) (see [below for nested schema](#nestedblock--audit_logs--ycql_audit_config))
-- `ysql_audit_config` (Block List, Max: 1) (see [below for nested schema](#nestedblock--audit_logs--ysql_audit_config))
+- `exporter` (Block List) Exporter (telemetry destination) for audit logs. Repeat this block to fan out to multiple destinations — each block becomes one entry in the API's `exporters` array. (see [below for nested schema](#nestedblock--audit_logs--exporter))
+- `ycql_audit_config` (Block List, Max: 1) YCQL audit logging configuration. Declaring this block enables YCQL audit logging — YBA derives `enabled` from the block's presence, so there is no `enabled` field; omit the block to disable. `log_level`'s `Default` is a **provider default** (the YBA API requires the field but defines no default). (see [below for nested schema](#nestedblock--audit_logs--ycql_audit_config))
+- `ysql_audit_config` (Block List, Max: 1) YSQL audit (pgaudit) logging configuration. Declaring this block enables YSQL audit logging on the universe — YBA derives `enabled` from the block's presence, so there is no `enabled` field; omit the block to disable. The YBA API marks every field below `required` with no server default, so the `Default` values are **provider defaults** chosen to mirror the YBA UI. (see [below for nested schema](#nestedblock--audit_logs--ysql_audit_config))
 
 <a id="nestedblock--audit_logs--exporter"></a>
 
@@ -159,7 +189,6 @@ Optional:
 
 Optional:
 
-- `enabled` (Boolean)
 - `excluded_categories` (Set of String)
 - `excluded_keyspaces` (Set of String)
 - `excluded_users` (Set of String)
@@ -175,7 +204,6 @@ Optional:
 Optional:
 
 - `classes` (Set of String) YSQL audit log classes (e.g. READ, WRITE, DDL, ROLE).
-- `enabled` (Boolean)
 - `log_catalog` (Boolean)
 - `log_client` (Boolean)
 - `log_level` (String)
@@ -193,8 +221,8 @@ Optional:
 Optional:
 
 - `collection_level` (String)
-- `exporter` (Block List) (see [below for nested schema](#nestedblock--metrics--exporter))
-- `scrape_config_targets` (Set of String)
+- `exporter` (Block List) Metric exporter (telemetry destination). Repeat this block to send metrics to multiple destinations — each becomes one entry in the API's `exporters` array. (see [below for nested schema](#nestedblock--metrics--exporter))
+- `scrape_config_targets` (Set of String) Scrape target types to include. Omit to let YBA include all supported targets.
 - `scrape_interval_seconds` (Number)
 - `scrape_timeout_seconds` (Number)
 
@@ -222,8 +250,8 @@ Optional:
 
 Optional:
 
-- `exporter` (Block List) (see [below for nested schema](#nestedblock--query_logs--exporter))
-- `ysql_query_log_config` (Block List, Max: 1) (see [below for nested schema](#nestedblock--query_logs--ysql_query_log_config))
+- `exporter` (Block List) Exporter (telemetry destination). Repeat this block to send to multiple destinations — each becomes one entry in the API's `exporters` array. (see [below for nested schema](#nestedblock--query_logs--exporter))
+- `ysql_query_log_config` (Block List, Max: 1) YSQL query logging configuration. Declaring this block enables YSQL query logging — YBA derives `enabled` from the block's presence, so there is no `enabled` field; omit the block to disable. `Default` values are sourced from the YBA API's own `default:` (via the generated client) so they track the server. (see [below for nested schema](#nestedblock--query_logs--ysql_query_log_config))
 
 <a id="nestedblock--query_logs--exporter"></a>
 
@@ -249,7 +277,6 @@ Optional:
 Optional:
 
 - `debug_print_plan` (Boolean)
-- `enabled` (Boolean)
 - `log_connections` (Boolean)
 - `log_disconnections` (Boolean)
 - `log_duration` (Boolean)

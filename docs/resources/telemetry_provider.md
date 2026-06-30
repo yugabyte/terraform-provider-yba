@@ -4,6 +4,7 @@ description: |-
   ~> Experimental: This resource wraps a YugabyteDB Anywhere telemetry export API that is still experimental and may change in backward-incompatible ways across YBA releases. Pin your provider version and review release notes before upgrading.
   Telemetry Provider Resource. Defines a reusable export destination (Datadog, OTLP, AWS CloudWatch, GCP Cloud Monitoring, Splunk, Loki, Dynatrace, S3) that universes can use to export audit logs, query logs, and metrics.
   ~> Note: YBA does not allow editing a telemetry provider in place. Any change to a config field forces Terraform to destroy and recreate the resource. YBA also refuses to delete a provider that is still referenced by a universe's telemetry config, so the destroy step first enumerates every universe whose audit / query / metrics exporter list references this provider and rewrites that list with the provider removed (via a rolling-upgrade task on each universe). Once every detach task reaches a terminal state, the provider itself is deleted. The universes themselves are never destroyed — only their OpenTelemetry collector configuration is updated.
+  ~> Drift Note: Read refreshes only name, tags, and the computed type. The config block (data_dog, otlp, …) is not reconciled against the server, because YBA masks credentials in its responses and every config field is ForceNew anyway. A config field edited out-of-band in the YBA UI is therefore not detected as drift — re-apply from Terraform to restore the intended configuration.
   ~> Security Note: Credentials such as API keys, tokens, and secret access keys are stored in the Terraform state file (marked sensitive). Use a secure backend and restrict access to your state files.
 ---
 
@@ -14,6 +15,8 @@ description: |-
 Telemetry Provider Resource. Defines a reusable export destination (Datadog, OTLP, AWS CloudWatch, GCP Cloud Monitoring, Splunk, Loki, Dynatrace, S3) that universes can use to export audit logs, query logs, and metrics.
 
 ~> **Note:** YBA does not allow editing a telemetry provider in place. Any change to a config field forces Terraform to destroy and recreate the resource. YBA also refuses to delete a provider that is still referenced by a universe's telemetry config, so the destroy step first enumerates every universe whose audit / query / metrics exporter list references this provider and rewrites that list with the provider removed (via a rolling-upgrade task on each universe). Once every detach task reaches a terminal state, the provider itself is deleted. The universes themselves are never destroyed — only their OpenTelemetry collector configuration is updated.
+
+~> **Drift Note:** Read refreshes only `name`, `tags`, and the computed `type`. The config block (`data_dog`, `otlp`, …) is **not** reconciled against the server, because YBA masks credentials in its responses and every config field is `ForceNew` anyway. A config field edited out-of-band in the YBA UI is therefore not detected as drift — re-apply from Terraform to restore the intended configuration.
 
 ~> **Security Note:** Credentials such as API keys, tokens, and secret access keys are stored in the Terraform state file (marked sensitive). Use a secure backend and restrict access to your state files.
 
@@ -166,7 +169,7 @@ Optional:
 
 - `auth_type` (String) Authentication type. One of NoAuth, BasicAuth.
 - `basic_auth_password` (String, Sensitive) BasicAuth password (only used when auth_type=BasicAuth).
-- `basic_auth_username` (String, Sensitive) BasicAuth username (only used when auth_type=BasicAuth).
+- `basic_auth_username` (String) BasicAuth username (only used when auth_type=BasicAuth).
 - `organization_id` (String) Optional Loki organization (tenant) ID header.
 
 <a id="nestedblock--otlp"></a>
@@ -181,7 +184,7 @@ Optional:
 
 - `auth_type` (String) Authentication type. One of NoAuth, BasicAuth, BearerToken.
 - `basic_auth_password` (String, Sensitive) BasicAuth password (only used when auth_type=BasicAuth).
-- `basic_auth_username` (String, Sensitive) BasicAuth username (only used when auth_type=BasicAuth).
+- `basic_auth_username` (String) BasicAuth username (only used when auth_type=BasicAuth).
 - `bearer_token` (String, Sensitive) Bearer token (only used when auth_type=BearerToken).
 - `compression` (String) Compression for OTLP exporter (e.g. gzip, none).
 - `headers` (Map of String) Additional headers to send on every OTLP request.

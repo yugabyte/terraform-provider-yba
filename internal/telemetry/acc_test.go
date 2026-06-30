@@ -261,7 +261,6 @@ resource "yba_universe_telemetry_config" "test" {
 
   audit_logs {
     ysql_audit_config {
-      enabled   = true
       classes   = ["READ", "WRITE", "DDL"]
       log_level = "LOG"
     }

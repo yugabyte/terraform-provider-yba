@@ -37,7 +37,6 @@ func TestBuildSpecMultipleExportersAllSections(t *testing.T) {
 		"universe_uuid": "uni-1",
 		"audit_logs": []interface{}{map[string]interface{}{
 			"ysql_audit_config": []interface{}{map[string]interface{}{
-				"enabled": true,
 				"classes": []interface{}{"READ", "WRITE", "DDL"},
 			}},
 			"exporter": []interface{}{
@@ -46,9 +45,7 @@ func TestBuildSpecMultipleExportersAllSections(t *testing.T) {
 			},
 		}},
 		"query_logs": []interface{}{map[string]interface{}{
-			"ysql_query_log_config": []interface{}{map[string]interface{}{
-				"enabled": true,
-			}},
+			"ysql_query_log_config": []interface{}{map[string]interface{}{}},
 			"exporter": []interface{}{
 				map[string]interface{}{
 					"exporter_uuid":       "shared",
@@ -120,6 +117,44 @@ func TestBuildSpecMultipleExportersAllSections(t *testing.T) {
 	}
 }
 
+// TestBuildMetricsMultipleExporters is the focused regression test for the
+// repeated-`exporter`-block -> API `exporters` array mapping. It pins that
+// several exporter blocks in ONE pipeline each become a distinct array entry,
+// in declaration order, with their own fields (not collapsed to one, and not
+// bleeding fields across entries). buildMetricsExporters walks the whole
+// d.Get("metrics.0.exporter") list via exporterRows.
+func TestBuildMetricsMultipleExporters(t *testing.T) {
+	res := ResourceUniverseTelemetryConfig()
+	d := schema.TestResourceDataRaw(t, res.Schema, map[string]interface{}{
+		"universe_uuid": "uni-1",
+		"metrics": []interface{}{map[string]interface{}{
+			"exporter": []interface{}{
+				map[string]interface{}{"exporter_uuid": "exp-a", "metrics_prefix": "a."},
+				map[string]interface{}{"exporter_uuid": "exp-b", "metrics_prefix": "b."},
+				map[string]interface{}{"exporter_uuid": "exp-c"},
+			},
+		}},
+	})
+
+	got := buildExportTelemetryConfigSpec(d).TelemetryConfig.Metrics.Exporters
+	if len(got) != 3 {
+		t.Fatalf("expected 3 metrics exporters, got %d: %+v", len(got), got)
+	}
+	for i, want := range []string{"exp-a", "exp-b", "exp-c"} {
+		if got[i].ExporterUuid != want {
+			t.Errorf("exporter[%d] uuid = %q want %q (order/identity not preserved)",
+				i, got[i].ExporterUuid, want)
+		}
+	}
+	// Per-exporter fields must map independently.
+	if got[0].MetricsPrefix == nil || *got[0].MetricsPrefix != "a." {
+		t.Errorf("exporter[0] metrics_prefix = %v want \"a.\"", got[0].MetricsPrefix)
+	}
+	if got[1].MetricsPrefix == nil || *got[1].MetricsPrefix != "b." {
+		t.Errorf("exporter[1] metrics_prefix = %v want \"b.\"", got[1].MetricsPrefix)
+	}
+}
+
 // sortedStrings returns a sorted copy so set contents can be compared
 // independent of order.
 func sortedStrings(in []string) []string {
@@ -141,7 +176,6 @@ func TestTypeSetIgnoresOrder(t *testing.T) {
 			"universe_uuid": "uni-1",
 			"audit_logs": []interface{}{map[string]interface{}{
 				"ysql_audit_config": []interface{}{map[string]interface{}{
-					"enabled": true,
 					"classes": classes,
 				}},
 				"exporter": []interface{}{
@@ -299,5 +333,71 @@ func TestEmptySectionsDisabled(t *testing.T) {
 		spec.TelemetryConfig.QueryLogs != nil ||
 		spec.TelemetryConfig.Metrics != nil {
 		t.Errorf("all sections must be nil when unconfigured: %+v", spec.TelemetryConfig)
+	}
+}
+
+// TestEnabledDerivedFromBlockPresence is the regression test for the
+// readOnly-`enabled` bug. The YBA API marks ysql/ycql audit and ysql query-log
+// `enabled` as readOnly and forces it true from the block's presence
+// (ExportTelemetryConfigMapper). The provider therefore (a) must send
+// enabled=true whenever the block is declared, and (b) must NOT surface
+// `enabled` in state — a settable `enabled` field would diff forever against
+// the server's constant `true`. This test pins both halves.
+func TestEnabledDerivedFromBlockPresence(t *testing.T) {
+	res := ResourceUniverseTelemetryConfig()
+	d := schema.TestResourceDataRaw(t, res.Schema, map[string]interface{}{
+		"universe_uuid": "uni-1",
+		"audit_logs": []interface{}{map[string]interface{}{
+			"ysql_audit_config": []interface{}{map[string]interface{}{
+				"classes": []interface{}{"DDL"},
+			}},
+			"ycql_audit_config": []interface{}{map[string]interface{}{
+				"log_level": "WARNING",
+			}},
+			"exporter": []interface{}{map[string]interface{}{"exporter_uuid": "e"}},
+		}},
+		"query_logs": []interface{}{map[string]interface{}{
+			"ysql_query_log_config": []interface{}{map[string]interface{}{
+				"log_statement": "ALL",
+			}},
+			"exporter": []interface{}{map[string]interface{}{"exporter_uuid": "e"}},
+		}},
+	})
+
+	tc := buildExportTelemetryConfigSpec(d).TelemetryConfig
+	if tc.AuditLogs == nil || tc.AuditLogs.YsqlAuditConfig == nil ||
+		!tc.AuditLogs.YsqlAuditConfig.Enabled {
+		t.Errorf("ysql audit enabled must be true from block presence: %+v", tc.AuditLogs)
+	}
+	if tc.AuditLogs.YcqlAuditConfig == nil || !tc.AuditLogs.YcqlAuditConfig.Enabled {
+		t.Error("ycql audit enabled must be true from block presence")
+	}
+	if tc.QueryLogs == nil || tc.QueryLogs.YsqlQueryLogConfig == nil ||
+		!tc.QueryLogs.YsqlQueryLogConfig.Enabled {
+		t.Error("ysql query-log enabled must be true from block presence")
+	}
+
+	// Flatten (Read) must not emit an `enabled` key for any of the three.
+	flatAudit := flattenAuditLogsSpec(tc.AuditLogs)
+	auditMap := flatAudit[0].(map[string]interface{})
+	for _, block := range []string{"ysql_audit_config", "ycql_audit_config"} {
+		sub := auditMap[block].([]interface{})[0].(map[string]interface{})
+		if _, ok := sub["enabled"]; ok {
+			t.Errorf("flattened %s must not contain an 'enabled' key", block)
+		}
+	}
+	flatQuery := flattenQueryLogsSpec(tc.QueryLogs)
+	qsub := flatQuery[0].(map[string]interface{})["ysql_query_log_config"].([]interface{})[0].(map[string]interface{})
+	if _, ok := qsub["enabled"]; ok {
+		t.Error("flattened ysql_query_log_config must not contain an 'enabled' key")
+	}
+
+	// The flattened shape must round-trip back into state cleanly (a stray key
+	// the schema does not know about would surface here).
+	if err := d.Set("audit_logs", flatAudit); err != nil {
+		t.Fatalf("set flattened audit_logs: %v", err)
+	}
+	if err := d.Set("query_logs", flatQuery); err != nil {
+		t.Fatalf("set flattened query_logs: %v", err)
 	}
 }
