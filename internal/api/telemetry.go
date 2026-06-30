@@ -45,21 +45,31 @@ type TelemetryProvider struct {
 }
 
 // ErrTelemetryProviderMissing is the typed sentinel returned when YBA reports
-// a telemetry provider as already gone. YBA delivers this signal across at
-// least three different HTTP shapes (404, 400 with "does not exist", 400
-// with "Invalid Telemetry Provider UUID"), all of which collapse into this
-// sentinel so that callers can `errors.Is` against a single value instead
-// of substring-matching response bodies themselves.
+// a telemetry provider as already gone. YBA delivers this signal across more
+// than one HTTP shape (a 404, or a 400 carrying one of the body markers
+// below), all of which collapse into this sentinel so that callers can
+// `errors.Is` against a single value instead of substring-matching response
+// bodies themselves.
 var ErrTelemetryProviderMissing = errors.New("telemetry provider does not exist")
 
 // telemetryProviderMissingMarkers list the substrings YBA returns in the
 // response body when the requested telemetry provider has already been
-// removed. YBA frustratingly delivers these as HTTP 400 *and* HTTP 500 in
-// different code paths instead of 404. Keep this list close to the typed
-// sentinel above so callers never have to reason about the wire format.
+// removed. YBA returns these as HTTP 400 (BAD_REQUEST), never 404, so the
+// status alone cannot distinguish "missing" from other 400s — body matching is
+// unavoidable. Each marker below is the exact, unique phrase YBA emits for a
+// missing provider, verified against the server source so they cannot collide
+// with the sibling "...as it is in use." delete rejection (which contains
+// neither marker):
+//   - GET:    TelemetryProviderService.getOrBadRequest →
+//     "Invalid Telemetry Provider UUID: <uuid>"
+//   - DELETE: TelemetryProviderController.deleteTelemetryProvider →
+//     "Telemetry Provider '<uuid>' does not exist."
+//
+// Keep this list close to the typed sentinel above so callers never have to
+// reason about the wire format.
 var telemetryProviderMissingMarkers = []string{
-	"does not exist",             // DELETE path
-	"Invalid Telemetry Provider", // GET path: "Invalid Telemetry Provider UUID: ..."
+	"does not exist",                  // DELETE path: "Telemetry Provider '<uuid>' does not exist."
+	"Invalid Telemetry Provider UUID", // GET path: "Invalid Telemetry Provider UUID: <uuid>"
 }
 
 // CreateTelemetryProvider creates a new telemetry provider.
