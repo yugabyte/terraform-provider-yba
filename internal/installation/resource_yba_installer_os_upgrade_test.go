@@ -459,17 +459,13 @@ func repoPath(parts ...string) string {
 var gcpNameInvalid = regexp.MustCompile(`[^a-z0-9-]`)
 
 // gcpSafeName coerces an acctest random name into a valid GCP resource name:
-// lowercase, only [a-z0-9-], starts with a letter, ends with a letter/digit,
-// and short enough to leave room for the "-data"/"-provider" suffixes this test
-// appends (GCP caps names at 63 chars).
+// lowercase, only [a-z0-9-], starting with a letter and ending with a letter
+// or digit.
 func gcpSafeName(s string) string {
 	s = gcpNameInvalid.ReplaceAllString(strings.ToLower(s), "-")
 	s = strings.Trim(s, "-")
 	if s == "" || s[0] < 'a' || s[0] > 'z' {
 		s = "yba-" + s
-	}
-	if len(s) > 45 {
-		s = strings.TrimRight(s[:45], "-")
 	}
 	return s
 }
