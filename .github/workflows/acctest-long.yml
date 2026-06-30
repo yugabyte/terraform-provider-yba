@@ -42,6 +42,18 @@ jobs:
         env:
           ACCTEST_ENV: ${{ secrets.ACCTEST_ENV }}
 
+      # TestAccLong_YBA_GCP_OSImageUpgrade installs its own throwaway YBA, which
+      # needs the YBA license (the universe long tests reuse the standing YBA and
+      # don't). Reuse the same YBA_LICENSE secret the fixture is installed with;
+      # if it's ever unset the test skips rather than fails.
+      - name: Load YBA license
+        run: |
+          if [ -n "$YBA_LICENSE" ]; then
+            printf '%s' "$YBA_LICENSE" > yugabyte_anywhere.lic
+          fi
+        env:
+          YBA_LICENSE: ${{ secrets.YBA_LICENSE }}
+
       - name: Install gotestsum
         run: make gotestsum-install
 
