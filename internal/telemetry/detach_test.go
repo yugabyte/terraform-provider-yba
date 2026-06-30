@@ -163,6 +163,65 @@ func TestBuildDetachSpecNoClusters(t *testing.T) {
 	}
 }
 
+// twoClusterUniverse builds a universe with a read-replica (ASYNC) cluster at
+// index 0 and the PRIMARY cluster at index 1, each referencing the supplied
+// provider UUID in its audit log config (empty slice omits the section). It
+// pins the YBA reality that the primary is identified by clusterType, not array
+// position, so detection and detach must not assume clusters[0] is primary.
+func twoClusterUniverse(asyncExp, primaryExp string) client.UniverseResp {
+	mkCluster := func(clusterType, exp string) client.Cluster {
+		intent := client.UserIntent{}
+		if exp != "" {
+			intent.AuditLogConfig = &client.AuditLogConfig{
+				YsqlAuditConfig: &client.YSQLAuditConfig{Enabled: true, LogLevel: "LOG"},
+				UniverseLogsExporterConfig: []client.UniverseLogsExporterConfig{
+					{ExporterUuid: exp},
+				},
+			}
+		}
+		return client.Cluster{ClusterType: clusterType, UserIntent: intent}
+	}
+	return client.UniverseResp{
+		UniverseUUID: utils.GetStringPointer("u"),
+		Name:         utils.GetStringPointer("u"),
+		UniverseDetails: &client.UniverseDefinitionTaskParamsResp{
+			Clusters: []client.Cluster{
+				mkCluster("ASYNC", asyncExp),
+				mkCluster(clusterTypePrimary, primaryExp),
+			},
+		},
+	}
+}
+
+// TestPrimaryClusterNotFirst pins the fix for the multi-cluster detach
+// asymmetry: when the primary cluster is not clusters[0], both detection and
+// the detach spec must follow clusterType (mirroring YBA's getPrimaryCluster /
+// isProviderInUse), not the array index.
+func TestPrimaryClusterNotFirst(t *testing.T) {
+	// Provider "P" referenced only on the PRIMARY cluster (at index 1).
+	u := twoClusterUniverse("" /* async */, "P" /* primary */)
+	if !universeReferencesProvider(&u, "P") {
+		t.Fatal("provider on the primary cluster (index 1) must be detected")
+	}
+	spec := buildDetachSpec(&u, "P")
+	if spec.TelemetryConfig == nil || spec.TelemetryConfig.AuditLogs != nil {
+		t.Errorf("detach must strip P from the primary cluster's config: %+v",
+			spec.TelemetryConfig)
+	}
+}
+
+// TestReadReplicaOnlyReferenceIgnored pins the YBA-aligned semantics: a
+// provider referenced only by a read-replica (ASYNC) cluster is NOT in use as
+// far as YBA's isProviderInUse is concerned (it reads only the primary), so the
+// Go detector must agree and report it unreferenced.
+func TestReadReplicaOnlyReferenceIgnored(t *testing.T) {
+	u := twoClusterUniverse("P" /* async */, "" /* primary */)
+	if universeReferencesProvider(&u, "P") {
+		t.Error("a reference only on a read-replica must not count as in-use " +
+			"(YBA's isProviderInUse reads only the primary cluster)")
+	}
+}
+
 // TestFormatUniverseRefs covers the human-readable rendering used in delete
 // log lines and error messages.
 func TestFormatUniverseRefs(t *testing.T) {

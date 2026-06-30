@@ -28,6 +28,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 
 	"github.com/yugabyte/terraform-provider-yba/internal/api"
+	"github.com/yugabyte/terraform-provider-yba/internal/utils"
 )
 
 // supported telemetry provider config types
@@ -966,17 +967,20 @@ func formatUniverseRefs(refs []universeRef) string {
 }
 
 // firstMap returns the first map element from a TypeList of MaxItems=1 nested
-// blocks, or an empty map when the block is unset.
+// blocks, or an empty map when the block is unset. It is a nil-tolerant adapter
+// over utils.MapFromSingletonList (which is the canonical singleton-list-to-map
+// helper but panics on a nil/non-list/non-map input): the guards below screen
+// out every shape the sharp helper cannot take, so the extraction itself lives
+// in exactly one place.
 func firstMap(in interface{}) map[string]interface{} {
 	list, ok := in.([]interface{})
-	if !ok || len(list) == 0 || list[0] == nil {
+	if !ok || len(list) == 0 {
 		return map[string]interface{}{}
 	}
-	m, _ := list[0].(map[string]interface{})
-	if m == nil {
+	if _, isMap := list[0].(map[string]interface{}); !isMap {
 		return map[string]interface{}{}
 	}
-	return m
+	return utils.MapFromSingletonList(list)
 }
 
 // stringValue safely extracts a string from an interface{} value.

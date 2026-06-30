@@ -17,7 +17,9 @@ package telemetry
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"sort"
 	"strings"
@@ -204,16 +206,18 @@ func ResourceUniverseTelemetryConfig() *schema.Resource {
 								"Set to false to restart all nodes at once.",
 						},
 						"sleep_after_master_restart_millis": {
-							Type:     schema.TypeInt,
-							Optional: true,
-							Default:  180000,
+							Type:         schema.TypeInt,
+							Optional:     true,
+							Default:      180000,
+							ValidateFunc: validation.IntBetween(0, math.MaxInt32),
 							Description: "Sleep between master restarts (ms). Defaults to " +
 								"180000 (3 minutes).",
 						},
 						"sleep_after_tserver_restart_millis": {
-							Type:     schema.TypeInt,
-							Optional: true,
-							Default:  180000,
+							Type:         schema.TypeInt,
+							Optional:     true,
+							Default:      180000,
+							ValidateFunc: validation.IntBetween(0, math.MaxInt32),
 							Description: "Sleep between tserver restarts (ms). Defaults to " +
 								"180000 (3 minutes).",
 						},
@@ -275,9 +279,10 @@ func auditLogsSchema() *schema.Schema {
 								Default:  false,
 							},
 							"log_parameter_max_size": {
-								Type:     schema.TypeInt,
-								Optional: true,
-								Default:  0,
+								Type:         schema.TypeInt,
+								Optional:     true,
+								Default:      0,
+								ValidateFunc: validation.IntBetween(0, math.MaxInt32),
 							},
 							"log_relation": {
 								Type:     schema.TypeBool,
@@ -445,6 +450,11 @@ func queryLogsSchema() *schema.Schema {
 								Type:     schema.TypeInt,
 								Optional: true,
 								Default:  int(queryLogDefaults.LogMinDurationStatement),
+								// -1 disables duration logging and 0 logs every
+								// statement (Postgres semantics); bound the top end so
+								// the int32 conversion in buildYsqlQueryLogConfig
+								// cannot silently wrap.
+								ValidateFunc: validation.IntBetween(-1, math.MaxInt32),
 							},
 						},
 					},
@@ -464,14 +474,16 @@ func metricsSchema() *schema.Schema {
 		Elem: &schema.Resource{
 			Schema: map[string]*schema.Schema{
 				"scrape_interval_seconds": {
-					Type:     schema.TypeInt,
-					Optional: true,
-					Default:  derefInt32(metricsDefaults.ScrapeIntervalSeconds),
+					Type:         schema.TypeInt,
+					Optional:     true,
+					Default:      derefInt32(metricsDefaults.ScrapeIntervalSeconds),
+					ValidateFunc: validation.IntBetween(1, math.MaxInt32),
 				},
 				"scrape_timeout_seconds": {
-					Type:     schema.TypeInt,
-					Optional: true,
-					Default:  derefInt32(metricsDefaults.ScrapeTimeoutSeconds),
+					Type:         schema.TypeInt,
+					Optional:     true,
+					Default:      derefInt32(metricsDefaults.ScrapeTimeoutSeconds),
+					ValidateFunc: validation.IntBetween(1, math.MaxInt32),
 				},
 				"collection_level": {
 					Type:         schema.TypeString,
@@ -518,31 +530,41 @@ func exporterListSchema(withBatching bool) *schema.Schema {
 	}
 	if withBatching {
 		// Defaults are sourced from the generated client so they track the YBA
-		// OpenAPI `default:` automatically (see queryExporterDefaults).
+		// OpenAPI `default:` automatically (see queryExporterDefaults). The
+		// IntBetween(1, MaxInt32) bound rejects two foot-guns at plan time: a
+		// value above 2^31-1 that would silently wrap negative in the int32
+		// conversion, and an explicit 0 that utils.GetInt32Pointer would drop
+		// from the request, letting YBA substitute its own default and producing
+		// a permanent plan diff.
 		s["send_batch_max_size"] = &schema.Schema{
-			Type:     schema.TypeInt,
-			Optional: true,
-			Default:  derefInt32(queryExporterDefaults.SendBatchMaxSize),
+			Type:         schema.TypeInt,
+			Optional:     true,
+			Default:      derefInt32(queryExporterDefaults.SendBatchMaxSize),
+			ValidateFunc: validation.IntBetween(1, math.MaxInt32),
 		}
 		s["send_batch_size"] = &schema.Schema{
-			Type:     schema.TypeInt,
-			Optional: true,
-			Default:  derefInt32(queryExporterDefaults.SendBatchSize),
+			Type:         schema.TypeInt,
+			Optional:     true,
+			Default:      derefInt32(queryExporterDefaults.SendBatchSize),
+			ValidateFunc: validation.IntBetween(1, math.MaxInt32),
 		}
 		s["send_batch_timeout_seconds"] = &schema.Schema{
-			Type:     schema.TypeInt,
-			Optional: true,
-			Default:  derefInt32(queryExporterDefaults.SendBatchTimeoutSeconds),
+			Type:         schema.TypeInt,
+			Optional:     true,
+			Default:      derefInt32(queryExporterDefaults.SendBatchTimeoutSeconds),
+			ValidateFunc: validation.IntBetween(1, math.MaxInt32),
 		}
 		s["memory_limit_mib"] = &schema.Schema{
-			Type:     schema.TypeInt,
-			Optional: true,
-			Default:  derefInt32(queryExporterDefaults.MemoryLimitMib),
+			Type:         schema.TypeInt,
+			Optional:     true,
+			Default:      derefInt32(queryExporterDefaults.MemoryLimitMib),
+			ValidateFunc: validation.IntBetween(1, math.MaxInt32),
 		}
 		s["memory_limit_check_interval_seconds"] = &schema.Schema{
-			Type:     schema.TypeInt,
-			Optional: true,
-			Default:  derefInt32(queryExporterDefaults.MemoryLimitCheckIntervalSeconds),
+			Type:         schema.TypeInt,
+			Optional:     true,
+			Default:      derefInt32(queryExporterDefaults.MemoryLimitCheckIntervalSeconds),
+			ValidateFunc: validation.IntBetween(1, math.MaxInt32),
 		}
 	}
 	return &schema.Schema{
@@ -570,30 +592,39 @@ func metricsExporterSchema() *schema.Schema {
 		},
 		// Batching defaults are sourced from the generated client so they track
 		// the YBA OpenAPI `default:` automatically (see metricExporterDefaults).
+		// The IntBetween(1, MaxInt32) bound rejects both an overflowing value
+		// (which would wrap negative in the int32 conversion) and an explicit 0
+		// (which utils.GetInt32Pointer would drop, yielding a permanent plan
+		// diff against YBA's substituted default).
 		"send_batch_max_size": {
-			Type:     schema.TypeInt,
-			Optional: true,
-			Default:  derefInt32(metricExporterDefaults.SendBatchMaxSize),
+			Type:         schema.TypeInt,
+			Optional:     true,
+			Default:      derefInt32(metricExporterDefaults.SendBatchMaxSize),
+			ValidateFunc: validation.IntBetween(1, math.MaxInt32),
 		},
 		"send_batch_size": {
-			Type:     schema.TypeInt,
-			Optional: true,
-			Default:  derefInt32(metricExporterDefaults.SendBatchSize),
+			Type:         schema.TypeInt,
+			Optional:     true,
+			Default:      derefInt32(metricExporterDefaults.SendBatchSize),
+			ValidateFunc: validation.IntBetween(1, math.MaxInt32),
 		},
 		"send_batch_timeout_seconds": {
-			Type:     schema.TypeInt,
-			Optional: true,
-			Default:  derefInt32(metricExporterDefaults.SendBatchTimeoutSeconds),
+			Type:         schema.TypeInt,
+			Optional:     true,
+			Default:      derefInt32(metricExporterDefaults.SendBatchTimeoutSeconds),
+			ValidateFunc: validation.IntBetween(1, math.MaxInt32),
 		},
 		"memory_limit_mib": {
-			Type:     schema.TypeInt,
-			Optional: true,
-			Default:  derefInt32(metricExporterDefaults.MemoryLimitMib),
+			Type:         schema.TypeInt,
+			Optional:     true,
+			Default:      derefInt32(metricExporterDefaults.MemoryLimitMib),
+			ValidateFunc: validation.IntBetween(1, math.MaxInt32),
 		},
 		"memory_limit_check_interval_seconds": {
-			Type:     schema.TypeInt,
-			Optional: true,
-			Default:  derefInt32(metricExporterDefaults.MemoryLimitCheckIntervalSeconds),
+			Type:         schema.TypeInt,
+			Optional:     true,
+			Default:      derefInt32(metricExporterDefaults.MemoryLimitCheckIntervalSeconds),
+			ValidateFunc: validation.IntBetween(1, math.MaxInt32),
 		},
 		"metrics_prefix": {
 			Type:        schema.TypeString,
@@ -1129,19 +1160,17 @@ func resourceUniverseTelemetryConfigDelete(
 	apiClient := meta.(*api.APIClient)
 	universeUUID := d.Id()
 
-	config, response, err := apiClient.YugawareClientV2.UniverseAPI.
-		GetExportTelemetryConfig(ctx, apiClient.CustomerID, universeUUID).Execute()
+	config, err := getExportTelemetryConfig(
+		ctx, apiClient, universeUUID, "Delete - Get Config")
 	if err != nil {
-		if utils.IsHTTPNotFound(response) || universeMissing(err) {
+		if errors.Is(err, errUniverseMissing) {
 			tflog.Warn(ctx, fmt.Sprintf(
 				"universe %s not found during telemetry disable; "+
 					"removing from state", universeUUID))
 			d.SetId("")
 			return nil
 		}
-		return diag.FromErr(utils.ErrorFromHTTPResponse(response, err,
-			utils.ResourceEntity, "Universe Telemetry Config",
-			"Delete - Get Config"))
+		return diag.FromErr(err)
 	}
 
 	if telemetryConfigIsEmpty(config) {
@@ -1219,17 +1248,15 @@ func resourceUniverseTelemetryConfigRead(
 ) diag.Diagnostics {
 	apiClient := meta.(*api.APIClient)
 	universeUUID := d.Id()
-	config, response, err := apiClient.YugawareClientV2.UniverseAPI.
-		GetExportTelemetryConfig(ctx, apiClient.CustomerID, universeUUID).Execute()
+	config, err := getExportTelemetryConfig(ctx, apiClient, universeUUID, "Read")
 	if err != nil {
-		if utils.IsHTTPNotFound(response) || universeMissing(err) {
+		if errors.Is(err, errUniverseMissing) {
 			tflog.Warn(ctx, fmt.Sprintf(
 				"universe %s not found, removing telemetry config from state", universeUUID))
 			d.SetId("")
 			return nil
 		}
-		return diag.FromErr(utils.ErrorFromHTTPResponse(response, err,
-			utils.ResourceEntity, "Universe Telemetry Config", "Read"))
+		return diag.FromErr(err)
 	}
 	if config == nil {
 		config = &clientv2.TelemetryConfig{}
@@ -1249,15 +1276,54 @@ func resourceUniverseTelemetryConfigRead(
 	return nil
 }
 
-// universeMissing reports whether an error from the v2 telemetry endpoints
-// means the universe no longer exists. YBA's Universe.getOrBadRequest surfaces
-// a deleted universe with a non-404 status and a "Cannot find universe" body,
-// so inspecting the status alone is not enough — we also match the body via
-// the generated-client error.
-func universeMissing(err error) bool {
+// errUniverseMissing is the typed sentinel returned by getExportTelemetryConfig
+// when YBA reports the universe behind a telemetry config as already gone. YBA
+// surfaces a deleted universe through more than one HTTP shape — a 404, or a
+// non-404 whose body carries one of universeMissingMarkers (its
+// Universe.getOrBadRequest returns a 400/500 "Cannot find universe ..." rather
+// than a 404) — all of which collapse into this sentinel so CRUD code detects a
+// missing universe with errors.Is instead of substring-matching the response
+// body itself (see AGENTS.md, Error & Task Handling).
+var errUniverseMissing = errors.New("universe does not exist")
+
+// universeMissingMarkers lists the substrings YBA returns in the response body
+// when the universe no longer exists. Kept next to the sentinel so the CRUD
+// functions never reason about the wire format.
+var universeMissingMarkers = []string{
+	"Cannot find universe",
+	"does not exist",
+}
+
+// getExportTelemetryConfig fetches the universe's unified telemetry config via
+// the v2 endpoint, translating an out-of-band universe deletion (a 404, or a
+// non-404 body marker) into the typed errUniverseMissing sentinel. Any other
+// HTTP error is returned pre-formatted via utils.ErrorFromHTTPResponse, so the
+// caller can surface it verbatim with diag.FromErr.
+func getExportTelemetryConfig(
+	ctx context.Context, apiClient *api.APIClient, universeUUID, operation string,
+) (*clientv2.TelemetryConfig, error) {
+	config, response, err := apiClient.YugawareClientV2.UniverseAPI.
+		GetExportTelemetryConfig(ctx, apiClient.CustomerID, universeUUID).Execute()
+	if err != nil {
+		if utils.IsHTTPNotFound(response) || bodyHasMissingMarker(err) {
+			return nil, errUniverseMissing
+		}
+		return nil, utils.ErrorFromHTTPResponse(response, err,
+			utils.ResourceEntity, "Universe Telemetry Config", operation)
+	}
+	return config, nil
+}
+
+// bodyHasMissingMarker reports whether err carries one of the YBA response
+// bodies that mean "the universe no longer exists" — see universeMissingMarkers.
+func bodyHasMissingMarker(err error) bool {
 	body := utils.OpenAPIErrorBody(err)
-	return strings.Contains(body, "Cannot find universe") ||
-		strings.Contains(body, "does not exist")
+	for _, m := range universeMissingMarkers {
+		if strings.Contains(body, m) {
+			return true
+		}
+	}
+	return false
 }
 
 // intValue converts a Terraform int (which decodes to int) to a JSON-friendly

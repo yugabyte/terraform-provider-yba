@@ -423,6 +423,16 @@ func TestAccLong_UniverseTelemetryConfig_GCP(t *testing.T) {
 				ImportState:      true,
 				ImportStateCheck: importedMetricsExporters(2),
 			},
+			{
+				// Remove only the telemetry config resource, keeping the universe
+				// and providers. This exercises the disable-on-destroy path (the
+				// empty-config POST in resourceUniverseTelemetryConfigDelete) and
+				// asserts the SURVIVING universe is left with no exporters —
+				// coverage the whole-universe teardown in CheckDestroy cannot give,
+				// since it only confirms the universe itself is gone.
+				Config: base + provA + provB,
+				Check:  testAccCheckUniverseExportDisabled("yba_universe.gcp"),
+			},
 		},
 	})
 }
@@ -443,6 +453,44 @@ func importedMetricsExporters(want int) resource.ImportStateCheckFunc {
 		}
 		if got := attrs["metrics.0.exporter.#"]; got != strconv.Itoa(want) {
 			return fmt.Errorf("imported metrics exporter count = %q, want %d", got, want)
+		}
+		return nil
+	}
+}
+
+// testAccCheckUniverseExportDisabled confirms that removing the
+// yba_universe_telemetry_config resource (while the universe survives) actually
+// ran the empty-config disable POST: the still-existing universe must be left
+// with no telemetry exporters of any kind. uniResource is the address of the
+// surviving yba_universe resource (e.g. "yba_universe.gcp"), whose UUID is
+// resolved from state at check time.
+func testAccCheckUniverseExportDisabled(uniResource string) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		rs, ok := s.RootModule().Resources[uniResource]
+		if !ok {
+			return fmt.Errorf("universe resource %s not found in state", uniResource)
+		}
+		uniUUID := rs.Primary.ID
+		c := acctest.APIClient
+		config, _, err := c.YugawareClientV2.UniverseAPI.
+			GetExportTelemetryConfig(context.Background(), c.CustomerID, uniUUID).Execute()
+		if err != nil {
+			return fmt.Errorf("checking export disabled on universe %s: %w", uniUUID, err)
+		}
+		if config == nil {
+			return nil
+		}
+		if config.Metrics != nil && len(config.Metrics.Exporters) > 0 {
+			return fmt.Errorf("universe %s still has %d metrics exporter(s) after config removal",
+				uniUUID, len(config.Metrics.Exporters))
+		}
+		if config.AuditLogs != nil && len(config.AuditLogs.Exporters) > 0 {
+			return fmt.Errorf("universe %s still has %d audit exporter(s) after config removal",
+				uniUUID, len(config.AuditLogs.Exporters))
+		}
+		if config.QueryLogs != nil && len(config.QueryLogs.Exporters) > 0 {
+			return fmt.Errorf("universe %s still has %d query exporter(s) after config removal",
+				uniUUID, len(config.QueryLogs.Exporters))
 		}
 		return nil
 	}

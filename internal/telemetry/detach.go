@@ -13,10 +13,9 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Package telemetry provides the yba_telemetry_provider,
-// yba_universe_telemetry_config, and yba_runtime_config resources for
-// managing YugabyteDB Anywhere observability exports and runtime
-// configuration.
+// Package telemetry provides the yba_telemetry_provider and
+// yba_universe_telemetry_config resources for managing YugabyteDB Anywhere
+// observability exports.
 package telemetry
 
 import (
@@ -40,35 +39,64 @@ type universeRef struct {
 	Name string
 }
 
-// universeReferencesProvider returns true when any exporter in the
-// universe's audit-log / query-log / metrics-export config matches the
-// supplied provider UUID.
-func universeReferencesProvider(u *client.UniverseResp, providerUUID string) bool {
+// clusterTypePrimary is the v1 UniverseResp cluster type for a universe's
+// primary cluster (read replicas are "ASYNC").
+const clusterTypePrimary = "PRIMARY"
+
+// primaryUserIntent returns the UserIntent of the universe's primary cluster,
+// mirroring YBA's UniverseDefinitionTaskParams.getPrimaryCluster(). YBA stores
+// the universe-wide telemetry config on the primary cluster, and its
+// isProviderInUse / credential-consistency checks read only that cluster — so
+// both reference detection and detach must target it, selected by clusterType
+// rather than array position (YBA does not guarantee the primary is
+// clusters[0]). Falls back to the first cluster when none is tagged PRIMARY
+// (defensive — YBA always tags it) and returns nil for a clusterless universe.
+func primaryUserIntent(u *client.UniverseResp) *client.UserIntent {
 	if u == nil {
-		return false
+		return nil
 	}
 	details := u.GetUniverseDetails()
-	for _, cluster := range details.Clusters {
-		intent := cluster.UserIntent
-		if a := intent.AuditLogConfig; a != nil {
-			for _, e := range a.UniverseLogsExporterConfig {
-				if e.ExporterUuid == providerUUID {
-					return true
-				}
+	if len(details.Clusters) == 0 {
+		return nil
+	}
+	for i := range details.Clusters {
+		if details.Clusters[i].ClusterType == clusterTypePrimary {
+			ui := details.Clusters[i].UserIntent
+			return &ui
+		}
+	}
+	ui := details.Clusters[0].UserIntent
+	return &ui
+}
+
+// universeReferencesProvider returns true when any exporter in the primary
+// cluster's audit-log / query-log / metrics-export config matches the supplied
+// provider UUID. It scopes to the primary cluster to match YBA's
+// isProviderInUse — the check that gates the provider delete with "as it is in
+// use" — so detection and YBA's own gate never disagree.
+func universeReferencesProvider(u *client.UniverseResp, providerUUID string) bool {
+	intent := primaryUserIntent(u)
+	if intent == nil {
+		return false
+	}
+	if a := intent.AuditLogConfig; a != nil {
+		for _, e := range a.UniverseLogsExporterConfig {
+			if e.ExporterUuid == providerUUID {
+				return true
 			}
 		}
-		if q := intent.QueryLogConfig; q != nil {
-			for _, e := range q.UniverseLogsExporterConfig {
-				if e.ExporterUuid == providerUUID {
-					return true
-				}
+	}
+	if q := intent.QueryLogConfig; q != nil {
+		for _, e := range q.UniverseLogsExporterConfig {
+			if e.ExporterUuid == providerUUID {
+				return true
 			}
 		}
-		if m := intent.MetricsExportConfig; m != nil {
-			for _, e := range m.UniverseMetricsExporterConfig {
-				if e.ExporterUuid == providerUUID {
-					return true
-				}
+	}
+	if m := intent.MetricsExportConfig; m != nil {
+		for _, e := range m.UniverseMetricsExporterConfig {
+			if e.ExporterUuid == providerUUID {
+				return true
 			}
 		}
 	}
@@ -174,9 +202,13 @@ func buildDetachSpec(
 	providerUUID string,
 ) clientv2.ExportTelemetryConfigSpec {
 	tc := clientv2.TelemetryConfig{}
-	details := u.GetUniverseDetails()
-	if len(details.Clusters) > 0 {
-		intent := details.Clusters[0].UserIntent
+	// Rebuild from the primary cluster's intent — the same cluster YBA's
+	// isProviderInUse reads — so the detach rewrites exactly the config whose
+	// reference would otherwise fail the provider delete with "as it is in
+	// use". Using primaryUserIntent (clusterType == PRIMARY) keeps this in
+	// lock-step with universeReferencesProvider and does not assume the primary
+	// is clusters[0]. See primaryUserIntent.
+	if intent := primaryUserIntent(u); intent != nil {
 		if a := intent.AuditLogConfig; a != nil {
 			if spec := auditConfigToSpec(a, providerUUID); spec != nil {
 				tc.AuditLogs = spec
