@@ -19,7 +19,9 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-log/tflog"
@@ -47,6 +49,54 @@ var allowedScrapeTargets = []string{
 // allowedCollectionLevels mirrors the enum used by metrics export
 // configuration (`ALL`, `NORMAL`, `TABLE_OFF`, `MINIMAL`, `OFF`).
 var allowedCollectionLevels = []string{"ALL", "NORMAL", "TABLE_OFF", "MINIMAL", "OFF"}
+
+// The following enum allow-lists mirror the YBA OpenAPI schemas
+// (components/schemas/{YSQLAuditConfig,YCQLAuditConfig,YSQLQueryLogConfig}.yaml)
+// so a typo is rejected at plan time with the valid set, instead of failing
+// mid-apply when YBA rejects the upgrade.
+var (
+	allowedYSQLAuditClasses    = []string{"READ", "WRITE", "FUNCTION", "ROLE", "DDL", "MISC", "MISC_SET"}
+	allowedYSQLAuditLogLevels  = []string{"DEBUG1", "DEBUG2", "DEBUG3", "DEBUG4", "DEBUG5", "INFO", "NOTICE", "WARNING", "LOG"}
+	allowedYCQLAuditCategories = []string{"QUERY", "DML", "DDL", "DCL", "AUTH", "PREPARE", "ERROR", "OTHER"}
+	allowedYCQLAuditLogLevels  = []string{"INFO", "WARNING", "ERROR"}
+	allowedQueryLogStatements  = []string{"ALL", "NONE", "DDL", "MOD"}
+	allowedQueryErrorVerbosity = []string{"VERBOSE", "TERSE", "DEFAULT"}
+)
+
+// Default snapshots sourced from the generated platform-go-client. Each
+// `NewXxxWithDefaults` constructor encodes the YBA OpenAPI `default:` for its
+// type, so wiring schema defaults to these values means bumping the client
+// automatically picks up any default YBA changes — we never hand-copy a magic
+// number that could silently drift from the server. The lone exception is the
+// audit-log config: the YBA API marks every YSQLAuditConfig / YCQLAuditConfig
+// field `required` with no `default:`, so the constructor leaves them at their
+// Go zero value and the provider must choose sensible defaults itself (these
+// mirror the YBA UI and are documented as provider defaults on each field).
+var (
+	queryLogDefaults       = clientv2.NewYSQLQueryLogConfigWithDefaults()
+	metricsDefaults        = clientv2.NewMetricsTelemetrySpecWithDefaults()
+	queryExporterDefaults  = clientv2.NewUniverseQueryLogsExporterConfigWithDefaults()
+	metricExporterDefaults = clientv2.NewUniverseMetricsExporterConfigWithDefaults()
+)
+
+// derefInt32 returns the int value behind a client default pointer, or 0 if the
+// client ever stops providing that default (defensive: a nil here would
+// otherwise panic at provider init).
+func derefInt32(p *int32) int {
+	if p == nil {
+		return 0
+	}
+	return int(*p)
+}
+
+// derefString returns the string value behind a client default pointer, or ""
+// if absent.
+func derefString(p *string) string {
+	if p == nil {
+		return ""
+	}
+	return *p
+}
 
 // ResourceUniverseTelemetryConfig configures audit log, query log, and
 // metric export pipelines for a single YBA universe through the unified
@@ -80,6 +130,17 @@ func ResourceUniverseTelemetryConfig() *schema.Resource {
 			"universe UUID as the resource ID " +
 			"(`terraform import yba_universe_telemetry_config.example <universe-uuid>`); " +
 			"state is populated from the unified `export-telemetry-configs` GET API.\n\n" +
+			"~> **One resource per universe:** YBA stores a single telemetry " +
+			"configuration per universe and this resource owns it wholesale — " +
+			"Terraform is the source of truth. On apply it **replaces** whatever the " +
+			"universe currently has (including anything configured out-of-band in " +
+			"the YBA UI), so manage all three pipelines (`audit_logs`, `query_logs`, " +
+			"`metrics`) from a **single** `yba_universe_telemetry_config` block. " +
+			"Declaring two resources for the same `universe_uuid` is rejected at " +
+			"plan time (they would otherwise overwrite each other on every apply). " +
+			"On destroy the resource disables every exporter on the universe, but " +
+			"only if a configuration still exists server-side — an already-empty " +
+			"universe is left untouched.\n\n" +
 			"~> **Dependency Note:** When `exporter_uuid` is wired through a " +
 			"reference like `yba_telemetry_provider.x.id`, Terraform's dependency " +
 			"graph automatically orders create / replace / destroy of the provider " +
@@ -94,12 +155,10 @@ func ResourceUniverseTelemetryConfig() *schema.Resource {
 		UpdateContext: resourceUniverseTelemetryConfigUpdate,
 		DeleteContext: resourceUniverseTelemetryConfigDelete,
 
-		// Reject the same telemetry provider listed twice inside a single
-		// pipeline's exporter list at plan time. YBA would otherwise build a
-		// collector with two identical exporters (or reject the upgrade
-		// mid-restart); both are confusing to debug after the apply has
-		// already begun reconfiguring the universe.
-		CustomizeDiff: validateNoDuplicateExporters,
+		// Plan-time validation: reject duplicate / empty exporters within a
+		// pipeline and reject two resources claiming the same universe. See
+		// customizeUniverseTelemetryDiff for the rationale of each check.
+		CustomizeDiff: customizeUniverseTelemetryDiff,
 
 		// Import by universe UUID; Read repopulates state from the unified
 		// GetExportTelemetryConfig endpoint.
@@ -177,13 +236,21 @@ func auditLogsSchema() *schema.Schema {
 					Type:     schema.TypeList,
 					Optional: true,
 					MaxItems: 1,
+					Description: "YSQL audit (pgaudit) logging configuration. Declaring this " +
+						"block enables YSQL audit logging on the universe — YBA derives " +
+						"`enabled` from the block's presence, so there is no `enabled` " +
+						"field; omit the block to disable. The YBA API marks every field " +
+						"below `required` with no server default, so the `Default` values " +
+						"are **provider defaults** chosen to mirror the YBA UI.",
 					Elem: &schema.Resource{
 						Schema: map[string]*schema.Schema{
-							"enabled": {Type: schema.TypeBool, Optional: true, Default: false},
 							"classes": {
-								Type:        schema.TypeSet,
-								Optional:    true,
-								Elem:        &schema.Schema{Type: schema.TypeString},
+								Type:     schema.TypeSet,
+								Optional: true,
+								Elem: &schema.Schema{
+									Type:         schema.TypeString,
+									ValidateFunc: validation.StringInSlice(allowedYSQLAuditClasses, false),
+								},
 								Description: "YSQL audit log classes (e.g. READ, WRITE, DDL, ROLE).",
 							},
 							"log_catalog": {
@@ -197,9 +264,10 @@ func auditLogsSchema() *schema.Schema {
 								Default:  true,
 							},
 							"log_level": {
-								Type:     schema.TypeString,
-								Optional: true,
-								Default:  "LOG",
+								Type:         schema.TypeString,
+								Optional:     true,
+								Default:      "LOG",
+								ValidateFunc: validation.StringInSlice(allowedYSQLAuditLogLevels, false),
 							},
 							"log_parameter": {
 								Type:     schema.TypeBool,
@@ -238,27 +306,34 @@ func auditLogsSchema() *schema.Schema {
 					Type:     schema.TypeList,
 					Optional: true,
 					MaxItems: 1,
+					Description: "YCQL audit logging configuration. Declaring this block " +
+						"enables YCQL audit logging — YBA derives `enabled` from the " +
+						"block's presence, so there is no `enabled` field; omit the block " +
+						"to disable. `log_level`'s `Default` is a **provider default** " +
+						"(the YBA API requires the field but defines no default).",
 					Elem: &schema.Resource{
 						Schema: map[string]*schema.Schema{
-							"enabled": {
-								Type:     schema.TypeBool,
-								Optional: true,
-								Default:  false,
-							},
 							"log_level": {
-								Type:     schema.TypeString,
-								Optional: true,
-								Default:  "WARNING",
+								Type:         schema.TypeString,
+								Optional:     true,
+								Default:      "WARNING",
+								ValidateFunc: validation.StringInSlice(allowedYCQLAuditLogLevels, false),
 							},
 							"included_categories": {
 								Type:     schema.TypeSet,
 								Optional: true,
-								Elem:     &schema.Schema{Type: schema.TypeString},
+								Elem: &schema.Schema{
+									Type:         schema.TypeString,
+									ValidateFunc: validation.StringInSlice(allowedYCQLAuditCategories, false),
+								},
 							},
 							"excluded_categories": {
 								Type:     schema.TypeSet,
 								Optional: true,
-								Elem:     &schema.Schema{Type: schema.TypeString},
+								Elem: &schema.Schema{
+									Type:         schema.TypeString,
+									ValidateFunc: validation.StringInSlice(allowedYCQLAuditCategories, false),
+								},
 							},
 							"included_keyspaces": {
 								Type:     schema.TypeSet,
@@ -284,9 +359,11 @@ func auditLogsSchema() *schema.Schema {
 					},
 				},
 				"exporter": {
-					Type:        schema.TypeList,
-					Optional:    true,
-					Description: "List of exporters that receive audit logs.",
+					Type:     schema.TypeList,
+					Optional: true,
+					Description: "Exporter (telemetry destination) for audit logs. Repeat " +
+						"this block to fan out to multiple destinations — each block " +
+						"becomes one entry in the API's `exporters` array.",
 					Elem: &schema.Resource{
 						Schema: map[string]*schema.Schema{
 							"exporter_uuid": {
@@ -320,52 +397,54 @@ func queryLogsSchema() *schema.Schema {
 					Type:     schema.TypeList,
 					Optional: true,
 					MaxItems: 1,
+					Description: "YSQL query logging configuration. Declaring this block " +
+						"enables YSQL query logging — YBA derives `enabled` from the " +
+						"block's presence, so there is no `enabled` field; omit the block " +
+						"to disable. `Default` values are sourced from the YBA API's own " +
+						"`default:` (via the generated client) so they track the server.",
 					Elem: &schema.Resource{
 						Schema: map[string]*schema.Schema{
-							"enabled": {
-								Type:     schema.TypeBool,
-								Optional: true,
-								Default:  false,
-							},
 							"log_statement": {
-								Type:     schema.TypeString,
-								Optional: true,
-								Default:  "NONE",
+								Type:         schema.TypeString,
+								Optional:     true,
+								Default:      queryLogDefaults.LogStatement,
+								ValidateFunc: validation.StringInSlice(allowedQueryLogStatements, false),
 							},
 							"log_min_error_statement": {
 								Type:     schema.TypeString,
 								Optional: true,
-								Default:  "ERROR",
+								Default:  queryLogDefaults.LogMinErrorStatement,
 							},
 							"log_error_verbosity": {
-								Type:     schema.TypeString,
-								Optional: true,
-								Default:  "DEFAULT",
+								Type:         schema.TypeString,
+								Optional:     true,
+								Default:      queryLogDefaults.LogErrorVerbosity,
+								ValidateFunc: validation.StringInSlice(allowedQueryErrorVerbosity, false),
 							},
 							"log_duration": {
 								Type:     schema.TypeBool,
 								Optional: true,
-								Default:  false,
+								Default:  queryLogDefaults.LogDuration,
 							},
 							"debug_print_plan": {
 								Type:     schema.TypeBool,
 								Optional: true,
-								Default:  false,
+								Default:  queryLogDefaults.DebugPrintPlan,
 							},
 							"log_connections": {
 								Type:     schema.TypeBool,
 								Optional: true,
-								Default:  false,
+								Default:  queryLogDefaults.LogConnections,
 							},
 							"log_disconnections": {
 								Type:     schema.TypeBool,
 								Optional: true,
-								Default:  false,
+								Default:  queryLogDefaults.LogDisconnections,
 							},
 							"log_min_duration_statement": {
 								Type:     schema.TypeInt,
 								Optional: true,
-								Default:  -1,
+								Default:  int(queryLogDefaults.LogMinDurationStatement),
 							},
 						},
 					},
@@ -384,21 +463,35 @@ func metricsSchema() *schema.Schema {
 		Description: "Metric export configuration. Omit to disable metric export.",
 		Elem: &schema.Resource{
 			Schema: map[string]*schema.Schema{
-				"scrape_interval_seconds": {Type: schema.TypeInt, Optional: true, Default: 30},
-				"scrape_timeout_seconds":  {Type: schema.TypeInt, Optional: true, Default: 20},
+				"scrape_interval_seconds": {
+					Type:     schema.TypeInt,
+					Optional: true,
+					Default:  derefInt32(metricsDefaults.ScrapeIntervalSeconds),
+				},
+				"scrape_timeout_seconds": {
+					Type:     schema.TypeInt,
+					Optional: true,
+					Default:  derefInt32(metricsDefaults.ScrapeTimeoutSeconds),
+				},
 				"collection_level": {
 					Type:         schema.TypeString,
 					Optional:     true,
-					Default:      "NORMAL",
+					Default:      derefString(metricsDefaults.CollectionLevel),
 					ValidateFunc: validation.StringInSlice(allowedCollectionLevels, false),
 				},
 				"scrape_config_targets": {
 					Type:     schema.TypeSet,
 					Optional: true,
+					// Computed: YBA fills an empty set with every supported
+					// target, so an unset config must absorb the server-applied
+					// set rather than perpetually diff against it.
+					Computed: true,
 					Elem: &schema.Schema{
 						Type:         schema.TypeString,
 						ValidateFunc: validation.StringInSlice(allowedScrapeTargets, false),
 					},
+					Description: "Scrape target types to include. Omit to let YBA " +
+						"include all supported targets.",
 				},
 				"exporter": metricsExporterSchema(),
 			},
@@ -424,28 +517,41 @@ func exporterListSchema(withBatching bool) *schema.Schema {
 		},
 	}
 	if withBatching {
+		// Defaults are sourced from the generated client so they track the YBA
+		// OpenAPI `default:` automatically (see queryExporterDefaults).
 		s["send_batch_max_size"] = &schema.Schema{
 			Type:     schema.TypeInt,
 			Optional: true,
-			Default:  1000,
+			Default:  derefInt32(queryExporterDefaults.SendBatchMaxSize),
 		}
-		s["send_batch_size"] = &schema.Schema{Type: schema.TypeInt, Optional: true, Default: 100}
+		s["send_batch_size"] = &schema.Schema{
+			Type:     schema.TypeInt,
+			Optional: true,
+			Default:  derefInt32(queryExporterDefaults.SendBatchSize),
+		}
 		s["send_batch_timeout_seconds"] = &schema.Schema{
 			Type:     schema.TypeInt,
 			Optional: true,
-			Default:  10,
+			Default:  derefInt32(queryExporterDefaults.SendBatchTimeoutSeconds),
 		}
-		s["memory_limit_mib"] = &schema.Schema{Type: schema.TypeInt, Optional: true, Default: 2048}
+		s["memory_limit_mib"] = &schema.Schema{
+			Type:     schema.TypeInt,
+			Optional: true,
+			Default:  derefInt32(queryExporterDefaults.MemoryLimitMib),
+		}
 		s["memory_limit_check_interval_seconds"] = &schema.Schema{
 			Type:     schema.TypeInt,
 			Optional: true,
-			Default:  10,
+			Default:  derefInt32(queryExporterDefaults.MemoryLimitCheckIntervalSeconds),
 		}
 	}
 	return &schema.Schema{
 		Type:     schema.TypeList,
 		Optional: true,
-		Elem:     &schema.Resource{Schema: s},
+		Description: "Exporter (telemetry destination). Repeat this block to send to " +
+			"multiple destinations — each becomes one entry in the API's " +
+			"`exporters` array.",
+		Elem: &schema.Resource{Schema: s},
 	}
 }
 
@@ -462,19 +568,33 @@ func metricsExporterSchema() *schema.Schema {
 			Description: "Additional string tags appended to each metric.",
 			Elem:        &schema.Schema{Type: schema.TypeString},
 		},
+		// Batching defaults are sourced from the generated client so they track
+		// the YBA OpenAPI `default:` automatically (see metricExporterDefaults).
 		"send_batch_max_size": {
 			Type:     schema.TypeInt,
 			Optional: true,
-			Default:  1000,
+			Default:  derefInt32(metricExporterDefaults.SendBatchMaxSize),
 		},
-		"send_batch_size":            {Type: schema.TypeInt, Optional: true, Default: 100},
-		"send_batch_timeout_seconds": {Type: schema.TypeInt, Optional: true, Default: 10},
+		"send_batch_size": {
+			Type:     schema.TypeInt,
+			Optional: true,
+			Default:  derefInt32(metricExporterDefaults.SendBatchSize),
+		},
+		"send_batch_timeout_seconds": {
+			Type:     schema.TypeInt,
+			Optional: true,
+			Default:  derefInt32(metricExporterDefaults.SendBatchTimeoutSeconds),
+		},
 		"memory_limit_mib": {
 			Type:     schema.TypeInt,
 			Optional: true,
-			Default:  2048,
+			Default:  derefInt32(metricExporterDefaults.MemoryLimitMib),
 		},
-		"memory_limit_check_interval_seconds": {Type: schema.TypeInt, Optional: true, Default: 10},
+		"memory_limit_check_interval_seconds": {
+			Type:     schema.TypeInt,
+			Optional: true,
+			Default:  derefInt32(metricExporterDefaults.MemoryLimitCheckIntervalSeconds),
+		},
 		"metrics_prefix": {
 			Type:        schema.TypeString,
 			Optional:    true,
@@ -484,17 +604,45 @@ func metricsExporterSchema() *schema.Schema {
 	return &schema.Schema{
 		Type:     schema.TypeList,
 		Optional: true,
-		Elem:     &schema.Resource{Schema: s},
+		Description: "Metric exporter (telemetry destination). Repeat this block to " +
+			"send metrics to multiple destinations — each becomes one entry in the " +
+			"API's `exporters` array.",
+		Elem: &schema.Resource{Schema: s},
 	}
 }
 
-// validateNoDuplicateExporters runs at plan time (CustomizeDiff) and rejects a
-// configuration that lists the same telemetry provider (exporter_uuid) more
-// than once within a single pipeline's exporter list. A provider may
-// legitimately appear across different pipelines (audit / query / metrics) of
-// the same universe, and the same provider may be shared by many universes —
-// only intra-list duplicates are a mistake.
-func validateNoDuplicateExporters(
+// customizeUniverseTelemetryDiff is the resource's CustomizeDiff. It runs every
+// plan-time guard in turn so a misconfiguration is surfaced before any
+// (sensitive) value is written to state or the universe is reconfigured:
+//
+//   - validateExporters: rejects an empty or duplicated exporter_uuid within a
+//     single pipeline.
+//   - validateSingleManagerPerUniverse: rejects two yba_universe_telemetry_config
+//     resources that claim the same universe in one Terraform run.
+func customizeUniverseTelemetryDiff(
+	ctx context.Context, d *schema.ResourceDiff, meta interface{},
+) error {
+	if err := validateExporters(ctx, d, meta); err != nil {
+		return err
+	}
+	return validateSingleManagerPerUniverse(ctx, d, meta)
+}
+
+// validateExporters runs at plan time (CustomizeDiff) and rejects a
+// configuration whose exporter list within a single pipeline lists the same
+// telemetry provider (exporter_uuid) more than once, or lists an exporter with
+// an empty exporter_uuid. A provider may legitimately appear across different
+// pipelines (audit / query / metrics) of the same universe, and the same
+// provider may be shared by many universes — only intra-list duplicates are a
+// mistake.
+//
+// exporter_uuid is `Required`, so an empty value is a genuine misconfiguration
+// rather than an unfinished plan; we surface it here (with the precise pipeline
+// and position) instead of letting a malformed exporter block sail through plan
+// and fail with a less useful error mid-apply. Values that are not yet known
+// (e.g. `exporter_uuid = yba_telemetry_provider.x.id` for a provider being
+// created in the same apply) are skipped — they resolve before apply.
+func validateExporters(
 	_ context.Context, d *schema.ResourceDiff, _ interface{},
 ) error {
 	for _, section := range []struct {
@@ -510,14 +658,23 @@ func validateNoDuplicateExporters(
 			continue
 		}
 		seen := make(map[string]struct{}, len(list))
-		for _, e := range list {
+		for i, e := range list {
 			m, _ := e.(map[string]interface{})
 			if m == nil {
 				continue
 			}
 			uuid := stringValue(m["exporter_uuid"])
 			if uuid == "" {
-				continue
+				// An empty exporter_uuid that is still unknown is a computed
+				// reference Terraform will resolve before apply — not an error.
+				key := fmt.Sprintf("%s.%d.exporter_uuid", section.path, i)
+				if !d.NewValueKnown(key) {
+					continue
+				}
+				return fmt.Errorf(
+					"%s: exporter #%d has an empty exporter_uuid; every "+
+						"exporter must reference a telemetry provider UUID",
+					section.label, i+1)
 			}
 			if _, dup := seen[uuid]; dup {
 				return fmt.Errorf(
@@ -529,6 +686,113 @@ func validateNoDuplicateExporters(
 		}
 	}
 	return nil
+}
+
+// universeTelemetryClaims tracks which universe UUIDs have been claimed by a
+// yba_universe_telemetry_config resource during the current Terraform run, so
+// that two resources targeting the same universe are rejected at plan time
+// rather than silently overwriting each other on every apply.
+//
+// It is keyed by the provider meta (*api.APIClient), which is created once per
+// `terraform` invocation, so the registry is naturally scoped to a single
+// plan/apply and to a single provider configuration (aliases get their own
+// client, hence their own registry). The stored value is a fingerprint of the
+// claiming resource's configuration: a re-invocation of the SAME resource's
+// CustomizeDiff carries the same fingerprint and is a no-op, while a DIFFERENT
+// resource claiming an already-claimed universe (different fingerprint) is the
+// duplicate we reject. Two byte-identical resources converge to the same state
+// and are therefore harmless, so they are intentionally not flagged.
+//
+// Limitation: this catches duplicates within a single Terraform configuration
+// (the common "split across modules" foot-gun). Two *separate* configurations
+// or state files pointing at the same universe run in different processes and
+// cannot be cross-checked here — that case is documented as unsupported.
+var (
+	universeTelemetryClaimsMu sync.Mutex
+	universeTelemetryClaims   = map[*api.APIClient]map[string]string{}
+)
+
+// claimUniverse records that universeUUID is managed by a resource with the
+// given config fingerprint. It returns true when the universe was already
+// claimed by a resource with a DIFFERENT fingerprint (i.e. a real duplicate).
+func claimUniverse(client *api.APIClient, universeUUID, fingerprint string) bool {
+	universeTelemetryClaimsMu.Lock()
+	defer universeTelemetryClaimsMu.Unlock()
+	byUniverse := universeTelemetryClaims[client]
+	if byUniverse == nil {
+		byUniverse = map[string]string{}
+		universeTelemetryClaims[client] = byUniverse
+	}
+	if prev, ok := byUniverse[universeUUID]; ok {
+		return prev != fingerprint
+	}
+	byUniverse[universeUUID] = fingerprint
+	return false
+}
+
+// validateSingleManagerPerUniverse rejects a plan that declares more than one
+// yba_universe_telemetry_config for the same universe. Because YBA stores a
+// single telemetry config per universe and this resource replaces it wholesale,
+// two resources for one universe would overwrite each other on every apply and
+// oscillate forever. See universeTelemetryClaims for the mechanism and its
+// scope.
+func validateSingleManagerPerUniverse(
+	_ context.Context, d *schema.ResourceDiff, meta interface{},
+) error {
+	client, ok := meta.(*api.APIClient)
+	if !ok || client == nil {
+		// No provider meta (unit tests exercising the other diff rules in
+		// isolation); cross-resource claim tracking only matters during a real
+		// plan, where meta is always the configured *api.APIClient.
+		return nil
+	}
+	universeUUID := stringValue(d.Get("universe_uuid"))
+	if universeUUID == "" {
+		return nil // not yet known; nothing to claim
+	}
+	if claimUniverse(client, universeUUID, universeConfigFingerprint(d)) {
+		return fmt.Errorf(
+			"universe %s is already managed by another "+
+				"yba_universe_telemetry_config resource in this configuration; "+
+				"declare exactly one per universe (a single resource's "+
+				"audit_logs / query_logs / metrics blocks manage all three "+
+				"pipelines together)", universeUUID)
+	}
+	return nil
+}
+
+// universeConfigFingerprint renders a stable identity for the claiming
+// resource: the sorted set of exporter UUIDs declared in each pipeline.
+//
+// It must be byte-identical across the (up to two) CustomizeDiff invocations of
+// the SAME resource and yet differ between two distinct resources, so the claim
+// registry can tell a re-invocation apart from a genuine duplicate. SDKv2 runs
+// CustomizeDiff a second time whenever the diff RequiresNew (always true here,
+// because universe_uuid is ForceNew), and the diff-processed scalar defaults /
+// TypeSet internals of a block are NOT stable between those two passes — so we
+// deliberately fingerprint only the user-supplied exporter_uuid strings, which
+// are stable. Two resources whose exporter sets are byte-identical converge to
+// the same server state and are therefore harmless to leave unflagged.
+func universeConfigFingerprint(d *schema.ResourceDiff) string {
+	var b strings.Builder
+	for _, path := range []string{
+		"audit_logs.0.exporter",
+		"query_logs.0.exporter",
+		"metrics.0.exporter",
+	} {
+		uuids := []string{}
+		if list, ok := d.Get(path).([]interface{}); ok {
+			for _, e := range list {
+				if m, _ := e.(map[string]interface{}); m != nil {
+					uuids = append(uuids, stringValue(m["exporter_uuid"]))
+				}
+			}
+		}
+		sort.Strings(uuids)
+		b.WriteString(strings.Join(uuids, ","))
+		b.WriteString("|")
+	}
+	return b.String()
 }
 
 // buildExportTelemetryConfigSpec assembles the typed v2 SDK request body for
@@ -618,7 +882,9 @@ func buildYsqlAuditConfig(in interface{}) *clientv2.YSQLAuditConfig {
 		return nil
 	}
 	return &clientv2.YSQLAuditConfig{
-		Enabled:             boolValue(m["enabled"]),
+		// enabled is readOnly in the YBA API and derived server-side from this
+		// block's presence (the v2 field is required, so we must still set it).
+		Enabled:             true,
 		Classes:             stringList(m["classes"]),
 		LogCatalog:          boolValue(m["log_catalog"]),
 		LogClient:           boolValue(m["log_client"]),
@@ -638,7 +904,9 @@ func buildYcqlAuditConfig(in interface{}) *clientv2.YCQLAuditConfig {
 		return nil
 	}
 	return &clientv2.YCQLAuditConfig{
-		Enabled:            boolValue(m["enabled"]),
+		// enabled is derived server-side from this block's presence; the v2
+		// field is required so we always set it true.
+		Enabled:            true,
 		LogLevel:           stringValue(m["log_level"]),
 		IncludedCategories: stringList(m["included_categories"]),
 		ExcludedCategories: stringList(m["excluded_categories"]),
@@ -655,7 +923,9 @@ func buildYsqlQueryLogConfig(in interface{}) *clientv2.YSQLQueryLogConfig {
 		return nil
 	}
 	return &clientv2.YSQLQueryLogConfig{
-		Enabled:                 boolValue(m["enabled"]),
+		// enabled is readOnly in the YBA API and derived server-side from this
+		// block's presence (the v2 field is required, so we must still set it).
+		Enabled:                 true,
 		LogStatement:            stringValue(m["log_statement"]),
 		LogMinErrorStatement:    stringValue(m["log_min_error_statement"]),
 		LogErrorVerbosity:       stringValue(m["log_error_verbosity"]),
@@ -833,43 +1103,71 @@ func resourceUniverseTelemetryConfigUpdate(
 		resourceUniverseTelemetryConfigRead(ctx, d, meta)...)
 }
 
-// resourceUniverseTelemetryConfigDelete asks YBA to disable every exporter
-// on the universe by POSTing an empty `telemetry_config: {}` body. If the
-// universe has already been deleted out-of-band the API returns a 404; we
-// preflight a GetUniverse call to detect that case and remove the resource
-// from state cleanly. Every other error is surfaced verbatim so genuine
-// failures (permission revoked, task failures, transient outages) cannot
-// silently corrupt state.
+// resourceUniverseTelemetryConfigDelete tears down the universe's telemetry
+// configuration by POSTing an empty `telemetry_config: {}` body, which disables
+// every exporter on the universe.
+//
+// It first GETs the current config via the v2 endpoint, which serves two
+// purposes:
+//
+//   - If the universe has been deleted out-of-band (404, or YBA's non-404
+//     "Cannot find universe" body) there is nothing to disable — remove the
+//     resource from state cleanly.
+//   - If the universe has no telemetry config at all (already disabled, or
+//     cleared out-of-band) we do NOT greedily POST a disable spec. Doing so
+//     would queue a pointless rolling restart and could clobber a config that
+//     someone has since set up to take over once Terraform stops managing the
+//     universe. We simply drop the resource from state.
+//
+// Only when a configuration actually exists do we disable it (Terraform owns
+// the universe's telemetry config, so a full disable on destroy is correct).
+// Every other error is surfaced verbatim so genuine failures (permission
+// revoked, task failures, transient outages) cannot silently corrupt state.
 func resourceUniverseTelemetryConfigDelete(
 	ctx context.Context, d *schema.ResourceData, meta interface{},
 ) diag.Diagnostics {
 	apiClient := meta.(*api.APIClient)
+	universeUUID := d.Id()
 
-	// Preflight: if the universe is already gone, there is nothing to
-	// disable — return cleanly.
-	_, response, err := apiClient.YugawareClient.UniverseManagementAPI.
-		GetUniverse(ctx, apiClient.CustomerID, d.Id()).Execute()
+	config, response, err := apiClient.YugawareClientV2.UniverseAPI.
+		GetExportTelemetryConfig(ctx, apiClient.CustomerID, universeUUID).Execute()
 	if err != nil {
-		if utils.IsHTTPNotFound(response) {
+		if utils.IsHTTPNotFound(response) || universeMissing(err) {
 			tflog.Warn(ctx, fmt.Sprintf(
 				"universe %s not found during telemetry disable; "+
-					"removing from state", d.Id()))
+					"removing from state", universeUUID))
 			d.SetId("")
 			return nil
 		}
 		return diag.FromErr(utils.ErrorFromHTTPResponse(response, err,
 			utils.ResourceEntity, "Universe Telemetry Config",
-			"Delete - Get Universe"))
+			"Delete - Get Config"))
+	}
+
+	if telemetryConfigIsEmpty(config) {
+		tflog.Info(ctx, fmt.Sprintf(
+			"universe %s has no telemetry config to disable; removing from "+
+				"state without reconfiguring the universe", universeUUID))
+		d.SetId("")
+		return nil
 	}
 
 	spec := buildDisableSpec(d)
 	if diags := dispatchExportTelemetryConfig(
-		ctx, apiClient, d.Id(), spec,
+		ctx, apiClient, universeUUID, spec,
 		d.Timeout(schema.TimeoutDelete), "Delete"); diags != nil {
 		return diags
 	}
 	d.SetId("")
 	return nil
+}
+
+// telemetryConfigIsEmpty reports whether a universe's telemetry config has no
+// exporters of any kind. YBA returns an empty (or nil) TelemetryConfig when
+// nothing is configured, in which case there is nothing for delete to disable.
+func telemetryConfigIsEmpty(c *clientv2.TelemetryConfig) bool {
+	return c == nil ||
+		(c.AuditLogs == nil && c.QueryLogs == nil && c.Metrics == nil)
 }
 
 // dispatchExportTelemetryConfig submits the unified export-telemetry-configs

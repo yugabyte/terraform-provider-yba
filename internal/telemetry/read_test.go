@@ -164,6 +164,8 @@ func TestUniverseTelemetryConfigReadUniverseGone(t *testing.T) {
 		{"404", http.StatusNotFound, `{"error":"not found"}`},
 		{"400 cannot find universe", http.StatusBadRequest,
 			`{"error":"Cannot find universe uni-1"}`},
+		{"400 does not exist", http.StatusBadRequest,
+			`{"error":"universe uni-1 does not exist"}`},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -181,6 +183,176 @@ func TestUniverseTelemetryConfigReadUniverseGone(t *testing.T) {
 			}
 			if d.Id() != "" {
 				t.Errorf("resource must be removed from state, id=%q", d.Id())
+			}
+		})
+	}
+}
+
+// TestUniverseTelemetryConfigReadReplacesDrift is the drift regression the v2
+// GET Read exists for: state records exporter "A", but the server now reports
+// exporter "B" (retuned out-of-band). Read must REPLACE state with the server
+// value, not merge the two — otherwise a plan would never converge. This pins
+// the headline claim of the v2-Read rewrite.
+func TestUniverseTelemetryConfigReadReplacesDrift(t *testing.T) {
+	f := &fakeYBA{
+		getConfig: &clientv2.TelemetryConfig{
+			Metrics: &clientv2.MetricsTelemetrySpec{
+				Exporters: []clientv2.UniverseMetricsExporterConfig{
+					{ExporterUuid: "B"},
+				},
+			},
+		},
+	}
+	apiClient := newDetachTestClient(t, f)
+
+	res := ResourceUniverseTelemetryConfig()
+	d := schema.TestResourceDataRaw(t, res.Schema, map[string]interface{}{
+		"universe_uuid": "uni-1",
+		"metrics": []interface{}{map[string]interface{}{
+			"exporter": []interface{}{
+				map[string]interface{}{"exporter_uuid": "A"},
+			},
+		}},
+	})
+	d.SetId("uni-1")
+
+	if diags := resourceUniverseTelemetryConfigRead(
+		context.Background(), d, apiClient); diags.HasError() {
+		t.Fatalf("read returned diags: %v", diags)
+	}
+
+	exporters := d.Get("metrics.0.exporter").([]interface{})
+	if len(exporters) != 1 {
+		t.Fatalf("expected exactly one metrics exporter after read (replace, "+
+			"not merge), got %d: %v", len(exporters), exporters)
+	}
+	if got := d.Get("metrics.0.exporter.0.exporter_uuid"); got != "B" {
+		t.Errorf("read must replace state with the server value: "+
+			"exporter_uuid = %v want B", got)
+	}
+}
+
+// TestUniverseTelemetryConfigDelete covers the delete contract: a disable POST
+// is issued only when a config actually exists server-side, an already-empty
+// universe is left untouched (no needless rolling restart), and a universe that
+// has been deleted out-of-band is dropped from state without a POST.
+func TestUniverseTelemetryConfigDelete(t *testing.T) {
+	t.Run("disables when a config exists", func(t *testing.T) {
+		f := &fakeYBA{getConfig: &clientv2.TelemetryConfig{
+			Metrics: &clientv2.MetricsTelemetrySpec{
+				Exporters: []clientv2.UniverseMetricsExporterConfig{
+					{ExporterUuid: "exp-1"},
+				},
+			},
+		}}
+		apiClient := newDetachTestClient(t, f)
+
+		res := ResourceUniverseTelemetryConfig()
+		d := res.TestResourceData()
+		d.SetId("uni-1")
+
+		if diags := resourceUniverseTelemetryConfigDelete(
+			context.Background(), d, apiClient); diags.HasError() {
+			t.Fatalf("delete returned diags: %v", diags)
+		}
+		if d.Id() != "" {
+			t.Errorf("id must be cleared after delete, got %q", d.Id())
+		}
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		if len(f.configuredUnis) != 1 || f.configuredUnis[0] != "uni-1" {
+			t.Errorf("expected one disable POST to uni-1, got %v", f.configuredUnis)
+		}
+	})
+
+	t.Run("no-op when the universe has no config", func(t *testing.T) {
+		f := &fakeYBA{getConfig: &clientv2.TelemetryConfig{}}
+		apiClient := newDetachTestClient(t, f)
+
+		res := ResourceUniverseTelemetryConfig()
+		d := res.TestResourceData()
+		d.SetId("uni-1")
+
+		if diags := resourceUniverseTelemetryConfigDelete(
+			context.Background(), d, apiClient); diags.HasError() {
+			t.Fatalf("delete returned diags: %v", diags)
+		}
+		if d.Id() != "" {
+			t.Errorf("id must be cleared, got %q", d.Id())
+		}
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		if len(f.configuredUnis) != 0 {
+			t.Errorf("an already-empty universe must not be reconfigured on "+
+				"delete, got %v", f.configuredUnis)
+		}
+	})
+
+	t.Run("universe gone removes state without a POST", func(t *testing.T) {
+		f := &fakeYBA{
+			getStatus: http.StatusBadRequest,
+			getBody:   `{"error":"Cannot find universe uni-1"}`,
+		}
+		apiClient := newDetachTestClient(t, f)
+
+		res := ResourceUniverseTelemetryConfig()
+		d := res.TestResourceData()
+		d.SetId("uni-1")
+
+		if diags := resourceUniverseTelemetryConfigDelete(
+			context.Background(), d, apiClient); diags.HasError() {
+			t.Fatalf("delete should not error for a gone universe: %v", diags)
+		}
+		if d.Id() != "" {
+			t.Errorf("id must be cleared, got %q", d.Id())
+		}
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		if len(f.configuredUnis) != 0 {
+			t.Errorf("a gone universe must not be reconfigured, got %v",
+				f.configuredUnis)
+		}
+	})
+}
+
+// TestTelemetryProviderReadMissingMarkers exercises the RESOURCE-layer
+// recovery: when YBA reports a provider as missing through one of its non-404
+// shapes (400/500 with a "does not exist" or "Invalid Telemetry Provider UUID"
+// body), resourceTelemetryProviderRead must treat it as drift via
+// errors.Is(err, api.ErrTelemetryProviderMissing) and drop the resource from
+// state — not surface a hard error. A change to YBA's wording would surface
+// here as a failing test instead of silent breakage in prod.
+func TestTelemetryProviderReadMissingMarkers(t *testing.T) {
+	cases := []struct {
+		name   string
+		status int
+		body   string
+	}{
+		{"400 does not exist", http.StatusBadRequest,
+			`{"error":"telemetry provider P does not exist"}`},
+		{"400 invalid uuid", http.StatusBadRequest,
+			`{"error":"Invalid Telemetry Provider UUID: P"}`},
+		{"500 invalid uuid", http.StatusInternalServerError,
+			`{"error":"Invalid Telemetry Provider UUID: P"}`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f := &fakeYBA{getProviderStatus: tc.status, getProviderBody: tc.body}
+			apiClient := newDetachTestClient(t, f)
+
+			res := ResourceTelemetryProvider()
+			d := res.TestResourceData()
+			d.SetId("P")
+
+			diags := resourceTelemetryProviderRead(
+				context.Background(), d, apiClient)
+			if diags.HasError() {
+				t.Fatalf("read must treat a missing provider as drift, not an "+
+					"error: %v", diags)
+			}
+			if d.Id() != "" {
+				t.Errorf("missing provider must be removed from state, id=%q",
+					d.Id())
 			}
 		})
 	}

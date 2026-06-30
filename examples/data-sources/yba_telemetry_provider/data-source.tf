@@ -10,7 +10,6 @@ resource "yba_universe_telemetry_config" "example" {
 
   audit_logs {
     ysql_audit_config {
-      enabled = true
       classes = ["READ", "WRITE", "DDL"]
     }
 

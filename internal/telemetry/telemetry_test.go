@@ -37,7 +37,6 @@ func TestBuildExportTelemetryConfigSpec(t *testing.T) {
 			map[string]interface{}{
 				"ysql_audit_config": []interface{}{
 					map[string]interface{}{
-						"enabled":                true,
 						"classes":                []interface{}{"READ", "WRITE"},
 						"log_catalog":            true,
 						"log_client":             true,
@@ -343,7 +342,7 @@ func TestBuildTelemetryProviderConfigS3(t *testing.T) {
 				"file_prefix":                         "uni-",
 				"endpoint":                            "https://s3.us-east-1.amazonaws.com",
 				"role_arn":                            "arn:aws:iam::1:role/x",
-				"partition":                           "aws",
+				"partition":                           "minute",
 				"marshaler":                           "json",
 				"disable_ssl":                         true,
 				"force_path_style":                    true,
@@ -366,7 +365,7 @@ func TestBuildTelemetryProviderConfigS3(t *testing.T) {
 		"filePrefix":                     "uni-",
 		"endpoint":                       "https://s3.us-east-1.amazonaws.com",
 		"roleArn":                        "arn:aws:iam::1:role/x",
-		"partition":                      "aws",
+		"partition":                      "minute",
 		"marshaler":                      "json",
 		"disableSSL":                     true,
 		"forcePathStyle":                 true,

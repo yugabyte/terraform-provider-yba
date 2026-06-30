@@ -3,7 +3,6 @@ resource "yba_universe_telemetry_config" "main" {
 
   audit_logs {
     ysql_audit_config {
-      enabled                = true
       classes                = ["READ", "WRITE", "FUNCTION", "ROLE", "DDL", "MISC", "MISC_SET"]
       log_catalog            = true
       log_client             = true
@@ -17,7 +16,6 @@ resource "yba_universe_telemetry_config" "main" {
     }
 
     ycql_audit_config {
-      enabled             = true
       log_level           = "WARNING"
       included_categories = ["QUERY", "DML", "DDL", "DCL", "AUTH", "PREPARE", "ERROR", "OTHER"]
     }
@@ -32,7 +30,6 @@ resource "yba_universe_telemetry_config" "main" {
 
   query_logs {
     ysql_query_log_config {
-      enabled                    = true
       log_statement              = "ALL"
       log_min_error_statement    = "ERROR"
       log_error_verbosity        = "VERBOSE"
@@ -66,6 +63,8 @@ resource "yba_universe_telemetry_config" "main" {
       "OTEL_EXPORT",
     ]
 
+    # Repeat the exporter block per destination — each becomes one entry in the
+    # API's exporters array (metrics here fan out to both Prometheus and Datadog).
     exporter {
       exporter_uuid = yba_telemetry_provider.prometheus.id
       additional_tags = {
@@ -76,6 +75,10 @@ resource "yba_universe_telemetry_config" "main" {
       send_batch_timeout_seconds = 60
       memory_limit_mib           = 2048
       metrics_prefix             = "ybdb."
+    }
+    exporter {
+      exporter_uuid  = yba_telemetry_provider.datadog.id
+      metrics_prefix = "ddog."
     }
   }
 

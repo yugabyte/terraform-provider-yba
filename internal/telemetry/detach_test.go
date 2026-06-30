@@ -204,6 +204,12 @@ type fakeYBA struct {
 	getConfig *clientv2.TelemetryConfig
 	getStatus int
 	getBody   string
+
+	// getProviderStatus/getProviderBody, when getProviderStatus is non-zero,
+	// drive the GET telemetry_provider/{uuid} handler so the provider Read
+	// tests can exercise YBA's non-404 "missing provider" responses.
+	getProviderStatus int
+	getProviderBody   string
 }
 
 func (f *fakeYBA) handler() http.HandlerFunc {
@@ -248,6 +254,18 @@ func (f *fakeYBA) handler() http.HandlerFunc {
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`{"title":"Configure Telemetry","percent":100,` +
 				`"status":"Success","details":{"taskDetails":[]}}`))
+		case r.Method == http.MethodGet && strings.Contains(path, "/telemetry_provider/"):
+			if f.getProviderStatus != 0 {
+				w.WriteHeader(f.getProviderStatus)
+				_, _ = w.Write([]byte(f.getProviderBody))
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"uuid":   "P",
+				"name":   "p",
+				"config": map[string]interface{}{"type": "DATA_DOG"},
+			})
 		case r.Method == http.MethodDelete && strings.Contains(path, "/telemetry_provider/"):
 			f.deleteCalls++
 			if f.deleteFailFirst && f.deleteCalls == 1 {

@@ -45,6 +45,12 @@ const (
 // telemetryConfigBlocks lists every nested block that maps to a YBA
 // TelemetryProviderConfig type. Exactly one of them must be set on a
 // `yba_telemetry_provider` resource.
+//
+// Each block name is the snake_case Terraform spelling of the YBA provider
+// type discriminator (see the type* constants above): `data_dog` -> DATA_DOG,
+// `aws_cloud_watch` -> AWS_CLOUDWATCH, and so on. The names are a Terraform
+// convention, not literal API strings — telemetryProviderType maps each block
+// back to the exact value YBA expects.
 var telemetryConfigBlocks = []string{
 	"data_dog",
 	"otlp",
@@ -77,6 +83,12 @@ func ResourceTelemetryProvider() *schema.Resource {
 			"detach task reaches a terminal state, the provider itself is deleted. " +
 			"The universes themselves are never destroyed — only their " +
 			"OpenTelemetry collector configuration is updated.\n\n" +
+			"~> **Drift Note:** Read refreshes only `name`, `tags`, and the " +
+			"computed `type`. The config block (`data_dog`, `otlp`, …) is **not** " +
+			"reconciled against the server, because YBA masks credentials in its " +
+			"responses and every config field is `ForceNew` anyway. A config field " +
+			"edited out-of-band in the YBA UI is therefore not detected as drift — " +
+			"re-apply from Terraform to restore the intended configuration.\n\n" +
 			"~> **Security Note:** Credentials such as API keys, tokens, and secret " +
 			"access keys are stored in the Terraform state file (marked sensitive). " +
 			"Use a secure backend and restrict access to your state files.",
@@ -201,7 +213,6 @@ func ResourceTelemetryProvider() *schema.Resource {
 							Type:        schema.TypeString,
 							Optional:    true,
 							ForceNew:    true,
-							Sensitive:   true,
 							Description: "BasicAuth username (only used when auth_type=BasicAuth).",
 						},
 						"basic_auth_password": {
@@ -399,10 +410,11 @@ func ResourceTelemetryProvider() *schema.Resource {
 							Description: "Optional Loki organization (tenant) ID header.",
 						},
 						"basic_auth_username": {
-							Type:        schema.TypeString,
-							Optional:    true,
-							ForceNew:    true,
-							Sensitive:   true,
+							Type:     schema.TypeString,
+							Optional: true,
+							ForceNew: true,
+							// Not Sensitive: a username is not a credential, and
+							// hiding it from plan output only obscures typos.
 							Description: "BasicAuth username (only used when auth_type=BasicAuth).",
 						},
 						"basic_auth_password": {
@@ -798,6 +810,22 @@ func resourceTelemetryProviderCreate(
 		resourceTelemetryProviderRead(ctx, d, meta)...)
 }
 
+// resourceTelemetryProviderRead refreshes the resource's `name`, `tags`, and
+// computed `type` from YBA. It deliberately does NOT reconcile the polymorphic
+// config block (`data_dog`, `otlp`, `s3`, …) against the server, for two
+// reasons:
+//
+//   - YBA masks credential fields (api_key, secret_key, tokens, …) in its
+//     responses, so flattening the returned config back into state would
+//     produce a permanent spurious diff on every sensitive field.
+//   - Every config field in the schema is ForceNew, so any Terraform-driven
+//     config change already triggers destroy-and-recreate — there is no
+//     in-place update path that a config flatten would feed.
+//
+// The trade-off is that a config field edited out-of-band in the YBA UI is not
+// detected as drift (`terraform plan` reports no change). If a non-ForceNew
+// config field is ever added, this Read must grow a flatten helper for that
+// field. This limitation is also called out in the resource docs.
 func resourceTelemetryProviderRead(
 	ctx context.Context, d *schema.ResourceData, meta interface{},
 ) diag.Diagnostics {
@@ -911,8 +939,11 @@ func resourceTelemetryProviderDelete(
 	if err := apiClient.VanillaClient.DeleteTelemetryProvider(
 		ctx, apiClient.CustomerID, providerUUID, apiClient.APIKey); err != nil {
 		return diag.FromErr(fmt.Errorf(
-			"telemetry provider %s still could not be deleted after "+
-				"detaching from %d universe(s) total (%s): %w",
+			"telemetry provider %s keeps getting re-attached during deletion — "+
+				"another writer (a separate Terraform state, a YBA UI user, or "+
+				"an automation) is racing this destroy. It was detached from %d "+
+				"universe(s) total (%s) but YBA still reports it in use. Stop the "+
+				"other writer and retry the destroy: %w",
 			providerUUID, len(detached)+len(retryDetached),
 			formatUniverseRefs(append(detached, retryDetached...)), err))
 	}

@@ -12,4 +12,10 @@ description: |-
 
 {{ tffile "examples/resources/yba_universe_telemetry_config/resource.tf" }}
 
+### Multiple exporters per pipeline
+
+Each pipeline (`audit_logs`, `query_logs`, `metrics`) accepts the `exporter` block more than once. Repeat it to fan a pipeline out to multiple telemetry destinations — each block becomes one entry in the API's `exporters` array:
+
+{{ tffile "examples/resources/yba_universe_telemetry_config/multiple-exporters.tf" }}
+
 {{ .SchemaMarkdown | trimspace }}
