@@ -131,7 +131,7 @@ func connectSSHForDelete(ctx context.Context, user, ip, key string) (*ssh.Client
 		// that rather than masquerading it as an unreachable host.
 		return nil, ctx.Err()
 	}
-	return nil, fmt.Errorf("%w: %v", errSSHHostUnreachable, lastErr)
+	return nil, fmt.Errorf("%w: %w", errSSHHostUnreachable, lastErr)
 }
 
 func runCommand(ctx context.Context, client *ssh.Client, cmd string) (string, error) {
