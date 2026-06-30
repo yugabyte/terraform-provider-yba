@@ -6,6 +6,18 @@ on:
   pull_request:
   workflow_dispatch:
 
+# Serialize every short acctest run against the one standing YBA (YBA_HOST). The
+# runtime-config tests mutate GLOBAL-scope singleton keys on that instance, so two
+# runs in parallel clobber each other's values (and one run's destroy resets a key
+# another run is mid-assertion on). A fixed, branch-independent group makes every
+# PR and push queue behind whichever run holds it. Never cancel an in-progress run:
+# its create->destroy cleanup must finish, or it leaves dangling overrides on the
+# shared YBA. The long workflow is deliberately NOT in this group — its universe
+# tests isolate by random resource names and are safe to run concurrently.
+concurrency:
+  group: standing-yba-acctest
+  cancel-in-progress: false
+
 jobs:
   # CI has no cloud access. The test env comes from the ACCTEST_ENV secret and
   # runs against the standing fixture, which is kept running out of band.
