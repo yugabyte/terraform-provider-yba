@@ -16,6 +16,7 @@
 package installation
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -564,8 +565,7 @@ func TestGetInstallCommandsDataDirBranch(t *testing.T) {
 	last := cmds[len(cmds)-1]
 
 	wantSubstrings := []string{
-		`if [ -d /opt/yugabyte/data ]`,
-		`[ -n "$(sudo ls -A /opt/yugabyte/data 2>/dev/null)" ]`,
+		`if sudo test -d /opt/yugabyte/data/yb-platform; then`,
 		`yba-ctl install -f --without-data -s diskAvailability`,
 		`/opt/yba-ctl/yba-ctl start`,
 		`else sudo ./yba_installer_full-2024.1.0.0-b129/yba-ctl install -f -s diskAvailability;`,
@@ -638,20 +638,33 @@ func TestGetReconfigureCommands(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cmds := getReconfigureCommands(tt.version)
-			if len(cmds) != 2 {
-				t.Fatalf("expected 2 commands, got %d: %v", len(cmds), cmds)
+			cmds := getReconfigureCommands(tt.version, "linux", "x86_64")
+			if len(cmds) != 3 {
+				t.Fatalf("expected 3 commands, got %d: %v", len(cmds), cmds)
 			}
 			if !strings.Contains(cmds[0], "mv /tmp/settings.yml /opt/yba-ctl/yba-ctl.yml") {
 				t.Errorf("expected settings move first, got %q", cmds[0])
 			}
-			if !strings.Contains(cmds[1], "/opt/yba-ctl/yba-ctl reconfigure -f") {
-				t.Errorf("expected reconfigure second, got %q", cmds[1])
+			// On-demand bundle fetch guarded by a dir-existence check, so a
+			// reconfigure-only apply doesn't depend on the extracted bundle
+			// surviving in the SSH user's home from a prior apply.
+			folder := fmt.Sprintf("yba_installer_full-%s", tt.version)
+			if !strings.Contains(cmds[1], fmt.Sprintf("[ -d ~/%s ] ||", folder)) {
+				t.Errorf("expected guarded bundle fetch second, got %q", cmds[1])
 			}
-			hasEnv := strings.Contains(cmds[1], "YBA_MODE=dev")
+			if !strings.Contains(cmds[1], "curl -O") || !strings.Contains(cmds[1], "tar -xf") {
+				t.Errorf("expected curl/tar download in fetch guard, got %q", cmds[1])
+			}
+			if !strings.Contains(cmds[2], fmt.Sprintf("cd ~/%s", folder)) {
+				t.Errorf("expected cd into bundle dir, got %q", cmds[2])
+			}
+			if !strings.Contains(cmds[2], "/opt/yba-ctl/yba-ctl reconfigure -f") {
+				t.Errorf("expected reconfigure third, got %q", cmds[2])
+			}
+			hasEnv := strings.Contains(cmds[2], "YBA_MODE=dev")
 			if hasEnv != tt.expectedEnv {
 				t.Errorf("YBA_MODE=dev presence = %v, expected %v in %q",
-					hasEnv, tt.expectedEnv, cmds[1])
+					hasEnv, tt.expectedEnv, cmds[2])
 			}
 		})
 	}

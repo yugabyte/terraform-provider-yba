@@ -203,7 +203,12 @@ func ResourceYBAInstaller() *schema.Resource {
 			"installs with `--without-data` and starts services in place " +
 			"rather than reinitialising storage. Destroy runs `yba-ctl " +
 			"clean` only and leaves `/opt/yugabyte/data` intact; wiping " +
-			"the data directory is the operator's responsibility.",
+			"the data directory is the operator's responsibility. " +
+			"Consequently, destroying and recreating this resource on the " +
+			"**same** host preserves the existing data: the recreate detects " +
+			"the populated data directory and starts in place instead of " +
+			"performing a clean install. To force a fresh install, wipe " +
+			"`/opt/yugabyte/data` on the host between destroy and apply.",
 
 		CreateContext: resourceYBAInstallerCreate,
 		ReadContext:   resourceYBAInstallerRead,
@@ -603,7 +608,7 @@ func resourceYBAInstallerUpdate(
 				"reconfiguration")
 			return diag.FromErr(err)
 		}
-		commands = append(commands, getReconfigureCommands(oldVersion)...)
+		commands = append(commands, getReconfigureCommands(oldVersion, hostOS, hostArch)...)
 	}
 
 	if d.HasChange("yba_version") {
@@ -638,21 +643,24 @@ func resourceYBAInstallerDelete(
 		return diag.FromErr(err)
 	}
 
-	sshClient, err := newSSHClient(user, hostIPForSSH, pk)
+	sshClient, err := connectSSHForDelete(ctx, user, hostIPForSSH, pk)
 	if err != nil {
-		// The host may already be gone (e.g. caller wired
-		// lifecycle.replace_triggered_by to the cloud VM, so the VM
-		// was destroyed first; or the host is simply unreachable
-		// during the destroy half of a replace cycle). In every such
-		// case there's nothing to clean up remotely, and an empty
-		// host is the desired terminal state. Surface the reason and
-		// move on rather than blocking destroy on a side effect that
-		// can never succeed.
-		tflog.Warn(ctx, fmt.Sprintf(
-			"yba_installer: skipping remote cleanup, SSH to %s failed: %v",
-			hostIPForSSH, err))
-		d.SetId("")
-		return diags
+		if errors.Is(err, errSSHHostUnreachable) {
+			// After retrying within the budget we still couldn't open a TCP
+			// connection, so the host is effectively gone (e.g. caller wired
+			// lifecycle.replace_triggered_by to the cloud VM, so the VM was
+			// destroyed first). There's nothing to clean up remotely and an
+			// empty host is the desired terminal state.
+			tflog.Warn(ctx, fmt.Sprintf(
+				"yba_installer: host %s unreachable after retries, treating as "+
+					"already destroyed: %v", hostIPForSSH, err))
+			d.SetId("")
+			return diags
+		}
+		// The host answered (or the key is malformed): this is a real error
+		// the operator must fix before destroy can clean up the still-running
+		// YBA install. Fail loudly rather than silently dropping the resource.
+		return diag.FromErr(err)
 	}
 	defer func() { _ = sshClient.Close() }()
 
@@ -729,13 +737,16 @@ func getAddLicenseCommand(version, folder string) string {
 
 // getInstallCommands returns the ordered list of shell commands that
 // stage and run a fresh YBA install. The final command auto-detects
-// whether /opt/yugabyte/data is already populated (e.g. a separately
-// managed persistent data disk that survived an OS-image upgrade) and
-// picks the correct yba-ctl invocation. When the data dir is
-// non-empty the install runs with --without-data and is followed by
-// `yba-ctl start`; otherwise the original `install -f` path runs
-// untouched, which keeps callers that don't use a separate data disk
-// behaving exactly as before.
+// whether /opt/yugabyte/data already holds a previous YBA install (e.g.
+// a separately managed persistent data disk that survived an OS-image
+// upgrade) and picks the correct yba-ctl invocation. It probes for the
+// data/yb-platform directory that yba-ctl creates, rather than mere
+// directory non-emptiness, so a freshly formatted disk's mkfs artifacts
+// (notably ext4's lost+found) don't masquerade as existing data. When
+// YBA data is present the install runs with --without-data and is
+// followed by `yba-ctl start`; otherwise the original `install -f` path
+// runs untouched, which keeps callers that don't use a separate data
+// disk behaving exactly as before.
 func getInstallCommands(
 	version, os, arch string,
 	config bool, skipPreflightCheckList *[]string) []string {
@@ -758,8 +769,7 @@ func getInstallCommands(
 	}
 
 	cmds = append(cmds, fmt.Sprintf(
-		`if [ -d /opt/yugabyte/data ] && `+
-			`[ -n "$(sudo ls -A /opt/yugabyte/data 2>/dev/null)" ]; then `+
+		`if sudo test -d /opt/yugabyte/data/yb-platform; then `+
 			`%s --without-data%s && %s start; `+
 			`else %s%s; `+
 			`fi`,
@@ -769,12 +779,17 @@ func getInstallCommands(
 	return cmds
 }
 
-func getReconfigureCommands(version string) []string {
-	folder := fmt.Sprintf("yba_installer_full-%s", version)
+func getReconfigureCommands(version, os, arch string) []string {
+	folder, downloadCmds := getBundleDownloadCommands(version, os, arch)
 	// yba-ctl uses a relative glob to find perf_advisor-*.tar.gz inside the
 	// extracted installer bundle, so it must run with that directory as CWD.
+	// A reconfigure-only apply doesn't otherwise download the bundle, and the
+	// extracted dir may be absent (an imported resource, a cleaned/ephemeral
+	// home, or a different SSH user than the original install), so fetch it on
+	// demand when it's missing rather than failing the whole apply on `cd`.
 	return []string{
 		"sudo mv /tmp/settings.yml /opt/yba-ctl/yba-ctl.yml",
+		fmt.Sprintf("[ -d ~/%s ] || ( %s )", folder, strings.Join(downloadCmds, " && ")),
 		fmt.Sprintf(
 			"cd ~/%s && %s /opt/yba-ctl/yba-ctl reconfigure -f",
 			folder,
