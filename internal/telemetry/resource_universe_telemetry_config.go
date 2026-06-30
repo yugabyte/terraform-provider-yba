@@ -57,9 +57,36 @@ var allowedCollectionLevels = []string{"ALL", "NORMAL", "TABLE_OFF", "MINIMAL", 
 // so a typo is rejected at plan time with the valid set, instead of failing
 // mid-apply when YBA rejects the upgrade.
 var (
-	allowedYSQLAuditClasses    = []string{"READ", "WRITE", "FUNCTION", "ROLE", "DDL", "MISC", "MISC_SET"}
-	allowedYSQLAuditLogLevels  = []string{"DEBUG1", "DEBUG2", "DEBUG3", "DEBUG4", "DEBUG5", "INFO", "NOTICE", "WARNING", "LOG"}
-	allowedYCQLAuditCategories = []string{"QUERY", "DML", "DDL", "DCL", "AUTH", "PREPARE", "ERROR", "OTHER"}
+	allowedYSQLAuditClasses = []string{
+		"READ",
+		"WRITE",
+		"FUNCTION",
+		"ROLE",
+		"DDL",
+		"MISC",
+		"MISC_SET",
+	}
+	allowedYSQLAuditLogLevels = []string{
+		"DEBUG1",
+		"DEBUG2",
+		"DEBUG3",
+		"DEBUG4",
+		"DEBUG5",
+		"INFO",
+		"NOTICE",
+		"WARNING",
+		"LOG",
+	}
+	allowedYCQLAuditCategories = []string{
+		"QUERY",
+		"DML",
+		"DDL",
+		"DCL",
+		"AUTH",
+		"PREPARE",
+		"ERROR",
+		"OTHER",
+	}
 	allowedYCQLAuditLogLevels  = []string{"INFO", "WARNING", "ERROR"}
 	allowedQueryLogStatements  = []string{"ALL", "NONE", "DDL", "MOD"}
 	allowedQueryErrorVerbosity = []string{"VERBOSE", "TERSE", "DEFAULT"}
@@ -252,8 +279,11 @@ func auditLogsSchema() *schema.Schema {
 								Type:     schema.TypeSet,
 								Optional: true,
 								Elem: &schema.Schema{
-									Type:         schema.TypeString,
-									ValidateFunc: validation.StringInSlice(allowedYSQLAuditClasses, false),
+									Type: schema.TypeString,
+									ValidateFunc: validation.StringInSlice(
+										allowedYSQLAuditClasses,
+										false,
+									),
 								},
 								Description: "YSQL audit log classes (e.g. READ, WRITE, DDL, ROLE).",
 							},
@@ -268,10 +298,13 @@ func auditLogsSchema() *schema.Schema {
 								Default:  true,
 							},
 							"log_level": {
-								Type:         schema.TypeString,
-								Optional:     true,
-								Default:      "LOG",
-								ValidateFunc: validation.StringInSlice(allowedYSQLAuditLogLevels, false),
+								Type:     schema.TypeString,
+								Optional: true,
+								Default:  "LOG",
+								ValidateFunc: validation.StringInSlice(
+									allowedYSQLAuditLogLevels,
+									false,
+								),
 							},
 							"log_parameter": {
 								Type:     schema.TypeBool,
@@ -319,25 +352,34 @@ func auditLogsSchema() *schema.Schema {
 					Elem: &schema.Resource{
 						Schema: map[string]*schema.Schema{
 							"log_level": {
-								Type:         schema.TypeString,
-								Optional:     true,
-								Default:      "WARNING",
-								ValidateFunc: validation.StringInSlice(allowedYCQLAuditLogLevels, false),
+								Type:     schema.TypeString,
+								Optional: true,
+								Default:  "WARNING",
+								ValidateFunc: validation.StringInSlice(
+									allowedYCQLAuditLogLevels,
+									false,
+								),
 							},
 							"included_categories": {
 								Type:     schema.TypeSet,
 								Optional: true,
 								Elem: &schema.Schema{
-									Type:         schema.TypeString,
-									ValidateFunc: validation.StringInSlice(allowedYCQLAuditCategories, false),
+									Type: schema.TypeString,
+									ValidateFunc: validation.StringInSlice(
+										allowedYCQLAuditCategories,
+										false,
+									),
 								},
 							},
 							"excluded_categories": {
 								Type:     schema.TypeSet,
 								Optional: true,
 								Elem: &schema.Schema{
-									Type:         schema.TypeString,
-									ValidateFunc: validation.StringInSlice(allowedYCQLAuditCategories, false),
+									Type: schema.TypeString,
+									ValidateFunc: validation.StringInSlice(
+										allowedYCQLAuditCategories,
+										false,
+									),
 								},
 							},
 							"included_keyspaces": {
@@ -410,10 +452,13 @@ func queryLogsSchema() *schema.Schema {
 					Elem: &schema.Resource{
 						Schema: map[string]*schema.Schema{
 							"log_statement": {
-								Type:         schema.TypeString,
-								Optional:     true,
-								Default:      queryLogDefaults.LogStatement,
-								ValidateFunc: validation.StringInSlice(allowedQueryLogStatements, false),
+								Type:     schema.TypeString,
+								Optional: true,
+								Default:  queryLogDefaults.LogStatement,
+								ValidateFunc: validation.StringInSlice(
+									allowedQueryLogStatements,
+									false,
+								),
 							},
 							"log_min_error_statement": {
 								Type:     schema.TypeString,
@@ -421,10 +466,13 @@ func queryLogsSchema() *schema.Schema {
 								Default:  queryLogDefaults.LogMinErrorStatement,
 							},
 							"log_error_verbosity": {
-								Type:         schema.TypeString,
-								Optional:     true,
-								Default:      queryLogDefaults.LogErrorVerbosity,
-								ValidateFunc: validation.StringInSlice(allowedQueryErrorVerbosity, false),
+								Type:     schema.TypeString,
+								Optional: true,
+								Default:  queryLogDefaults.LogErrorVerbosity,
+								ValidateFunc: validation.StringInSlice(
+									allowedQueryErrorVerbosity,
+									false,
+								),
 							},
 							"log_duration": {
 								Type:     schema.TypeBool,

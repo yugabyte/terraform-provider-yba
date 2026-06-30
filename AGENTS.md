@@ -46,8 +46,18 @@ The build system is `GNUmakefile`. Key targets:
 | `make fmtTf` | `terraform fmt -recursive`. |
 | `make lint` | `golangci-lint` (`lint-go`) + docs lint (`lint-docs`). |
 
-Before declaring any change done: `go vet ./... && make test && make install`.
-For schema changes, also `make documents`.
+Before declaring any change done: `go vet ./... && make lint && make test &&
+make install`. For schema changes, also `make documents`.
+
+**critical: never commit or push code that fails `make lint`.** CI runs
+`golangci-lint run ./...` on every PR and a lint failure blocks the merge — it
+is trivial to catch locally first, so always run `make lint` (or at minimum
+`golangci-lint run ./...`) before committing. This applies to **every** Go file
+the change touches, including pre-existing lint issues in files you edit:
+`golines` (100-col) and `staticcheck` are the usual offenders. Auto-fix
+formatting with `golangci-lint fmt ./...` (or `make fmt`); for an unavoidable
+deprecated-API use, add a narrowly-scoped `//nolint:<linter> // <reason>` rather
+than leaving the build red.
 
 ## Resource Design (non-negotiable)
 
