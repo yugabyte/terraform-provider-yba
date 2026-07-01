@@ -36,6 +36,7 @@ import (
 	"github.com/yugabyte/terraform-provider-yba/internal/releases"
 	"github.com/yugabyte/terraform-provider-yba/internal/runtimeconfig"
 	"github.com/yugabyte/terraform-provider-yba/internal/storageconfig"
+	"github.com/yugabyte/terraform-provider-yba/internal/telemetry"
 	"github.com/yugabyte/terraform-provider-yba/internal/universe"
 	"github.com/yugabyte/terraform-provider-yba/internal/user"
 	"github.com/yugabyte/terraform-provider-yba/internal/utils"
@@ -106,6 +107,7 @@ func New() *schema.Provider {
 			"yba_universe_filter":        universe.UniverseFilter(),
 			"yba_universe_schema":        universe.DataSourceUniverseSchema(),
 			"yba_runtime_config":         runtimeconfig.DataSourceRuntimeConfig(),
+			"yba_telemetry_provider":     telemetry.DataSourceTelemetryProvider(),
 		},
 		ResourcesMap: map[string]*schema.Resource{
 			"yba_installer": installation.ResourceYBAInstaller(),
@@ -138,6 +140,10 @@ func New() *schema.Provider {
 
 			// Runtime configuration: set individual YBA runtime config keys (e.g. feature flags).
 			"yba_runtime_config": runtimeconfig.ResourceRuntimeConfig(),
+
+			// Telemetry / observability export resources for log and metric pipelines.
+			"yba_telemetry_provider":        telemetry.ResourceTelemetryProvider(),
+			"yba_universe_telemetry_config": telemetry.ResourceUniverseTelemetryConfig(),
 		},
 		ConfigureContextFunc: providerConfigure,
 	}
