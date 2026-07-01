@@ -26,10 +26,6 @@ import (
 	"github.com/yugabyte/terraform-provider-yba/internal/utils"
 )
 
-// TestUniverseTelemetryConfigReadFromGetAPI drives the rewritten Read end to
-// end through the v2 GetExportTelemetryConfig endpoint: the fake YBA returns a
-// populated TelemetryConfig and Read must flatten it into state. This is what
-// makes import work and replaces the old universeDetails spelunking.
 func TestUniverseTelemetryConfigReadFromGetAPI(t *testing.T) {
 	tags := map[string]string{"team": "obs"}
 	f := &fakeYBA{
@@ -84,15 +80,11 @@ func TestUniverseTelemetryConfigReadFromGetAPI(t *testing.T) {
 	if got := d.Get("metrics.0.exporter.0.metrics_prefix"); got != "yb." {
 		t.Errorf("metrics_prefix = %v", got)
 	}
-	// Query logs were not configured server-side, so the block must be empty.
 	if n := len(d.Get("query_logs").([]interface{})); n != 0 {
 		t.Errorf("query_logs must be empty when unset server-side, got %d", n)
 	}
 }
 
-// TestUniverseTelemetryConfigReadEmpty verifies that an empty TelemetryConfig
-// (YBA returns {} when nothing is configured) clears all blocks rather than
-// erroring — this is the drift signal when exporters are disabled out-of-band.
 func TestUniverseTelemetryConfigReadEmpty(t *testing.T) {
 	f := &fakeYBA{getConfig: &clientv2.TelemetryConfig{}}
 	apiClient := newDetachTestClient(t, f)
@@ -115,9 +107,6 @@ func TestUniverseTelemetryConfigReadEmpty(t *testing.T) {
 	}
 }
 
-// TestUniverseTelemetryConfigCreate drives Create end to end against the fake
-// YBA: build spec -> dispatch -> wait-for-task -> read-back. It asserts the
-// resource id is set and state is populated from the GET API, with no errors.
 func TestUniverseTelemetryConfigCreate(t *testing.T) {
 	f := &fakeYBA{
 		getConfig: &clientv2.TelemetryConfig{
@@ -152,9 +141,6 @@ func TestUniverseTelemetryConfigCreate(t *testing.T) {
 	}
 }
 
-// TestUniverseTelemetryConfigReadUniverseGone verifies that a deleted universe
-// (404, or YBA's non-404 "Cannot find universe" body) removes the resource
-// from state so Terraform plans a recreate instead of erroring forever.
 func TestUniverseTelemetryConfigReadUniverseGone(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -188,11 +174,8 @@ func TestUniverseTelemetryConfigReadUniverseGone(t *testing.T) {
 	}
 }
 
-// TestUniverseTelemetryConfigReadReplacesDrift is the drift regression the v2
-// GET Read exists for: state records exporter "A", but the server now reports
-// exporter "B" (retuned out-of-band). Read must REPLACE state with the server
-// value, not merge the two — otherwise a plan would never converge. This pins
-// the headline claim of the v2-Read rewrite.
+// Replace-not-merge regression: state has exporter A, server reports B; Read must
+// replace (exactly one exporter, = B), else a plan never converges.
 func TestUniverseTelemetryConfigReadReplacesDrift(t *testing.T) {
 	f := &fakeYBA{
 		getConfig: &clientv2.TelemetryConfig{
@@ -232,10 +215,6 @@ func TestUniverseTelemetryConfigReadReplacesDrift(t *testing.T) {
 	}
 }
 
-// TestUniverseTelemetryConfigDelete covers the delete contract: a disable POST
-// is issued only when a config actually exists server-side, an already-empty
-// universe is left untouched (no needless rolling restart), and a universe that
-// has been deleted out-of-band is dropped from state without a POST.
 func TestUniverseTelemetryConfigDelete(t *testing.T) {
 	t.Run("disables when a config exists", func(t *testing.T) {
 		f := &fakeYBA{getConfig: &clientv2.TelemetryConfig{
@@ -315,13 +294,8 @@ func TestUniverseTelemetryConfigDelete(t *testing.T) {
 	})
 }
 
-// TestTelemetryProviderReadMissingMarkers exercises the RESOURCE-layer
-// recovery: when YBA reports a provider as missing through one of its non-404
-// shapes (400/500 with a "does not exist" or "Invalid Telemetry Provider UUID"
-// body), resourceTelemetryProviderRead must treat it as drift via
-// errors.Is(err, api.ErrTelemetryProviderMissing) and drop the resource from
-// state — not surface a hard error. A change to YBA's wording would surface
-// here as a failing test instead of silent breakage in prod.
+// Missing-provider recovery: YBA's non-404 shapes (400/500 body markers) must drop
+// the resource from state via errors.Is, so a YBA wording change fails here not in prod.
 func TestTelemetryProviderReadMissingMarkers(t *testing.T) {
 	cases := []struct {
 		name   string

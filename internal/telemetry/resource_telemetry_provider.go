@@ -31,7 +31,6 @@ import (
 	"github.com/yugabyte/terraform-provider-yba/internal/utils"
 )
 
-// supported telemetry provider config types
 const (
 	typeDataDog         = "DATA_DOG"
 	typeOTLP            = "OTLP"
@@ -43,15 +42,6 @@ const (
 	typeS3              = "S3"
 )
 
-// telemetryConfigBlocks lists every nested block that maps to a YBA
-// TelemetryProviderConfig type. Exactly one of them must be set on a
-// `yba_telemetry_provider` resource.
-//
-// Each block name is the snake_case Terraform spelling of the YBA provider
-// type discriminator (see the type* constants above): `data_dog` -> DATA_DOG,
-// `aws_cloud_watch` -> AWS_CLOUDWATCH, and so on. The names are a Terraform
-// convention, not literal API strings — telemetryProviderType maps each block
-// back to the exact value YBA expects.
 var telemetryConfigBlocks = []string{
 	"data_dog",
 	"otlp",
@@ -64,9 +54,8 @@ var telemetryConfigBlocks = []string{
 }
 
 // ResourceTelemetryProvider exposes the YBA telemetry provider as a Terraform
-// resource. Telemetry providers are reusable destinations (DataDog,
-// OpenTelemetry-compatible endpoints, AWS CloudWatch, etc.) that any
-// universe can attach via `yba_universe_telemetry_config`.
+// resource: a reusable export destination universes attach via
+// yba_universe_telemetry_config.
 func ResourceTelemetryProvider() *schema.Resource {
 	return &schema.Resource{
 		Description: experimentalAdmonition +
@@ -98,9 +87,8 @@ func ResourceTelemetryProvider() *schema.Resource {
 		ReadContext:   resourceTelemetryProviderRead,
 		DeleteContext: resourceTelemetryProviderDelete,
 
-		// Catch the OTLP/Loki conditional-config footguns at plan time rather
-		// than letting YBA reject them after the credentials have already
-		// been committed to the Terraform state file.
+		// Catch OTLP/Loki config footguns at plan time, before YBA rejects them
+		// after credentials are already in state.
 		CustomizeDiff: validateTelemetryProviderConfig,
 
 		Importer: &schema.ResourceImporter{
@@ -110,9 +98,6 @@ func ResourceTelemetryProvider() *schema.Resource {
 		Timeouts: &schema.ResourceTimeout{
 			Create: schema.DefaultTimeout(5 * time.Minute),
 			Read:   schema.DefaultTimeout(5 * time.Minute),
-			// Delete may have to wait for one rolling-upgrade task per
-			// universe currently referencing this provider. See
-			// telemetryUpgradeTimeout for the rationale.
 			Delete: schema.DefaultTimeout(telemetryUpgradeTimeout),
 		},
 
@@ -130,13 +115,11 @@ func ResourceTelemetryProvider() *schema.Resource {
 				Description: "Optional string tags associated with the configuration.",
 				Elem:        &schema.Schema{Type: schema.TypeString},
 			},
-			// Computed fields
 			"type": {
 				Type:        schema.TypeString,
 				Computed:    true,
 				Description: "Telemetry provider type, derived from the configured block.",
 			},
-			// Polymorphic config blocks. Exactly one must be set.
 			"data_dog": {
 				Type:         schema.TypeList,
 				Optional:     true,
@@ -414,8 +397,7 @@ func ResourceTelemetryProvider() *schema.Resource {
 							Type:     schema.TypeString,
 							Optional: true,
 							ForceNew: true,
-							// Not Sensitive: a username is not a credential, and
-							// hiding it from plan output only obscures typos.
+							// Not Sensitive: a username isn't a credential.
 							Description: "BasicAuth username (only used when auth_type=BasicAuth).",
 						},
 						"basic_auth_password": {
@@ -564,17 +546,8 @@ func ResourceTelemetryProvider() *schema.Resource {
 	}
 }
 
-// validateTelemetryProviderConfig runs at plan time (CustomizeDiff) and
-// rejects the OTLP/Loki misconfigurations that YBA would otherwise only reject
-// after Terraform has already written the (sensitive) credentials into state.
-// Each check mirrors a rule in YBA's OTLPConfig/LokiConfig validateConfigFields
-// so the message points at the exact field the user got wrong:
-//
-//   - BasicAuth requires both basic_auth credential fields (OTLP and Loki).
-//   - BearerToken requires bearer_token (OTLP only).
-//   - logs_endpoint / metrics_endpoint are only honoured for protocol = HTTP;
-//     setting them under the default gRPC protocol is a silent no-op on the
-//     server side, so we surface it as an explicit mistake.
+// validateTelemetryProviderConfig rejects OTLP/Loki misconfigs at plan time,
+// before YBA rejects them once credentials are already in state.
 func validateTelemetryProviderConfig(
 	_ context.Context, d *schema.ResourceDiff, _ interface{},
 ) error {
@@ -615,9 +588,6 @@ func validateTelemetryProviderConfig(
 	return nil
 }
 
-// telemetryProviderType returns the YBA ProviderType enum value for the
-// nested config block that is set in the resource data, or an error if no
-// supported block is configured.
 func telemetryProviderType(d *schema.ResourceData) (string, error) {
 	for _, block := range telemetryConfigBlocks {
 		if v, ok := d.GetOk(block); ok {
@@ -646,9 +616,6 @@ func telemetryProviderType(d *schema.ResourceData) (string, error) {
 	return "", fmt.Errorf("no telemetry provider config block set")
 }
 
-// buildTelemetryProviderConfig converts the configured nested block into the
-// JSON shape that YBA expects. The map is round-trippable so the read flow
-// can populate the resource state from the API response.
 func buildTelemetryProviderConfig(d *schema.ResourceData) (map[string]interface{}, error) {
 	pType, err := telemetryProviderType(d)
 	if err != nil {
@@ -811,22 +778,9 @@ func resourceTelemetryProviderCreate(
 		resourceTelemetryProviderRead(ctx, d, meta)...)
 }
 
-// resourceTelemetryProviderRead refreshes the resource's `name`, `tags`, and
-// computed `type` from YBA. It deliberately does NOT reconcile the polymorphic
-// config block (`data_dog`, `otlp`, `s3`, …) against the server, for two
-// reasons:
-//
-//   - YBA masks credential fields (api_key, secret_key, tokens, …) in its
-//     responses, so flattening the returned config back into state would
-//     produce a permanent spurious diff on every sensitive field.
-//   - Every config field in the schema is ForceNew, so any Terraform-driven
-//     config change already triggers destroy-and-recreate — there is no
-//     in-place update path that a config flatten would feed.
-//
-// The trade-off is that a config field edited out-of-band in the YBA UI is not
-// detected as drift (`terraform plan` reports no change). If a non-ForceNew
-// config field is ever added, this Read must grow a flatten helper for that
-// field. This limitation is also called out in the resource docs.
+// resourceTelemetryProviderRead refreshes only name/tags/type. It does NOT
+// reconcile the config block: YBA masks credentials (would diff forever) and
+// every field is ForceNew, so out-of-band config edits aren't detected as drift.
 func resourceTelemetryProviderRead(
 	ctx context.Context, d *schema.ResourceData, meta interface{},
 ) diag.Diagnostics {
@@ -835,9 +789,6 @@ func resourceTelemetryProviderRead(
 	provider, _, err := apiClient.VanillaClient.GetTelemetryProvider(
 		ctx, apiClient.CustomerID, d.Id(), apiClient.APIKey)
 	if err != nil {
-		// Resource was deleted out-of-band (or YBA reports it as missing
-		// via one of its non-404 shapes); drop from state so Terraform
-		// re-plans a recreate on the next apply.
 		if errors.Is(err, api.ErrTelemetryProviderMissing) {
 			tflog.Warn(ctx, fmt.Sprintf(
 				"telemetry provider %q not found, removing from state", d.Id()))
@@ -860,30 +811,10 @@ func resourceTelemetryProviderRead(
 	return nil
 }
 
-// resourceTelemetryProviderDelete tears down a telemetry provider.
-//
-// YBA refuses to delete a provider that is still wired into any universe's
-// audit / query / metrics exporter list ("Cannot delete Telemetry Provider
-// 'X', as it is in use."). Because YBA does not support editing a provider
-// in place, ANY change to a `yba_telemetry_provider` config field becomes a
-// destroy-and-recreate plan; if that provider is still attached to a
-// universe Terraform's destroy step would fail before the create + universe
-// re-attach steps even get a chance to run.
-//
-// To make destroy-and-recreate (and plain destroys) reliable we proactively
-// detach the provider from every referencing universe BEFORE issuing the
-// YBA delete. The detach goes through the unified
-// `/api/v2/.../export-telemetry-configs` endpoint and triggers one rolling
-// upgrade per affected universe; the function blocks until each task
-// completes. The universes themselves are never destroyed — only their
-// OpenTelemetry collector config is updated.
-//
-// If YBA still rejects the delete after a successful detach (an external
-// actor must have re-attached the provider in the brief gap between our
-// detach and our delete) we re-list universes once more and, if any
-// references remain, repeat the detach + delete cycle exactly one more
-// time. This avoids substring-matching YBA's "as it is in use" error
-// message and instead trusts our own preemptive view of universe state.
+// resourceTelemetryProviderDelete detaches the provider from every referencing
+// universe before deleting it, since YBA rejects deleting an in-use provider. On
+// a re-attach race (delete still rejected) it re-detaches and retries once,
+// instead of substring-matching YBA's "in use" error.
 func resourceTelemetryProviderDelete(
 	ctx context.Context, d *schema.ResourceData, meta interface{},
 ) diag.Diagnostics {
@@ -913,11 +844,8 @@ func resourceTelemetryProviderDelete(
 		return nil
 	}
 
-	// YBA still rejected the delete. Verify by re-listing whether any
-	// universe references this provider before assuming it is the
-	// "in use" race we know how to recover from. If no universe still
-	// references it, surface the original error untouched — it is
-	// something else entirely (permission revoked, YBA outage, …).
+	// Delete rejected. Re-list: if nothing references the provider, this isn't
+	// the in-use race — surface the original error verbatim.
 	retryDetached, retryErr := detachTelemetryProviderFromUniverses(
 		ctx, apiClient, providerUUID, timeout)
 	if retryErr != nil {
@@ -929,8 +857,6 @@ func resourceTelemetryProviderDelete(
 			formatUniverseRefs(retryDetached), retryErr))
 	}
 	if len(retryDetached) == 0 {
-		// Nothing to detach this time round — the original delete
-		// failure is unrelated to the in-use race. Surface verbatim.
 		return diag.FromErr(deleteErr)
 	}
 	tflog.Warn(ctx, fmt.Sprintf(
@@ -952,9 +878,6 @@ func resourceTelemetryProviderDelete(
 	return nil
 }
 
-// formatUniverseRefs renders a slice of universeRef as a human-readable
-// "name (uuid), name (uuid)" string for inclusion in error messages and
-// log lines.
 func formatUniverseRefs(refs []universeRef) string {
 	if len(refs) == 0 {
 		return "(none)"
@@ -966,12 +889,8 @@ func formatUniverseRefs(refs []universeRef) string {
 	return strings.Join(parts, ", ")
 }
 
-// firstMap returns the first map element from a TypeList of MaxItems=1 nested
-// blocks, or an empty map when the block is unset. It is a nil-tolerant adapter
-// over utils.MapFromSingletonList (which is the canonical singleton-list-to-map
-// helper but panics on a nil/non-list/non-map input): the guards below screen
-// out every shape the sharp helper cannot take, so the extraction itself lives
-// in exactly one place.
+// firstMap returns the first map from a MaxItems=1 TypeList, or an empty map.
+// Nil-tolerant guard over utils.MapFromSingletonList, which panics on bad input.
 func firstMap(in interface{}) map[string]interface{} {
 	list, ok := in.([]interface{})
 	if !ok || len(list) == 0 {
@@ -983,7 +902,6 @@ func firstMap(in interface{}) map[string]interface{} {
 	return utils.MapFromSingletonList(list)
 }
 
-// stringValue safely extracts a string from an interface{} value.
 func stringValue(in interface{}) string {
 	if in == nil {
 		return ""

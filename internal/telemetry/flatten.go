@@ -19,16 +19,11 @@ import (
 	clientv2 "github.com/yugabyte/platform-go-client/v2"
 )
 
-// The flatten helpers convert the typed v2 TelemetryConfig returned by the
-// unified GetExportTelemetryConfig endpoint back into the nested-map shapes
-// Terraform's schema expects. They are the exact mirror of the build* helpers
-// in resource_universe_telemetry_config.go: both operate on the same
-// platform-go-client/v2 types, so the read and write paths stay in lock-step
-// (a field added to one is an obvious omission in the other).
-//
-// Each top-level flattener returns nil for a nil section so the caller can
-// d.Set the empty slice and clear the block — that is what surfaces an
-// out-of-band "exporting disabled" change as drift instead of hiding it.
+// flatten helpers convert the v2 TelemetryConfig from GetExportTelemetryConfig
+// back into the nested-map shapes Terraform's schema expects — the mirror of the
+// build* helpers in resource_universe_telemetry_config.go (same v2 types, so
+// read/write stay in lock-step). Each returns nil for a nil section so the caller
+// clears the block, surfacing an "export disabled" change as drift.
 
 func flattenAuditLogsSpec(a *clientv2.AuditLogsTelemetrySpec) []interface{} {
 	if a == nil {
@@ -36,9 +31,8 @@ func flattenAuditLogsSpec(a *clientv2.AuditLogsTelemetrySpec) []interface{} {
 	}
 	out := map[string]interface{}{}
 	if y := a.YsqlAuditConfig; y != nil {
-		// `enabled` is intentionally not surfaced: it is readOnly in the API and
-		// derived from this block's presence, so exposing it would create a
-		// perpetual diff (server always reports true). See buildYsqlAuditConfig.
+		// `enabled` not surfaced: readOnly + derived from block presence, so
+		// exposing it means a perpetual diff. See buildYsqlAuditConfig.
 		out["ysql_audit_config"] = []interface{}{map[string]interface{}{
 			"classes":                stringSliceToInterface(y.Classes),
 			"log_catalog":            y.LogCatalog,
@@ -149,9 +143,6 @@ func flattenMetricsSpec(m *clientv2.MetricsTelemetrySpec) []interface{} {
 	return []interface{}{out}
 }
 
-// addBatchingFields writes the OTel batching/memory fields onto an exporter
-// map when present. Shared by the query-log and metrics exporters, which
-// carry the identical batching field set.
 func addBatchingFields(
 	entry map[string]interface{},
 	sendBatchMaxSize, sendBatchSize, sendBatchTimeoutSeconds,
@@ -182,8 +173,6 @@ func stringSliceToInterface(in []string) []interface{} {
 	return out
 }
 
-// tagsToInterface flattens the *map[string]string additional_tags shape used
-// by every v2 exporter type into the map[string]interface{} Terraform stores.
 func tagsToInterface(in *map[string]string) map[string]interface{} {
 	out := map[string]interface{}{}
 	if in == nil {

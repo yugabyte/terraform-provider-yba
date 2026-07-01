@@ -26,17 +26,14 @@ import (
 	"github.com/yugabyte/terraform-provider-yba/internal/api"
 )
 
-// diffErr runs the resource's full diff (which executes CustomizeDiff) against
-// a raw HCL-shaped config with no prior state, returning the error
-// CustomizeDiff produced (nil when the config is accepted). This is the only
-// way to exercise CustomizeDiff the way Terraform core does at plan time.
+// diffErr runs the full diff (executing CustomizeDiff) the way plan does,
+// returning CustomizeDiff's error (nil when accepted).
 func diffErr(t *testing.T, res *schema.Resource, raw map[string]interface{}) error {
 	t.Helper()
 	return diffErrMeta(t, res, raw, nil)
 }
 
-// diffErrMeta is diffErr with an explicit provider meta, so cross-resource
-// CustomizeDiff checks (which read the *api.APIClient meta) can be exercised.
+// diffErrMeta is diffErr with explicit provider meta, for the cross-resource checks.
 func diffErrMeta(
 	t *testing.T, res *schema.Resource, raw map[string]interface{}, meta interface{},
 ) error {
@@ -46,11 +43,7 @@ func diffErrMeta(
 	return err
 }
 
-// TestValidateTelemetryProviderAuthPlanTime drives the conditional-auth
-// CustomizeDiff through the SDK exactly as `terraform plan` would. The whole
-// point of this guardrail is that missing credentials are caught BEFORE the
-// (sensitive) values are written to state and shipped to YBA, so a plain
-// build-path test would not prove the contract.
+// Missing credentials must be caught at plan time, before sensitive values reach state.
 func TestValidateTelemetryProviderAuthPlanTime(t *testing.T) {
 	res := ResourceTelemetryProvider()
 	cases := []struct {
@@ -203,11 +196,7 @@ func TestValidateTelemetryProviderAuthPlanTime(t *testing.T) {
 	}
 }
 
-// TestValidateNoDuplicateExportersPlanTime proves that the same provider
-// listed twice inside one pipeline is rejected at plan time, while sharing a
-// provider ACROSS pipelines (audit + metrics) on the same universe stays
-// legal — a provider whose type supports both logs and metrics is a perfectly
-// valid single destination for both.
+// Same provider twice in one pipeline is rejected; shared across pipelines stays legal.
 func TestValidateNoDuplicateExportersPlanTime(t *testing.T) {
 	res := ResourceUniverseTelemetryConfig()
 	exp := func(uuids ...string) []interface{} {
@@ -303,12 +292,7 @@ func TestValidateNoDuplicateExportersPlanTime(t *testing.T) {
 	}
 }
 
-// TestSingleManagerPerUniversePlanTime proves the duplicate-universe guard:
-// two yba_universe_telemetry_config resources that claim the same universe in
-// one Terraform run (they share the provider meta) are rejected at plan time,
-// while a single resource — or two resources for different universes — is
-// accepted. A re-plan of the identical config is also accepted, so the guard
-// never false-positives when Terraform re-evaluates the same resource.
+// Two resources claiming one universe are rejected; re-planning the same one is not.
 func TestSingleManagerPerUniversePlanTime(t *testing.T) {
 	res := ResourceUniverseTelemetryConfig()
 	audit := func(uuid string) map[string]interface{} {
@@ -337,8 +321,7 @@ func TestSingleManagerPerUniversePlanTime(t *testing.T) {
 		if err := diffErrMeta(t, res, audit("a"), meta); err != nil {
 			t.Fatalf("first resource should be accepted, got: %v", err)
 		}
-		// A second, differently-configured resource for the same universe is
-		// the foot-gun: it would overwrite the first on every apply.
+		// Second, differently-configured resource for the same universe: the foot-gun.
 		err := diffErrMeta(t, res, metrics("m"), meta)
 		if err == nil {
 			t.Fatal("expected the second resource for uni-1 to be rejected")
@@ -382,9 +365,6 @@ func TestSingleManagerPerUniversePlanTime(t *testing.T) {
 	})
 }
 
-// nestedValidate returns the ValidateFunc registered on a field inside a
-// MaxItems=1 nested block, failing the test if either the block or the field
-// is missing or carries no ValidateFunc.
 func nestedValidate(
 	t *testing.T, res *schema.Resource, block, field string,
 ) schema.SchemaValidateFunc { //nolint:staticcheck // SDKv2 ValidateFunc type
@@ -407,10 +387,7 @@ func nestedValidate(
 	return f.ValidateFunc
 }
 
-// TestOTLPAuthTypeEnum codifies the bug fix: the YBA AuthCredentials.AuthType
-// enum is {BasicAuth, NoAuth, BearerToken}. The original byoc code accepted
-// "BearerAuth", which YBA rejects as an invalid enum, so bearer auth never
-// worked. If anyone reverts the value this test fails.
+// OTLP auth_type accepts BearerToken; the similar-looking "BearerAuth" is rejected.
 func TestOTLPAuthTypeEnum(t *testing.T) {
 	vf := nestedValidate(t, ResourceTelemetryProvider(), "otlp", "auth_type")
 	for _, ok := range []string{"NoAuth", "BasicAuth", "BearerToken"} {
@@ -418,14 +395,12 @@ func TestOTLPAuthTypeEnum(t *testing.T) {
 			t.Errorf("auth_type %q should be valid, got %v", ok, errs)
 		}
 	}
-	// The old, broken value must be rejected.
 	if _, errs := vf("BearerAuth", "auth_type"); len(errs) == 0 {
 		t.Error("auth_type \"BearerAuth\" must be rejected (YBA enum is BearerToken)")
 	}
 }
 
-// TestLokiAuthTypeEnum verifies Loki rejects BearerToken — YBA's LokiConfig
-// only supports NoAuth and BasicAuth.
+// Loki supports only NoAuth and BasicAuth — BearerToken must be rejected.
 func TestLokiAuthTypeEnum(t *testing.T) {
 	vf := nestedValidate(t, ResourceTelemetryProvider(), "loki", "auth_type")
 	for _, ok := range []string{"NoAuth", "BasicAuth"} {
@@ -438,10 +413,8 @@ func TestLokiAuthTypeEnum(t *testing.T) {
 	}
 }
 
-// TestS3PartitionEnum codifies the second bug fix: YBA's S3Config.partition is
-// a time-bucket granularity enum {hour, minute}, NOT an AWS partition. The
-// original byoc docs advertised "aws"/"aws-us-gov"/"aws-cn", every one of
-// which YBA rejects.
+// S3 partition is a time bucket (hour/minute), not an AWS partition
+// ("aws"/"aws-us-gov"/"aws-cn" are rejected).
 func TestS3PartitionEnum(t *testing.T) {
 	vf := nestedValidate(t, ResourceTelemetryProvider(), "s3", "partition")
 	for _, ok := range []string{"hour", "minute"} {
@@ -456,8 +429,6 @@ func TestS3PartitionEnum(t *testing.T) {
 	}
 }
 
-// TestOTLPTimeoutPositive verifies the timeout_seconds field rejects
-// non-positive values at plan time (YBA: "timeoutSeconds must be positive.").
 func TestOTLPTimeoutPositive(t *testing.T) {
 	vf := nestedValidate(t, ResourceTelemetryProvider(), "otlp", "timeout_seconds")
 	for _, bad := range []int{0, -1} {
@@ -470,9 +441,6 @@ func TestOTLPTimeoutPositive(t *testing.T) {
 	}
 }
 
-// TestMetricsEnums guards the universe-config enum fields: collection_level
-// must accept every MetricCollectionLevel value (including TABLE_OFF, which is
-// real) and scrape_config_targets must reject an unknown target.
 func TestMetricsEnums(t *testing.T) {
 	res := ResourceUniverseTelemetryConfig()
 	metricsElem := res.Schema["metrics"].Elem.(*schema.Resource)
@@ -501,19 +469,13 @@ func TestMetricsEnums(t *testing.T) {
 		t.Error("scrape_config_targets \"BOGUS_EXPORT\" must be rejected")
 	}
 
-	// scrape_config_targets must be Computed: YBA fills an empty set with all
-	// supported targets, so an unset config has to absorb that server value
-	// rather than perpetually diff against it.
+	// Computed: YBA fills an empty set with all targets, so unset must absorb it, not diff.
 	if !metricsElem.Schema["scrape_config_targets"].Computed {
 		t.Error("scrape_config_targets must be Computed so the YBA-filled " +
 			"\"all targets\" default does not perpetually diff")
 	}
 }
 
-// TestAuditAndQueryLogEnums guards the plan-time enum validation added for the
-// audit and query-log string fields, mirroring the YBA OpenAPI enums. A typo
-// should be rejected at plan time with the valid set rather than failing
-// mid-apply when YBA rejects the rolling upgrade.
 func TestAuditAndQueryLogEnums(t *testing.T) {
 	res := ResourceUniverseTelemetryConfig()
 	auditElem := res.Schema["audit_logs"].Elem.(*schema.Resource)
@@ -524,9 +486,7 @@ func TestAuditAndQueryLogEnums(t *testing.T) {
 
 	cases := []struct {
 		name string
-		// schema.SchemaValidateFunc is the (non-Diag) type every ValidateFunc in
-		// this provider uses (validation.StringInSlice / IntBetween all return
-		// it), so the test must reference it to read .ValidateFunc back.
+		// SchemaValidateFunc is the (deprecated) type this provider's ValidateFuncs return.
 		vf   schema.SchemaValidateFunc //nolint:staticcheck // SA1019: matches the schema's ValidateFunc type
 		good string
 		bad  string

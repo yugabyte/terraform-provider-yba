@@ -28,14 +28,10 @@ import (
 	"github.com/yugabyte/terraform-provider-yba/internal/utils"
 )
 
-// TelemetryProvider mirrors the YBA TelemetryProvider model. The `config`
-// field is intentionally a free-form map because the YBA OpenAPI v1 spec
-// declares `TelemetryProviderConfig` as a polymorphic discriminator-only
-// schema (the generated platform-go-client therefore only contains the
-// `type` field). YBA picks a concrete config schema at runtime from the
-// embedded `type` value (DATA_DOG, OTLP, AWS_CLOUDWATCH, GCP_CLOUD_MONITORING,
-// SPLUNK, LOKI, DYNATRACE, S3), so we round-trip raw JSON to preserve the
-// provider-specific fields.
+// TelemetryProvider mirrors the YBA TelemetryProvider model. config is a
+// free-form map: YBA's v1 spec declares TelemetryProviderConfig as
+// discriminator-only (generated client has type only), and resolves the concrete
+// schema from type at runtime — so we round-trip raw JSON to keep type-specific fields.
 type TelemetryProvider struct {
 	UUID         string                 `json:"uuid,omitempty"`
 	CustomerUUID string                 `json:"customerUUID,omitempty"`
@@ -44,29 +40,14 @@ type TelemetryProvider struct {
 	Tags         map[string]string      `json:"tags,omitempty"`
 }
 
-// ErrTelemetryProviderMissing is the typed sentinel returned when YBA reports
-// a telemetry provider as already gone. YBA delivers this signal across more
-// than one HTTP shape (a 404, or a 400 carrying one of the body markers
-// below), all of which collapse into this sentinel so that callers can
-// `errors.Is` against a single value instead of substring-matching response
-// bodies themselves.
+// ErrTelemetryProviderMissing is the typed sentinel for "provider already gone".
+// YBA signals this as a 404 or a 400 with a body marker below; all collapse here
+// so callers errors.Is instead of substring-matching bodies.
 var ErrTelemetryProviderMissing = errors.New("telemetry provider does not exist")
 
-// telemetryProviderMissingMarkers list the substrings YBA returns in the
-// response body when the requested telemetry provider has already been
-// removed. YBA returns these as HTTP 400 (BAD_REQUEST), never 404, so the
-// status alone cannot distinguish "missing" from other 400s — body matching is
-// unavoidable. Each marker below is the exact, unique phrase YBA emits for a
-// missing provider, verified against the server source so they cannot collide
-// with the sibling "...as it is in use." delete rejection (which contains
-// neither marker):
-//   - GET:    TelemetryProviderService.getOrBadRequest →
-//     "Invalid Telemetry Provider UUID: <uuid>"
-//   - DELETE: TelemetryProviderController.deleteTelemetryProvider →
-//     "Telemetry Provider '<uuid>' does not exist."
-//
-// Keep this list close to the typed sentinel above so callers never have to
-// reason about the wire format.
+// telemetryProviderMissingMarkers are body substrings YBA returns (as 400, not
+// 404) when a provider is already gone, so body matching is unavoidable. Verified
+// against server source; neither collides with the "...as it is in use." rejection.
 var telemetryProviderMissingMarkers = []string{
 	"does not exist",                  // DELETE path: "Telemetry Provider '<uuid>' does not exist."
 	"Invalid Telemetry Provider UUID", // GET path: "Invalid Telemetry Provider UUID: <uuid>"
@@ -100,12 +81,9 @@ func (vc *VanillaClient) CreateTelemetryProvider(
 	return &out, nil
 }
 
-// GetTelemetryProvider fetches a single telemetry provider by UUID.
-//
-// The lookup is idempotent against missing providers: a 404, or a 4xx/5xx
-// whose body matches one of telemetryProviderMissingMarkers, returns
-// (nil, resp, ErrTelemetryProviderMissing) so the resource's read flow can
-// drop the resource from state by calling errors.Is.
+// GetTelemetryProvider fetches a provider by UUID. Missing providers (404, or a
+// 4xx/5xx body matching telemetryProviderMissingMarkers) return
+// ErrTelemetryProviderMissing so Read can drop it from state.
 func (vc *VanillaClient) GetTelemetryProvider(
 	ctx context.Context, cUUID, providerUUID, token string,
 ) (*TelemetryProvider, *http.Response, error) {
@@ -135,10 +113,8 @@ func (vc *VanillaClient) GetTelemetryProvider(
 	return &out, resp, nil
 }
 
-// ListTelemetryProviders returns every telemetry provider configured for the
-// customer. Sensitive config values are masked by YBA in this response, so it
-// is only suitable for lookups by name / metadata (the data source), not for
-// reconstructing a provider's secrets.
+// ListTelemetryProviders returns every provider for the customer. YBA masks
+// sensitive config here, so it's only good for name/metadata lookups, not secrets.
 func (vc *VanillaClient) ListTelemetryProviders(
 	ctx context.Context, cUUID, token string,
 ) ([]TelemetryProvider, error) {
@@ -162,11 +138,8 @@ func (vc *VanillaClient) ListTelemetryProviders(
 	return out, nil
 }
 
-// DeleteTelemetryProvider deletes a telemetry provider by UUID. The delete
-// is idempotent: a 404 response, or a 4xx whose body matches one of
-// telemetryProviderMissingMarkers, returns nil so the destroy step can be
-// retried safely. Other errors propagate verbatim with the same formatting
-// the rest of the provider uses (utils.ErrorFromHTTPResponse).
+// DeleteTelemetryProvider deletes a provider by UUID. Idempotent: 404 or a
+// missing-marker body returns nil; other errors propagate.
 func (vc *VanillaClient) DeleteTelemetryProvider(
 	ctx context.Context, cUUID, providerUUID, token string,
 ) error {
@@ -188,9 +161,6 @@ func (vc *VanillaClient) DeleteTelemetryProvider(
 	return nil
 }
 
-// errorIndicatesProviderMissing reports whether err carries one of the YBA
-// response bodies that mean "the requested telemetry provider is no longer
-// present" — see telemetryProviderMissingMarkers for the list.
 func errorIndicatesProviderMissing(err error) bool {
 	if err == nil {
 		return false
@@ -204,10 +174,6 @@ func errorIndicatesProviderMissing(err error) bool {
 	return false
 }
 
-// vanillaHTTPError returns nil for 2xx responses and otherwise formats the
-// response body with utils.ErrorFromHTTPResponse so the message matches the
-// shape produced by every other resource in this provider. Pass a placeholder
-// HTTP-status error rather than nil to keep the %w chain valid.
 func vanillaHTTPError(resp *http.Response, entityName, operation string) error {
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		return nil

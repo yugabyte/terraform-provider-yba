@@ -911,10 +911,9 @@ func DispatchAndWait(
 	}
 
 	if taskUUID == "" {
-		// A successful dispatch that queued no task (YBA returned 2xx with no
-		// task_uuid, e.g. a no-op reconfigure) has nothing to wait for. Calling
-		// WaitForTask with an empty UUID would issue GET .../tasks/ and fail with
-		// a confusing "Get Task Status" error, so treat the dispatch as complete.
+		// A dispatch that queued no task (2xx, no task_uuid — e.g. a no-op
+		// reconfigure) has nothing to wait for; WaitForTask("") would GET
+		// .../tasks/ and fail confusingly.
 		tflog.Info(ctx, fmt.Sprintf(
 			"%s: dispatch returned no task to wait on; treating as complete", label))
 		return nil

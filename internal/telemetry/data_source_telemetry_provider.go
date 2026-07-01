@@ -24,10 +24,9 @@ import (
 	"github.com/yugabyte/terraform-provider-yba/internal/api"
 )
 
-// DataSourceTelemetryProvider looks up an existing telemetry provider by name
-// and exposes its UUID / type / tags. The common use is wiring an
-// `exporter_uuid` on `yba_universe_telemetry_config` to a provider that was
-// created outside this Terraform configuration, without hard-coding its UUID.
+// DataSourceTelemetryProvider looks up a telemetry provider by name, exposing its
+// UUID/type/tags — e.g. to wire an exporter_uuid to a provider created outside
+// this configuration.
 func DataSourceTelemetryProvider() *schema.Resource {
 	return &schema.Resource{
 		Description: experimentalAdmonition +
@@ -82,8 +81,8 @@ func dataSourceTelemetryProviderRead(
 	case 1:
 		// ok
 	default:
-		// YBA enforces name uniqueness per customer, so this should be
-		// unreachable; surface it rather than silently picking one.
+		// YBA enforces name uniqueness per customer; surface the anomaly
+		// instead of silently picking one.
 		return diag.Errorf(
 			"found %d telemetry providers named %q; names are expected to be unique",
 			len(matches), name)

@@ -31,7 +31,7 @@ resource "yba_universe_telemetry_config" "main" {
     }
     exporter {
       exporter_uuid  = yba_telemetry_provider.datadog.id
-      metrics_prefix = "ddog."
+      metrics_prefix = "yba."
     }
   }
 }

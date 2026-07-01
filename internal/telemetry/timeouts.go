@@ -17,15 +17,6 @@ package telemetry
 
 import "time"
 
-// telemetryUpgradeTimeout is the canonical default timeout for any operation
-// that triggers per-universe rolling restart tasks via the unified
-// `export-telemetry-configs` API.
-//
-// Each universe rolling upgrade serializes through master and tserver
-// processes with a default 3-minute sleep between restarts (see
-// upgrade_options.sleep_after_*_restart_millis), so a 9-node universe takes
-// roughly 30+ minutes per upgrade. The destroy path of a
-// `yba_telemetry_provider` may have to drive multiple universes through this
-// flow back-to-back, which is why we default to two hours. Operators can
-// override per-resource via the standard `timeouts {}` block.
+// telemetryUpgradeTimeout: a provider destroy may drive several universes through
+// rolling restarts back-to-back (~30+ min each on large universes), hence 2h.
 const telemetryUpgradeTimeout = 2 * time.Hour

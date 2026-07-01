@@ -27,10 +27,6 @@ import (
 	"testing"
 )
 
-// newStubVanillaClient stands up an httptest.Server and returns a
-// VanillaClient pointed at it. The supplied handler is responsible for
-// returning whatever body / status code the test wants. Cleanup is
-// registered with t.Cleanup so callers do not need to remember to close.
 func newStubVanillaClient(
 	t *testing.T, handler http.HandlerFunc,
 ) (*VanillaClient, *httptest.Server) {
@@ -47,11 +43,6 @@ func newStubVanillaClient(
 	return vc, srv
 }
 
-// TestGetTelemetryProviderMissing verifies that the various YBA "missing
-// provider" response shapes (404, 400 with "does not exist", 400 with
-// "Invalid Telemetry Provider UUID", 500 with same body markers) all
-// collapse to the typed ErrTelemetryProviderMissing sentinel so callers
-// can switch on it with errors.Is rather than matching strings.
 func TestGetTelemetryProviderMissing(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -97,9 +88,6 @@ func TestGetTelemetryProviderMissing(t *testing.T) {
 	}
 }
 
-// TestGetTelemetryProviderUnrelatedError ensures that errors that are not
-// "missing provider" still surface as wrapped errors carrying the body —
-// callers must NOT silently treat them as deletions.
 func TestGetTelemetryProviderUnrelatedError(t *testing.T) {
 	vc, _ := newStubVanillaClient(t,
 		func(w http.ResponseWriter, _ *http.Request) {
@@ -121,9 +109,6 @@ func TestGetTelemetryProviderUnrelatedError(t *testing.T) {
 	}
 }
 
-// TestGetTelemetryProviderSuccess walks the happy path: a 200 with a
-// well-formed JSON body should round-trip into a TelemetryProvider with
-// every public field populated.
 func TestGetTelemetryProviderSuccess(t *testing.T) {
 	body := `{
 		"uuid":"tp-1",
@@ -158,11 +143,6 @@ func TestGetTelemetryProviderSuccess(t *testing.T) {
 	}
 }
 
-// TestDeleteTelemetryProviderIdempotent verifies that the various YBA
-// "missing provider" response shapes are collapsed to nil — Terraform's
-// destroy must succeed even when the provider has already been removed
-// out-of-band, otherwise repeated applies would be stuck on a phantom
-// resource.
 func TestDeleteTelemetryProviderIdempotent(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -193,9 +173,6 @@ func TestDeleteTelemetryProviderIdempotent(t *testing.T) {
 	}
 }
 
-// TestDeleteTelemetryProviderSurfacesErrors ensures that destructive
-// failures NOT matching the missing-provider markers (auth, in-use, etc.)
-// propagate to the caller. Silently swallowing them would corrupt state.
 func TestDeleteTelemetryProviderSurfacesErrors(t *testing.T) {
 	vc, _ := newStubVanillaClient(t,
 		func(w http.ResponseWriter, _ *http.Request) {
@@ -214,8 +191,6 @@ func TestDeleteTelemetryProviderSurfacesErrors(t *testing.T) {
 	}
 }
 
-// TestCreateTelemetryProvider verifies that Create POSTs the marshalled
-// payload to the expected endpoint and round-trips the response body.
 func TestCreateTelemetryProvider(t *testing.T) {
 	var (
 		gotMethod string
@@ -267,8 +242,6 @@ func TestCreateTelemetryProvider(t *testing.T) {
 	}
 }
 
-// TestCreateTelemetryProviderError ensures non-2xx responses surface a
-// wrapped error rather than swallowing the failure silently.
 func TestCreateTelemetryProviderError(t *testing.T) {
 	vc, _ := newStubVanillaClient(t,
 		func(w http.ResponseWriter, _ *http.Request) {
@@ -290,9 +263,6 @@ func TestCreateTelemetryProviderError(t *testing.T) {
 	}
 }
 
-// TestListTelemetryProviders verifies the list call hits the collection
-// endpoint and round-trips the array body into TelemetryProvider values
-// (used by the yba_telemetry_provider data source).
 func TestListTelemetryProviders(t *testing.T) {
 	var gotPath string
 	vc, _ := newStubVanillaClient(t,
@@ -323,9 +293,6 @@ func TestListTelemetryProviders(t *testing.T) {
 	}
 }
 
-// TestListTelemetryProvidersError ensures a non-2xx list response surfaces an
-// error rather than an empty slice (which the data source would misread as
-// "not found").
 func TestListTelemetryProvidersError(t *testing.T) {
 	vc, _ := newStubVanillaClient(t,
 		func(w http.ResponseWriter, _ *http.Request) {
@@ -338,13 +305,8 @@ func TestListTelemetryProvidersError(t *testing.T) {
 	}
 }
 
-// TestErrTelemetryProviderMissingIsStable guards against accidental
-// renames or replacements of the sentinel — every consumer (the resource
-// Read flow, future agents extending the package) reaches for it via
-// errors.Is(err, api.ErrTelemetryProviderMissing). If a refactor ever
-// stops wrapping with %w (e.g. switches to fmt.Sprintf-then-errors.New)
-// this assertion will catch it before the resource silently stops
-// detecting out-of-band deletes.
+// Guards the sentinel: if a refactor stops wrapping with %w, errors.Is breaks and
+// Read silently stops detecting out-of-band deletes.
 func TestErrTelemetryProviderMissingIsStable(t *testing.T) {
 	if ErrTelemetryProviderMissing == nil {
 		t.Fatal("ErrTelemetryProviderMissing must not be nil")

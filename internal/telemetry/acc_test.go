@@ -30,41 +30,11 @@ import (
 	"github.com/yugabyte/terraform-provider-yba/internal/utils"
 )
 
-// globalRuntimeScope is YBA's well-known global runtime-config scope UUID.
 const globalRuntimeScope = "00000000-0000-0000-0000-000000000000"
 
-// enableTelemetryFlags turns on the global runtime flags these tests depend on,
-// via the API, and intentionally never resets them. It is called from each
-// test's PreCheck.
-//
-// Why set-and-leave instead of managing them as yba_runtime_config resources
-// (which DeleteKey on destroy)? Two YBA rules make a reset-on-teardown fragile
-// on the shared standing fixture:
-//
-//   - TelemetryProviderService.throwExceptionIfRuntimeFlagDisabled: every
-//     provider CRUD call (including delete) needs at least one of the three
-//     export flags on.
-//   - MetricsExportEnabledValidator.validateDeleteConfig: resetting
-//     yb.universe.metrics_export_enabled is rejected while ANY universe on the
-//     YBA still has metrics export — not just this test's universe.
-//
-// Leaving the flags enabled is the correct steady state for a telemetry-test
-// YBA anyway, and keeps these tests independent of teardown ordering.
-//
-// What each flag gates (verified against YBA source, not assumed):
-//   - yb.universe.metrics_export_enabled: gates provider CREATE for every type
-//     (TelemetryProviderController -> throwExceptionIfRuntimeFlagDisabled needs
-//     one of metrics/audit/query export enabled). The unified v2
-//     export-telemetry-configs endpoint itself checks no runtime flag.
-//   - yb.universe.audit_logging_enabled: kept on defensively for the audit-log
-//     pipeline step (and is a second way to satisfy the create gate above).
-//   - yb.telemetry.allow_otlp: type-gated — required to CREATE an OTLP-type
-//     provider (throwExceptionIfOTLPExporterRuntimeFlagDisabled). It is
-//     additive, NOT a substitute for the export-enabled flag above. DataDog,
-//     Splunk, etc. do not need it; OTLP does.
-//   - yb.telemetry.skip_connectivity_validations: every provider create runs a
-//     connectivity probe; skipping it lets the tests use a placeholder OTLP
-//     endpoint with no reachable collector.
+// enableTelemetryFlags sets the runtime flags these tests need and never resets
+// them: provider CRUD needs an export flag on, and resetting metrics_export is
+// rejected while ANY universe still has metrics export.
 func enableTelemetryFlags(t *testing.T) {
 	t.Helper()
 	c := acctest.APIClient
@@ -86,12 +56,8 @@ func enableTelemetryFlags(t *testing.T) {
 	}
 }
 
-// otlpProviderHCL renders an OTLP telemetry provider with the given Terraform
-// resource label and YBA name. OTLP is used as the representative type because
-// it is allowed for both metrics and logs export (ProviderType.OTLP(true,true))
-// and exercises the yb.telemetry.allow_otlp gate. The placeholder endpoint is
-// only accepted because skip_connectivity_validations is enabled; with the
-// default NoAuth / gRPC settings no credentials are needed.
+// otlpProviderHCL renders an OTLP provider — the representative type, valid for
+// both metrics and logs.
 func otlpProviderHCL(label, name string) string {
 	return fmt.Sprintf(`
 resource "yba_telemetry_provider" %q {
@@ -104,8 +70,6 @@ resource "yba_telemetry_provider" %q {
 `, label, name)
 }
 
-// otlpProviderConfig renders a single OTLP provider plus a data source that
-// looks it up by name.
 func otlpProviderConfig(name string) string {
 	return otlpProviderHCL("test", name) + `
 data "yba_telemetry_provider" "lookup" {
@@ -114,11 +78,6 @@ data "yba_telemetry_provider" "lookup" {
 `
 }
 
-// TestAccTelemetryProvider_OTLP exercises the full yba_telemetry_provider
-// lifecycle against a standing YBA — create, read-back, the data-source
-// lookup-by-name, and the detach-aware delete (a no-op detach here since no
-// universe references the provider) — plus import. No universe is involved, so
-// it runs on the short tier on every PR.
 func TestAccTelemetryProvider_OTLP(t *testing.T) {
 	name := acctest.RandomName("tp-otlp")
 	resourceName := "yba_telemetry_provider.test"
@@ -137,7 +96,6 @@ func TestAccTelemetryProvider_OTLP(t *testing.T) {
 					testAccCheckTelemetryProviderExists(resourceName),
 					resource.TestCheckResourceAttr(resourceName, "name", name),
 					resource.TestCheckResourceAttr(resourceName, "type", "OTLP"),
-					// The data source resolves the same provider by name.
 					resource.TestCheckResourceAttrPair(
 						"data.yba_telemetry_provider.lookup", "id", resourceName, "id"),
 					resource.TestCheckResourceAttr(
@@ -145,9 +103,8 @@ func TestAccTelemetryProvider_OTLP(t *testing.T) {
 				),
 			},
 			{
-				// Importer round-trips the id. The config block (endpoint/auth)
-				// is intentionally not refreshed on Read — YBA masks secrets —
-				// so import verification is limited to the id/name/type.
+				// Config block isn't refreshed on Read (YBA masks secrets), so
+				// import verifies only id/name/type.
 				ResourceName:            resourceName,
 				ImportState:             true,
 				ImportStateVerify:       true,
@@ -194,14 +151,8 @@ func testAccCheckTelemetryProviderDestroy(s *terraform.State) error {
 	return nil
 }
 
-// ---------------------------------------------------------------------------
-// Universe telemetry config — edit-flow steps. uniRef / provRef are raw HCL
-// expressions (e.g. `yba_universe.gcp.id`) injected into the config.
-// ---------------------------------------------------------------------------
-
-// fastUpgradeOptions keeps each reconfigure cheap: a 1-node universe restarts
-// in one cycle, and the 3-minute default per-node sleeps would dominate every
-// edit step otherwise.
+// fastUpgradeOptions keeps each reconfigure cheap; the 3-min default per-node
+// sleeps would otherwise dominate every edit step.
 const fastUpgradeOptions = `
   upgrade_options {
     sleep_after_master_restart_millis  = 5000
@@ -209,8 +160,6 @@ const fastUpgradeOptions = `
   }
 `
 
-// universeTelemetryMetricsOnly: a single metrics pipeline with one exporter.
-// Used as the create step.
 func universeTelemetryMetricsOnly(uniRef, provARef string) string {
 	return fmt.Sprintf(`
 resource "yba_universe_telemetry_config" "test" {
@@ -232,12 +181,6 @@ resource "yba_universe_telemetry_config" "test" {
 `, uniRef, provARef, fastUpgradeOptions)
 }
 
-// universeTelemetryMultiExporter is the heavy edit step. Relative to
-// universeTelemetryMetricsOnly it: edits metrics in place (collection_level,
-// scrape interval/timeout, a TypeSet target added, prefix and batch size
-// changed); adds a SECOND metrics exporter (provider B) — multiple exporters in
-// one pipeline; and adds an audit-logs pipeline that reuses provider A — the
-// same provider shared across two pipelines of one universe.
 func universeTelemetryMultiExporter(uniRef, provARef, provBRef string) string {
 	return fmt.Sprintf(`
 resource "yba_universe_telemetry_config" "test" {
@@ -274,16 +217,6 @@ resource "yba_universe_telemetry_config" "test" {
 `, uniRef, provARef, provBRef, provARef, fastUpgradeOptions)
 }
 
-// ---------------------------------------------------------------------------
-// Long tier: self-provisions a GCP universe and runs the edit flow against it.
-// Named *_GCP so make acctest-long (which `-skip '_(AWS|Azure)_'`) runs it; the
-// short tier `-skip '^TestAccLong'`, so it never runs on a plain PR. The
-// acctest-long workflow runs on merges to main and on manual dispatch.
-// ---------------------------------------------------------------------------
-
-// gcpProviderAndUniverse renders a GCP cloud provider and a minimal single-node
-// universe (RF1) to attach telemetry to. Mirrors the universe acceptance tests'
-// GCP fixture; the TF_VAR_GCP_* inputs come from the acctest env.
 func gcpProviderAndUniverse(name string) string {
 	return fmt.Sprintf(`
 variable "GCP_VPC_NETWORK" {
@@ -369,6 +302,8 @@ resource "yba_universe" "gcp" {
 `, name, name)
 }
 
+// Named *Long so the short tier's `-skip '^TestAccLong'` skips it; runs only on
+// acctest-long (merge to main / manual dispatch).
 func TestAccLong_UniverseTelemetryConfig_GCP(t *testing.T) {
 	name := acctest.RandomName("tel-gcp")
 	nameA := acctest.RandomName("tp-a")
@@ -386,10 +321,7 @@ func TestAccLong_UniverseTelemetryConfig_GCP(t *testing.T) {
 			enableTelemetryFlags(t)
 		},
 		ProviderFactories: acctest.ProviderFactories,
-		// Destroying the config disables export, then the providers detach and
-		// delete and the universe is torn down; CheckDestroy confirms providers
-		// and universe are all gone.
-		CheckDestroy: testAccCheckTelemetryUniverseDestroy,
+		CheckDestroy:      testAccCheckTelemetryUniverseDestroy,
 		Steps: []resource.TestStep{
 			{
 				Config: base + provA + universeTelemetryMetricsOnly(
@@ -403,8 +335,6 @@ func TestAccLong_UniverseTelemetryConfig_GCP(t *testing.T) {
 				),
 			},
 			{
-				// Heavy edit: in-place metrics change + second exporter + an
-				// audit pipeline sharing the first exporter, all in one apply.
 				Config: base + provA + provB + universeTelemetryMultiExporter(
 					uniRef, "yba_telemetry_provider.a.id", "yba_telemetry_provider.b.id"),
 				Check: resource.ComposeTestCheckFunc(
@@ -424,12 +354,8 @@ func TestAccLong_UniverseTelemetryConfig_GCP(t *testing.T) {
 				ImportStateCheck: importedMetricsExporters(2),
 			},
 			{
-				// Remove only the telemetry config resource, keeping the universe
-				// and providers. This exercises the disable-on-destroy path (the
-				// empty-config POST in resourceUniverseTelemetryConfigDelete) and
-				// asserts the SURVIVING universe is left with no exporters —
-				// coverage the whole-universe teardown in CheckDestroy cannot give,
-				// since it only confirms the universe itself is gone.
+				// Remove only the config, keeping the universe: asserts the
+				// disable-on-destroy path leaves the surviving universe with no exporters.
 				Config: base + provA + provB,
 				Check:  testAccCheckUniverseExportDisabled("yba_universe.gcp"),
 			},
@@ -437,11 +363,8 @@ func TestAccLong_UniverseTelemetryConfig_GCP(t *testing.T) {
 	})
 }
 
-// importedMetricsExporters asserts the imported state repopulated the metrics
-// pipeline from the v2 GET API: it checks universe_uuid is set and the metrics
-// exporter count, rather than full-state equality, so a defaulted
-// batching/memory field that YBA echoes back in a different shape can't make
-// the step flaky — the point is that import reads the pipeline back at all.
+// importedMetricsExporters checks universe_uuid + exporter count, not full-state
+// equality, so a defaulted field YBA echoes back differently can't make it flaky.
 func importedMetricsExporters(want int) resource.ImportStateCheckFunc {
 	return func(states []*terraform.InstanceState) error {
 		if len(states) != 1 {
@@ -458,12 +381,6 @@ func importedMetricsExporters(want int) resource.ImportStateCheckFunc {
 	}
 }
 
-// testAccCheckUniverseExportDisabled confirms that removing the
-// yba_universe_telemetry_config resource (while the universe survives) actually
-// ran the empty-config disable POST: the still-existing universe must be left
-// with no telemetry exporters of any kind. uniResource is the address of the
-// surviving yba_universe resource (e.g. "yba_universe.gcp"), whose UUID is
-// resolved from state at check time.
 func testAccCheckUniverseExportDisabled(uniResource string) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
 		rs, ok := s.RootModule().Resources[uniResource]

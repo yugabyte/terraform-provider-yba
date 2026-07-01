@@ -21,8 +21,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 )
 
-// buildConfig is a helper that loads a single provider block into resource
-// data and returns the YBA config map produced by buildTelemetryProviderConfig.
 func buildConfig(
 	t *testing.T, block string, fields map[string]interface{},
 ) map[string]interface{} {
@@ -39,10 +37,9 @@ func buildConfig(
 	return cfg
 }
 
-// assertConfig checks that every key in want is present in got with the exact
-// value, and that every key in absent is NOT present. This is the contract
-// between the Terraform schema and YBA's camelCase JSON model: a single
-// mistyped key (e.g. roleArn vs roleARN) silently drops a field server-side.
+// assertConfig checks every want key is present with the exact value and every
+// absent key is missing. A mistyped camelCase key (e.g. roleArn vs roleARN)
+// silently drops a field server-side.
 func assertConfig(
 	t *testing.T,
 	got map[string]interface{},
@@ -67,7 +64,6 @@ func assertConfig(
 	}
 }
 
-// TestBuildDataDogConfig pins the DataDog key mapping.
 func TestBuildDataDogConfig(t *testing.T) {
 	cfg := buildConfig(t, "data_dog", map[string]interface{}{
 		"site":    "datadoghq.eu",
@@ -80,9 +76,8 @@ func TestBuildDataDogConfig(t *testing.T) {
 	})
 }
 
-// TestBuildAWSCloudWatchConfig pins the CloudWatch key mapping, including the
-// all-caps roleARN key (distinct from S3's roleArn) and the omit-when-empty
-// behaviour of the optional role_arn / endpoint fields.
+// TestBuildAWSCloudWatchConfig pins the all-caps roleARN key (distinct from S3's
+// roleArn).
 func TestBuildAWSCloudWatchConfig(t *testing.T) {
 	cfg := buildConfig(t, "aws_cloud_watch", map[string]interface{}{
 		"log_group":  "yba/audit",
@@ -104,7 +99,6 @@ func TestBuildAWSCloudWatchConfig(t *testing.T) {
 		"endpoint":  "https://logs.vpce",
 	})
 
-	// Optional fields omitted when blank.
 	minimal := buildConfig(t, "aws_cloud_watch", map[string]interface{}{
 		"log_group":  "g",
 		"log_stream": "s",
@@ -116,9 +110,8 @@ func TestBuildAWSCloudWatchConfig(t *testing.T) {
 		"roleARN", "endpoint")
 }
 
-// TestBuildGCPConfig verifies the project field is omitted when empty (YBA
-// then derives it from the credentials JSON) and credentialsString always
-// flows through.
+// TestBuildGCPConfig: project is omitted when empty (YBA derives it from the
+// credentials JSON).
 func TestBuildGCPConfig(t *testing.T) {
 	cfg := buildConfig(t, "gcp_cloud_monitoring", map[string]interface{}{
 		"project":          "my-proj",
@@ -138,8 +131,6 @@ func TestBuildGCPConfig(t *testing.T) {
 		"project")
 }
 
-// TestBuildSplunkConfig pins the Splunk key mapping and omit-when-empty
-// behaviour of the optional source / source_type / index fields.
 func TestBuildSplunkConfig(t *testing.T) {
 	cfg := buildConfig(t, "splunk", map[string]interface{}{
 		"endpoint":    "https://hec:8088",
@@ -165,7 +156,6 @@ func TestBuildSplunkConfig(t *testing.T) {
 		"source", "sourceType", "index")
 }
 
-// TestBuildDynatraceConfig pins the Dynatrace key mapping.
 func TestBuildDynatraceConfig(t *testing.T) {
 	cfg := buildConfig(t, "dynatrace", map[string]interface{}{
 		"endpoint":  "https://env.live.dynatrace.com/api/v2/otlp",
@@ -178,8 +168,6 @@ func TestBuildDynatraceConfig(t *testing.T) {
 	})
 }
 
-// TestBuildLokiConfigBasicAuth verifies Loki emits the basicAuth object and
-// organizationID, and omits basicAuth entirely under NoAuth.
 func TestBuildLokiConfigBasicAuth(t *testing.T) {
 	cfg := buildConfig(t, "loki", map[string]interface{}{
 		"endpoint":            "https://loki",
@@ -207,9 +195,7 @@ func TestBuildLokiConfigBasicAuth(t *testing.T) {
 		"basicAuth", "organizationID")
 }
 
-// TestBuildOTLPConfigBearerToken codifies the bug fix end-to-end: a
-// BearerToken OTLP provider must emit authType "BearerToken" and a
-// bearerToken object, and must NOT emit basicAuth.
+// BearerToken emits a bearerToken object, not basicAuth.
 func TestBuildOTLPConfigBearerToken(t *testing.T) {
 	cfg := buildConfig(t, "otlp", map[string]interface{}{
 		"endpoint":     "https://collector",
@@ -228,9 +214,6 @@ func TestBuildOTLPConfigBearerToken(t *testing.T) {
 	}
 }
 
-// TestBuildOTLPConfigNoAuthOmitsCredentials verifies that NoAuth emits neither
-// auth object even when stray credential fields are present in the schema
-// data (they default to "").
 func TestBuildOTLPConfigNoAuthOmitsCredentials(t *testing.T) {
 	cfg := buildConfig(t, "otlp", map[string]interface{}{
 		"endpoint":  "https://collector",
@@ -241,8 +224,6 @@ func TestBuildOTLPConfigNoAuthOmitsCredentials(t *testing.T) {
 		"basicAuth", "bearerToken")
 }
 
-// TestBuildOTLPConfigHeadersAndEndpoints verifies the OTLP optionals: headers
-// map, and the logs/metrics endpoint overrides which are emitted only when set.
 func TestBuildOTLPConfigHeadersAndEndpoints(t *testing.T) {
 	cfg := buildConfig(t, "otlp", map[string]interface{}{
 		"endpoint":         "https://collector",
@@ -270,7 +251,6 @@ func TestBuildOTLPConfigHeadersAndEndpoints(t *testing.T) {
 		t.Errorf("headers = %#v", cfg["headers"])
 	}
 
-	// Endpoint overrides and headers are omitted entirely when unset.
 	minimal := buildConfig(t, "otlp", map[string]interface{}{
 		"endpoint":  "https://collector",
 		"auth_type": "NoAuth",
@@ -279,9 +259,6 @@ func TestBuildOTLPConfigHeadersAndEndpoints(t *testing.T) {
 		"logsEndpoint", "metricsEndpoint", "headers")
 }
 
-// TestTelemetryProviderTypeNoBlock verifies the resource refuses to build a
-// config when no provider block is set — the error feeds a clean diag rather
-// than a nil-typed POST that YBA would 400.
 func TestTelemetryProviderTypeNoBlock(t *testing.T) {
 	res := ResourceTelemetryProvider()
 	d := schema.TestResourceDataRaw(t, res.Schema, map[string]interface{}{
@@ -295,12 +272,9 @@ func TestTelemetryProviderTypeNoBlock(t *testing.T) {
 	}
 }
 
-// TestHelpersToleratWeirdInput hammers the small extraction helpers with the
-// nil / wrong-type / empty inputs that a malformed state file or a future
-// schema edit could feed them. None of them may panic; all must degrade to a
-// safe zero value.
+// TestHelpersTolerateWeirdInput: the extraction helpers must not panic on
+// nil/wrong-type/empty input; all degrade to a zero value.
 func TestHelpersTolerateWeirdInput(t *testing.T) {
-	// firstMap
 	if m := firstMap(nil); len(m) != 0 {
 		t.Errorf("firstMap(nil) = %v", m)
 	}
@@ -317,7 +291,6 @@ func TestHelpersTolerateWeirdInput(t *testing.T) {
 		t.Errorf("firstMap valid = %v", m)
 	}
 
-	// stringValue
 	if stringValue(nil) != "" {
 		t.Error("stringValue(nil) must be empty")
 	}
@@ -328,7 +301,6 @@ func TestHelpersTolerateWeirdInput(t *testing.T) {
 		t.Errorf("stringValue(s) = %q", got)
 	}
 
-	// intValue / int32Value / boolValue
 	if intValue(nil) != 0 || intValue("x") != 0 {
 		t.Error("intValue must default to 0 on nil/non-int")
 	}
@@ -345,7 +317,7 @@ func TestHelpersTolerateWeirdInput(t *testing.T) {
 		t.Error("boolValue(true) != true")
 	}
 
-	// stringList accepts both []interface{} (TypeList) and *schema.Set (TypeSet)
+	// stringList accepts both a TypeList ([]interface{}) and a TypeSet (*schema.Set).
 	if got := stringList(nil); len(got) != 0 {
 		t.Errorf("stringList(nil) = %v", got)
 	}
@@ -357,7 +329,6 @@ func TestHelpersTolerateWeirdInput(t *testing.T) {
 		t.Errorf("stringList(set) = %v", got)
 	}
 
-	// stringMap
 	if got := stringMap(nil); len(got) != 0 {
 		t.Errorf("stringMap(nil) = %v", got)
 	}
@@ -366,10 +337,8 @@ func TestHelpersTolerateWeirdInput(t *testing.T) {
 	}
 }
 
-// TestBuildUpgradeOptionsVariants exercises the upgrade_options paths beyond
-// the default-only case already covered elsewhere: an explicit non-rolling
-// restart, custom sleeps, and the rule that a zero sleep is omitted so YBA
-// keeps its own default rather than restarting with no pause.
+// TestBuildUpgradeOptionsVariants: a zero sleep is omitted so YBA keeps its own
+// default rather than restarting with no pause.
 func TestBuildUpgradeOptionsVariants(t *testing.T) {
 	nonRolling := buildUpgradeOptions([]interface{}{map[string]interface{}{
 		"rolling_upgrade":                    false,
