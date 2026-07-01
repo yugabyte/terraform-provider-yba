@@ -21,18 +21,11 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 )
 
-// experimentalAdmonition is the docs callout prepended to both telemetry
-// resource Descriptions so the experimental status shows in the registry docs
-// (the schema-validation warning below only surfaces at apply time).
 const experimentalAdmonition = "~> **Experimental:** This resource wraps a " +
 	"YugabyteDB Anywhere telemetry export API that is still experimental and " +
 	"may change in backward-incompatible ways across YBA releases. Pin your " +
 	"provider version and review release notes before upgrading.\n\n"
 
-// experimentalWarning returns a non-fatal Warning diagnostic emitted on
-// create/update of the telemetry resources. It is the apply-time companion to
-// experimentalAdmonition, surfacing the experimental status to operators who
-// read `terraform apply` output rather than the registry docs.
 func experimentalWarning(resourceName string) diag.Diagnostic {
 	return diag.Diagnostic{
 		Severity: diag.Warning,

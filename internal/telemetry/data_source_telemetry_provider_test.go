@@ -25,9 +25,6 @@ import (
 	"github.com/yugabyte/terraform-provider-yba/internal/api"
 )
 
-// telemetryListClient stands up an httptest server whose telemetry_provider
-// list endpoint returns the supplied JSON body, and returns an APIClient whose
-// VanillaClient points at it.
 func telemetryListClient(t *testing.T, status int, body string) *api.APIClient {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(
@@ -48,8 +45,6 @@ func telemetryListClient(t *testing.T, status int, body string) *api.APIClient {
 	}
 }
 
-// TestDataSourceTelemetryProviderByName looks up a provider by name and
-// exposes its UUID/type/tags.
 func TestDataSourceTelemetryProviderByName(t *testing.T) {
 	apiClient := telemetryListClient(t, 0, `[
 		{"uuid":"tp-1","name":"dd","config":{"type":"DATA_DOG"},"tags":{"env":"prod"}},
@@ -72,8 +67,6 @@ func TestDataSourceTelemetryProviderByName(t *testing.T) {
 	}
 }
 
-// TestDataSourceTelemetryProviderTags verifies tags round-trip for the matched
-// provider.
 func TestDataSourceTelemetryProviderTags(t *testing.T) {
 	apiClient := telemetryListClient(t, 0,
 		`[{"uuid":"tp-1","name":"dd","config":{"type":"DATA_DOG"},"tags":{"env":"prod"}}]`)
@@ -89,8 +82,6 @@ func TestDataSourceTelemetryProviderTags(t *testing.T) {
 	}
 }
 
-// TestDataSourceTelemetryProviderNotFound errors cleanly when no provider
-// matches the requested name.
 func TestDataSourceTelemetryProviderNotFound(t *testing.T) {
 	apiClient := telemetryListClient(t, 0,
 		`[{"uuid":"tp-1","name":"dd","config":{"type":"DATA_DOG"}}]`)
@@ -106,8 +97,7 @@ func TestDataSourceTelemetryProviderNotFound(t *testing.T) {
 	}
 }
 
-// TestDataSourceTelemetryProviderListError surfaces an underlying list failure
-// instead of reporting "not found".
+// A list failure must surface as an error, not be masked as "not found".
 func TestDataSourceTelemetryProviderListError(t *testing.T) {
 	apiClient := telemetryListClient(t, http.StatusInternalServerError,
 		`{"error":"boom"}`)

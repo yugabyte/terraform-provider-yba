@@ -25,12 +25,6 @@ import (
 	"github.com/yugabyte/terraform-provider-yba/internal/utils"
 )
 
-// TestBuildSpecMultipleExportersAllSections drives the headline "multiple
-// exporters" case: every pipeline carries more than one exporter, and the
-// same provider is shared across audit + query + metrics on a single
-// universe. It asserts the exporter counts, the per-exporter batching fields
-// (present on query/metrics, ABSENT on audit), and the metrics-only
-// metrics_prefix.
 func TestBuildSpecMultipleExportersAllSections(t *testing.T) {
 	res := ResourceUniverseTelemetryConfig()
 	d := schema.TestResourceDataRaw(t, res.Schema, map[string]interface{}{
@@ -82,24 +76,19 @@ func TestBuildSpecMultipleExportersAllSections(t *testing.T) {
 		t.Errorf("metrics exporters = %d want 3", len(tc.Metrics.Exporters))
 	}
 
-	// Audit exporters use the UniverseLogsExporterConfig type, which the v2
-	// SDK models WITHOUT batching fields — so the audit pipeline structurally
-	// cannot carry them (exporter_uuid + additional_tags only). The other two
-	// pipelines use their own types that DO carry batching.
+	// Audit's v2 type has no batching fields — structurally uuid + tags only.
 	for _, e := range tc.AuditLogs.Exporters {
 		if e.ExporterUuid == "" {
 			t.Errorf("audit exporter missing uuid: %+v", e)
 		}
 	}
-	// Query/metrics exporters DO carry batching fields (schema defaults fill
-	// them in even when the user omits them).
+	// Query/metrics carry batching (schema defaults fill them even when omitted).
 	for _, e := range tc.QueryLogs.Exporters {
 		if e.SendBatchMaxSize == nil || e.MemoryLimitMib == nil {
 			t.Errorf("query exporter %q missing batching fields: %+v",
 				e.ExporterUuid, e)
 		}
 	}
-	// metrics_prefix only set on the exporter that asked for it.
 	var prefixed, bare int
 	for _, e := range tc.Metrics.Exporters {
 		if e.MetricsPrefix != nil && *e.MetricsPrefix == "ybdb." {
@@ -117,12 +106,7 @@ func TestBuildSpecMultipleExportersAllSections(t *testing.T) {
 	}
 }
 
-// TestBuildMetricsMultipleExporters is the focused regression test for the
-// repeated-`exporter`-block -> API `exporters` array mapping. It pins that
-// several exporter blocks in ONE pipeline each become a distinct array entry,
-// in declaration order, with their own fields (not collapsed to one, and not
-// bleeding fields across entries). buildMetricsExporters walks the whole
-// d.Get("metrics.0.exporter") list via exporterRows.
+// Regression: repeated exporter blocks each map to a distinct array entry, in order.
 func TestBuildMetricsMultipleExporters(t *testing.T) {
 	res := ResourceUniverseTelemetryConfig()
 	d := schema.TestResourceDataRaw(t, res.Schema, map[string]interface{}{
@@ -146,7 +130,6 @@ func TestBuildMetricsMultipleExporters(t *testing.T) {
 				i, got[i].ExporterUuid, want)
 		}
 	}
-	// Per-exporter fields must map independently.
 	if got[0].MetricsPrefix == nil || *got[0].MetricsPrefix != "a." {
 		t.Errorf("exporter[0] metrics_prefix = %v want \"a.\"", got[0].MetricsPrefix)
 	}
@@ -155,19 +138,14 @@ func TestBuildMetricsMultipleExporters(t *testing.T) {
 	}
 }
 
-// sortedStrings returns a sorted copy so set contents can be compared
-// independent of order.
 func sortedStrings(in []string) []string {
 	out := append([]string(nil), in...)
 	sort.Strings(out)
 	return out
 }
 
-// TestTypeSetIgnoresOrder is the regression test for commit 6f3df3a. YBA
-// persists audit-log classes and metric scrape targets as Java Sets, so it
-// can echo them back in any order. Modeled as a TypeSet, two different
-// orderings must produce identical Sets — otherwise every refresh shows a
-// phantom diff and Terraform proposes a no-op rolling restart forever.
+// Regression: YBA echoes audit classes / scrape targets in any order (Java Sets);
+// TypeSet must treat orderings as equal, else a phantom diff loops forever.
 func TestTypeSetIgnoresOrder(t *testing.T) {
 	res := ResourceUniverseTelemetryConfig()
 
@@ -214,7 +192,6 @@ func TestTypeSetIgnoresOrder(t *testing.T) {
 			targetsA.List(), targetsB.List())
 	}
 
-	// And the build path must extract the same membership from either.
 	specA := buildExportTelemetryConfigSpec(a)
 	specB := buildExportTelemetryConfigSpec(b)
 	clA := sortedStrings(specA.TelemetryConfig.AuditLogs.YsqlAuditConfig.Classes)
@@ -236,11 +213,8 @@ func equalStrings(a, b []string) bool {
 	return true
 }
 
-// TestFlattenRoundTripNoPhantomDiff feeds a fully-populated v1 config (as YBA
-// would return it on Read) through the flatten helpers into resource data and
-// back out through the build helpers, asserting the values survive the round
-// trip. A drift here is exactly what produces a perpetual phantom diff on
-// `terraform plan` after a successful apply.
+// Round-trips a populated config Read->state->build; drift here is the perpetual
+// phantom diff after a successful apply.
 func TestFlattenRoundTripNoPhantomDiff(t *testing.T) {
 	res := ResourceUniverseTelemetryConfig()
 
@@ -317,10 +291,8 @@ func TestFlattenRoundTripNoPhantomDiff(t *testing.T) {
 	}
 }
 
-// TestEmptySectionsDisabled verifies that a resource with no telemetry blocks
-// at all produces a spec with all three sections nil (so the unified endpoint
-// disables everything) rather than empty structs that would trip YBA's
-// "export active but no exporter" validation.
+// No blocks -> all three sections nil (disables everything), not empty structs
+// that trip YBA's "export active but no exporter" check.
 func TestEmptySectionsDisabled(t *testing.T) {
 	res := ResourceUniverseTelemetryConfig()
 	d := schema.TestResourceDataRaw(t, res.Schema,
@@ -336,13 +308,8 @@ func TestEmptySectionsDisabled(t *testing.T) {
 	}
 }
 
-// TestEnabledDerivedFromBlockPresence is the regression test for the
-// readOnly-`enabled` bug. The YBA API marks ysql/ycql audit and ysql query-log
-// `enabled` as readOnly and forces it true from the block's presence
-// (ExportTelemetryConfigMapper). The provider therefore (a) must send
-// enabled=true whenever the block is declared, and (b) must NOT surface
-// `enabled` in state — a settable `enabled` field would diff forever against
-// the server's constant `true`. This test pins both halves.
+// Regression: YBA forces enabled=true from block presence (readOnly). Provider must
+// send true when the block is declared and never surface "enabled" (would diff forever).
 func TestEnabledDerivedFromBlockPresence(t *testing.T) {
 	res := ResourceUniverseTelemetryConfig()
 	d := schema.TestResourceDataRaw(t, res.Schema, map[string]interface{}{
@@ -377,7 +344,7 @@ func TestEnabledDerivedFromBlockPresence(t *testing.T) {
 		t.Error("ysql query-log enabled must be true from block presence")
 	}
 
-	// Flatten (Read) must not emit an `enabled` key for any of the three.
+	// Flatten (Read) must not emit an "enabled" key.
 	flatAudit := flattenAuditLogsSpec(tc.AuditLogs)
 	auditMap := flatAudit[0].(map[string]interface{})
 	for _, block := range []string{"ysql_audit_config", "ycql_audit_config"} {
@@ -392,8 +359,7 @@ func TestEnabledDerivedFromBlockPresence(t *testing.T) {
 		t.Error("flattened ysql_query_log_config must not contain an 'enabled' key")
 	}
 
-	// The flattened shape must round-trip back into state cleanly (a stray key
-	// the schema does not know about would surface here).
+	// Flattened shape must round-trip into state (a stray unknown key surfaces here).
 	if err := d.Set("audit_logs", flatAudit); err != nil {
 		t.Fatalf("set flattened audit_logs: %v", err)
 	}

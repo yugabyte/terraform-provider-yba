@@ -26,9 +26,6 @@ import (
 	"github.com/yugabyte/terraform-provider-yba/internal/utils"
 )
 
-// TestBuildExportTelemetryConfigSpec verifies that the unified
-// export-telemetry-configs payload produced by the resource (via the v2 SDK
-// types) marshals to the snake_case JSON shape documented by YBA.
 func TestBuildExportTelemetryConfigSpec(t *testing.T) {
 	res := ResourceUniverseTelemetryConfig()
 	d := schema.TestResourceDataRaw(t, res.Schema, map[string]interface{}{
@@ -142,8 +139,6 @@ func TestBuildExportTelemetryConfigSpec(t *testing.T) {
 	}
 }
 
-// TestBuildDisableSpec verifies the empty `telemetry_config: {}` body used
-// when deleting a `yba_universe_telemetry_config` resource.
 func TestBuildDisableSpec(t *testing.T) {
 	res := ResourceUniverseTelemetryConfig()
 	d := schema.TestResourceDataRaw(t, res.Schema, map[string]interface{}{
@@ -167,10 +162,6 @@ func TestBuildDisableSpec(t *testing.T) {
 	}
 }
 
-// TestBuildDetachSpec verifies that buildDetachSpec rewrites a universe's
-// telemetry configuration with the target provider UUID filtered out of
-// every exporter list, and drops the enclosing section (audit_logs /
-// query_logs / metrics) entirely when it has no remaining exporters.
 func TestBuildDetachSpec(t *testing.T) {
 	keep := "keep-uuid"
 	drop := "drop-uuid"
@@ -232,8 +223,6 @@ func TestBuildDetachSpec(t *testing.T) {
 	}
 }
 
-// TestUniverseReferencesProvider ensures the in-use detector inspects
-// every telemetry sub-config (audit / query / metrics).
 func TestUniverseReferencesProvider(t *testing.T) {
 	target := "target-uuid"
 	mk := func(audit, query, metrics string) *client.UniverseResp {
@@ -286,8 +275,6 @@ func TestUniverseReferencesProvider(t *testing.T) {
 	}
 }
 
-// TestTelemetryProviderType ensures the polymorphic block selector returns
-// the correct YBA ProviderType enum.
 func TestTelemetryProviderType(t *testing.T) {
 	cases := []struct {
 		block string
@@ -323,11 +310,7 @@ func TestTelemetryProviderType(t *testing.T) {
 	}
 }
 
-// TestBuildTelemetryProviderConfigS3 verifies that the S3 block (the most
-// recently added provider type and the one most likely to drift from the
-// YBA OpenAPI shape) lays out every field with the camelCase key YBA
-// expects, and that boolean defaults that map to false are omitted rather
-// than transmitted as zero values.
+// Pins every S3 field to the camelCase key YBA expects (catches drift).
 func TestBuildTelemetryProviderConfigS3(t *testing.T) {
 	res := ResourceTelemetryProvider()
 	d := schema.TestResourceDataRaw(t, res.Schema, map[string]interface{}{
@@ -378,11 +361,8 @@ func TestBuildTelemetryProviderConfigS3(t *testing.T) {
 	}
 }
 
-// TestBuildTelemetryProviderConfigS3OmitsFalse verifies that boolean
-// fields default to omission when set to false. YBA treats a missing key
-// as "use the YBA default" which is what we want; sending false would
-// pin the field and could surprise users on YBA upgrades that change the
-// default.
+// false must be omitted, not sent: YBA reads a missing key as "use default",
+// whereas an explicit false pins the field across YBA-default changes.
 func TestBuildTelemetryProviderConfigS3OmitsFalse(t *testing.T) {
 	res := ResourceTelemetryProvider()
 	d := schema.TestResourceDataRaw(t, res.Schema, map[string]interface{}{
@@ -412,11 +392,6 @@ func TestBuildTelemetryProviderConfigS3OmitsFalse(t *testing.T) {
 	}
 }
 
-// TestBuildTelemetryProviderConfigOTLPBasicAuth covers the auth_type
-// branch logic: OTLP renders BasicAuth and BearerAuth into distinct
-// nested objects, NoAuth into neither. A regression in the switch
-// (e.g. always emitting basicAuth) is the kind of change that easily
-// slips past a code review of an unrelated change.
 func TestBuildTelemetryProviderConfigOTLPBasicAuth(t *testing.T) {
 	res := ResourceTelemetryProvider()
 	d := schema.TestResourceDataRaw(t, res.Schema, map[string]interface{}{
@@ -450,11 +425,8 @@ func TestBuildTelemetryProviderConfigOTLPBasicAuth(t *testing.T) {
 	}
 }
 
-// TestTelemetryConfigBlocksMatchSwitch protects against the "added a new
-// provider type but forgot to wire it everywhere" bug. The list,
-// `ExactlyOneOf` resolution, and the type/build switch must all stay in
-// sync; if any one drifts the resource silently rejects the new type at
-// plan time without a useful error.
+// Guards the "added a provider type but forgot to wire it everywhere" bug:
+// telemetryConfigBlocks, ExactlyOneOf, and the type/build switch must stay in sync.
 func TestTelemetryConfigBlocksMatchSwitch(t *testing.T) {
 	for _, block := range telemetryConfigBlocks {
 		t.Run(block, func(t *testing.T) {
@@ -486,12 +458,6 @@ func TestTelemetryConfigBlocksMatchSwitch(t *testing.T) {
 	}
 }
 
-// TestResourceTelemetryProviderSchema sanity-checks the resource shape
-// against the design choices we made in the audit pass: tags forces
-// destroy-recreate (YBA has no PUT for telemetry providers), there is no
-// customer_uuid field (it's the same for every resource managed by a
-// given provider instance and just adds noise to plans), and the long
-// Delete timeout is wired through.
 func TestResourceTelemetryProviderSchema(t *testing.T) {
 	res := ResourceTelemetryProvider()
 
@@ -528,11 +494,6 @@ func TestResourceTelemetryProviderSchema(t *testing.T) {
 	}
 }
 
-// TestResourceUniverseTelemetryConfigSchema sanity-checks the universe
-// telemetry config resource: universe_uuid must be ForceNew (a different
-// universe is a new resource entirely), and Create/Update/Delete must
-// share the same long timeout so a rolling restart does not hit the
-// SDK's 20-minute default mid-upgrade.
 func TestResourceUniverseTelemetryConfigSchema(t *testing.T) {
 	res := ResourceUniverseTelemetryConfig()
 
@@ -560,10 +521,6 @@ func TestResourceUniverseTelemetryConfigSchema(t *testing.T) {
 	}
 }
 
-// TestBuildUpgradeOptionsDefault verifies that an absent upgrade_options
-// block produces a payload that requests a rolling upgrade but lets YBA
-// pick its own per-restart sleep defaults. Hard-coding sleeps here would
-// silently extend every reconfigure on multi-node universes by minutes.
 func TestBuildUpgradeOptionsDefault(t *testing.T) {
 	out := buildUpgradeOptions(nil)
 	if out.RollingUpgrade == nil || !*out.RollingUpgrade {
@@ -580,12 +537,8 @@ func TestBuildUpgradeOptionsDefault(t *testing.T) {
 	}
 }
 
-// TestBuildExportTelemetryConfigSpecMetricsOnly is a defensive smoke test
-// for the buildExportTelemetryConfigSpec / build* helpers: when a resource
-// configures only the metrics block, audit_logs and query_logs must
-// remain nil (so the unified endpoint disables them) instead of being
-// populated with empty structs (which would then trip YBA's enum
-// validation on missing required fields).
+// Unconfigured pipelines must stay nil (disabled), not empty structs — empty
+// structs would trip YBA's enum validation on missing required fields.
 func TestBuildExportTelemetryConfigSpecMetricsOnly(t *testing.T) {
 	res := ResourceUniverseTelemetryConfig()
 	d := schema.TestResourceDataRaw(t, res.Schema, map[string]interface{}{

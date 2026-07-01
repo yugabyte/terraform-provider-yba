@@ -31,10 +31,8 @@ import (
 	"github.com/yugabyte/terraform-provider-yba/internal/utils"
 )
 
-// --- pure-function detach edge cases -----------------------------------------
-
-// auditUniverse builds a single-cluster universe whose audit/query/metrics
-// exporter lists are the supplied UUID slices. Empty slices omit the section.
+// auditUniverse builds a single-cluster universe with the given audit/query/metrics
+// exporter UUIDs. An empty slice omits the section.
 func auditUniverse(name string, audit, query, metrics []string) client.UniverseResp {
 	intent := client.UserIntent{}
 	if len(audit) > 0 {
@@ -80,10 +78,6 @@ func auditUniverse(name string, audit, query, metrics []string) client.UniverseR
 	}
 }
 
-// TestBuildDetachSpecDropsAllWhenSoleExporter verifies that when the target
-// provider is the ONLY exporter in every section, all sections are dropped and
-// the resulting empty telemetry_config disables exporting entirely — without
-// touching the universe itself.
 func TestBuildDetachSpecDropsAllWhenSoleExporter(t *testing.T) {
 	u := auditUniverse("u", []string{"P"}, []string{"P"}, []string{"P"})
 	spec := buildDetachSpec(&u, "P")
@@ -102,9 +96,6 @@ func TestBuildDetachSpecDropsAllWhenSoleExporter(t *testing.T) {
 	}
 }
 
-// TestBuildDetachSpecPreservesUnrelated verifies a no-op rewrite: when the
-// universe does not reference the provider at all, every exporter and its
-// per-exporter fields survive untouched.
 func TestBuildDetachSpecPreservesUnrelated(t *testing.T) {
 	u := auditUniverse("u", []string{"keep"}, []string{"keep"}, []string{"keep"})
 	spec := buildDetachSpec(&u, "P-not-here")
@@ -116,7 +107,6 @@ func TestBuildDetachSpecPreservesUnrelated(t *testing.T) {
 	if tc.QueryLogs == nil || len(tc.QueryLogs.Exporters) != 1 {
 		t.Errorf("query exporters not preserved: %+v", tc.QueryLogs)
 	}
-	// Per-exporter batching fields must survive the rewrite.
 	if e := tc.QueryLogs.Exporters[0]; e.SendBatchMaxSize == nil || e.MemoryLimitMib == nil {
 		t.Errorf("query exporter batching fields lost: %+v", e)
 	}
@@ -131,9 +121,6 @@ func TestBuildDetachSpecPreservesUnrelated(t *testing.T) {
 	}
 }
 
-// TestBuildDetachSpecKeepsSiblingExporter verifies that when one section has
-// the target alongside a sibling exporter, only the target is filtered and the
-// section's sub-config (ysql audit) is preserved for the survivor.
 func TestBuildDetachSpecKeepsSiblingExporter(t *testing.T) {
 	u := auditUniverse("u", []string{"keep", "P"}, nil, nil)
 	spec := buildDetachSpec(&u, "P")
@@ -149,8 +136,6 @@ func TestBuildDetachSpecKeepsSiblingExporter(t *testing.T) {
 	}
 }
 
-// TestBuildDetachSpecNoClusters guards the degenerate universe shape (no
-// clusters) — buildDetachSpec must not panic and must return an empty config.
 func TestBuildDetachSpecNoClusters(t *testing.T) {
 	u := client.UniverseResp{
 		UniverseUUID:    utils.GetStringPointer("u"),
@@ -163,11 +148,8 @@ func TestBuildDetachSpecNoClusters(t *testing.T) {
 	}
 }
 
-// twoClusterUniverse builds a universe with a read-replica (ASYNC) cluster at
-// index 0 and the PRIMARY cluster at index 1, each referencing the supplied
-// provider UUID in its audit log config (empty slice omits the section). It
-// pins the YBA reality that the primary is identified by clusterType, not array
-// position, so detection and detach must not assume clusters[0] is primary.
+// twoClusterUniverse puts the ASYNC cluster at index 0 and PRIMARY at index 1, to
+// pin that the primary is identified by clusterType, not array position.
 func twoClusterUniverse(asyncExp, primaryExp string) client.UniverseResp {
 	mkCluster := func(clusterType, exp string) client.Cluster {
 		intent := client.UserIntent{}
@@ -193,12 +175,9 @@ func twoClusterUniverse(asyncExp, primaryExp string) client.UniverseResp {
 	}
 }
 
-// TestPrimaryClusterNotFirst pins the fix for the multi-cluster detach
-// asymmetry: when the primary cluster is not clusters[0], both detection and
-// the detach spec must follow clusterType (mirroring YBA's getPrimaryCluster /
-// isProviderInUse), not the array index.
+// TestPrimaryClusterNotFirst: when the primary isn't clusters[0], detection and
+// detach must follow clusterType, not the array index.
 func TestPrimaryClusterNotFirst(t *testing.T) {
-	// Provider "P" referenced only on the PRIMARY cluster (at index 1).
 	u := twoClusterUniverse("" /* async */, "P" /* primary */)
 	if !universeReferencesProvider(&u, "P") {
 		t.Fatal("provider on the primary cluster (index 1) must be detected")
@@ -210,10 +189,8 @@ func TestPrimaryClusterNotFirst(t *testing.T) {
 	}
 }
 
-// TestReadReplicaOnlyReferenceIgnored pins the YBA-aligned semantics: a
-// provider referenced only by a read-replica (ASYNC) cluster is NOT in use as
-// far as YBA's isProviderInUse is concerned (it reads only the primary), so the
-// Go detector must agree and report it unreferenced.
+// TestReadReplicaOnlyReferenceIgnored: a reference only on a read-replica (ASYNC)
+// cluster isn't "in use" — YBA's isProviderInUse reads only the primary.
 func TestReadReplicaOnlyReferenceIgnored(t *testing.T) {
 	u := twoClusterUniverse("P" /* async */, "" /* primary */)
 	if universeReferencesProvider(&u, "P") {
@@ -222,8 +199,6 @@ func TestReadReplicaOnlyReferenceIgnored(t *testing.T) {
 	}
 }
 
-// TestFormatUniverseRefs covers the human-readable rendering used in delete
-// log lines and error messages.
 func TestFormatUniverseRefs(t *testing.T) {
 	if got := formatUniverseRefs(nil); got != "(none)" {
 		t.Errorf("empty = %q want (none)", got)
@@ -240,33 +215,26 @@ func TestFormatUniverseRefs(t *testing.T) {
 	}
 }
 
-// --- full delete-with-detach integration -------------------------------------
-
-// fakeYBA is an httptest-backed stand-in for the subset of the YBA API the
-// telemetry-provider delete flow touches: list universes, configure export
-// telemetry (per universe), poll task status, and delete the provider. It
-// records the calls so tests can assert the detach fanned out to exactly the
-// referencing universes.
+// fakeYBA is an httptest stand-in for the YBA API the delete flow touches; it
+// records calls so tests can assert the detach fanned out to the right universes.
 type fakeYBA struct {
 	mu              sync.Mutex
 	universes       []client.UniverseResp
 	configuredUnis  []string // uniUUIDs that received an export-telemetry POST
 	deleteCalls     int
-	deleteStatus    int    // status code the DELETE handler returns (0 = 200 OK)
-	deleteBody      string // body the DELETE handler returns
-	deleteFailFirst bool   // when set, the FIRST DELETE returns a 400 "in use"
+	deleteStatus    int // status the DELETE handler returns (0 = 200 OK)
+	deleteBody      string
+	deleteFailFirst bool // first DELETE returns a 400 "in use"
 	relistOnSecond  []client.UniverseResp
 	listCallCount   int
 
-	// getConfig is returned by the GET export-telemetry-configs handler (used
-	// by the Read tests). getStatus, when non-zero, is returned instead.
+	// getStatus, when non-zero, is returned instead of getConfig.
 	getConfig *clientv2.TelemetryConfig
 	getStatus int
 	getBody   string
 
-	// getProviderStatus/getProviderBody, when getProviderStatus is non-zero,
-	// drive the GET telemetry_provider/{uuid} handler so the provider Read
-	// tests can exercise YBA's non-404 "missing provider" responses.
+	// getProviderStatus, when non-zero, drives the GET telemetry_provider handler
+	// so Read tests can exercise YBA's non-404 "missing provider" responses.
 	getProviderStatus int
 	getProviderBody   string
 }
@@ -298,7 +266,6 @@ func (f *fakeYBA) handler() http.HandlerFunc {
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(cfg)
 		case r.Method == http.MethodPost && strings.Contains(path, "/export-telemetry-configs"):
-			// .../universes/{uniUUID}/export-telemetry-configs
 			parts := strings.Split(path, "/")
 			for i, p := range parts {
 				if p == "universes" && i+1 < len(parts) {
@@ -370,12 +337,8 @@ func newDetachTestClient(t *testing.T, f *fakeYBA) *api.APIClient {
 	}
 }
 
-// TestProviderDeleteDetachesReferencingUniverses is the headline integration
-// test: provider "P" is shared by two universes (one via audit, one via
-// metrics) and unrelated to a third. Deleting it must detach P from exactly
-// the two referencing universes (each through its own export-telemetry POST +
-// task wait), then delete the provider and clear the resource id. The third
-// universe must be left alone.
+// TestProviderDeleteDetachesReferencingUniverses: P is shared by two universes and
+// unrelated to a third; delete must detach only the two, then delete P.
 func TestProviderDeleteDetachesReferencingUniverses(t *testing.T) {
 	f := &fakeYBA{
 		universes: []client.UniverseResp{
@@ -415,11 +378,8 @@ func TestProviderDeleteDetachesReferencingUniverses(t *testing.T) {
 	}
 }
 
-// TestProviderDeleteSurfacesUnrelatedError verifies the careful branch in the
-// delete flow: when YBA rejects the DELETE but NO universe references the
-// provider (so it is not the in-use race we know how to recover from), the
-// original error is surfaced verbatim and the resource id is preserved — we
-// must never silently drop a resource we failed to delete.
+// TestProviderDeleteSurfacesUnrelatedError: when DELETE fails but no universe
+// references P (not the in-use race), surface the error and keep the id.
 func TestProviderDeleteSurfacesUnrelatedError(t *testing.T) {
 	f := &fakeYBA{
 		universes: []client.UniverseResp{
@@ -450,20 +410,14 @@ func TestProviderDeleteSurfacesUnrelatedError(t *testing.T) {
 	}
 }
 
-// TestProviderDeleteRecoversFromReattachRace exercises the trickiest delete
-// branch: the provider is detached and the first DELETE still fails with YBA's
-// "in use" 400 because an external actor re-attached it in the gap. The flow
-// must re-list, notice P is referenced again, detach a second time, and retry
-// the DELETE — succeeding without ever surfacing the transient 400 or leaving
-// a half-deleted resource. This is the safeguard that keeps a
-// destroy-and-recreate plan from corrupting a universe's collector config.
+// TestProviderDeleteRecoversFromReattachRace: an external actor re-attaches P in
+// the gap, so the first DELETE 400s; the flow must re-detach and retry once.
 func TestProviderDeleteRecoversFromReattachRace(t *testing.T) {
 	f := &fakeYBA{
 		universes: []client.UniverseResp{
 			auditUniverse("uni-A", []string{"P"}, nil, nil),
 		},
-		// The first DELETE fails "in use"; the re-list then shows P attached
-		// again (the race), driving a second detach + a second DELETE.
+		// re-list shows P attached again (the race) -> second detach + DELETE.
 		deleteFailFirst: true,
 		relistOnSecond: []client.UniverseResp{
 			auditUniverse("uni-A", []string{"P"}, nil, nil),
