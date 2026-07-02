@@ -38,7 +38,8 @@ import (
 // fixture, which must not be reimaged) with /opt/yugabyte/data on a separate
 // persistent disk, creates a yba_gcp_provider, then flips the boot image so
 // the VM is destroyed and recreated. The reinstall must rehydrate from the
-// surviving data disk: instance_id changes, provider UUID doesn't. Both images
+// surviving data disk: instance_id changes, the boot disk's GCP-reported
+// source image is the new one, provider UUID doesn't change. Both images
 // are AlmaLinux 9 — alma8's older Python fails YBA preflight. ~30 min (two
 // real YBA installs); missing TF_VAR_GCP_YBA_VERSION or repo-root license
 // skips the test rather than failing it.
@@ -50,6 +51,7 @@ func TestAccLong_YBA_GCP_OSImageUpgrade(t *testing.T) {
 
 	var providerUUIDBefore, providerUUIDAfter string
 	var instanceIDBefore, instanceIDAfter string
+	var bootImageBefore, bootImageAfter string
 
 	name := gcpSafeName(acctest.RandomName("ybaosup"))
 
@@ -80,6 +82,8 @@ func TestAccLong_YBA_GCP_OSImageUpgrade(t *testing.T) {
 					captureAttr("yba_gcp_provider.test", "id", &providerUUIDBefore),
 					captureAttr("google_compute_instance.yba", "instance_id",
 						&instanceIDBefore),
+					checkBootDiskImage(t, "data.google_compute_image.old",
+						&bootImageBefore),
 				),
 			},
 			{
@@ -90,6 +94,9 @@ func TestAccLong_YBA_GCP_OSImageUpgrade(t *testing.T) {
 					captureAttr("yba_gcp_provider.test", "id", &providerUUIDAfter),
 					captureAttr("google_compute_instance.yba", "instance_id",
 						&instanceIDAfter),
+					checkBootDiskImage(t, "data.google_compute_image.new",
+						&bootImageAfter),
+					checkBootImageChanged(t, &bootImageBefore, &bootImageAfter),
 					checkOSUpgradePreservedProvider(t,
 						&instanceIDBefore, &instanceIDAfter,
 						&providerUUIDBefore, &providerUUIDAfter),
@@ -123,14 +130,60 @@ func checkOSUpgradePreservedProvider(t *testing.T,
 					"YBA state did not survive the host reimage",
 				*provBefore, *provAfter)
 		}
-		oldImg := stateAttr(s, "data.google_compute_image.old", "self_link")
-		newImg := stateAttr(s, "data.google_compute_image.new", "self_link")
-		t.Logf("VERIFIED OS image upgrade: YBA host VM reimaged from %s to %s "+
-			"(instance_id %s -> %s)", oldImg, newImg, *instBefore, *instAfter)
+		t.Logf("VERIFIED host reimaged: instance_id %s -> %s", *instBefore, *instAfter)
 		t.Logf("VERIFIED provider preserved: yba_gcp_provider %s was not recreated "+
 			"across the reimage (same UUID before and after)", *provAfter)
 		return nil
 	}
+}
+
+// checkBootDiskImage verifies the VM's boot disk was created from the image
+// wantImageDS resolved: data.google_compute_disk.boot reads the disk's
+// sourceImage back from GCP, so a config echo can't satisfy it. Compared by
+// image name — GCP may return the URL under a different API prefix than the
+// image self_link. Records the name in out for cross-step comparison.
+func checkBootDiskImage(
+	t *testing.T, wantImageDS string, out *string) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		got := stateAttr(s, "data.google_compute_disk.boot", "image")
+		want := stateAttr(s, wantImageDS, "self_link")
+		if got == "" || want == "" {
+			return fmt.Errorf(
+				"boot disk image (%q) or %s self_link (%q) missing from state",
+				got, wantImageDS, want)
+		}
+		if imageName(got) != imageName(want) {
+			return fmt.Errorf("boot disk was created from image %s, expected %s (%s)",
+				got, want, wantImageDS)
+		}
+		*out = imageName(got)
+		t.Logf("boot disk source image on GCP is %s (matches %s)",
+			imageName(got), wantImageDS)
+		return nil
+	}
+}
+
+// checkBootImageChanged guards against old/new resolving to the same image, so
+// "reimaged" can't pass vacuously.
+func checkBootImageChanged(t *testing.T, before, after *string) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		if *before == "" || *after == "" {
+			return errors.New("boot disk image was not captured in both steps")
+		}
+		if *before == *after {
+			return fmt.Errorf(
+				"boot disk image did not change across the upgrade (still %s)", *before)
+		}
+		t.Logf("VERIFIED OS image upgrade: boot disk source image %s -> %s "+
+			"(read back from GCP)", *before, *after)
+		return nil
+	}
+}
+
+// imageName is the last path segment of an image URL; unique within a project.
+func imageName(link string) string {
+	parts := strings.Split(link, "/")
+	return parts[len(parts)-1]
 }
 
 // checkProviderStillOnYBA asks the rehydrated YBA (host/token from state, not
@@ -321,6 +374,14 @@ resource "google_compute_instance" "yba" {
     email  = jsondecode(var.GCP_CREDENTIALS).client_email
     scopes = ["cloud-platform"]
   }
+}
+
+# The instance's boot disk read back from GCP: its image attribute is the
+# disk's actual sourceImage, so the reimage is verified against GCP rather
+# than echoing the config.
+data "google_compute_disk" "boot" {
+  name = reverse(split("/", google_compute_instance.yba.boot_disk[0].source))[0]
+  zone = "${var.GCP_REGION}-a"
 }
 
 resource "random_password" "customer" {
