@@ -529,11 +529,6 @@ func TestGetInstallCommandsWithConfig(t *testing.T) {
 	}
 }
 
-// TestGetInstallCommandsWithoutConfig verifies that when no
-// application_settings input is supplied, the function does not stage
-// /opt/yba-ctl/yba-ctl.yml. The combined install must still be the last
-// command so callers that grep cmds[len-1] for the install flags keep
-// working.
 func TestGetInstallCommandsWithoutConfig(t *testing.T) {
 	cmds := getInstallCommands("2024.1.0.0-b129", "linux", "x86_64", false, nil)
 	if len(cmds) != 4 {
@@ -555,10 +550,8 @@ func TestGetInstallCommandsWithoutConfig(t *testing.T) {
 	}
 }
 
-// TestGetInstallCommandsDataDirBranch locks in the bash structure that
-// picks between fresh install and --without-data install. A regression
-// here would silently re-initialise storage on a host that booted with
-// a pre-populated /opt/yugabyte/data disk attached.
+// A regression in the install branching would silently re-initialise storage
+// on a host with a pre-populated /opt/yugabyte/data disk attached.
 func TestGetInstallCommandsDataDirBranch(t *testing.T) {
 	skip := []string{"diskAvailability"}
 	cmds := getInstallCommands("2024.1.0.0-b129", "linux", "x86_64", true, &skip)
@@ -578,8 +571,6 @@ func TestGetInstallCommandsDataDirBranch(t *testing.T) {
 	}
 }
 
-// TestGetInstallCommandsDataDirBranchPreRelease confirms YBA_MODE=dev
-// propagates into both branches and the yba-ctl start fallback.
 func TestGetInstallCommandsDataDirBranchPreRelease(t *testing.T) {
 	cmds := getInstallCommands("2.25.0.0-b300", "linux", "x86_64", false, nil)
 	last := cmds[len(cmds)-1]
@@ -645,9 +636,6 @@ func TestGetReconfigureCommands(t *testing.T) {
 			if !strings.Contains(cmds[0], "mv /tmp/settings.yml /opt/yba-ctl/yba-ctl.yml") {
 				t.Errorf("expected settings move first, got %q", cmds[0])
 			}
-			// On-demand bundle fetch guarded by a dir-existence check, so a
-			// reconfigure-only apply doesn't depend on the extracted bundle
-			// surviving in the SSH user's home from a prior apply.
 			folder := fmt.Sprintf("yba_installer_full-%s", tt.version)
 			if !strings.Contains(cmds[1], fmt.Sprintf("[ -d ~/%s ] ||", folder)) {
 				t.Errorf("expected guarded bundle fetch second, got %q", cmds[1])
@@ -773,8 +761,7 @@ func TestGetDeleteCommands(t *testing.T) {
 			if !strings.Contains(cmds[0], "/opt/yba-ctl/yba-ctl clean") {
 				t.Errorf("expected clean command first, got %q", cmds[0])
 			}
-			// `--all` would wipe /opt/yugabyte/data which must outlive
-			// the resource when a separate data disk is mounted there.
+			// --all would wipe /opt/yugabyte/data, which must outlive the resource.
 			if strings.Contains(cmds[0], "--all") {
 				t.Errorf("clean must not pass --all, got %q", cmds[0])
 			}
@@ -789,9 +776,8 @@ func TestGetDeleteCommands(t *testing.T) {
 				!strings.Contains(cmds[1], "/tmp/settings.yml") {
 				t.Errorf("expected rm of all tmp files, got %q", cmds[1])
 			}
-			// Regression: an earlier version of this function ran
-			// `sudo rm -rf /opt/yugabyte`, which would wipe the data
-			// disk on every destroy/replace cycle.
+			// Earlier code ran `rm -rf /opt/yugabyte`, wiping the data disk on
+			// every destroy/replace cycle.
 			for i, cmd := range cmds {
 				if strings.Contains(cmd, "rm -rf /opt/yugabyte") {
 					t.Errorf("delete commands must not wipe /opt/yugabyte, found at %d: %q",

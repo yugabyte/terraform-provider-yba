@@ -49,41 +49,25 @@ func newSSHClient(user string, ip string, key string) (*ssh.Client, error) {
 	return c, nil
 }
 
-// Bounds for connectSSHForDelete. These cap only the failure path: a healthy
-// host answers on the first attempt and returns immediately. The total wall
-// time spent retrying an unreachable host is roughly sshConnectBudget, plus at
-// most one in-flight sshDialTimeout of overshoot (ssh.Dial is not
-// context-aware, so a dial already in progress runs to its own timeout).
+// connectSSHForDelete retry bounds. ssh.Dial is not context-aware, so retrying
+// can overshoot sshConnectBudget by one in-flight sshDialTimeout.
 const (
 	sshDialTimeout   = 8 * time.Second
 	sshRetryInterval = 4 * time.Second
 	sshConnectBudget = 30 * time.Second
 )
 
-// errSSHHostUnreachable reports that every connection attempt failed at the
-// TCP layer within the retry budget, i.e. the host never answered. It is
-// distinguished by error *type* (*net.OpError), not by parsing OpenSSH error
-// strings, which vary across machines.
+// errSSHHostUnreachable: every attempt failed at the TCP layer within the retry
+// budget — the host never answered.
 var errSSHHostUnreachable = errors.New("ssh host unreachable after retries")
 
-// connectSSHForDelete establishes an SSH connection for resource teardown,
-// retrying transient TCP-layer failures within sshConnectBudget. It classifies
-// the outcome so the caller can tell "host is gone" apart from "host is alive
-// but we can't get in":
-//
-//   - (client, nil): the host answered; the caller must Close it. Returned on
-//     the first successful attempt, so a healthy host is never delayed.
-//   - (nil, errSSHHostUnreachable): no TCP connection within the budget. The
-//     host is effectively gone (e.g. the cloud VM was destroyed first in a
-//     replace cycle) — there is nothing to clean up remotely.
-//   - (nil, err): a malformed key, or an SSH handshake/auth failure. The host
-//     answered on the port, so it is alive and retrying cannot help; the
-//     caller should surface this and fail loudly rather than drop the resource.
+// connectSSHForDelete dials SSH for teardown, retrying TCP-layer failures within
+// sshConnectBudget. Outcomes: (client, nil) host answered, caller must Close;
+// (nil, errSSHHostUnreachable) host gone, nothing to clean up remotely;
+// (nil, other) bad key or handshake/auth failure — host is alive, fail loudly.
 func connectSSHForDelete(ctx context.Context, user, ip, key string) (*ssh.Client, error) {
 	signer, err := ssh.ParsePrivateKey([]byte(key))
 	if err != nil {
-		// A bad/unparseable key is a config error, deterministic across
-		// retries and unrelated to whether the host is gone.
 		return nil, err
 	}
 	config := &ssh.ClientConfig{
@@ -105,12 +89,9 @@ func connectSSHForDelete(ctx context.Context, user, ip, key string) (*ssh.Client
 		}
 		lastErr = dialErr
 
-		// A *net.OpError is a TCP-layer failure (connection refused, dial
-		// timeout, no route to host): the host did not answer, so retrying
-		// helps if it is mid-teardown or briefly unreachable. Anything else is
-		// an SSH handshake/auth failure — the host answered and is alive, so
-		// bad credentials won't be fixed by retrying. Type-based, so it does
-		// not depend on OpenSSH-specific error text.
+		// *net.OpError = TCP-layer failure (refused, timeout, no route): host
+		// didn't answer, retry. Anything else = handshake/auth — host is alive,
+		// retrying won't help. Type check avoids OpenSSH-specific error text.
 		var netErr *net.OpError
 		if !errors.As(dialErr, &netErr) {
 			return nil, dialErr
@@ -127,8 +108,7 @@ func connectSSHForDelete(ctx context.Context, user, ip, key string) (*ssh.Client
 	}
 
 	if ctx.Err() != nil {
-		// The caller's context was cancelled (not just our budget); propagate
-		// that rather than masquerading it as an unreachable host.
+		// Caller cancellation is not "host unreachable"; propagate as-is.
 		return nil, ctx.Err()
 	}
 	return nil, fmt.Errorf("%w: %w", errSSHHostUnreachable, lastErr)

@@ -33,47 +33,21 @@ import (
 	"github.com/yugabyte/terraform-provider-yba/internal/api"
 )
 
-// TestAccLong_YBA_GCP_OSImageUpgrade exercises the data-disk rehydration flow
-// end-to-end on a throwaway YBA stand it deploys itself (NOT the shared standing
-// fixture YBA, which other tests depend on and must not be reimaged).
-//
-// OLD and NEW are resolved automatically as the two most recent AlmaLinux 9
-// images (NEW = the family head, OLD = the next most recent), so nothing pins a
-// specific image. Both are AlmaLinux 9 on purpose: YBA installs the same way on
-// each, whereas the alma8 family ships an older Python that YBA's preflight
-// rejects.
-//
-// Flow:
-//  1. Stand up a fresh GCP VM (boot image = OLD) with a separate persistent data
-//     disk mounted at /opt/yugabyte/data, install YBA over SSH via yba_installer,
-//     register the first customer, and create a yba_gcp_provider through that YBA.
-//  2. Flip the VM boot image OLD -> NEW. GCP can't reimage in place, so the VM is
-//     destroyed and recreated; the data disk is NOT recreated and re-attaches to
-//     the new VM, the startup script re-mounts /opt/yugabyte/data, and the
-//     installer (wired with replace_triggered_by on the VM) re-runs. Because the
-//     data dir is now populated it installs with --without-data, rehydrating YBA
-//     from the surviving disk.
-//
-// Assertions:
-//   - The VM was actually reimaged (its server-assigned instance_id changed).
-//   - The yba_gcp_provider was NOT recreated (its UUID is unchanged) AND it still
-//     exists in the rehydrated YBA — i.e. no YBA state was lost across the host
-//     OS-image upgrade.
-//
-// This is a long test (~30 min: two YBA installs on real GCP). It reuses the
-// standing fixture's network/project/credentials but stands up its OWN VM, data
-// disk, YBA install, and cloud provider — none of the standing fixture's
-// resources are modified — and tears them all down at the end (resource.Test
-// runs destroy even on failure). It needs only the standing fixture env,
-// TF_VAR_GCP_YBA_VERSION, and the YBA license at the repo root; any missing ->
-// the test skips, not fails.
+// TestAccLong_YBA_GCP_OSImageUpgrade proves YBA survives a host reimage. It
+// stands up its own throwaway YBA on a fresh GCP VM (never the shared standing
+// fixture, which must not be reimaged) with /opt/yugabyte/data on a separate
+// persistent disk, creates a yba_gcp_provider, then flips the boot image so
+// the VM is destroyed and recreated. The reinstall must rehydrate from the
+// surviving data disk: instance_id changes, provider UUID doesn't. Both images
+// are AlmaLinux 9 — alma8's older Python fails YBA preflight. ~30 min (two
+// real YBA installs); missing TF_VAR_GCP_YBA_VERSION or repo-root license
+// skips the test rather than failing it.
 func TestAccLong_YBA_GCP_OSImageUpgrade(t *testing.T) {
 	ybaVersion := os.Getenv("TF_VAR_GCP_YBA_VERSION")
 	licensePath := repoPath("yugabyte_anywhere.lic")
 	settingsPath := repoPath("acctest", "resources", "yba-ctl.yml")
 	bootScriptPath := repoPath("acctest", "resources", "gcp-bootscript.sh")
 
-	// Captured from Terraform state between the two steps.
 	var providerUUIDBefore, providerUUIDAfter string
 	var instanceIDBefore, instanceIDAfter string
 
@@ -90,8 +64,6 @@ func TestAccLong_YBA_GCP_OSImageUpgrade(t *testing.T) {
 					licensePath)
 			}
 		},
-		// yba comes from the in-process factory; the infra providers are pulled
-		// from the registry for the duration of the test.
 		ProviderFactories: acctest.ProviderFactories,
 		ExternalProviders: map[string]resource.ExternalProvider{
 			"google": {Source: "hashicorp/google", VersionConstraint: ">= 5.0"},
@@ -161,9 +133,8 @@ func checkOSUpgradePreservedProvider(t *testing.T,
 	}
 }
 
-// checkProviderStillOnYBA queries the rehydrated YBA directly (using the host and
-// API token from state, not the shared fixture YBA) and confirms the provider
-// created before the upgrade is still present — the direct proof that
+// checkProviderStillOnYBA asks the rehydrated YBA (host/token from state, not
+// the shared fixture YBA) for the pre-upgrade provider — direct proof that
 // /opt/yugabyte/data survived.
 func checkProviderStillOnYBA(t *testing.T, providerUUID *string) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
@@ -198,8 +169,8 @@ func checkProviderStillOnYBA(t *testing.T, providerUUID *string) resource.TestCh
 	}
 }
 
-// captureAttr records a resource attribute from state into out for cross-step
-// comparison. The synthetic attribute name "id" reads Primary.ID.
+// captureAttr saves a state attribute into out for cross-step comparison;
+// attr "id" reads Primary.ID, not a real attribute.
 func captureAttr(resourceName, attr string, out *string) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
 		rs, ok := s.RootModule().Resources[resourceName]
@@ -249,10 +220,8 @@ provider "google" {
   credentials = var.GCP_CREDENTIALS
 }
 
-# Resolve the two most recent AlmaLinux 9 images so the upgrade is always between
-# real, current releases and nobody has to pin image names. new = the family
-# head (newest); old = the most recent almalinux-9 whose name differs from new,
-# i.e. the second newest.
+# Two most recent AlmaLinux 9 images, so nothing pins image names: new = family
+# head, old = newest almalinux-9 whose name differs from new (second newest).
 data "google_compute_image" "new" {
   project     = "almalinux-cloud"
   family      = "almalinux-9"
@@ -281,9 +250,8 @@ provider "yba" {
   api_token = ""
 }
 
-# Authenticated YBA provider: its token comes from the customer created above,
-# so Terraform configures it only after the customer exists and YBA is up. Used
-# to create the cloud provider whose survival this test asserts.
+# Authenticated YBA provider: token comes from the customer above, so it
+# configures only after YBA is up; creates the provider whose survival is asserted.
 provider "yba" {
   host         = google_compute_address.yba.address
   api_token    = yba_customer_resource.customer.api_token
@@ -295,17 +263,15 @@ resource "tls_private_key" "yba" {
   rsa_bits  = 4096
 }
 
-# Static external IP so the YBA host/API address stays constant across the VM
-# reimage (the VM is replaced; this address is reused).
+# Static external IP so the YBA address stays constant across the VM reimage.
 resource "google_compute_address" "yba" {
   name         = "%[1]s"
   region       = var.GCP_REGION
   address_type = "EXTERNAL"
 }
 
-# Persistent YBA state on a separate disk. It is NOT recreated when the boot
-# image changes, so /opt/yugabyte/data outlives the host reimage; that survival
-# is the whole point of the test.
+# NOT recreated when the boot image changes: /opt/yugabyte/data outliving the
+# reimage is the point of the test.
 resource "google_compute_disk" "data" {
   name = "%[1]s-data"
   zone = "${var.GCP_REGION}-a"
@@ -320,8 +286,8 @@ resource "google_compute_instance" "yba" {
 
   allow_stopping_for_update = true
 
-  # Changing this image forces the VM to be replaced (GCP can't reimage a boot
-  # disk in place); that replacement is the "OS upgrade" under test.
+  # Changing this image replaces the VM (GCP can't reimage a boot disk in
+  # place); that replacement is the "OS upgrade" under test.
   boot_disk {
     initialize_params {
       image = %[2]s
@@ -366,8 +332,7 @@ resource "random_password" "customer" {
   override_special = "!#$%%*-_"
 }
 
-# The data disk is mounted at /opt/yugabyte/data by the VM startup script.
-# Block the install until the mount actually exists.
+# Block the install until the startup script has mounted /opt/yugabyte/data.
 resource "null_resource" "wait_for_data_mount" {
   triggers = {
     instance = google_compute_instance.yba.instance_id
@@ -400,8 +365,7 @@ resource "yba_installer" "install" {
   host_os                   = "linux"
   host_architecture         = "x86_64"
 
-  # When the boot image changes the VM is replaced; re-run the installer on the
-  # new host. The reinstall sees the re-attached, pre-populated
+  # Reinstall on the replaced VM: sees the re-attached, pre-populated
   # /opt/yugabyte/data and runs 'install --without-data', rehydrating YBA.
   lifecycle {
     replace_triggered_by = [google_compute_instance.yba]
@@ -444,9 +408,8 @@ resource "yba_gcp_provider" "test" {
 `, name, bootImageRef, bootScript, license, settings, ybaVersion)
 }
 
-// repoPath builds an absolute path to a repo-relative file from this test file's
-// compiled location (internal/installation), so file() references and the
-// license check resolve regardless of the test's working directory.
+// repoPath resolves repo-relative paths via runtime.Caller so file() references
+// and the license check work regardless of the test's working directory.
 func repoPath(parts ...string) string {
 	_, thisFile, _, ok := runtime.Caller(0)
 	if !ok {
@@ -458,9 +421,8 @@ func repoPath(parts ...string) string {
 
 var gcpNameInvalid = regexp.MustCompile(`[^a-z0-9-]`)
 
-// gcpSafeName coerces an acctest random name into a valid GCP resource name:
-// lowercase, only [a-z0-9-], starting with a letter and ending with a letter
-// or digit.
+// gcpSafeName coerces a random name to GCP naming rules: lowercase [a-z0-9-],
+// starting with a letter.
 func gcpSafeName(s string) string {
 	s = gcpNameInvalid.ReplaceAllString(strings.ToLower(s), "-")
 	s = strings.Trim(s, "-")
