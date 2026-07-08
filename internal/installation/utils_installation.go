@@ -18,6 +18,7 @@ package installation
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"strings"
@@ -46,6 +47,71 @@ func newSSHClient(user string, ip string, key string) (*ssh.Client, error) {
 		return nil, err
 	}
 	return c, nil
+}
+
+// connectSSHForDelete retry bounds. ssh.Dial is not context-aware, so retrying
+// can overshoot sshConnectBudget by one in-flight sshDialTimeout.
+const (
+	sshDialTimeout   = 8 * time.Second
+	sshRetryInterval = 4 * time.Second
+	sshConnectBudget = 30 * time.Second
+)
+
+// errSSHHostUnreachable: every attempt failed at the TCP layer within the retry
+// budget — the host never answered.
+var errSSHHostUnreachable = errors.New("ssh host unreachable after retries")
+
+// connectSSHForDelete dials SSH for teardown, retrying TCP-layer failures within
+// sshConnectBudget. Outcomes: (client, nil) host answered, caller must Close;
+// (nil, errSSHHostUnreachable) host gone, nothing to clean up remotely;
+// (nil, other) bad key or handshake/auth failure — host is alive, fail loudly.
+func connectSSHForDelete(ctx context.Context, user, ip, key string) (*ssh.Client, error) {
+	signer, err := ssh.ParsePrivateKey([]byte(key))
+	if err != nil {
+		return nil, err
+	}
+	config := &ssh.ClientConfig{
+		User:            user,
+		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		Auth:            []ssh.AuthMethod{ssh.PublicKeys(signer)},
+		Timeout:         sshDialTimeout,
+	}
+	addr := net.JoinHostPort(ip, "22")
+
+	budgetCtx, cancel := context.WithTimeout(ctx, sshConnectBudget)
+	defer cancel()
+
+	var lastErr error
+	for attempt := 1; budgetCtx.Err() == nil; attempt++ {
+		client, dialErr := ssh.Dial("tcp", addr, config)
+		if dialErr == nil {
+			return client, nil
+		}
+		lastErr = dialErr
+
+		// *net.OpError = TCP-layer failure (refused, timeout, no route): host
+		// didn't answer, retry. Anything else = handshake/auth — host is alive,
+		// retrying won't help. Type check avoids OpenSSH-specific error text.
+		var netErr *net.OpError
+		if !errors.As(dialErr, &netErr) {
+			return nil, dialErr
+		}
+
+		tflog.Info(ctx, fmt.Sprintf(
+			"yba_installer: SSH dial to %s failed at TCP layer (attempt %d): %v",
+			addr, attempt, dialErr))
+
+		select {
+		case <-budgetCtx.Done():
+		case <-time.After(sshRetryInterval):
+		}
+	}
+
+	if ctx.Err() != nil {
+		// Caller cancellation is not "host unreachable"; propagate as-is.
+		return nil, ctx.Err()
+	}
+	return nil, fmt.Errorf("%w: %w", errSSHHostUnreachable, lastErr)
 }
 
 func runCommand(ctx context.Context, client *ssh.Client, cmd string) (string, error) {
