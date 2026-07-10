@@ -2,18 +2,18 @@
 page_title: "yba_universe_telemetry_config Resource - YugabyteDB Anywhere"
 description: |-
   ~> Experimental: This resource wraps a YugabyteDB Anywhere telemetry export API that is still experimental and may change in backward-incompatible ways across YBA releases. Pin your provider version and review release notes before upgrading.
-  Universe Telemetry Config Resource. Attaches audit log, query log, and metrics export pipelines to a YBA universe via the unified export-telemetry-configs API. Each exporter references a yba_telemetry_provider (or any pre-existing telemetry provider UUID) and triggers a rolling/non-rolling restart of the universe to install or update the OpenTelemetry collector.
+  Universe Telemetry Config Resource. Attaches audit log, query log, and metrics export pipelines to a YBA universe via the unified export-telemetry-configs API. Each exporter references a telemetry provider resource (yba_datadog_telemetry_provider, yba_otlp_telemetry_provider, ... — or any pre-existing telemetry provider UUID) and triggers a rolling/non-rolling restart of the universe to install or update the OpenTelemetry collector.
   ~> Note: OTLP-based exporters require the global runtime config yb.telemetry.allow_otlp to be set to true. Manage that with the yba_runtime_config resource.
   ~> Note: Import an existing universe-level configuration with the universe UUID as the resource ID (terraform import yba_universe_telemetry_config.example <universe-uuid>); state is populated from the unified export-telemetry-configs GET API.
   ~> One resource per universe: YBA stores a single telemetry configuration per universe and this resource owns it wholesale — Terraform is the source of truth. On apply it replaces whatever the universe currently has (including anything configured out-of-band in the YBA UI), so manage all three pipelines (audit_logs, query_logs, metrics) from a single yba_universe_telemetry_config block. Declaring two resources for the same universe_uuid is rejected at plan time (they would otherwise overwrite each other on every apply). On destroy the resource disables every exporter on the universe, but only if a configuration still exists server-side — an already-empty universe is left untouched.
-  ~> Dependency Note: When exporter_uuid is wired through a reference like yba_telemetry_provider.x.id, Terraform's dependency graph automatically orders create / replace / destroy of the provider before this resource — there is no need to add an explicit depends_on. The provider's own destroy step also proactively detaches itself from every referencing universe before deletion, so a plan that destroys-and-recreates a provider in the same apply is safe.
+  ~> Dependency Note: When exporter_uuid is wired through a reference like yba_datadog_telemetry_provider.x.id, Terraform's dependency graph automatically orders create / replace / destroy of the provider before this resource — there is no need to add an explicit depends_on. The provider's own destroy step also proactively detaches itself from every referencing universe before deletion, so a plan that destroys-and-recreates a provider in the same apply is safe.
 ---
 
 # yba_universe_telemetry_config (Resource)
 
 ~> **Experimental:** This resource wraps a YugabyteDB Anywhere telemetry export API that is still experimental and may change in backward-incompatible ways across YBA releases. Pin your provider version and review release notes before upgrading.
 
-Universe Telemetry Config Resource. Attaches audit log, query log, and metrics export pipelines to a YBA universe via the unified `export-telemetry-configs` API. Each exporter references a `yba_telemetry_provider` (or any pre-existing telemetry provider UUID) and triggers a rolling/non-rolling restart of the universe to install or update the OpenTelemetry collector.
+Universe Telemetry Config Resource. Attaches audit log, query log, and metrics export pipelines to a YBA universe via the unified `export-telemetry-configs` API. Each exporter references a telemetry provider resource (`yba_datadog_telemetry_provider`, `yba_otlp_telemetry_provider`, ... — or any pre-existing telemetry provider UUID) and triggers a rolling/non-rolling restart of the universe to install or update the OpenTelemetry collector.
 
 ~> **Note:** OTLP-based exporters require the global runtime config `yb.telemetry.allow_otlp` to be set to `true`. Manage that with the `yba_runtime_config` resource.
 
@@ -21,7 +21,7 @@ Universe Telemetry Config Resource. Attaches audit log, query log, and metrics e
 
 ~> **One resource per universe:** YBA stores a single telemetry configuration per universe and this resource owns it wholesale — Terraform is the source of truth. On apply it **replaces** whatever the universe currently has (including anything configured out-of-band in the YBA UI), so manage all three pipelines (`audit_logs`, `query_logs`, `metrics`) from a **single** `yba_universe_telemetry_config` block. Declaring two resources for the same `universe_uuid` is rejected at plan time (they would otherwise overwrite each other on every apply). On destroy the resource disables every exporter on the universe, but only if a configuration still exists server-side — an already-empty universe is left untouched.
 
-~> **Dependency Note:** When `exporter_uuid` is wired through a reference like `yba_telemetry_provider.x.id`, Terraform's dependency graph automatically orders create / replace / destroy of the provider before this resource — there is **no need to add an explicit `depends_on`**. The provider's own destroy step also proactively detaches itself from every referencing universe before deletion, so a plan that destroys-and-recreates a provider in the same apply is safe.
+~> **Dependency Note:** When `exporter_uuid` is wired through a reference like `yba_datadog_telemetry_provider.x.id`, Terraform's dependency graph automatically orders create / replace / destroy of the provider before this resource — there is **no need to add an explicit `depends_on`**. The provider's own destroy step also proactively detaches itself from every referencing universe before deletion, so a plan that destroys-and-recreates a provider in the same apply is safe.
 
 ## Example Usage
 
@@ -51,7 +51,7 @@ resource "yba_universe_telemetry_config" "main" {
     }
 
     exporter {
-      exporter_uuid = yba_telemetry_provider.datadog.id
+      exporter_uuid = yba_datadog_telemetry_provider.datadog.id
       additional_tags = {
         query_logs_key = yba_universe.main.name
       }
@@ -71,7 +71,7 @@ resource "yba_universe_telemetry_config" "main" {
     }
 
     exporter {
-      exporter_uuid              = yba_telemetry_provider.datadog.id
+      exporter_uuid              = yba_datadog_telemetry_provider.datadog.id
       send_batch_max_size        = 1000
       send_batch_size            = 100
       send_batch_timeout_seconds = 10
@@ -96,7 +96,7 @@ resource "yba_universe_telemetry_config" "main" {
     # Repeat the exporter block per destination — each becomes one entry in the
     # API's exporters array (metrics here fan out to both Prometheus and Datadog).
     exporter {
-      exporter_uuid = yba_telemetry_provider.prometheus.id
+      exporter_uuid = yba_otlp_telemetry_provider.prometheus.id
       additional_tags = {
         metrics_key = "muthu"
       }
@@ -107,7 +107,7 @@ resource "yba_universe_telemetry_config" "main" {
       metrics_prefix             = "ybdb."
     }
     exporter {
-      exporter_uuid  = yba_telemetry_provider.datadog.id
+      exporter_uuid  = yba_datadog_telemetry_provider.datadog.id
       metrics_prefix = "yba."
     }
   }
@@ -130,11 +130,11 @@ resource "yba_universe_telemetry_config" "main" {
     # Each exporter block adds one destination; do NOT add a second
     # yba_universe_telemetry_config resource for the same universe.
     exporter {
-      exporter_uuid  = yba_telemetry_provider.prometheus.id
+      exporter_uuid  = yba_otlp_telemetry_provider.prometheus.id
       metrics_prefix = "ybdb."
     }
     exporter {
-      exporter_uuid  = yba_telemetry_provider.datadog.id
+      exporter_uuid  = yba_datadog_telemetry_provider.datadog.id
       metrics_prefix = "yba."
     }
   }

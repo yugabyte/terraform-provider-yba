@@ -21,7 +21,7 @@ resource "yba_universe_telemetry_config" "main" {
     }
 
     exporter {
-      exporter_uuid = yba_telemetry_provider.datadog.id
+      exporter_uuid = yba_datadog_telemetry_provider.datadog.id
       additional_tags = {
         query_logs_key = yba_universe.main.name
       }
@@ -41,7 +41,7 @@ resource "yba_universe_telemetry_config" "main" {
     }
 
     exporter {
-      exporter_uuid              = yba_telemetry_provider.datadog.id
+      exporter_uuid              = yba_datadog_telemetry_provider.datadog.id
       send_batch_max_size        = 1000
       send_batch_size            = 100
       send_batch_timeout_seconds = 10
@@ -66,7 +66,7 @@ resource "yba_universe_telemetry_config" "main" {
     # Repeat the exporter block per destination — each becomes one entry in the
     # API's exporters array (metrics here fan out to both Prometheus and Datadog).
     exporter {
-      exporter_uuid = yba_telemetry_provider.prometheus.id
+      exporter_uuid = yba_otlp_telemetry_provider.prometheus.id
       additional_tags = {
         metrics_key = "muthu"
       }
@@ -77,7 +77,7 @@ resource "yba_universe_telemetry_config" "main" {
       metrics_prefix             = "ybdb."
     }
     exporter {
-      exporter_uuid  = yba_telemetry_provider.datadog.id
+      exporter_uuid  = yba_datadog_telemetry_provider.datadog.id
       metrics_prefix = "yba."
     }
   }

@@ -118,9 +118,10 @@ func ResourceUniverseTelemetryConfig() *schema.Resource {
 			"Universe Telemetry Config Resource. Attaches audit log, query log, " +
 			"and metrics export pipelines to a YBA universe via the unified " +
 			"`export-telemetry-configs` API. Each exporter references a " +
-			"`yba_telemetry_provider` (or any pre-existing telemetry provider " +
-			"UUID) and triggers a rolling/non-rolling restart of the universe to " +
-			"install or update the OpenTelemetry collector.\n\n" +
+			"telemetry provider resource (`yba_datadog_telemetry_provider`, " +
+			"`yba_otlp_telemetry_provider`, ... — or any pre-existing telemetry " +
+			"provider UUID) and triggers a rolling/non-rolling restart of the " +
+			"universe to install or update the OpenTelemetry collector.\n\n" +
 			"~> **Note:** OTLP-based exporters require the global runtime config " +
 			"`yb.telemetry.allow_otlp` to be set to `true`. Manage that with the " +
 			"`yba_runtime_config` resource.\n\n" +
@@ -140,7 +141,7 @@ func ResourceUniverseTelemetryConfig() *schema.Resource {
 			"only if a configuration still exists server-side — an already-empty " +
 			"universe is left untouched.\n\n" +
 			"~> **Dependency Note:** When `exporter_uuid` is wired through a " +
-			"reference like `yba_telemetry_provider.x.id`, Terraform's dependency " +
+			"reference like `yba_datadog_telemetry_provider.x.id`, Terraform's dependency " +
 			"graph automatically orders create / replace / destroy of the provider " +
 			"before this resource — there is **no need to add an explicit " +
 			"`depends_on`**. The provider's own destroy step also proactively " +

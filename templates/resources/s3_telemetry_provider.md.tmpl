@@ -10,13 +10,13 @@ description: |-
 
 ## Example Usage
 
-{{ tffile "examples/resources/yba_telemetry_provider/resource.tf" }}
+{{ tffile "examples/resources/yba_s3_telemetry_provider/resource.tf" }}
 
 {{ .SchemaMarkdown | trimspace }}
 
 ## Replacing an in-use provider
 
-YBA does not support editing a telemetry provider — any change to a config
+YBA does not support editing a telemetry provider — any change to a
 field forces Terraform to destroy-and-recreate the resource. YBA also
 rejects delete requests for a provider that is still referenced by a
 universe's telemetry configuration:
@@ -42,8 +42,10 @@ collector configuration is updated.
 
 ## Import
 
-Telemetry providers can be imported using their UUID:
+Telemetry providers can be imported using their UUID. Import verifies
+the provider's type: importing a provider of a different sink type fails
+with a message naming the matching resource.
 
 ```sh
-terraform import yba_telemetry_provider.datadog <telemetry-provider-uuid>
+terraform import yba_s3_telemetry_provider.audit_archive <telemetry-provider-uuid>
 ```

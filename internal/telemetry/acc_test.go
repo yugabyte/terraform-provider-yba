@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
@@ -56,16 +57,14 @@ func enableTelemetryFlags(t *testing.T) {
 	}
 }
 
-// otlpProviderHCL renders an OTLP provider — the representative type, valid for
+// otlpProviderHCL renders an OTLP provider — the representative sink, valid for
 // both metrics and logs.
 func otlpProviderHCL(label, name string) string {
 	return fmt.Sprintf(`
-resource "yba_telemetry_provider" %q {
+resource "yba_otlp_telemetry_provider" %q {
   name = %q
 
-  otlp {
-    endpoint = "http://otel-collector.acctest:4317"
-  }
+  endpoint = "http://otel-collector.acctest:4317"
 }
 `, label, name)
 }
@@ -73,14 +72,14 @@ resource "yba_telemetry_provider" %q {
 func otlpProviderConfig(name string) string {
 	return otlpProviderHCL("test", name) + `
 data "yba_telemetry_provider" "lookup" {
-  name = yba_telemetry_provider.test.name
+  name = yba_otlp_telemetry_provider.test.name
 }
 `
 }
 
 func TestAccTelemetryProvider_OTLP(t *testing.T) {
 	name := acctest.RandomName("tp-otlp")
-	resourceName := "yba_telemetry_provider.test"
+	resourceName := "yba_otlp_telemetry_provider.test"
 
 	resource.Test(t, resource.TestCase{
 		PreCheck: func() {
@@ -95,7 +94,6 @@ func TestAccTelemetryProvider_OTLP(t *testing.T) {
 				Check: resource.ComposeTestCheckFunc(
 					testAccCheckTelemetryProviderExists(resourceName),
 					resource.TestCheckResourceAttr(resourceName, "name", name),
-					resource.TestCheckResourceAttr(resourceName, "type", "OTLP"),
 					resource.TestCheckResourceAttrPair(
 						"data.yba_telemetry_provider.lookup", "id", resourceName, "id"),
 					resource.TestCheckResourceAttr(
@@ -103,12 +101,15 @@ func TestAccTelemetryProvider_OTLP(t *testing.T) {
 				),
 			},
 			{
-				// Config block isn't refreshed on Read (YBA masks secrets), so
-				// import verifies only id/name/type.
-				ResourceName:            resourceName,
-				ImportState:             true,
-				ImportStateVerify:       true,
-				ImportStateVerifyIgnore: []string{"otlp", "otlp.#", "otlp.0.%"},
+				// Config fields aren't refreshed on Read (YBA masks secrets), so
+				// import verifies only id/name/tags.
+				ResourceName:      resourceName,
+				ImportState:       true,
+				ImportStateVerify: true,
+				ImportStateVerifyIgnore: []string{
+					"endpoint", "auth_type", "protocol", "compression",
+					"timeout_seconds",
+				},
 			},
 		},
 	})
@@ -134,7 +135,9 @@ func testAccCheckTelemetryProviderExists(n string) resource.TestCheckFunc {
 func testAccCheckTelemetryProviderDestroy(s *terraform.State) error {
 	c := acctest.APIClient
 	for _, rs := range s.RootModule().Resources {
-		if rs.Type != "yba_telemetry_provider" {
+		// Matches every per-sink resource (yba_otlp_telemetry_provider, ...)
+		// but not yba_universe_telemetry_config.
+		if !strings.HasSuffix(rs.Type, "_telemetry_provider") {
 			continue
 		}
 		//nolint:bodyclose // body is closed inside GetTelemetryProvider
@@ -325,7 +328,7 @@ func TestAccLong_UniverseTelemetryConfig_GCP(t *testing.T) {
 		Steps: []resource.TestStep{
 			{
 				Config: base + provA + universeTelemetryMetricsOnly(
-					uniRef, "yba_telemetry_provider.a.id"),
+					uniRef, "yba_otlp_telemetry_provider.a.id"),
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttrPair(
 						resourceName, "universe_uuid", "yba_universe.gcp", "id"),
@@ -336,7 +339,7 @@ func TestAccLong_UniverseTelemetryConfig_GCP(t *testing.T) {
 			},
 			{
 				Config: base + provA + provB + universeTelemetryMultiExporter(
-					uniRef, "yba_telemetry_provider.a.id", "yba_telemetry_provider.b.id"),
+					uniRef, "yba_otlp_telemetry_provider.a.id", "yba_otlp_telemetry_provider.b.id"),
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttr(
 						resourceName, "metrics.0.collection_level", "ALL"),

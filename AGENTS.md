@@ -78,6 +78,10 @@ than leaving the build red.
 - Every resource gets a working example at
   `examples/resources/yba_<name>/resource.tf` covering every nested
   block variant.
+- Telemetry sinks ship as per-sink resources
+  (`yba_<sink>_telemetry_provider`) built on the `sinkSpec` factory in
+  `internal/telemetry/sink.go` — add a new sink as a new spec + resource,
+  not as a block on a shared polymorphic resource.
 
 ## Lifecycle
 

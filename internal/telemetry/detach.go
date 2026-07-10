@@ -13,8 +13,9 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Package telemetry provides the yba_telemetry_provider and
-// yba_universe_telemetry_config resources for managing YugabyteDB Anywhere
+// Package telemetry provides the per-sink telemetry provider resources
+// (yba_datadog_telemetry_provider, yba_otlp_telemetry_provider, ...) and the
+// yba_universe_telemetry_config resource for managing YugabyteDB Anywhere
 // observability exports.
 package telemetry
 
@@ -192,8 +193,8 @@ func buildDetachSpec(
 			}
 		}
 	}
-	// Rolling upgrade with YBA's default sleeps — yba_telemetry_provider has no
-	// upgrade_options block, so we don't hard-code a sleep.
+	// Rolling upgrade with YBA's default sleeps — the telemetry provider
+	// resources have no upgrade_options block, so we don't hard-code a sleep.
 	upgrade := clientv2.ExportTelemetryUpgradeOptions{
 		RollingUpgrade: utils.GetBoolPointer(true),
 	}

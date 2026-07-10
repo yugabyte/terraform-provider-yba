@@ -18,6 +18,7 @@ package telemetry
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -237,6 +238,10 @@ type fakeYBA struct {
 	// so Read tests can exercise YBA's non-404 "missing provider" responses.
 	getProviderStatus int
 	getProviderBody   string
+
+	// createdProviders records every POST /telemetry_provider request body so
+	// create tests can assert the exact payload each sink resource sends.
+	createdProviders [][]byte
 }
 
 func (f *fakeYBA) handler() http.HandlerFunc {
@@ -280,6 +285,14 @@ func (f *fakeYBA) handler() http.HandlerFunc {
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`{"title":"Configure Telemetry","percent":100,` +
 				`"status":"Success","details":{"taskDetails":[]}}`))
+		case r.Method == http.MethodPost && strings.HasSuffix(path, "/telemetry_provider"):
+			body, _ := io.ReadAll(r.Body)
+			f.createdProviders = append(f.createdProviders, body)
+			created := map[string]interface{}{}
+			_ = json.Unmarshal(body, &created)
+			created["uuid"] = "P"
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(created)
 		case r.Method == http.MethodGet && strings.Contains(path, "/telemetry_provider/"):
 			if f.getProviderStatus != 0 {
 				w.WriteHeader(f.getProviderStatus)
@@ -287,6 +300,15 @@ func (f *fakeYBA) handler() http.HandlerFunc {
 				return
 			}
 			w.Header().Set("Content-Type", "application/json")
+			// Echo the last created provider so the read-after-create in the
+			// sink factory sees the type it just sent; default to DATA_DOG.
+			if n := len(f.createdProviders); n > 0 {
+				resp := map[string]interface{}{}
+				_ = json.Unmarshal(f.createdProviders[n-1], &resp)
+				resp["uuid"] = "P"
+				_ = json.NewEncoder(w).Encode(resp)
+				return
+			}
 			_ = json.NewEncoder(w).Encode(map[string]interface{}{
 				"uuid":   "P",
 				"name":   "p",
@@ -349,7 +371,7 @@ func TestProviderDeleteDetachesReferencingUniverses(t *testing.T) {
 	}
 	apiClient := newDetachTestClient(t, f)
 
-	res := ResourceTelemetryProvider()
+	res := ResourceDatadogTelemetryProvider()
 	d := res.TestResourceData()
 	d.SetId("P")
 
@@ -390,7 +412,7 @@ func TestProviderDeleteSurfacesUnrelatedError(t *testing.T) {
 	}
 	apiClient := newDetachTestClient(t, f)
 
-	res := ResourceTelemetryProvider()
+	res := ResourceDatadogTelemetryProvider()
 	d := res.TestResourceData()
 	d.SetId("P")
 
@@ -425,7 +447,7 @@ func TestProviderDeleteRecoversFromReattachRace(t *testing.T) {
 	}
 	apiClient := newDetachTestClient(t, f)
 
-	res := ResourceTelemetryProvider()
+	res := ResourceDatadogTelemetryProvider()
 	d := res.TestResourceData()
 	d.SetId("P")
 

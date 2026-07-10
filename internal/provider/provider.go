@@ -142,8 +142,14 @@ func New() *schema.Provider {
 			"yba_runtime_config": runtimeconfig.ResourceRuntimeConfig(),
 
 			// Telemetry / observability export resources for log and metric pipelines.
-			"yba_telemetry_provider":        telemetry.ResourceTelemetryProvider(),
-			"yba_universe_telemetry_config": telemetry.ResourceUniverseTelemetryConfig(),
+			"yba_datadog_telemetry_provider":              telemetry.ResourceDatadogTelemetryProvider(),
+			"yba_otlp_telemetry_provider":                 telemetry.ResourceOTLPTelemetryProvider(),
+			"yba_aws_cloudwatch_telemetry_provider":       telemetry.ResourceAWSCloudWatchTelemetryProvider(),
+			"yba_gcp_cloud_monitoring_telemetry_provider": telemetry.ResourceGCPCloudMonitoringTelemetryProvider(),
+			"yba_splunk_telemetry_provider":               telemetry.ResourceSplunkTelemetryProvider(),
+			"yba_dynatrace_telemetry_provider":            telemetry.ResourceDynatraceTelemetryProvider(),
+			"yba_s3_telemetry_provider":                   telemetry.ResourceS3TelemetryProvider(),
+			"yba_universe_telemetry_config":               telemetry.ResourceUniverseTelemetryConfig(),
 		},
 		ConfigureContextFunc: providerConfigure,
 	}

@@ -26,11 +26,11 @@ resource "yba_universe_telemetry_config" "main" {
     # Each exporter block adds one destination; do NOT add a second
     # yba_universe_telemetry_config resource for the same universe.
     exporter {
-      exporter_uuid  = yba_telemetry_provider.prometheus.id
+      exporter_uuid  = yba_otlp_telemetry_provider.prometheus.id
       metrics_prefix = "ybdb."
     }
     exporter {
-      exporter_uuid  = yba_telemetry_provider.datadog.id
+      exporter_uuid  = yba_datadog_telemetry_provider.datadog.id
       metrics_prefix = "yba."
     }
   }
