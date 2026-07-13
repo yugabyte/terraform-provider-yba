@@ -10,6 +10,17 @@ description: |-
 
 Manages the installation of YugabyteDB Anywhere on an existing virtual machine using YBA Installer.
 
+~> **Note:** When `/opt/yugabyte/data` is already populated (typically because it lives on a separately managed persistent disk that survives the host VM), the resource installs with `--without-data` and starts services in place rather than reinitialising storage. Destroy runs `yba-ctl clean` only and leaves `/opt/yugabyte/data` intact; wiping the data directory is the operator's responsibility. Consequently, destroying and recreating this resource on the **same** host preserves the existing data: the recreate detects the populated data directory and starts in place instead of performing a clean install. To force a fresh install, wipe `/opt/yugabyte/data` on the host between destroy and apply.
+
+## Supported Versions
+
+Both GA releases and pre-release CI builds are supported.
+
+| Version format        | Example           |
+| --------------------- | ----------------- |
+| GA release (`20YY.x`) | `2025.2.2.2-b11`  |
+| Pre-release (`2.xx`)  | `2.31.0.0-b14`    |
+
 ## Example Usage
 
 ```terraform

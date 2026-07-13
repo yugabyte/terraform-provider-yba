@@ -6,6 +6,10 @@ on:
   pull_request:
   workflow_dispatch:
 
+concurrency:
+  group: standing-yba-acctest
+  cancel-in-progress: false
+
 jobs:
   # CI has no cloud access. The test env comes from the ACCTEST_ENV secret and
   # runs against the standing fixture, which is kept running out of band.
