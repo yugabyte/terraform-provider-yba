@@ -1,0 +1,352 @@
+// Licensed to YugabyteDB, Inc. under one or more contributor license
+// agreements. See the NOTICE file distributed with this work for
+// additional information regarding copyright ownership. Yugabyte
+// licenses this file to you under the Mozilla License, Version 2.0
+// (the "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+// http://mozilla.org/MPL/2.0/.
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+
+package telemetry
+
+import (
+	"encoding/json"
+	"testing"
+	"time"
+
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	client "github.com/yugabyte/platform-go-client"
+
+	"github.com/yugabyte/terraform-provider-yba/internal/utils"
+)
+
+func TestBuildExportTelemetryConfigSpec(t *testing.T) {
+	res := ResourceUniverseTelemetryConfig()
+	d := schema.TestResourceDataRaw(t, res.Schema, map[string]interface{}{
+		"universe_uuid": "abc-uuid",
+		"audit_logs": []interface{}{
+			map[string]interface{}{
+				"ysql_audit_config": []interface{}{
+					map[string]interface{}{
+						"classes":                []interface{}{"READ", "WRITE"},
+						"log_catalog":            true,
+						"log_client":             true,
+						"log_level":              "WARNING",
+						"log_parameter":          true,
+						"log_parameter_max_size": 4096,
+						"log_relation":           true,
+						"log_rows":               true,
+						"log_statement":          true,
+						"log_statement_once":     true,
+					},
+				},
+				"exporter": []interface{}{
+					map[string]interface{}{
+						"exporter_uuid": "exp-1",
+						"additional_tags": map[string]interface{}{
+							"env": "prod",
+						},
+					},
+				},
+			},
+		},
+		"metrics": []interface{}{
+			map[string]interface{}{
+				"scrape_interval_seconds": 30,
+				"scrape_timeout_seconds":  20,
+				"collection_level":        "NORMAL",
+				"scrape_config_targets":   []interface{}{"MASTER_EXPORT", "TSERVER_EXPORT"},
+				"exporter": []interface{}{
+					map[string]interface{}{
+						"exporter_uuid":              "exp-1",
+						"send_batch_size":            100,
+						"send_batch_max_size":        1000,
+						"send_batch_timeout_seconds": 60,
+						"memory_limit_mib":           2048,
+						"metrics_prefix":             "ybdb.",
+					},
+				},
+			},
+		},
+	})
+
+	spec := buildExportTelemetryConfigSpec(d)
+	payload, err := json.Marshal(spec)
+	if err != nil {
+		t.Fatalf("marshal spec: %v", err)
+	}
+
+	var out struct {
+		TelemetryConfig struct {
+			AuditLogs *struct {
+				YsqlAuditConfig map[string]interface{}   `json:"ysql_audit_config"`
+				Exporters       []map[string]interface{} `json:"exporters"`
+			} `json:"audit_logs"`
+			Metrics *struct {
+				ScrapeIntervalSeconds int                      `json:"scrape_interval_seconds"`
+				CollectionLevel       string                   `json:"collection_level"`
+				ScrapeConfigTargets   []string                 `json:"scrape_config_targets"`
+				Exporters             []map[string]interface{} `json:"exporters"`
+			} `json:"metrics"`
+		} `json:"telemetry_config"`
+		UpgradeOptions map[string]interface{} `json:"upgrade_options"`
+	}
+	if err := json.Unmarshal(payload, &out); err != nil {
+		t.Fatalf("unmarshal payload: %v\n%s", err, payload)
+	}
+	if out.TelemetryConfig.AuditLogs == nil {
+		t.Fatalf("audit_logs missing from payload: %s", payload)
+	}
+	if got := out.TelemetryConfig.AuditLogs.YsqlAuditConfig["log_level"]; got != "WARNING" {
+		t.Errorf("ysql log_level: got %v want WARNING", got)
+	}
+	if len(out.TelemetryConfig.AuditLogs.Exporters) != 1 {
+		t.Errorf(
+			"expected exactly 1 audit exporter, got %d",
+			len(out.TelemetryConfig.AuditLogs.Exporters),
+		)
+	}
+	if out.TelemetryConfig.Metrics == nil {
+		t.Fatalf("metrics missing from payload: %s", payload)
+	}
+	if out.TelemetryConfig.Metrics.CollectionLevel != "NORMAL" {
+		t.Errorf("metrics collection_level: got %q want NORMAL",
+			out.TelemetryConfig.Metrics.CollectionLevel)
+	}
+	if len(out.TelemetryConfig.Metrics.ScrapeConfigTargets) != 2 {
+		t.Errorf("expected 2 scrape targets, got %d",
+			len(out.TelemetryConfig.Metrics.ScrapeConfigTargets))
+	}
+	if len(out.TelemetryConfig.Metrics.Exporters) != 1 {
+		t.Errorf("expected exactly 1 metrics exporter, got %d",
+			len(out.TelemetryConfig.Metrics.Exporters))
+	}
+	mexp := out.TelemetryConfig.Metrics.Exporters[0]
+	if mexp["metrics_prefix"] != "ybdb." {
+		t.Errorf("metrics_prefix: got %v want ybdb.", mexp["metrics_prefix"])
+	}
+	if got, ok := out.UpgradeOptions["rolling_upgrade"].(bool); !ok || !got {
+		t.Errorf(
+			"upgrade_options.rolling_upgrade: got %v want true",
+			out.UpgradeOptions["rolling_upgrade"],
+		)
+	}
+}
+
+func TestBuildDisableSpec(t *testing.T) {
+	res := ResourceUniverseTelemetryConfig()
+	d := schema.TestResourceDataRaw(t, res.Schema, map[string]interface{}{
+		"universe_uuid": "abc-uuid",
+	})
+	spec := buildDisableSpec(d)
+	payload, err := json.Marshal(spec)
+	if err != nil {
+		t.Fatalf("marshal disable spec: %v", err)
+	}
+	var out map[string]interface{}
+	if err := json.Unmarshal(payload, &out); err != nil {
+		t.Fatalf("unmarshal: %v\n%s", err, payload)
+	}
+	tc, ok := out["telemetry_config"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("telemetry_config not an object: %s", payload)
+	}
+	if len(tc) != 0 {
+		t.Errorf("expected empty telemetry_config, got %v", tc)
+	}
+}
+
+func TestBuildDetachSpec(t *testing.T) {
+	keep := "keep-uuid"
+	drop := "drop-uuid"
+	u := client.UniverseResp{
+		UniverseUUID: utils.GetStringPointer("uni-1"),
+		Name:         utils.GetStringPointer("uni-1"),
+		UniverseDetails: &client.UniverseDefinitionTaskParamsResp{
+			Clusters: []client.Cluster{
+				{
+					UserIntent: client.UserIntent{
+						AuditLogConfig: &client.AuditLogConfig{
+							UniverseLogsExporterConfig: []client.UniverseLogsExporterConfig{
+								{ExporterUuid: keep},
+								{ExporterUuid: drop},
+							},
+						},
+						QueryLogConfig: &client.QueryLogConfig{
+							UniverseLogsExporterConfig: []client.UniverseQueryLogsExporterConfig{
+								{ExporterUuid: drop},
+							},
+						},
+						MetricsExportConfig: &client.MetricsExportConfig{
+							UniverseMetricsExporterConfig: []client.UniverseMetricsExporterConfig{
+								{ExporterUuid: keep},
+								{ExporterUuid: drop},
+							},
+							ScrapeConfigTargets: []string{"MASTER_EXPORT"},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	spec := buildDetachSpec(&u, drop)
+
+	if spec.TelemetryConfig == nil {
+		t.Fatalf("telemetry_config nil in detach spec")
+	}
+	a := spec.TelemetryConfig.AuditLogs
+	if a == nil {
+		t.Fatalf("audit_logs dropped even though a non-target exporter remains")
+	}
+	if len(a.Exporters) != 1 || a.Exporters[0].ExporterUuid != keep {
+		t.Errorf("audit exporters after detach = %+v; want [%s]", a.Exporters, keep)
+	}
+	if spec.TelemetryConfig.QueryLogs != nil {
+		t.Errorf("query_logs should be dropped when only exporter is the detached provider")
+	}
+	m := spec.TelemetryConfig.Metrics
+	if m == nil {
+		t.Fatalf("metrics dropped even though a non-target exporter remains")
+	}
+	if len(m.Exporters) != 1 || m.Exporters[0].ExporterUuid != keep {
+		t.Errorf("metrics exporters after detach = %+v; want [%s]", m.Exporters, keep)
+	}
+	if len(m.ScrapeConfigTargets) != 1 || string(m.ScrapeConfigTargets[0]) != "MASTER_EXPORT" {
+		t.Errorf("metrics scrape targets not preserved: %+v", m.ScrapeConfigTargets)
+	}
+}
+
+func TestUniverseReferencesProvider(t *testing.T) {
+	target := "target-uuid"
+	mk := func(audit, query, metrics string) *client.UniverseResp {
+		u := &client.UniverseResp{
+			UniverseDetails: &client.UniverseDefinitionTaskParamsResp{
+				Clusters: []client.Cluster{{UserIntent: client.UserIntent{}}},
+			},
+		}
+		intent := &u.UniverseDetails.Clusters[0].UserIntent
+		if audit != "" {
+			intent.AuditLogConfig = &client.AuditLogConfig{
+				UniverseLogsExporterConfig: []client.UniverseLogsExporterConfig{
+					{ExporterUuid: audit},
+				},
+			}
+		}
+		if query != "" {
+			intent.QueryLogConfig = &client.QueryLogConfig{
+				UniverseLogsExporterConfig: []client.UniverseQueryLogsExporterConfig{
+					{ExporterUuid: query},
+				},
+			}
+		}
+		if metrics != "" {
+			intent.MetricsExportConfig = &client.MetricsExportConfig{
+				UniverseMetricsExporterConfig: []client.UniverseMetricsExporterConfig{
+					{ExporterUuid: metrics},
+				},
+			}
+		}
+		return u
+	}
+	cases := []struct {
+		name string
+		u    *client.UniverseResp
+		want bool
+	}{
+		{"none", mk("other", "other", "other"), false},
+		{"audit", mk(target, "other", "other"), true},
+		{"query", mk("other", target, "other"), true},
+		{"metrics", mk("other", "other", target), true},
+		{"empty", &client.UniverseResp{}, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := universeReferencesProvider(tc.u, target); got != tc.want {
+				t.Errorf("universeReferencesProvider = %v want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestResourceUniverseTelemetryConfigSchema(t *testing.T) {
+	res := ResourceUniverseTelemetryConfig()
+
+	uu, ok := res.Schema["universe_uuid"]
+	if !ok || !uu.Required || !uu.ForceNew {
+		t.Errorf("universe_uuid must be Required+ForceNew, got %+v", uu)
+	}
+
+	if res.Timeouts == nil {
+		t.Fatal("Timeouts must be set on yba_universe_telemetry_config")
+	}
+	for name, got := range map[string]*time.Duration{
+		"Create": res.Timeouts.Create,
+		"Update": res.Timeouts.Update,
+		"Delete": res.Timeouts.Delete,
+	} {
+		if got == nil {
+			t.Errorf("%s timeout must be set", name)
+			continue
+		}
+		if *got != telemetryUpgradeTimeout {
+			t.Errorf("%s timeout = %s want %s",
+				name, *got, telemetryUpgradeTimeout)
+		}
+	}
+}
+
+func TestBuildUpgradeOptionsDefault(t *testing.T) {
+	out := buildUpgradeOptions(nil)
+	if out.RollingUpgrade == nil || !*out.RollingUpgrade {
+		t.Errorf("RollingUpgrade must default to true, got %v",
+			out.RollingUpgrade)
+	}
+	if out.SleepAfterMasterRestartMillis != nil {
+		t.Errorf("SleepAfterMasterRestartMillis must be nil when block "+
+			"absent, got %d", *out.SleepAfterMasterRestartMillis)
+	}
+	if out.SleepAfterTserverRestartMillis != nil {
+		t.Errorf("SleepAfterTserverRestartMillis must be nil when block "+
+			"absent, got %d", *out.SleepAfterTserverRestartMillis)
+	}
+}
+
+// Unconfigured pipelines must stay nil (disabled), not empty structs — empty
+// structs would trip YBA's enum validation on missing required fields.
+func TestBuildExportTelemetryConfigSpecMetricsOnly(t *testing.T) {
+	res := ResourceUniverseTelemetryConfig()
+	d := schema.TestResourceDataRaw(t, res.Schema, map[string]interface{}{
+		"universe_uuid": "uni-1",
+		"metrics": []interface{}{
+			map[string]interface{}{
+				"exporter": []interface{}{
+					map[string]interface{}{"exporter_uuid": "exp-1"},
+				},
+			},
+		},
+	})
+	spec := buildExportTelemetryConfigSpec(d)
+	if spec.TelemetryConfig == nil {
+		t.Fatal("telemetry_config must be set")
+	}
+	if spec.TelemetryConfig.AuditLogs != nil {
+		t.Error("audit_logs must be nil when not configured")
+	}
+	if spec.TelemetryConfig.QueryLogs != nil {
+		t.Error("query_logs must be nil when not configured")
+	}
+	if spec.TelemetryConfig.Metrics == nil {
+		t.Fatal("metrics must be set when configured")
+	}
+	if got := spec.TelemetryConfig.Metrics.Exporters; len(got) != 1 ||
+		got[0].ExporterUuid != "exp-1" {
+		t.Errorf("metrics exporters = %+v want [exp-1]", got)
+	}
+}

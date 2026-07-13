@@ -46,8 +46,18 @@ The build system is `GNUmakefile`. Key targets:
 | `make fmtTf` | `terraform fmt -recursive`. |
 | `make lint` | `golangci-lint` (`lint-go`) + docs lint (`lint-docs`). |
 
-Before declaring any change done: `go vet ./... && make test && make install`.
-For schema changes, also `make documents`.
+Before declaring any change done: `go vet ./... && make lint && make test &&
+make install`. For schema changes, also `make documents`.
+
+**critical: never commit or push code that fails `make lint`.** CI runs
+`golangci-lint run ./...` on every PR and a lint failure blocks the merge — it
+is trivial to catch locally first, so always run `make lint` (or at minimum
+`golangci-lint run ./...`) before committing. This applies to **every** Go file
+the change touches, including pre-existing lint issues in files you edit:
+`golines` (100-col) and `staticcheck` are the usual offenders. Auto-fix
+formatting with `golangci-lint fmt ./...` (or `make fmt`); for an unavoidable
+deprecated-API use, add a narrowly-scoped `//nolint:<linter> // <reason>` rather
+than leaving the build red.
 
 ## Resource Design (non-negotiable)
 
@@ -66,8 +76,15 @@ For schema changes, also `make documents`.
   every resource managed by a given provider instance (e.g.
   `customer_uuid`).
 - Every resource gets a working example at
-  `examples/resources/yba_<name>/resource.tf` covering every nested
-  block variant.
+  `examples/resources/yba_<name>/resource.tf` showing **every field**:
+  plain attributes (string/bool/map arguments such as `tags`) as well
+  as every nested block variant. Fields that are mutually exclusive
+  (e.g. per-`auth_type` credentials) get separate example resources in
+  the same file.
+- Telemetry sinks ship as per-sink resources
+  (`yba_<sink>_telemetry_provider`) built on the `sinkSpec` factory in
+  `internal/telemetry/sink.go` — add a new sink as a new spec + resource,
+  not as a block on a shared polymorphic resource.
 
 ## Lifecycle
 
