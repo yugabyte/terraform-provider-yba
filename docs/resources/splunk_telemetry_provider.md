@@ -37,6 +37,11 @@ resource "yba_splunk_telemetry_provider" "splunk" {
   source      = "yba"
   source_type = "_json"
   index       = "main"
+
+  # Optional tags, upserted as attributes onto every exported record.
+  tags = {
+    env = "prod"
+  }
 }
 ```
 

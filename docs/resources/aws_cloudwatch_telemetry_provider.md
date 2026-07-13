@@ -39,6 +39,11 @@ resource "yba_aws_cloudwatch_telemetry_provider" "cw" {
   # Optional: assume a role and use a VPC endpoint.
   role_arn = "arn:aws:iam::111111111111:role/yba-cloudwatch"
   endpoint = "https://logs.us-west-2.amazonaws.com"
+
+  # Optional tags, upserted as attributes onto every exported record.
+  tags = {
+    env = "prod"
+  }
 }
 ```
 

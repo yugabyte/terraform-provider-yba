@@ -76,8 +76,11 @@ than leaving the build red.
   every resource managed by a given provider instance (e.g.
   `customer_uuid`).
 - Every resource gets a working example at
-  `examples/resources/yba_<name>/resource.tf` covering every nested
-  block variant.
+  `examples/resources/yba_<name>/resource.tf` showing **every field**:
+  plain attributes (string/bool/map arguments such as `tags`) as well
+  as every nested block variant. Fields that are mutually exclusive
+  (e.g. per-`auth_type` credentials) get separate example resources in
+  the same file.
 - Telemetry sinks ship as per-sink resources
   (`yba_<sink>_telemetry_provider`) built on the `sinkSpec` factory in
   `internal/telemetry/sink.go` — add a new sink as a new spec + resource,

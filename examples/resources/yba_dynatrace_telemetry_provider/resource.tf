@@ -5,4 +5,9 @@ resource "yba_dynatrace_telemetry_provider" "dynatrace" {
 
   endpoint  = "https://abc12345.live.dynatrace.com/api/v2/otlp"
   api_token = var.dynatrace_api_token
+
+  # Optional tags, upserted as attributes onto every exported record.
+  tags = {
+    env = "prod"
+  }
 }

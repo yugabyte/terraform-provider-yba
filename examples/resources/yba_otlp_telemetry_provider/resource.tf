@@ -13,6 +13,11 @@ resource "yba_otlp_telemetry_provider" "prometheus" {
   protocol        = "HTTP"
   compression     = "gzip"
   timeout_seconds = 5
+
+  # Optional tags, upserted as attributes onto every exported record.
+  tags = {
+    env = "prod"
+  }
 }
 
 # OTLP collector behind basic auth, with per-signal endpoint overrides
@@ -32,4 +37,13 @@ resource "yba_otlp_telemetry_provider" "collector" {
   headers = {
     "X-Scope-OrgID" = "yba"
   }
+}
+
+# OTLP endpoint authenticated with a bearer token (gRPC transport).
+resource "yba_otlp_telemetry_provider" "bearer" {
+  name = "otel-bearer"
+
+  endpoint     = "https://otlp.example.com:4317"
+  auth_type    = "BearerToken"
+  bearer_token = var.otlp_bearer_token
 }

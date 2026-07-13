@@ -5,4 +5,9 @@ resource "yba_gcp_cloud_monitoring_telemetry_provider" "gcm" {
   # Optional: defaults to the project_id inside the credentials JSON.
   project          = "my-gcp-project"
   credentials_json = file("service-account.json")
+
+  # Optional tags, upserted as attributes onto every exported record.
+  tags = {
+    env = "prod"
+  }
 }
