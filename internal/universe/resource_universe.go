@@ -3846,7 +3846,8 @@ func resourceUniverseUpdate(
 
 				// Software Upgrade
 				if oldUserIntent.GetYbSoftwareVersion() != newUserIntent.GetYbSoftwareVersion() {
-					updateUni.UniverseDetails.Clusters[i].UserIntent = newUserIntent
+					updateUni.UniverseDetails.Clusters[i].UserIntent =
+						softwareUpgradeIntent(oldUserIntent, newUserIntent)
 
 					finalize := d.Get("db_version_upgrade_options.0.finalize").(bool)
 
@@ -4036,7 +4037,8 @@ func resourceUniverseUpdate(
 				// Systemd upgrade
 				if !oldUserIntent.GetUseSystemd() &&
 					newUserIntent.GetUseSystemd() {
-					updateUni.UniverseDetails.Clusters[i].UserIntent = newUserIntent
+					updateUni.UniverseDetails.Clusters[i].UserIntent =
+						systemdUpgradeIntent(oldUserIntent, newUserIntent)
 					req := client.SystemdUpgradeParams{
 						Clusters:                       updateUni.UniverseDetails.Clusters,
 						UpgradeOption:                  upgradeOption,

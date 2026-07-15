@@ -28,6 +28,7 @@ import (
 	"github.com/yugabyte/terraform-provider-yba/internal/cloud_provider"
 	"github.com/yugabyte/terraform-provider-yba/internal/customer"
 	"github.com/yugabyte/terraform-provider-yba/internal/installation"
+	"github.com/yugabyte/terraform-provider-yba/internal/loadbalancer"
 	"github.com/yugabyte/terraform-provider-yba/internal/onprem"
 	// New provider packages following yba-cli patterns
 	awsProvider "github.com/yugabyte/terraform-provider-yba/internal/provider/aws"
@@ -150,6 +151,7 @@ func New() *schema.Provider {
 			"yba_dynatrace_telemetry_provider":            telemetry.ResourceDynatraceTelemetryProvider(),
 			"yba_s3_telemetry_provider":                   telemetry.ResourceS3TelemetryProvider(),
 			"yba_universe_telemetry_config":               telemetry.ResourceUniverseTelemetryConfig(),
+			"yba_universe_load_balancer_config":           loadbalancer.ResourceUniverseLoadBalancerConfig(),
 		},
 		ConfigureContextFunc: providerConfigure,
 	}
