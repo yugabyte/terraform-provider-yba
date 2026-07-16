@@ -13,11 +13,9 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// Acceptance tests for yba_universe_load_balancer_config. They live in this
-// package to reuse the per-cloud provider/universe fixtures from
-// universe_test.go. The load balancer itself is created in-test through the
-// cloud's own Terraform provider (ExternalProviders), mirroring how users are
-// expected to wire the two together.
+// Acceptance tests for yba_universe_load_balancer_config. In universe_test to
+// reuse the per-cloud universe fixtures; the load balancer itself is created
+// in-test through the cloud's own provider (ExternalProviders).
 
 package universe_test
 
@@ -33,8 +31,6 @@ import (
 	"github.com/yugabyte/terraform-provider-yba/internal/utils"
 )
 
-// lbAttachConfig returns a yba_universe_load_balancer_config resource bound to
-// the given universe resource label, region, and load balancer name reference.
 func lbAttachConfig(uniLabel, region, lbNameRef, lbFQDNRef string) string {
 	fqdn := ""
 	if lbFQDNRef != "" {
@@ -53,9 +49,8 @@ func lbAttachConfig(uniLabel, region, lbNameRef, lbFQDNRef string) string {
 `, uniLabel, region, lbNameRef, fqdn)
 }
 
-// awsLBConfig creates a network load balancer in the acctest VPC. YBA manages
-// the target groups and listeners itself, so the bare NLB is all that is
-// needed. name_prefix keeps the generated name inside AWS's 32-char limit.
+// awsLBConfig creates a bare NLB — YBA manages target groups and listeners
+// itself. name_prefix keeps the generated name inside AWS's 32-char limit.
 func awsLBConfig() string {
 	return `
 	variable "AWS_ACCESS_KEY_ID" {
@@ -204,9 +199,8 @@ func importCheckSingleLB(states []*terraform.InstanceState) error {
 	return nil
 }
 
-// lbTestSteps returns the shared step sequence: attach with checks, import,
-// then drop only the LB config to prove destroy detaches without touching the
-// surviving universe.
+// lbTestSteps: attach with checks, import, then drop only the LB config to
+// prove destroy detaches without touching the surviving universe.
 func lbTestSteps(cloud, uniLabel, base, lbHCL, attach string) []resource.TestStep {
 	uniRes := "yba_universe." + uniLabel
 	resName := "yba_universe_load_balancer_config.test"

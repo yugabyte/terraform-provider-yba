@@ -26,11 +26,9 @@ import (
 	"github.com/yugabyte/terraform-provider-yba/internal/utils"
 )
 
-// UpdateLoadBalancerConfig PUTs a universe's desired load balancer state to the
-// update_lb_config endpoint and returns the UUID of the task YBA queued. The
-// generated client exposes this endpoint but marshals the payload as an untyped
-// query parameter instead of a JSON body, so the call is hand-rolled here.
-// The returned *http.Response body is already consumed and closed.
+// UpdateLoadBalancerConfig PUTs desired LB state to update_lb_config and
+// returns the queued task UUID. Hand-rolled: the generated client marshals the
+// payload as a query param, not a JSON body.
 func (vc *VanillaClient) UpdateLoadBalancerConfig(
 	ctx context.Context,
 	cUUID string,

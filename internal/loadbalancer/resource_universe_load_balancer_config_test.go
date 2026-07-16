@@ -39,15 +39,13 @@ const (
 	testTask     = "5a3f0f9e-1111-4b19-9d0c-7c3d1d5d2222"
 )
 
-// updateLBRequest mirrors the JSON the resource PUTs to update_lb_config.
 type updateLBRequest struct {
 	UniverseUUID string           `json:"universeUUID"`
 	Clusters     []client.Cluster `json:"clusters"`
 }
 
-// fakeYBA is a minimal YBA stand-in: it serves universe details, accepts
-// update_lb_config PUTs (persisting the sent clusters so later GETs reflect
-// them), and reports the dispatched task as succeeded.
+// fakeYBA serves universe details, persists update_lb_config PUTs so later
+// GETs reflect them, and reports the dispatched task as succeeded.
 type fakeYBA struct {
 	mu              sync.Mutex
 	clusters        []client.Cluster
