@@ -19,9 +19,9 @@ package loadbalancer
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
@@ -32,9 +32,8 @@ import (
 	"github.com/yugabyte/terraform-provider-yba/internal/utils"
 )
 
-// loadBalancerTaskTimeout bounds every universe task this resource dispatches
-// (attach, re-map, disable). Node (de)registration on cloud LBs is quick, but
-// the task can queue behind other universe operations holding the lock.
+// loadBalancerTaskTimeout bounds LB tasks: registration is quick, but the task
+// can queue behind other universe operations holding the lock.
 const loadBalancerTaskTimeout = 1 * time.Hour
 
 // ResourceUniverseLoadBalancerConfig manages the load balancer attachment of a
@@ -130,10 +129,8 @@ func ResourceUniverseLoadBalancerConfig() *schema.Resource {
 	}
 }
 
-// updateLoadBalancerConfigParams is the JSON body PUT to update_lb_config.
-// YBA binds it to the full UniverseDefinitionTaskParams; only the universe
-// UUID (validated against the path) and the clusters carrying the desired
-// enableLB / lbName state are relevant.
+// updateLoadBalancerConfigParams is the update_lb_config PUT body. YBA binds
+// the full UniverseDefinitionTaskParams; only these two fields are relevant.
 type updateLoadBalancerConfigParams struct {
 	UniverseUUID string           `json:"universeUUID"`
 	Clusters     []client.Cluster `json:"clusters"`
@@ -143,14 +140,11 @@ func resourceUniverseLoadBalancerConfigCreate(
 	ctx context.Context, d *schema.ResourceData, meta interface{},
 ) diag.Diagnostics {
 	apiClient := meta.(*api.APIClient)
-	cUUID := apiClient.CustomerID
-	c := apiClient.YugawareClient
 	uniUUID := d.Get("universe_uuid").(string)
 
-	uni, response, err := c.UniverseManagementAPI.GetUniverse(ctx, cUUID, uniUUID).Execute()
+	uni, err := getUniverse(ctx, apiClient, uniUUID, "Create - Fetch universe")
 	if err != nil {
-		return diag.FromErr(utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
-			"Universe Load Balancer Config", "Create - Fetch universe"))
+		return diag.FromErr(err)
 	}
 
 	clusters, err := buildDesiredClusters(
@@ -168,13 +162,30 @@ func resourceUniverseLoadBalancerConfigCreate(
 	return nil
 }
 
-// buildDesiredClusters computes the config-authoritative desired LB state:
-// every live LB assignment is cleared first, then the load_balancer blocks
-// are overlaid. Anything the config no longer mentions is thereby detached.
+// buildDesiredClusters clears all live LB state then overlays the
+// load_balancer blocks: full replace, not additive, so regions dropped from
+// the config detach.
 func buildDesiredClusters(
 	clusters []client.Cluster, blocks []interface{},
 ) ([]client.Cluster, error) {
 	return applyLoadBalancerConfig(disableLoadBalancerConfig(clusters), blocks)
+}
+
+// getUniverse fetches the universe's live details, mapping a gone universe to
+// utils.ErrUniverseMissing and any other failure to a formatted error.
+func getUniverse(
+	ctx context.Context, apiClient *api.APIClient, uniUUID, operation string,
+) (*client.UniverseResp, error) {
+	uni, response, err := apiClient.YugawareClient.UniverseManagementAPI.
+		GetUniverse(ctx, apiClient.CustomerID, uniUUID).Execute()
+	if err != nil {
+		if utils.IsUniverseMissing(response, err) {
+			return nil, fmt.Errorf("universe %s: %w", uniUUID, utils.ErrUniverseMissing)
+		}
+		return nil, utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
+			"Universe Load Balancer Config", operation)
+	}
+	return uni, nil
 }
 
 // dispatchLoadBalancerConfig PUTs the desired cluster LB state to
@@ -198,11 +209,9 @@ func dispatchLoadBalancerConfig(
 	)
 }
 
-// applyLoadBalancerConfig overlays the load_balancer blocks onto the
-// universe's live clusters: it enables the LB flag on each targeted cluster
-// and stamps the per-AZ lbName and per-region lbFQDN into its placement.
-// The untouched remainder of the live cluster state rides along so the PUT
-// carries the complete desired LB state for the whole universe.
+// applyLoadBalancerConfig enables LB on each targeted cluster and stamps
+// per-AZ lbName / per-region lbFQDN; untouched live cluster state rides along
+// so the PUT carries the complete desired state.
 func applyLoadBalancerConfig(
 	clusters []client.Cluster, blocks []interface{},
 ) ([]client.Cluster, error) {
@@ -275,18 +284,14 @@ func resourceUniverseLoadBalancerConfigRead(
 	ctx context.Context, d *schema.ResourceData, meta interface{},
 ) diag.Diagnostics {
 	apiClient := meta.(*api.APIClient)
-	cUUID := apiClient.CustomerID
-	c := apiClient.YugawareClient
 
-	uni, response, err := c.UniverseManagementAPI.GetUniverse(ctx, cUUID, d.Id()).Execute()
+	uni, err := getUniverse(ctx, apiClient, d.Id(), "Read")
 	if err != nil {
-		if isUniverseMissing(response, err) {
-			// Universe was deleted out of band; drop the attachment from state.
+		if errors.Is(err, utils.ErrUniverseMissing) {
 			d.SetId("")
 			return nil
 		}
-		return diag.FromErr(utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
-			"Universe Load Balancer Config", "Read"))
+		return diag.FromErr(err)
 	}
 
 	// The resource ID is the universe UUID; re-derive the field so imports work.
@@ -300,29 +305,8 @@ func resourceUniverseLoadBalancerConfigRead(
 	return nil
 }
 
-// universeMissingMarkers are the body fragments YBA uses when reporting a gone
-// universe through non-404 responses (mirrors the telemetry resource's list).
-var universeMissingMarkers = []string{"Cannot find universe", "does not exist"}
-
-// isUniverseMissing collapses YBA's ways of reporting a deleted universe — a
-// plain 404, or a non-404 whose body carries a missing-universe marker — so
-// callers branch on one predicate instead of substring-matching in CRUD code.
-func isUniverseMissing(response *http.Response, err error) bool {
-	if utils.IsHTTPNotFound(response) {
-		return true
-	}
-	body := utils.OpenAPIErrorBody(err)
-	for _, m := range universeMissingMarkers {
-		if strings.Contains(body, m) {
-			return true
-		}
-	}
-	return false
-}
-
-// flattenLoadBalancerConfig turns the universe's live LB placement back into
-// load_balancer blocks, the inverse of applyLoadBalancerConfig. Written
-// unconditionally on every Read so out-of-band changes surface as drift.
+// flattenLoadBalancerConfig inverts applyLoadBalancerConfig; the unconditional
+// Set on every Read surfaces out-of-band changes as drift.
 func flattenLoadBalancerConfig(clusters []client.Cluster) []interface{} {
 	blocks := []interface{}{}
 	for i := range clusters {
@@ -342,10 +326,8 @@ func flattenLoadBalancerConfig(clusters []client.Cluster) []interface{} {
 	return blocks
 }
 
-// flattenRegionLB collapses a region's per-AZ lbNames into one block: the most
-// common name becomes the region lb_name (ties broken by AZ placement order)
-// and AZs pointing elsewhere land in az_overrides. Returns nil when no AZ in
-// the region has a load balancer.
+// flattenRegionLB: majority lbName becomes region lb_name (ties by AZ order),
+// divergent AZs land in az_overrides; nil when no AZ has an LB.
 func flattenRegionLB(region client.PlacementRegion, readReplica bool) map[string]interface{} {
 	counts := map[string]int{}
 	var order []string
@@ -392,11 +374,9 @@ func resourceUniverseLoadBalancerConfigUpdate(
 	apiClient := meta.(*api.APIClient)
 	uniUUID := d.Id()
 
-	uni, response, err := apiClient.YugawareClient.UniverseManagementAPI.
-		GetUniverse(ctx, apiClient.CustomerID, uniUUID).Execute()
+	uni, err := getUniverse(ctx, apiClient, uniUUID, "Update - Fetch universe")
 	if err != nil {
-		return diag.FromErr(utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
-			"Universe Load Balancer Config", "Update - Fetch universe"))
+		return diag.FromErr(err)
 	}
 
 	clusters, err := buildDesiredClusters(
@@ -409,27 +389,21 @@ func resourceUniverseLoadBalancerConfigUpdate(
 		d.Timeout(schema.TimeoutUpdate), "Update")
 }
 
-// Delete disables load balancer management for the universe: an explicit
-// enableLB=false with cleared lbName/lbFQDN on every cluster, so YBA removes
-// the universe's nodes from all attached load balancers. The load balancers
-// themselves are external resources and are never deleted here.
+// Delete disables LB management (enableLB=false, lbName/lbFQDN cleared) so YBA
+// detaches the nodes; the external load balancers are never deleted here.
 func resourceUniverseLoadBalancerConfigDelete(
 	ctx context.Context, d *schema.ResourceData, meta interface{},
 ) diag.Diagnostics {
 	apiClient := meta.(*api.APIClient)
-	cUUID := apiClient.CustomerID
-	c := apiClient.YugawareClient
 	uniUUID := d.Id()
 
-	uni, response, err := c.UniverseManagementAPI.GetUniverse(ctx, cUUID, uniUUID).Execute()
+	uni, err := getUniverse(ctx, apiClient, uniUUID, "Delete - Fetch universe")
 	if err != nil {
-		if isUniverseMissing(response, err) {
-			// Universe already gone: nothing to detach from.
+		if errors.Is(err, utils.ErrUniverseMissing) {
 			d.SetId("")
 			return nil
 		}
-		return diag.FromErr(utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
-			"Universe Load Balancer Config", "Delete - Fetch universe"))
+		return diag.FromErr(err)
 	}
 
 	if diags := dispatchLoadBalancerConfig(ctx, apiClient, uniUUID,
@@ -442,9 +416,8 @@ func resourceUniverseLoadBalancerConfigDelete(
 	return nil
 }
 
-// disableLoadBalancerConfig strips all load balancer state from the clusters:
-// enableLB explicitly false (a nil pointer would be omitted from the JSON) and
-// every placement lbName/lbFQDN cleared.
+// disableLoadBalancerConfig strips LB state: enableLB explicit false (nil
+// would be omitted from the JSON), placement lbName/lbFQDN cleared.
 func disableLoadBalancerConfig(clusters []client.Cluster) []client.Cluster {
 	for i := range clusters {
 		clusters[i].UserIntent.EnableLB = utils.GetBoolPointer(false)
