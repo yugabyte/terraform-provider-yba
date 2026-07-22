@@ -31,6 +31,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/customdiff"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 	"golang.org/x/crypto/ssh"
 
 	"github.com/yugabyte/terraform-provider-yba/internal/utils"
@@ -253,6 +254,16 @@ func ResourceYBAInstaller() *schema.Resource {
 				Required: true,
 				Description: "IP address of VM for SSH. Typically same as public_ip or " +
 					"private_ip.",
+			},
+			"ssh_port": {
+				Type:         schema.TypeInt,
+				Optional:     true,
+				Default:      22,
+				ValidateFunc: validation.IntBetween(1, 65535),
+				Description: "TCP port used for SSH and SCP connections to the host. " +
+					"Defaults to 22. Set this when sshd is reachable on a different port " +
+					"at `ssh_host_ip` - for example a non-standard sshd port, a NAT or " +
+					"firewall port mapping, or the local end of an SSH tunnel.",
 			},
 			"ssh_private_key_file_path": {
 				Type:     schema.TypeString,
@@ -493,12 +504,20 @@ func resourceYBAInstallerCreate(
 
 	hostIPForSSH := d.Get("ssh_host_ip").(string)
 	user := d.Get("ssh_user").(string)
+	sshPort := d.Get("ssh_port").(int)
 	pk, err := resolveSSHPrivateKey(d)
 	if err != nil {
 		return diag.FromErr(err)
 	}
 
-	sshClient, err := waitForIP(ctx, user, hostIPForSSH, pk, d.Timeout(schema.TimeoutCreate))
+	sshClient, err := waitForIP(
+		ctx,
+		user,
+		hostIPForSSH,
+		sshPort,
+		pk,
+		d.Timeout(schema.TimeoutCreate),
+	)
 	if err != nil {
 		tflog.Error(ctx, "Timeout: Couldn't connect to YugabyteDB Anywhere host")
 		return diag.FromErr(err)
@@ -558,12 +577,20 @@ func resourceYBAInstallerUpdate(
 
 	hostIPForSSH := d.Get("ssh_host_ip").(string)
 	user := d.Get("ssh_user").(string)
+	sshPort := d.Get("ssh_port").(int)
 	pk, err := resolveSSHPrivateKey(d)
 	if err != nil {
 		return diag.FromErr(err)
 	}
 	skipPreflightChecksList := utils.StringSlice(d.Get("skip_preflight_checks").([]interface{}))
-	sshClient, err := waitForIP(ctx, user, hostIPForSSH, pk, d.Timeout(schema.TimeoutCreate))
+	sshClient, err := waitForIP(
+		ctx,
+		user,
+		hostIPForSSH,
+		sshPort,
+		pk,
+		d.Timeout(schema.TimeoutCreate),
+	)
 	if err != nil {
 		tflog.Error(ctx, "Timeout: Couldn't connect to YugabyteDB Anywhere host")
 		return diag.FromErr(err)
@@ -638,12 +665,13 @@ func resourceYBAInstallerDelete(
 
 	hostIPForSSH := d.Get("ssh_host_ip").(string)
 	user := d.Get("ssh_user").(string)
+	sshPort := d.Get("ssh_port").(int)
 	pk, err := resolveSSHPrivateKey(d)
 	if err != nil {
 		return diag.FromErr(err)
 	}
 
-	sshClient, err := connectSSHForDelete(ctx, user, hostIPForSSH, pk)
+	sshClient, err := connectSSHForDelete(ctx, user, hostIPForSSH, sshPort, pk)
 	if err != nil {
 		if errors.Is(err, errSSHHostUnreachable) {
 			// Host never answered TCP within the retry budget: it's already gone

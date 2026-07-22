@@ -34,6 +34,7 @@ provider "yba" {
 resource "yba_installer" "install" {
   provider    = yba.unauthenticated
   ssh_host_ip = "<ip-of-yba-node-for-ssh-commands>"
+  ssh_port    = 22
   ssh_user    = "<ssh-user>"
 
   ssh_private_key      = var.ssh_private_key
@@ -55,6 +56,24 @@ resource "yba_installer" "install_from_files" {
   yba_license_file          = "<path-to-yba-license.lic-file>"
   application_settings_file = "<path-to-application_settings.conf-file>"
   yba_version               = "<YugabyteDB Anywhere-version-with-build-number>"
+}
+
+# ssh_host_ip and ssh_port are simply the address the installer dials - any
+# reachable sshd works. Set ssh_port when that address uses a non-default
+# port: an sshd listening on 2222, a NAT/firewall mapping, or the local end
+# of a tunnel (e.g. `ssh -L 2222:<yba-node>:22 <jump-host>` with
+# ssh_host_ip = "127.0.0.1").
+resource "yba_installer" "install_non_default_port" {
+  provider    = yba.unauthenticated
+  ssh_host_ip = "<address-where-sshd-is-reachable>"
+  ssh_port    = 2222
+  ssh_user    = "<ssh-user>"
+
+  ssh_private_key      = var.ssh_private_key
+  yba_license          = var.yba_license_content
+  application_settings = local.yba_ctl_yaml
+
+  yba_version = "<YugabyteDB Anywhere-version-with-build-number>"
 }
 ```
 
@@ -97,6 +116,7 @@ For further details on configuration and host requirements, refer to [Install YB
 - `host_os` (String) Operating System of the host Virtual Machine. Default is linux.
 - `reconfigure` (Boolean) Force a reconfiguration on the next apply, even when no other tracked attribute has changed. Content changes to `application_settings`, `tls_certificate`, or `tls_key` already trigger reconfiguration automatically.
 - `skip_preflight_checks` (List of String) Check names to be skipped during preflight check.
+- `ssh_port` (Number) TCP port used for SSH and SCP connections to the host. Defaults to 22. Set this when sshd is reachable on a different port at `ssh_host_ip` - for example a non-standard sshd port, a NAT or firewall port mapping, or the local end of an SSH tunnel.
 - `ssh_private_key` (String, Sensitive) Contents of the private key to use for ssh commands. Use this instead of `ssh_private_key_file_path` to pass the key directly without writing it to a local file.
 - `ssh_private_key_file_path` (String) Path to file containing the private key to use for ssh commands. Conflicts with `ssh_private_key`.
 - `timeouts` (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))
