@@ -353,7 +353,7 @@ func TestAccPreCheck(t *testing.T) {
 		t.Fatal("YBA_API_KEY or YB_API_KEY must be set for acceptance tests")
 	}
 	if sharedClientErr != nil {
-		t.Fatalf("shared YBA (YBA_HOST=%s) is unreachable%s: %v",
+		t.Fatalf("shared YBA (YBA_HOST=%s) is unreachable: %v",
 			TestHost(), sharedClientErr)
 	}
 }
