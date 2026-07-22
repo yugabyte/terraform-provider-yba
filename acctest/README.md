@@ -25,6 +25,18 @@ Terraform state the first time, then runs every `TestAcc*` (skipping the long
 tier, `TestAccLong*`). Re-run `make acctest` as often as you like. To run the
 long tier (multi-node universe deploys, ~15 min each): `make acctest-long`.
 
+The standing YBA VM has **no direct internet ingress** — every connection
+(UI, API, SSH) goes through an [IAP TCP forwarding](https://cloud.google.com/iap/docs/using-tcp-forwarding)
+tunnel, which authenticates callers with IAM before any packet reaches the VM.
+The env's YBA endpoints are therefore `127.0.0.1:9443`, and `make acctest`
+opens the tunnel itself (`acctest/with-yba-tunnel.sh`, the same path CI and
+the fixture targets use) as the fixture service account — no personal IAP
+grant or extra terminal needed. To browse the UI, hold a tunnel open with:
+
+```bash
+acctest/with-yba-tunnel.sh sleep 86400   # then open https://127.0.0.1:9443
+```
+
 If you see `acctest/env doesn't exist - extracting from TF state`, that is normal
 on the first run.
 
@@ -42,8 +54,13 @@ interactive), so run it yourself.
 
 ## Troubleshooting
 
-- **Auth error** (`could not find default credentials`, `403`): re-run
-  `make -C acctest auth`.
+- **Auth error** (`could not find default credentials`, `Reauthentication
+  failed`, `no usable gcloud login`, `403`): re-run `make -C acctest auth` —
+  it detects expired sessions, not just missing ones.
+- **`IAP tunnel ... did not become ready`** (or `connection refused` to
+  `127.0.0.1:9443`): check `gcloud` is installed and the env is fresh — the
+  tunnel authenticates as the fixture SA from `TF_VAR_GCP_CREDENTIALS`, so a
+  rotated key means a stale env (see below).
 - **Every test is SKIPPED**: the env was not loaded. Run `make -C acctest env`,
   confirm `acctest/env` exists, then `make acctest`.
 - **Env looks stale** (after re-applying a fixture, or rotated keys): delete it
@@ -64,6 +81,14 @@ make -C acctest apply-gcp     # create or update a fixture (gcp / azure / aws)
 make -C acctest destroy-gcp   # tear it down
 ```
 
+For **gcp**, `apply-gcp` and `destroy-gcp` open their own IAP tunnels (API plus
+an SSH leg for the YBA install and destroy-time `yba-ctl clean` — the VM
+accepts nothing else). This works even on a first-ever apply: the tunnel legs
+retry until the VM exists and the installer waits for SSH, so one `apply-gcp`
+bootstraps end to end. Since the fixture SA key may not exist yet, these run
+as *your* gcloud login, which needs `roles/iap.tunnelResourceAccessor` (or
+project owner) on `byoc-dev`.
+
 Each cloud has its own fixture target (`apply-gcp`/`apply-azure`/`apply-aws` and
 the matching `destroy-*`). The AWS fixture authenticates with the `byoc-dev` AWS
 profile by default (override with the `aws_profile` var); the GCP and Azure ones
@@ -78,9 +103,11 @@ against the already-installed standing YBA.
 
 ## CI
 
-CI has no cloud access. It reads the env from the `ACCTEST_ENV` GitHub Actions
-secret (written to `acctest/env`, then sourced like a local run). Publish/refresh
-that secret after re-applying a fixture:
+CI reads the env from the `ACCTEST_ENV` GitHub Actions secret (written to
+`acctest/env`, then sourced like a local run). There are no CI-specific tunnel
+steps: `make acctest` opens the IAP tunnel the same way it does locally, as the
+fixture service account inside that env. Publish/refresh the secret after
+re-applying a fixture:
 
 ```bash
 make -C acctest push-github-secrets

@@ -149,8 +149,7 @@ func waitForIP(ctx context.Context, user string, ip string, port int, pk string,
 			tflog.Info(ctx, fmt.Sprintf("Trying SSH connection to host using ip: %s", ip))
 			c, cErr := newSSHClient(user, ip, port, pk)
 			if cErr != nil {
-				// keep polling — the host may still be coming up
-				return nil, "Waiting", nil //nolint:nilerr // intentional: error means "not ready yet"
+				return struct{}{}, "Waiting", nil //nolint:nilerr // intentional: error means "not ready yet"
 			}
 
 			return c, "Ready", nil

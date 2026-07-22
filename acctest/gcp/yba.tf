@@ -7,7 +7,13 @@
 # `make acctest` just consumes it. Tear down with the base.
 
 locals {
-  yba_ssh_host = google_compute_address.yba.address
+  # The YBA VM has no direct ingress; every connection (this install, the
+  # bootstrap provider, tests) rides an IAP tunnel at fixed local ports —
+  # acctest/with-yba-tunnel.sh maps 9443 -> VM:443 and (with -s, used by the
+  # apply-gcp/destroy-gcp targets) 2222 -> VM:22.
+  yba_ssh_host = "127.0.0.1"
+  yba_ssh_port = 2222
+  yba_api_host = "127.0.0.1:9443"
 }
 
 # Dedicated SSH keypair for the standing YBA VM, generated once and kept in the
@@ -105,6 +111,7 @@ resource "yba_installer" "install" {
   provider = yba.bootstrap
 
   ssh_host_ip               = local.yba_ssh_host
+  ssh_port                  = local.yba_ssh_port
   ssh_user                  = "yugabyte"
   ssh_private_key           = tls_private_key.yba.private_key_openssh
   yba_license_file          = "${path.module}/../../yugabyte_anywhere.lic"
@@ -113,10 +120,30 @@ resource "yba_installer" "install" {
   host_os                   = "linux"
   host_architecture         = "x86_64"
 
-  # The instance is an implicit dependency (via ssh_host_ip), but the firewall
-  # that opens SSH/443 is not — without this the installer can start before
-  # the rule exists and fail to connect.
-  depends_on = [google_compute_firewall.operator]
+  # ssh_host_ip is tunnel-local, so nothing here implicitly depends on the
+  # instance or the IAP path — without these the installer can start dialing
+  # before the VM/firewall/API exist and the tunnel has nothing to reach.
+  depends_on = [
+    google_compute_instance.yba,
+    google_compute_firewall.iap,
+    google_project_service.iap,
+  ]
+}
+
+# The tunnel's 443 leg crash-loops while YBA is still installing (gcloud only
+# opens its local listener after its backend connection test passes), so for
+# up to ~15s after yba-ctl finishes nothing listens on the local port. The
+# provider's API connection is one-shot — without this wait a fresh bootstrap
+# fails at the customer step. Curling through the leg also forces it to
+# establish.
+resource "terraform_data" "wait_for_yba_api" {
+  triggers_replace = yba_installer.install.id
+
+  provisioner "local-exec" {
+    command = "for i in $(seq 1 60); do curl -sk -o /dev/null https://${local.yba_api_host}/ && exit 0; sleep 5; done; echo 'YBA API never answered on ${local.yba_api_host}' >&2; exit 1"
+  }
+
+  depends_on = [yba_installer.install]
 }
 
 # Register the initial superuser; exposes the API token (published as YBA_API_KEY).
@@ -132,5 +159,5 @@ resource "yba_customer_resource" "customer" {
     ignore_changes = [password]
   }
 
-  depends_on = [yba_installer.install]
+  depends_on = [terraform_data.wait_for_yba_api]
 }

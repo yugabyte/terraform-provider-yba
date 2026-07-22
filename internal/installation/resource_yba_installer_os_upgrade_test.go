@@ -337,6 +337,10 @@ resource "google_compute_instance" "yba" {
   machine_type = "n2-standard-4"
   zone         = "${var.GCP_REGION}-a"
 
+  # Opts into the fixture's direct-ingress firewall rule (the standing YBA VM
+  # is untagged and IAP-only): this test SSHes here straight from the runner.
+  tags = ["yba-install-target"]
+
   allow_stopping_for_update = true
 
   # Changing this image replaces the VM (GCP can't reimage a boot disk in

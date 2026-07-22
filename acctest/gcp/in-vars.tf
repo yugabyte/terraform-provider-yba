@@ -41,7 +41,7 @@ variable "ybdb_cidr" {
 }
 
 variable "operator_cidr_ranges" {
-  description = "CIDR ranges for operator access (SSH, YBA UI, debugging)"
+  description = "CIDR ranges allowed direct access to ephemeral install-test VMs."
   type        = list(string)
 }
 

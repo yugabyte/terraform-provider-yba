@@ -14,7 +14,10 @@ yba_version = "2.31.0.0-b164"
 yba_cidr  = "10.0.1.0/24"
 ybdb_cidr = "10.0.2.0/24"
 
-# Open for now to keep CI simple; tighten to the runner's IP later.
+# Reaches only VMs tagged yba-install-target — the throwaway VMs the
+# OS-image-upgrade long test creates and SSHes into from GitHub runners, whose
+# IPs are unstable (hence world-open). The standing YBA VM is untagged: no
+# direct ingress, IAP tunnel only.
 operator_cidr_ranges = ["0.0.0.0/0"]
 
 labels = {

@@ -46,11 +46,12 @@ provider "google" {
 }
 
 # Bootstrap provider for the install/first-customer flow: it points at the YBA
-# VM's address but carries no api_token (the provider runs unauthenticated until
-# yba_customer_resource registers the first user and mints the token). The
-# installer ignores host (it works over SSH); the customer resource needs it to
-# reach the freshly-installed YBA instead of the default localhost:9000.
+# API's tunnel-local endpoint but carries no api_token (the provider runs
+# unauthenticated until yba_customer_resource registers the first user and
+# mints the token). The installer ignores host (it works over SSH); the
+# customer resource needs it to reach the freshly-installed YBA instead of the
+# default localhost:9000.
 provider "yba" {
   alias = "bootstrap"
-  host  = google_compute_address.yba.address
+  host  = local.yba_api_host
 }
