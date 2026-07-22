@@ -74,6 +74,9 @@ var (
 	// APIClient is the shared YBA client (YBA_HOST), used by storage-config,
 	// user, and customer tests. Provider tests use APIClientForCloud instead.
 	APIClient *api.APIClient
+	// sharedClientErr records why APIClient could not be built; surfaced by
+	// TestAccPreCheck so only shared-YBA tests fail, not every package.
+	sharedClientErr error
 
 	// cloudClients caches one YBA client per cloud, keyed by cloud code.
 	cloudClients   = map[string]*api.APIClient{}
@@ -119,7 +122,8 @@ func APIClientForCloud(cloud string) (*api.APIClient, error) {
 	}
 	c, err := api.NewAPIClient(true, CloudYBAHost(cloud), CloudYBAAPIKey(cloud))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%s fixture YBA (TF_VAR_%s_YBA_HOST=%s) is unreachable: %w",
+			cloud, cloud, CloudYBAHost(cloud), err)
 	}
 	cloudClients[cloud] = c
 	return c, nil
@@ -212,14 +216,18 @@ func init() {
 	}
 	// Build the shared client only when a shared YBA is set, so importing this
 	// package never panics on an empty YBA_HOST. Tests that use the shared client
-	// gate on TestAccPreCheck (which fails fast on an empty host), so they never
-	// hit a nil client.
+	// gate on TestAccPreCheck (which fails fast on an empty host or a dead
+	// client), so they never hit a nil client.
 	if TestHost() == "" {
 		return
 	}
 	c, err := api.NewAPIClient(true, TestHost(), TestAPIKey())
 	if err != nil {
-		panic(err)
+		// Never panic here: that kills every test binary importing this
+		// package, including per-cloud provider tests that talk only to their
+		// own YBA (TF_VAR_<CLOUD>_YBA_HOST) and never touch the shared one.
+		sharedClientErr = err
+		return
 	}
 	APIClient = c
 }
@@ -343,6 +351,10 @@ func TestAccPreCheck(t *testing.T) {
 	}
 	if TestAPIKey() == "" {
 		t.Fatal("YBA_API_KEY or YB_API_KEY must be set for acceptance tests")
+	}
+	if sharedClientErr != nil {
+		t.Fatalf("shared YBA (YBA_HOST=%s) is unreachable%s: %v",
+			TestHost(), sharedClientErr)
 	}
 }
 
