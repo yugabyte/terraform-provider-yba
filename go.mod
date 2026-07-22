@@ -3,7 +3,7 @@ module github.com/yugabyte/terraform-provider-yba
 go 1.25.11
 
 require (
-	github.com/bramvdbogaerde/go-scp v1.6.0
+	github.com/bramvdbogaerde/go-scp v1.6.1
 	github.com/client9/misspell v0.3.4
 	github.com/google/uuid v1.6.0
 	github.com/hashicorp/go-cty v1.5.0
