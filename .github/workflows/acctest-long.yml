@@ -9,6 +9,10 @@ on:
       - main
   workflow_dispatch:
 
+concurrency:
+  group: standing-yba-acctest-long
+  cancel-in-progress: false
+
 jobs:
   # `make acctest-long` opens the IAP tunnel to the standing YBA itself
   # (acctest/with-yba-tunnel.sh). The OS-image-upgrade test is the exception:
