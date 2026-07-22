@@ -3,7 +3,10 @@ on:
   push:
     branches:
       - main
-  pull_request:
+  # pull_request_target, not pull_request: Dependabot-triggered runs only see
+  # the separate Dependabot secrets store, so ACCTEST_ENV would be empty.
+  # Definition loads from main — PR edits to this file don't affect PR runs.
+  pull_request_target:
   workflow_dispatch:
 
 concurrency:
@@ -19,12 +22,18 @@ jobs:
     timeout-minutes: 120
     permissions:
       contents: read
-    # Fork PRs do not receive secrets, so skip them (fork is null on push/dispatch).
+    # Fork PRs under pull_request_target would run untrusted code with our
+    # secrets — skip them (fork is null on push/dispatch).
     if: github.event.pull_request.head.repo.fork != true
 
     steps:
       - name: Check out code
         uses: actions/checkout@v7
+        with:
+          # pull_request_target checkout defaults to the base branch — without
+          # this the PR head is never tested. Empty on push/dispatch, which
+          # falls back to the triggering ref.
+          ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Set up Go
         uses: actions/setup-go@v7
