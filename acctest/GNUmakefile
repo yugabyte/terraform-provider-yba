@@ -45,6 +45,19 @@ destroy-%: init-%
 	@echo "Destroying $* fixture"
 	terraform -chdir=$* destroy # -auto-approve
 
+# gcp overrides: the standing YBA accepts no direct ingress, so apply/destroy
+# run under the tunnel script (-s adds the SSH leg the installer and yba-ctl
+# clean need), which waits for the API leg but proceeds on a fresh bootstrap.
+# Uses your gcloud login (no SA key exists yet on first apply — hence the auth
+# prerequisite): needs roles/iap.tunnelResourceAccessor or owner.
+apply-gcp: auth init-gcp
+	@echo "Applying gcp fixture (creates real cloud + YBA resources)"
+	./with-yba-tunnel.sh -s terraform -chdir=gcp apply -auto-approve
+
+destroy-gcp: auth init-gcp
+	@echo "Destroying gcp fixture"
+	./with-yba-tunnel.sh -s terraform -chdir=gcp destroy # -auto-approve
+
 # Write the test env (TF_VAR_*, plus YBA_HOST/YBA_API_KEY for the shared client)
 # into the gitignored, 0600 `env` file. Concatenates each fixture's test_env
 # output: gcp supplies the standing YBA endpoint and TF_VAR_GCP_*; azure supplies

@@ -41,6 +41,58 @@ func TestSchemaIsValid(t *testing.T) {
 	}
 }
 
+// TestSSHPortSchema guards the ssh_port contract: optional with default 22
+// (existing configs keep dialing 22), port-range validated, not ForceNew.
+func TestSSHPortSchema(t *testing.T) {
+	s, ok := ResourceYBAInstaller().Schema["ssh_port"]
+	if !ok {
+		t.Fatal("expected ssh_port attribute in schema")
+	}
+	if s.Type != schema.TypeInt {
+		t.Errorf("ssh_port type = %v, want TypeInt", s.Type)
+	}
+	if !s.Optional {
+		t.Error("ssh_port should be Optional")
+	}
+	if s.Required {
+		t.Error("ssh_port should not be Required")
+	}
+	if s.ForceNew {
+		t.Error("ssh_port should not be ForceNew: it's connection metadata like " +
+			"ssh_host_ip/ssh_user, which also don't force recreation")
+	}
+	if s.Default != 22 {
+		t.Errorf("ssh_port default = %v, want 22", s.Default)
+	}
+	if s.ValidateFunc == nil {
+		t.Fatal("expected ssh_port to have a ValidateFunc")
+	}
+
+	tests := []struct {
+		name    string
+		value   int
+		wantErr bool
+	}{
+		{"minimum valid port", 1, false},
+		{"maximum valid port", 65535, false},
+		{"default port", 22, false},
+		{"zero is invalid", 0, true},
+		{"above range is invalid", 65536, true},
+		{"negative is invalid", -1, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, errs := s.ValidateFunc(tt.value, "ssh_port")
+			if tt.wantErr && len(errs) == 0 {
+				t.Errorf("value %d: expected validation error, got none", tt.value)
+			}
+			if !tt.wantErr && len(errs) != 0 {
+				t.Errorf("value %d: unexpected validation errors: %v", tt.value, errs)
+			}
+		})
+	}
+}
+
 // TestResolveInstallerInput covers the inline-vs-file precedence and the
 // "neither set" case for the content/file pair.
 func TestResolveInstallerInput(t *testing.T) {

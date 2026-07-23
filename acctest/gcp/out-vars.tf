@@ -11,6 +11,10 @@
 # (storage-config, cloud_provider, user, customer). The prefixed
 # TF_VAR_GCP_YBA_HOST/TF_VAR_GCP_YBA_API_KEY points the GCP provider tests at
 # this same YBA, mirroring how aws/azure target their own fixture YBAs.
+#
+# Both are the tunnel-local endpoint (local.yba_api_host): the standing YBA has
+# no direct ingress. Every consumer tunnels via acctest/with-yba-tunnel.sh —
+# `make acctest` (CI and local) and the apply-gcp/destroy-gcp fixture targets.
 
 locals {
   test_env = <<-EOT
@@ -22,9 +26,9 @@ locals {
     TF_VAR_GCP_IMAGE='${data.google_compute_image.ybdb.self_link}'
     TF_VAR_GCP_YBA_VERSION='${var.yba_version}'
     TF_VAR_GCS_BACKUP_LOCATION='gs://${google_storage_bucket.backups.name}'
-    TF_VAR_GCP_YBA_HOST='${google_compute_address.yba.address}'
+    TF_VAR_GCP_YBA_HOST='${local.yba_api_host}'
     TF_VAR_GCP_YBA_API_KEY='${yba_customer_resource.customer.api_token}'
-    YBA_HOST='${google_compute_address.yba.address}'
+    YBA_HOST='${local.yba_api_host}'
     YBA_API_KEY='${yba_customer_resource.customer.api_token}'
   EOT
 }
@@ -37,7 +41,8 @@ output "test_env" {
 }
 
 output "yba_url" {
-  value = "https://${google_compute_address.yba.address}"
+  description = "YBA UI/API endpoint; reachable only while an IAP tunnel is up (acctest/with-yba-tunnel.sh)."
+  value       = "https://${local.yba_api_host}"
 }
 
 output "yba_username" {

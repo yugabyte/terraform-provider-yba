@@ -24,8 +24,11 @@ resource "google_compute_subnetwork" "ybdb" {
   ip_cidr_range = var.ybdb_cidr
 }
 
-# Firewalls, kept minimal: allow everything inside the VPC, plus operator
-# access (SSH + YBA UI/API) from var.operator_cidr_ranges.
+# Firewalls, kept minimal: allow everything inside the VPC, plus IAP TCP
+# forwarding. The standing YBA VM has no direct internet ingress — every
+# operator/CI connection (SSH + YBA UI/API) rides an IAP tunnel
+# (acctest/with-yba-tunnel.sh). Only ephemeral install-test VMs (tagged
+# yba-install-target) accept direct traffic, from var.operator_cidr_ranges.
 
 # Allow all traffic between nodes inside the VPC (YBA <-> YBDB, YBDB <-> YBDB).
 resource "google_compute_firewall" "internal" {
@@ -66,9 +69,38 @@ resource "google_compute_firewall" "yb_db_node" {
   ]
 }
 
-# Allow operator access to YBA (SSH for the installer, 443 for the UI/API).
-resource "google_compute_firewall" "operator" {
-  name    = "${var.prefix}-allow-operator"
+# IAP TCP forwarding requires the IAP API on the project.
+resource "google_project_service" "iap" {
+  project            = var.gcp_project_id
+  service            = "iap.googleapis.com"
+  disable_on_destroy = false
+}
+
+# 35.235.240.0/20 is Google's fixed IAP relay range — tunnel traffic reaches the
+# VM from it, never from the client's IP. VPC-wide is safe: IAP still requires
+# per-caller IAM (roles/iap.tunnelResourceAccessor) before it forwards anything.
+resource "google_compute_firewall" "iap" {
+  name    = "${var.prefix}-allow-iap"
+  network = google_compute_network.main.id
+
+  allow {
+    protocol = "tcp"
+    ports = [
+      "22",  # SSH (installer)
+      "443", # YBA UI/API
+    ]
+  }
+
+  source_ranges = ["35.235.240.0/20"]
+}
+
+# Direct access for ephemeral install-test VMs only (the OS-image-upgrade long
+# test SSHes to its throwaway VM from the runner; runner IPs are unstable so an
+# IAP tunnel can't be pre-arranged mid-test). The standing YBA VM is untagged
+# and stays unreachable. Tag literal also lives in the long test's config
+# (resource_yba_installer_os_upgrade_test.go).
+resource "google_compute_firewall" "install_target" {
+  name    = "${var.prefix}-allow-install-target"
   network = google_compute_network.main.id
 
   allow {
@@ -79,5 +111,6 @@ resource "google_compute_firewall" "operator" {
     ]
   }
 
+  target_tags   = ["yba-install-target"]
   source_ranges = var.operator_cidr_ranges
 }

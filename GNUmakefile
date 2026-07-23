@@ -103,10 +103,13 @@ test: $(GOTESTSUM)
 # Run the short acceptance tier (all TestAcc* except TestAccLong*). Sources
 # acctest/env, generated locally by `make -C acctest env` or written by CI from
 # the ACCTEST_ENV secret. Set TF_ACCTEST_PREFIX to override the resource prefix.
+# The standing YBA has no direct ingress; with-yba-tunnel.sh opens the IAP
+# tunnel (same path in CI and locally) unless one is already up.
 .PHONY: acctest
 acctest: install $(GOTESTSUM) acctest/env
 	@set -a; . ./acctest/env; set +a; \
-	TF_ACC=1 $(GOTESTSUM) -- -timeout 20m ./... -run '^TestAcc' -skip '^TestAccLong'
+	TF_ACC=1 ./acctest/with-yba-tunnel.sh \
+		$(GOTESTSUM) -- -timeout 20m ./... -run '^TestAcc' -skip '^TestAccLong'
 
 # Run the long acceptance tier (TestAccLong*). These deploy real multi-node
 # universes and take ~15 min each, so they stay out of `make acctest`. Same env
@@ -115,7 +118,8 @@ acctest: install $(GOTESTSUM) acctest/env
 .PHONY: acctest-long
 acctest-long: install $(GOTESTSUM) acctest/env
 	@set -a; . ./acctest/env; set +a; \
-	TF_ACC=1 $(GOTESTSUM) -- -timeout 90m ./... -run '^TestAccLong'
+	TF_ACC=1 ./acctest/with-yba-tunnel.sh \
+		$(GOTESTSUM) -- -timeout 90m ./... -run '^TestAccLong'
 
 acctest/env:
 	$(MAKE) -C acctest env

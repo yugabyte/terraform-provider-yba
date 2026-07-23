@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"strconv"
 	"strings"
 	"time"
 
@@ -30,7 +31,12 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
-func newSSHClient(user string, ip string, key string) (*ssh.Client, error) {
+// sshAddr joins host and ssh_port for every SSH/SCP dial — new dial sites must use it.
+func sshAddr(ip string, port int) string {
+	return net.JoinHostPort(ip, strconv.Itoa(port))
+}
+
+func newSSHClient(user string, ip string, port int, key string) (*ssh.Client, error) {
 	pk, err := ssh.ParsePrivateKey([]byte(key))
 	if err != nil {
 		return nil, err
@@ -42,7 +48,7 @@ func newSSHClient(user string, ip string, key string) (*ssh.Client, error) {
 			ssh.PublicKeys(pk),
 		},
 	}
-	c, err := ssh.Dial("tcp", net.JoinHostPort(ip, "22"), config)
+	c, err := ssh.Dial("tcp", sshAddr(ip, port), config)
 	if err != nil {
 		return nil, err
 	}
@@ -65,7 +71,8 @@ var errSSHHostUnreachable = errors.New("ssh host unreachable after retries")
 // sshConnectBudget. Outcomes: (client, nil) host answered, caller must Close;
 // (nil, errSSHHostUnreachable) host gone, nothing to clean up remotely;
 // (nil, other) bad key or handshake/auth failure — host is alive, fail loudly.
-func connectSSHForDelete(ctx context.Context, user, ip, key string) (*ssh.Client, error) {
+func connectSSHForDelete(ctx context.Context, user, ip string, port int, key string) (
+	*ssh.Client, error) {
 	signer, err := ssh.ParsePrivateKey([]byte(key))
 	if err != nil {
 		return nil, err
@@ -76,7 +83,7 @@ func connectSSHForDelete(ctx context.Context, user, ip, key string) (*ssh.Client
 		Auth:            []ssh.AuthMethod{ssh.PublicKeys(signer)},
 		Timeout:         sshDialTimeout,
 	}
-	addr := net.JoinHostPort(ip, "22")
+	addr := sshAddr(ip, port)
 
 	budgetCtx, cancel := context.WithTimeout(ctx, sshConnectBudget)
 	defer cancel()
@@ -130,8 +137,8 @@ func runCommand(ctx context.Context, client *ssh.Client, cmd string) (string, er
 	return c.String(), err
 }
 
-func waitForIP(ctx context.Context, user string, ip string, pk string, timeout time.Duration) (
-	*ssh.Client, error) {
+func waitForIP(ctx context.Context, user string, ip string, port int, pk string,
+	timeout time.Duration) (*ssh.Client, error) {
 	wait := &retry.StateChangeConf{
 		Delay:   1 * time.Second,
 		Pending: []string{"Waiting"},
@@ -140,10 +147,9 @@ func waitForIP(ctx context.Context, user string, ip string, pk string, timeout t
 
 		Refresh: func() (result interface{}, state string, err error) {
 			tflog.Info(ctx, fmt.Sprintf("Trying SSH connection to host using ip: %s", ip))
-			c, cErr := newSSHClient(user, ip, pk)
+			c, cErr := newSSHClient(user, ip, port, pk)
 			if cErr != nil {
-				// keep polling — the host may still be coming up
-				return nil, "Waiting", nil //nolint:nilerr // intentional: error means "not ready yet"
+				return struct{}{}, "Waiting", nil //nolint:nilerr // intentional: error means "not ready yet"
 			}
 
 			return c, "Ready", nil

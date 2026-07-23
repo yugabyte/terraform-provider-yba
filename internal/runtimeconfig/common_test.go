@@ -21,6 +21,7 @@ package runtimeconfig_test
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
@@ -28,6 +29,23 @@ import (
 	"github.com/yugabyte/terraform-provider-yba/internal/acctest"
 	"github.com/yugabyte/terraform-provider-yba/internal/utils"
 )
+
+// YBA invalidates its runtime-config cache asynchronously, so a read right
+// after a write/delete can be stale — observed as a CI flake where the destroy
+// check saw the old value while YBA was under universe-task load. Poll briefly
+// before failing.
+const runtimeConfigSettle = 30 * time.Second
+
+func retryRuntimeConfigCheck(check func() error) error {
+	deadline := time.Now().Add(runtimeConfigSettle)
+	for {
+		err := check()
+		if err == nil || time.Now().After(deadline) {
+			return err
+		}
+		time.Sleep(2 * time.Second)
+	}
+}
 
 // globalScope is the well-known UUID YBA uses for global-scope runtime config.
 const globalScope = "00000000-0000-0000-0000-000000000000"
@@ -74,20 +92,22 @@ var boolCase = runtimeConfigCase{
 // runtime config key, reading it back through the API independently of state.
 func testAccCheckRuntimeConfigValue(scope, key, expected string) resource.TestCheckFunc {
 	return func(_ *terraform.State) error {
-		c := acctest.APIClient.YugawareClient
-		cUUID := acctest.APIClient.CustomerID
+		return retryRuntimeConfigCheck(func() error {
+			c := acctest.APIClient.YugawareClient
+			cUUID := acctest.APIClient.CustomerID
 
-		value, response, err := c.RuntimeConfigurationAPI.
-			GetConfigurationKey(context.Background(), cUUID, scope, key).Execute()
-		if err != nil {
-			return utils.ErrorFromHTTPResponse(response, err, utils.TestEntity,
-				"Runtime Config", "Read")
-		}
-		if value != expected {
-			return fmt.Errorf("runtime config key %q in scope %q = %q, want %q",
-				key, scope, value, expected)
-		}
-		return nil
+			value, response, err := c.RuntimeConfigurationAPI.
+				GetConfigurationKey(context.Background(), cUUID, scope, key).Execute()
+			if err != nil {
+				return utils.ErrorFromHTTPResponse(response, err, utils.TestEntity,
+					"Runtime Config", "Read")
+			}
+			if value != expected {
+				return fmt.Errorf("runtime config key %q in scope %q = %q, want %q",
+					key, scope, value, expected)
+			}
+			return nil
+		})
 	}
 }
 
@@ -97,23 +117,25 @@ func testAccCheckRuntimeConfigValue(scope, key, expected string) resource.TestCh
 // post-destroy state.
 func testAccCheckRuntimeConfigValueAbsent(scope, key, testValue string) resource.TestCheckFunc {
 	return func(_ *terraform.State) error {
-		c := acctest.APIClient.YugawareClient
-		cUUID := acctest.APIClient.CustomerID
+		return retryRuntimeConfigCheck(func() error {
+			c := acctest.APIClient.YugawareClient
+			cUUID := acctest.APIClient.CustomerID
 
-		value, response, err := c.RuntimeConfigurationAPI.
-			GetConfigurationKey(context.Background(), cUUID, scope, key).Execute()
-		if err != nil {
-			if acctest.IsResourceNotFoundError(err) {
-				return nil
+			value, response, err := c.RuntimeConfigurationAPI.
+				GetConfigurationKey(context.Background(), cUUID, scope, key).Execute()
+			if err != nil {
+				if acctest.IsResourceNotFoundError(err) {
+					return nil
+				}
+				return utils.ErrorFromHTTPResponse(response, err, utils.TestEntity,
+					"Runtime Config", "Read")
 			}
-			return utils.ErrorFromHTTPResponse(response, err, utils.TestEntity,
-				"Runtime Config", "Read")
-		}
-		if value == testValue {
-			return fmt.Errorf(
-				"runtime config key %q in scope %q still has test value %q after destroy",
-				key, scope, value)
-		}
-		return nil
+			if value == testValue {
+				return fmt.Errorf(
+					"runtime config key %q in scope %q still has test value %q after destroy",
+					key, scope, value)
+			}
+			return nil
+		})
 	}
 }

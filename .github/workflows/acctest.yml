@@ -14,8 +14,11 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # CI has no cloud access. The test env comes from the ACCTEST_ENV secret and
-  # runs against the standing fixture, which is kept running out of band.
+  # The test env comes from the ACCTEST_ENV secret and runs against the
+  # standing fixture, which is kept running out of band. The standing YBA has
+  # no direct ingress: `make acctest` itself opens the IAP tunnel
+  # (acctest/with-yba-tunnel.sh) as the fixture service account from the env —
+  # the same path a local run uses.
   acctest:
     name: Acceptance Tests
     runs-on: ubuntu-latest
