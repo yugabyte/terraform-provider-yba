@@ -81,6 +81,14 @@ than leaving the build red.
   as every nested block variant. Fields that are mutually exclusive
   (e.g. per-`auth_type` credentials) get separate example resources in
   the same file.
+- **critical: every new resource (and data source) also gets a doc
+  template at `templates/resources/<name>.md.tmpl`** — copy a sibling's
+  shape: front matter, `{{ .Description }}`, an Example Usage section
+  with `tffile` pointing at the example, `{{ .SchemaMarkdown }}`, and an
+  `## Import` section with the import command. Without a template,
+  `make documents` silently falls back to tfplugindocs' default layout
+  and the published doc ships with **no Import section**; `make lint`
+  does not catch this because the defaulted doc still validates.
 - Telemetry sinks ship as per-sink resources
   (`yba_<sink>_telemetry_provider`) built on the `sinkSpec` factory in
   `internal/telemetry/sink.go` — add a new sink as a new spec + resource,

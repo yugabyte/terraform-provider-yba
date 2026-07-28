@@ -19,8 +19,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	client "github.com/yugabyte/platform-go-client"
@@ -116,6 +118,54 @@ func TestIsUniverseTaskConflictRealClient(t *testing.T) {
 			}
 			// Also verify wrapped errors still match (DispatchAndWait wraps
 			// errors via fmt.Errorf("...: %w", err) before returning).
+			wrapped := fmt.Errorf("dispatch failed: %w", err)
+			if got := IsUniverseTaskConflict(resp, wrapped); got != tc.want {
+				t.Errorf("IsUniverseTaskConflict (wrapped) = %v want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestIsUniverseTaskConflictVanillaClientError drives the helper through
+// CheckHTTPError, the classifier hand-rolled VanillaClient wrappers route
+// non-2xx responses through, so a 409 from an endpoint missing from the
+// generated client (e.g. update_lb_config) retries like any other 409.
+func TestIsUniverseTaskConflictVanillaClientError(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+		want bool
+	}{
+		{
+			name: "cannot be queued",
+			body: `{"success":false,"error":"Task UpdateLoadBalancerConfig cannot be queued on existing task EditUniverse"}`,
+			want: true,
+		},
+		{
+			name: "locked state",
+			body: `{"error":"Cannot run Backup task since the universe U is currently in a locked state."}`,
+			want: true,
+		},
+		{
+			name: "unrelated 409",
+			body: `{"error":"Some other conflict"}`,
+			want: false,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			resp := &http.Response{
+				StatusCode: http.StatusConflict,
+				Status:     "409 Conflict",
+				Body:       io.NopCloser(strings.NewReader(tc.body)),
+			}
+			err := CheckHTTPError(resp, "UpdateLoadBalancerConfig")
+			if err == nil {
+				t.Fatal("CheckHTTPError returned nil for a 409")
+			}
+			if got := IsUniverseTaskConflict(resp, err); got != tc.want {
+				t.Errorf("IsUniverseTaskConflict = %v want %v\nerr=%v", got, tc.want, err)
+			}
 			wrapped := fmt.Errorf("dispatch failed: %w", err)
 			if got := IsUniverseTaskConflict(resp, wrapped); got != tc.want {
 				t.Errorf("IsUniverseTaskConflict (wrapped) = %v want %v", got, tc.want)

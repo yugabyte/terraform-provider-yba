@@ -3846,7 +3846,12 @@ func resourceUniverseUpdate(
 
 				// Software Upgrade
 				if oldUserIntent.GetYbSoftwareVersion() != newUserIntent.GetYbSoftwareVersion() {
-					updateUni.UniverseDetails.Clusters[i].UserIntent = newUserIntent
+					// Stamp only the upgraded field onto the live intent (the
+					// editUniverseParameters whitelist idiom): swapping in
+					// newUserIntent wholesale nils fields managed out-of-band
+					// (enableLB, audit log config).
+					updateUni.UniverseDetails.Clusters[i].UserIntent.YbSoftwareVersion =
+						newUserIntent.YbSoftwareVersion
 
 					finalize := d.Get("db_version_upgrade_options.0.finalize").(bool)
 
@@ -4036,7 +4041,9 @@ func resourceUniverseUpdate(
 				// Systemd upgrade
 				if !oldUserIntent.GetUseSystemd() &&
 					newUserIntent.GetUseSystemd() {
-					updateUni.UniverseDetails.Clusters[i].UserIntent = newUserIntent
+					// Live-intent stamp; see Software Upgrade above.
+					updateUni.UniverseDetails.Clusters[i].UserIntent.UseSystemd =
+						newUserIntent.UseSystemd
 					req := client.SystemdUpgradeParams{
 						Clusters:                       updateUni.UniverseDetails.Clusters,
 						UpgradeOption:                  upgradeOption,

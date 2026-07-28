@@ -11,7 +11,8 @@
 #     the VM's role instead of a key.
 #
 # Both carry the same permissions: provision universe EC2 (instances, volumes,
-# SGs, key pairs) and read/write backups in the fixture's S3 bucket.
+# SGs, key pairs), manage NLBs for the load-balancer attach tests, and
+# read/write backups in the fixture's S3 bucket.
 
 # EC2 to provision universe nodes; S3 scoped to the backups bucket for the
 # storage-config tests. EC2 actions are not resource-scopable in a way YBA's
@@ -22,6 +23,17 @@ data "aws_iam_policy_document" "yba" {
     sid       = "EC2Provisioning"
     effect    = "Allow"
     actions   = ["ec2:*"]
+    resources = ["*"]
+  }
+
+  # NLB attach tests (yba_universe_load_balancer_config): the in-test aws_lb
+  # plus the target groups and listeners YBA creates on it during attach. The
+  # LB and target-group names are dynamic (name_prefix / YBA-derived), so like
+  # EC2 this doesn't resource-scope usefully.
+  statement {
+    sid       = "LoadBalancerAttach"
+    effect    = "Allow"
+    actions   = ["elasticloadbalancing:*"]
     resources = ["*"]
   }
 

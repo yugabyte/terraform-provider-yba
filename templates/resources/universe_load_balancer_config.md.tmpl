@@ -1,0 +1,25 @@
+---
+page_title: "{{.Name}} {{.Type}} - {{.RenderedProviderName}}"
+description: |-
+{{ .Description | plainmarkdown | trimspace | prefixlines "  " }}
+---
+
+# {{.Name}} ({{.Type}})
+
+{{ .Description | trimspace }}
+
+## Example Usage
+
+Each apply sends the universe's **complete** desired load balancer state, so manage every attachment (primary cluster, read replica, all regions) from **one** `yba_universe_load_balancer_config` resource per universe. A second resource for the same `universe_uuid` would detach the other's load balancers on every apply.
+
+{{ tffile "examples/resources/yba_universe_load_balancer_config/resource.tf" }}
+
+{{ .SchemaMarkdown | trimspace }}
+
+## Import
+
+Universe load balancer configs can be imported using the `universe uuid` (the resource ID):
+
+```sh
+terraform import yba_universe_load_balancer_config.example <universe-uuid>
+```

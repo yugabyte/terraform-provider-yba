@@ -709,16 +709,35 @@ func CheckHTTPAuthError(resp *http.Response) error {
 	return nil
 }
 
-// FormatHTTPError creates a formatted error from HTTP response
+// HTTPResponseError is the non-2xx error from hand-rolled VanillaClient calls.
+// A typed error (vs fmt.Errorf) so OpenAPIErrorBody can recover the body for
+// classifiers like IsUniverseTaskConflict — the generated clients' equivalent,
+// GenericOpenAPIError, cannot be constructed outside the client package.
+type HTTPResponseError struct {
+	Operation  string
+	StatusCode int
+	Status     string
+	Body       string
+}
+
+func (e *HTTPResponseError) Error() string {
+	if e.Body != "" {
+		return fmt.Sprintf("%s failed (HTTP %d): %s", e.Operation, e.StatusCode, e.Body)
+	}
+	return fmt.Sprintf("%s failed (HTTP %d): %s", e.Operation, e.StatusCode, e.Status)
+}
+
+// FormatHTTPError creates a typed error from a non-2xx HTTP response
 func FormatHTTPError(resp *http.Response, operation string) error {
 	if resp == nil {
 		return fmt.Errorf("%s: no response received", operation)
 	}
-	bodyMsg := FormatHTTPErrorBody(resp)
-	if bodyMsg != "" {
-		return fmt.Errorf("%s failed (HTTP %d): %s", operation, resp.StatusCode, bodyMsg)
+	return &HTTPResponseError{
+		Operation:  operation,
+		StatusCode: resp.StatusCode,
+		Status:     resp.Status,
+		Body:       FormatHTTPErrorBody(resp),
 	}
-	return fmt.Errorf("%s failed (HTTP %d): %s", operation, resp.StatusCode, resp.Status)
 }
 
 // CheckHTTPError checks for HTTP errors and returns appropriate error messages
@@ -763,7 +782,8 @@ func IsUniverseTaskConflict(response *http.Response, err error) bool {
 
 // OpenAPIErrorBody walks the error chain and returns the response body of the
 // first *GenericOpenAPIError from either generated client (platform-go-client
-// or platform-go-client/v2). Returns "" if no such error is present.
+// or platform-go-client/v2), or of an *HTTPResponseError from a hand-rolled
+// VanillaClient call. Returns "" if no such error is present.
 func OpenAPIErrorBody(err error) string {
 	var v1Err *client.GenericOpenAPIError
 	if errors.As(err, &v1Err) {
@@ -773,7 +793,38 @@ func OpenAPIErrorBody(err error) string {
 	if errors.As(err, &v2Err) {
 		return string(v2Err.Body())
 	}
+	var httpErr *HTTPResponseError
+	if errors.As(err, &httpErr) {
+		return httpErr.Body
+	}
 	return ""
+}
+
+// ErrUniverseMissing collapses YBA's ways of reporting a gone universe (a 404,
+// or a non-404 with a universeMissingMarkers body) so resource CRUD uses
+// errors.Is, not substring matching. See AGENTS.md, Error & Task Handling.
+var ErrUniverseMissing = errors.New("universe does not exist")
+
+// universeMissingMarkers are the body fragments YBA uses when reporting a gone
+// universe through non-404 responses.
+var universeMissingMarkers = []string{
+	"Cannot find universe",
+	"does not exist",
+}
+
+// IsUniverseMissing reports whether response/err indicate the universe is gone.
+// Fetch helpers map a true result to ErrUniverseMissing.
+func IsUniverseMissing(response *http.Response, err error) bool {
+	if IsHTTPNotFound(response) {
+		return true
+	}
+	body := OpenAPIErrorBody(err)
+	for _, m := range universeMissingMarkers {
+		if strings.Contains(body, m) {
+			return true
+		}
+	}
+	return false
 }
 
 // RetryOnUniverseTaskConflict calls fn repeatedly whenever YBA returns a 409 Conflict

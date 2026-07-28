@@ -91,7 +91,7 @@ documents docs:
 lint-docs:
 	$(MAKE) documents
 	@test -z "$$(git status --porcelain -- docs/)" || { git status --porcelain -- docs/; echo "docs/ out of sync (incl. new/untracked) - run 'make docs' and commit"; exit 1; }
-	go run github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs validate
+	go run github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs validate --provider-name yba
 	npx --yes markdownlint-cli2@$(MARKDOWNLINT_CLI2_VERSION) "docs/**/*.md"
 	go run github.com/client9/misspell/cmd/misspell -error docs templates examples
 

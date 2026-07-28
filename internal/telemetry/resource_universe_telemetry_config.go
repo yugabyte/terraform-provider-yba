@@ -1083,7 +1083,7 @@ func resourceUniverseTelemetryConfigDelete(
 	config, err := getExportTelemetryConfig(
 		ctx, apiClient, universeUUID, "Delete - Get Config")
 	if err != nil {
-		if errors.Is(err, errUniverseMissing) {
+		if errors.Is(err, utils.ErrUniverseMissing) {
 			tflog.Warn(ctx, fmt.Sprintf(
 				"universe %s not found during telemetry disable; "+
 					"removing from state", universeUUID))
@@ -1157,7 +1157,7 @@ func resourceUniverseTelemetryConfigRead(
 	universeUUID := d.Id()
 	config, err := getExportTelemetryConfig(ctx, apiClient, universeUUID, "Read")
 	if err != nil {
-		if errors.Is(err, errUniverseMissing) {
+		if errors.Is(err, utils.ErrUniverseMissing) {
 			tflog.Warn(ctx, fmt.Sprintf(
 				"universe %s not found, removing telemetry config from state", universeUUID))
 			d.SetId("")
@@ -1183,41 +1183,21 @@ func resourceUniverseTelemetryConfigRead(
 	return nil
 }
 
-// errUniverseMissing collapses YBA's ways of reporting a gone universe (a 404, or
-// a non-404 with a universeMissingMarkers body) so CRUD uses errors.Is, not
-// substring matching. See AGENTS.md, Error & Task Handling.
-var errUniverseMissing = errors.New("universe does not exist")
-
-var universeMissingMarkers = []string{
-	"Cannot find universe",
-	"does not exist",
-}
-
 // getExportTelemetryConfig fetches the v2 telemetry config, mapping a gone
-// universe to errUniverseMissing and other errors to a formatted error.
+// universe to utils.ErrUniverseMissing and other errors to a formatted error.
 func getExportTelemetryConfig(
 	ctx context.Context, apiClient *api.APIClient, universeUUID, operation string,
 ) (*clientv2.TelemetryConfig, error) {
 	config, response, err := apiClient.YugawareClientV2.UniverseAPI.
 		GetExportTelemetryConfig(ctx, apiClient.CustomerID, universeUUID).Execute()
 	if err != nil {
-		if utils.IsHTTPNotFound(response) || bodyHasMissingMarker(err) {
-			return nil, errUniverseMissing
+		if utils.IsUniverseMissing(response, err) {
+			return nil, utils.ErrUniverseMissing
 		}
 		return nil, utils.ErrorFromHTTPResponse(response, err,
 			utils.ResourceEntity, "Universe Telemetry Config", operation)
 	}
 	return config, nil
-}
-
-func bodyHasMissingMarker(err error) bool {
-	body := utils.OpenAPIErrorBody(err)
-	for _, m := range universeMissingMarkers {
-		if strings.Contains(body, m) {
-			return true
-		}
-	}
-	return false
 }
 
 func intValue(in interface{}) int {
