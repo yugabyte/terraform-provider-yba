@@ -65,8 +65,10 @@ than leaving the build red.
   `Description`.
 - `ExactlyOneOf` on every polymorphic block; back it with a package-level
   slice so the schema, type-resolver switch, and tests stay in sync.
-- `Sensitive: true` for every credential, plus a `~> **Security Note:**`
-  callout in the resource `Description` (values land in state).
+- `Sensitive: true` for every credential. Credentials that persist in
+  state also get a `~> **Security Note:**` callout in the resource
+  `Description`; `WriteOnly` arguments never reach state, so a plain
+  `~> **Note:**` explaining the write-only behaviour is enough.
 - `Importer` is required unless YBA truly cannot import.
 - `Description` is required on every field and the resource itself —
   these strings render directly into user-facing docs. Use `~> **Note:**`
@@ -104,9 +106,12 @@ than leaving the build red.
 - `Delete` is idempotent for already-gone resources **and surfaces every
   other failure**. `tflog.Warn(...) + return nil` on non-404 errors is
   banned — it silently corrupts state.
-- For "in-use" delete failures, **proactively detach** referencing
-  resources before issuing the delete; do not substring-match YBA's
-  error body in the resource layer.
+- For "in-use" delete failures, decide per resource type: detach
+  referencing resources first only when the detach is safe and mechanical;
+  when it implies a real operation on the referencing resource (e.g. a
+  certificate — repointing universes is a user decision), fail with an
+  error that names the referencing resources instead. Either way, do not
+  substring-match YBA's error body in the resource layer.
 - Long-running ops (e.g. rolling restarts): define timeout constants in
   **hours** in one place per package so all three CRUD timeouts share one
   source of truth.
@@ -124,6 +129,10 @@ than leaving the build red.
   (dispatch + 409 retry + `WaitForTask`) or
   `utils.RetryOnUniverseTaskConflict` (dispatch + 409 retry only).
   Hand-rolling the dispatch-wait-retry triplet is a bug waiting to happen.
+- Pre-validating a request against a stable, obvious YBA rule (e.g. a
+  rotation trigger on a disabled TLS channel) is preferred when the
+  provider error can name the Terraform field; let the server error
+  surface for anything version-dependent.
 
 ## Use `internal/utils` First
 

@@ -1,0 +1,34 @@
+---
+page_title: "{{.Name}} {{.Type}} - {{.RenderedProviderName}}"
+description: |-
+{{ index (split (trimspace .Description) "\n\n") 0 | plainmarkdown | trimspace | prefixlines "  " }}
+---
+
+# {{.Name}} ({{.Type}})
+
+{{ .Description | trimspace }}
+
+Reference the certificate from a universe via `root_ca` (node-to-node TLS) and/or
+`client_root_ca` (client-to-node TLS). Rotation semantics — including the same-CA
+server-certificate refresh driven by the universe's `cert_rotation` triggers — are documented
+in the [Universe Edit Actions](../guides/universe-edit-actions.md#certificate-rotation) guide.
+
+-> **Note:** Creation of the minted (label-only) mode uses a YugabyteDB Anywhere endpoint that
+is internal API surface (available since YBA 2.20.0.0, below this provider's minimum supported
+version). The bring-your-own mode uses the public certificate upload API only.
+
+## Example Usage
+
+{{ tffile "examples/resources/yba_self_signed_certificate/resource.tf" }}
+
+{{ .SchemaMarkdown | trimspace }}
+
+## Import
+
+Self-signed certificate configurations can be imported using the certificate UUID:
+
+```sh
+terraform import yba_self_signed_certificate.example <certificate-uuid>
+```
+
+`private_key` cannot be recovered through the API and stays empty after import.

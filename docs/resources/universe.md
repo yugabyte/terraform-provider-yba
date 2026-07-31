@@ -103,6 +103,44 @@ resource "yba_universe" "dedicated_masters_inherit" {
   }
   communication_ports {}
 }
+
+# Universe with managed encryption-in-transit certificates: a self-signed root
+# for node-to-node TLS and an org-issued custom server certificate for
+# client-to-node TLS. Changing either CA reference rotates the universe to the
+# new certificate; bumping a cert_rotation trigger re-issues the server
+# certificates from the unchanged (SelfSigned) root.
+resource "yba_universe" "with_certificates" {
+  root_ca        = yba_self_signed_certificate.minted.uuid
+  client_root_ca = yba_custom_server_certificate.c2n.uuid
+
+  cert_rotation {
+    server_cert_trigger = "2026-07" # bump to refresh node-to-node server certs
+  }
+
+  clusters {
+    cluster_type = "PRIMARY"
+    user_intent {
+      universe_name      = "<universe-name>"
+      provider           = yba_aws_provider.aws.id
+      region_list        = yba_aws_provider.aws.regions[*].uuid
+      num_nodes          = 3
+      replication_factor = 3
+      instance_type      = "<instance-type>"
+      device_info {
+        num_volumes  = 1
+        volume_size  = 375
+        storage_type = "<storage-type>"
+      }
+      use_time_sync                 = true
+      enable_ysql                   = true
+      enable_node_to_node_encrypt   = true
+      enable_client_to_node_encrypt = true
+      yb_software_version           = data.yba_release_version.release_version.id
+      access_key_code               = data.yba_provider_key.cloud_key.id
+    }
+  }
+  communication_ports {}
+}
 ```
 
 The details for configuration are available in the [YugabyteDB Anywhere Create YugabyteDB universe deployments](https://docs.yugabyte.com/stable/yugabyte-platform/create-deployments/) and [YugabyteDB Anywhere Manage YugabyteDB universe deployments](https://docs.yugabyte.com/stable/yugabyte-platform/manage-deployments/).
@@ -126,13 +164,17 @@ documented in the [Universe Edit Actions](../guides/universe-edit-actions.md) gu
 ### Optional
 
 - `arch` (String) The architecture of the universe nodes. Allowed values are x86_64 and aarch64.
-- `client_root_ca` (String) The UUID of the clientRootCA to be used to generate client certificates and facilitate TLS communication between server and client. When set to a different value than root_ca, separate certificates are used for node-to-node and client-to-node TLS. May be set without root_ca (e.g. when node-to-node encryption is disabled but client-to-node encryption is enabled); in that case YBA auto-generates a root CA for node-to-node if needed and uses the provided value for client-to-node. When not set, root_ca is reused for client-to-node TLS.
+- `cert_rotation` (Block List, Max: 1) Triggers for same-CA server-certificate rotation: regenerating the per-node server certificates from the unchanged (SelfSigned) root certificate, which YBA issues with a 1-year lifetime by default. Changing a trigger to any new non-empty value fires the rotation on the next apply; the values are otherwise opaque bookkeeping (a date reads well in diffs, or wire in `time_rotating` for automated renewal). Setting a trigger at universe creation records it without rotating, and removing one never fires. Restart behaviour follows `node_restart_settings` (Non-Restart performs a hot certificate reload on eligible universes). To change the certificate itself, edit `root_ca`/`client_root_ca` instead.
+
+~> **Note:** Rolling rotations restart nodes one at a time and honor the `node_restart_settings` sleeps, which compound on multi-node universes — raise the resource's `timeouts { update }` (60 minutes by default) when a rotation can outlast it. If the universe's node-to-node certificates have already expired, YBA only accepts Non-Rolling rotations. (see [below for nested schema](#nestedblock--cert_rotation))
+
+- `client_root_ca` (String) The UUID of the clientRootCA to be used to generate client certificates and facilitate TLS communication between server and client. When set to a different value than root_ca, separate certificates are used for node-to-node and client-to-node TLS. May be set without root_ca (e.g. when node-to-node encryption is disabled but client-to-node encryption is enabled); in that case YBA auto-generates a root CA for node-to-node if needed and uses the provided value for client-to-node. When not set, root_ca is reused for client-to-node TLS. Changing the value on an existing universe performs a certificate rotation: YBA runs the lightweight server-certificate rotation when the new configuration's root CA content is identical to the current one (e.g. a re-issued `yba_custom_server_certificate`), and a full root certificate rotation otherwise.
 - `communication_ports` (Block List, Max: 1) Communication ports. See the universe edit actions guide for which ports can be changed after creation and which trigger a full move when edited. (see [below for nested schema](#nestedblock--communication_ports))
 - `db_version_upgrade_options` (Block List, Max: 1) Options controlling the DB version upgrade path (UpgradeDBVersion). By default finalize = false pauses the upgrade in PreFinalize state for a monitoring phase; flip to true and re-apply to commit, or set rollback = true to revert to the previous DB version. (see [below for nested schema](#nestedblock--db_version_upgrade_options))
 - `delete_options` (Block List, Max: 1) (see [below for nested schema](#nestedblock--delete_options))
 - `full_move` (Block List, Max: 1) Block controlling whether and how full-move-triggering edits are permitted. A full move provisions new nodes with the new configuration, migrates data from the old nodes, and decommissions the old nodes; it requires temporary 2x node capacity during migration and takes significantly longer than in-place operations. (see [below for nested schema](#nestedblock--full_move))
-- `node_restart_settings` (Block List, Max: 1) Controls how node restarts are performed during upgrade operations (DB version, GFlags, Systemd, Finalize, Rollback). When omitted, YugabyteDB Anywhere platform defaults apply: Rolling strategy with 180000 ms (3 minutes) sleep after each master and TServer restart. (see [below for nested schema](#nestedblock--node_restart_settings))
-- `root_ca` (String) The UUID of the rootCA used for node-to-node TLS encryption. When not set, YBA creates and assigns a root CA automatically.
+- `node_restart_settings` (Block List, Max: 1) Controls how node restarts are performed during upgrade operations (DB version, GFlags, Systemd, Finalize, Rollback, certificate rotation). When omitted, YugabyteDB Anywhere platform defaults apply: Rolling strategy with 180000 ms (3 minutes) sleep after each master and TServer restart. (see [below for nested schema](#nestedblock--node_restart_settings))
+- `root_ca` (String) The UUID of the rootCA used for node-to-node TLS encryption. When not set, YBA creates and assigns a root CA automatically. Changing the value on an existing universe performs a root certificate rotation (a multi-phase operation with rolling node restarts; see `cert_rotation` and `node_restart_settings`). When the referenced certificate is a Terraform resource, set `lifecycle { create_before_destroy = true }` on it so the replacement exists before the old configuration is deleted.
 - `timeouts` (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))
 
 ### Read-Only
@@ -333,6 +375,15 @@ Read-Only:
 - `secondary_subnet` (String) Secondary subnet ID for this zone, inherited from the provider.
 - `subnet` (String) Primary subnet ID for this zone, inherited from the provider.
 - `uuid` (String) Availability zone UUID.
+
+<a id="nestedblock--cert_rotation"></a>
+
+### Nested Schema for `cert_rotation`
+
+Optional:
+
+- `client_cert_trigger` (String) Fires `selfSignedClientCertRotate`: fresh client-to-node server certificates signed by the unchanged `client_root_ca` (which must be a SelfSigned configuration).
+- `server_cert_trigger` (String) Fires `selfSignedServerCertRotate`: fresh node-to-node server certificates signed by the unchanged `root_ca` (which must be a SelfSigned configuration). On universes where one root certificate serves both channels, client-to-node server certificates are rotated in the same task.
 
 <a id="nestedblock--communication_ports"></a>
 

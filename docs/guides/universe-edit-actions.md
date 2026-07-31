@@ -33,7 +33,6 @@ no task is dispatched. To change one of these, destroy and recreate the universe
 | `clusters[*].user_intent.assign_public_ip`, `assign_static_ip`, `enable_ipv6` | |
 | `clusters[*].user_intent.use_host_name`, `use_time_sync` | |
 | `clusters[*].user_intent.aws_arn_string` | |
-| `root_ca`, `client_root_ca` | Rotation is not supported. |
 | Restricted entries in `communication_ports` (see [Update Communication Ports](#update-communication-ports)) | YSQL, YCQL, YEDIS, and YB-Controller ports. |
 
 ## Overview of Supported Actions
@@ -45,6 +44,7 @@ no task is dispatched. To change one of these, destroy and recreate the universe
 | [Rollback Upgrade](#rollback-upgrade) | `db_version_upgrade_options.rollback = true` | Rolling back upgrade |
 | [GFlags Upgrade](#gflags-upgrade) | `specific_gflags` changes (or legacy `master_gflags` / `tserver_gflags`) | Upgrading GFlags |
 | [TLS Toggle](#tls-toggle) | `enable_node_to_node_encrypt` or `enable_client_to_node_encrypt` changes | Toggling TLS |
+| [Certificate Rotation](#certificate-rotation) | `root_ca` / `client_root_ca` changes, or a `cert_rotation` trigger changes | Updating Certificate |
 | [Systemd Upgrade](#systemd-upgrade) | `use_systemd` changes from `false` to `true` | Upgrading to Systemd |
 | [VM Image Upgrade](#vm-image-upgrade) | `image_bundle_uuid` changes | Upgrading VM Image |
 | [Resize Nodes](#resize-nodes) | `volume_size` increases with no instance type change | Resizing Node |
@@ -318,6 +318,81 @@ resource "yba_universe" "example" {
       # ... other fields ...
     }
   }
+}
+```
+
+---
+
+## Certificate Rotation
+
+**Trigger:** `root_ca` or `client_root_ca` changes to a different certificate UUID, or a
+`cert_rotation` trigger (`server_cert_trigger` / `client_cert_trigger`) changes to a new
+non-empty value.
+
+**Task name:** Updating Certificate
+
+**Controlling fields:**
+
+| Field | Purpose |
+|---|---|
+| `root_ca` | Root certificate for node-to-node TLS. Changing it rotates the universe to the new certificate. |
+| `client_root_ca` | Root certificate for client-to-node TLS. Changing it rotates the client-to-node side. |
+| `cert_rotation.server_cert_trigger` | Any change fires a same-CA refresh of the node-to-node server certificates (SelfSigned `root_ca` only). |
+| `cert_rotation.client_cert_trigger` | Any change fires a same-CA refresh of the client-to-node server certificates (SelfSigned `client_root_ca` only). |
+| `node_restart_settings.*` | Restart strategy and per-node sleeps for the rotation task. |
+
+**Behavior:** Two distinct rotations exist, matching YBA's `RootCert` / `ServerCert`
+rotation types:
+
+- **Root certificate rotation** — the CA itself changes (`root_ca` / `client_root_ca`
+  edits). For a changed root CA, YBA runs a multi-phase task: append the new root to every
+  node's trust store, re-issue server certificates from the new root, then remove the old
+  root — with node restarts per phase under the `Rolling` strategy. Anything that pins the
+  old CA (client trust bundles) must be updated to the new certificate. Exception: when the
+  new configuration's root CA content is byte-identical to the current one and only the
+  bundled server certificate differs (a re-issued `yba_custom_server_certificate`), YBA
+  detects it and performs the lightweight server-certificate rotation instead.
+- **Server certificate rotation** — the CA is unchanged; YBA re-generates the per-node
+  server certificates it signs with the (SelfSigned) root's key. These expire after 1 year
+  by platform default, so this is the recurring operation. It changes nothing readable in
+  the universe's API state, which is why it is expressed as an opaque trigger value: setting
+  a trigger for the first time fires it, changing it fires it again, and removing it never
+  fires. On universes where one root certificate serves both channels, a server trigger also
+  refreshes the client-to-node server certificates in the same task. Pair the trigger with
+  [`time_rotating`](https://registry.terraform.io/providers/hashicorp/time/latest/docs/resources/rotating)
+  for automated renewal.
+
+When a CA change and a trigger change land in the same apply, the provider dispatches the
+root certificate rotation first, waits for it, then dispatches the server certificate
+rotation (YBA cannot combine them in a single task).
+
+~> **Note:** If the universe's node-to-node certificates have already expired, YBA rejects
+rotations with `Rolling` or `Non-Restart` strategies — set
+`node_restart_settings.upgrade_option = "Non-Rolling"` for the recovery rotation.
+
+**Example -- rotate to a new client-to-node certificate and refresh node-to-node server
+certificates:**
+
+```terraform
+resource "yba_custom_server_certificate" "c2n" {
+  label              = "prod-c2n-2027"
+  root_certificate   = file("org-ca.crt")
+  server_certificate = file("server-2027.crt")
+  server_key         = file("server-2027.key")
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+resource "yba_universe" "example" {
+  root_ca        = yba_self_signed_certificate.n2n.uuid
+  client_root_ca = yba_custom_server_certificate.c2n.uuid
+
+  cert_rotation {
+    server_cert_trigger = "2027-01" # bump to re-issue node-to-node server certs
+  }
+  # ... other fields ...
 }
 ```
 
@@ -636,6 +711,9 @@ fixed order:
    Replica, or both).
 7. **VM Image Upgrade** (after cluster edit, if not already run before scale-out)
 8. **Update Communication Ports** (if only ports changed with no cluster changes)
+9. **Certificate Rotation** — root certificate rotation first (if `root_ca` /
+   `client_root_ca` changed and a preceding step has not already applied it), then server
+   certificate rotation (if a `cert_rotation` trigger fired), as two sequential tasks.
 
 Each task in the sequence completes (or fails fast) before the next is dispatched. A failure
 in any step causes `terraform apply` to return an error; partial changes already applied to
@@ -649,9 +727,9 @@ The `node_restart_settings.upgrade_option` field applies to most upgrade tasks:
 
 | Strategy | Behavior | Applies to |
 |---|---|---|
-| `Rolling` | Nodes are restarted one at a time; the universe stays available throughout. | DB version, GFlags, Systemd, Rollback, Finalize |
-| `Non-Rolling` | All nodes are restarted simultaneously; brief downtime during restart. | DB version, GFlags, Systemd |
-| `Non-Restart` | GFlag values are pushed to running processes without restarting. Only compatible with hot-reload flags. | GFlags only |
+| `Rolling` | Nodes are restarted one at a time; the universe stays available throughout. | DB version, GFlags, Systemd, Rollback, Finalize, Certificate Rotation |
+| `Non-Rolling` | All nodes are restarted simultaneously; brief downtime during restart. | DB version, GFlags, Systemd, Certificate Rotation |
+| `Non-Restart` | Changes are pushed to running processes without restarting. GFlags: hot-reload flags only. Certificate Rotation: hot certificate reload, on universes whose DB version supports it. | GFlags, Certificate Rotation |
 
 **Fixed strategies (not affected by `upgrade_option`):**
 

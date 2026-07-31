@@ -1,0 +1,30 @@
+---
+page_title: "{{.Name}} {{.Type}} - {{.RenderedProviderName}}"
+description: |-
+{{ index (split (trimspace .Description) "\n\n") 0 | plainmarkdown | trimspace | prefixlines "  " }}
+---
+
+# {{.Name}} ({{.Type}})
+
+{{ .Description | trimspace }}
+
+Reference the certificate from a universe via `client_root_ca` only. Rotation semantics are
+documented in the
+[Universe Edit Actions](../guides/universe-edit-actions.md#certificate-rotation) guide.
+
+## Example Usage
+
+{{ tffile "examples/resources/yba_custom_server_certificate/resource.tf" }}
+
+{{ .SchemaMarkdown | trimspace }}
+
+## Import
+
+Custom server certificate configurations can be imported using the certificate UUID:
+
+```sh
+terraform import yba_custom_server_certificate.example <certificate-uuid>
+```
+
+`server_certificate` and `server_key` cannot be recovered through the API and stay empty
+after import.
