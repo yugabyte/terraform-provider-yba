@@ -394,6 +394,16 @@ func ResourceYBAInstaller() *schema.Resource {
 				},
 				Description: "Check names to be skipped during preflight check.",
 			},
+			"upgrade_rollback": {
+				Type:     schema.TypeBool,
+				Optional: true,
+				Default:  true,
+				Description: "Automatically roll back to the previously installed " +
+					"version when a `yba-ctl upgrade` fails. Applies only to upgrades " +
+					"(changes to `yba_version`). Set to false to leave a failed " +
+					"upgrade in place for inspection instead of rolling back. " +
+					"Defaults to true.",
+			},
 		},
 	}
 }
@@ -640,7 +650,7 @@ func resourceYBAInstallerUpdate(
 
 	if d.HasChange("yba_version") {
 		commands = append(commands, getUpgradeCommands(newVersion, hostOS, hostArch,
-			skipPreflightChecksList)...)
+			skipPreflightChecksList, d.Get("upgrade_rollback").(bool))...)
 	}
 
 	for _, cmd := range commands {
@@ -807,11 +817,19 @@ func getReconfigureCommands(version, os, arch string) []string {
 	}
 }
 
-func getUpgradeCommands(version, os, arch string, skipPreflightCheckList *[]string) []string {
+// getUpgradeCommands stages the target bundle and runs yba-ctl upgrade. When
+// rollback is true the flag is omitted (yba-ctl already defaults --rollback to
+// true), keeping the command compatible with yba-ctl versions that predate it.
+func getUpgradeCommands(
+	version, os, arch string,
+	skipPreflightCheckList *[]string, rollback bool) []string {
 	folder, updateCommands := getBundleDownloadCommands(version, os, arch)
 	s := fmt.Sprintf("%s ./%s/yba-ctl upgrade -f", ybaCtlSudo(version), folder)
 	if skipPreflightCheckList != nil && len(*skipPreflightCheckList) != 0 {
 		s = fmt.Sprintf("%s -s %s", s, strings.Join(*skipPreflightCheckList, ","))
+	}
+	if !rollback {
+		s = fmt.Sprintf("%s --rollback=false", s)
 	}
 	updateCommands = append(updateCommands, s)
 	return updateCommands

@@ -723,7 +723,7 @@ func TestGetUpgradeCommands(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cmds := getUpgradeCommands(tt.version, tt.os, "x86_64", nil)
+			cmds := getUpgradeCommands(tt.version, tt.os, "x86_64", nil, true)
 			if len(cmds) != 3 {
 				t.Fatalf("expected 3 commands (curl, tar, upgrade), got %d: %v", len(cmds), cmds)
 			}
@@ -787,10 +787,57 @@ func TestGetInstallCommandsPreRelease(t *testing.T) {
 
 func TestGetUpgradeCommandsSkipPreflight(t *testing.T) {
 	skip := []string{"diskAvailability", "memoryAvailability"}
-	cmds := getUpgradeCommands("2024.1.0.0", "linux", "x86_64", &skip)
+	cmds := getUpgradeCommands("2024.1.0.0", "linux", "x86_64", &skip, true)
 	last := cmds[len(cmds)-1]
 	if !strings.Contains(last, "-s diskAvailability,memoryAvailability") {
 		t.Errorf("upgrade command should contain joined skip flags, got %q", last)
+	}
+}
+
+// TestUpgradeRollbackSchema guards the upgrade_rollback contract: optional
+// bool defaulting to true, so existing configs keep the automatic-rollback
+// behaviour, and toggling it never recreates the installation.
+func TestUpgradeRollbackSchema(t *testing.T) {
+	s, ok := ResourceYBAInstaller().Schema["upgrade_rollback"]
+	if !ok {
+		t.Fatal("expected upgrade_rollback attribute in schema")
+	}
+	if s.Type != schema.TypeBool {
+		t.Errorf("upgrade_rollback type = %v, want TypeBool", s.Type)
+	}
+	if !s.Optional {
+		t.Error("upgrade_rollback should be Optional")
+	}
+	if s.ForceNew {
+		t.Error("upgrade_rollback should not be ForceNew: it only shapes the " +
+			"next upgrade command")
+	}
+	if s.Default != true {
+		t.Errorf("upgrade_rollback default = %v, want true", s.Default)
+	}
+}
+
+func TestGetUpgradeCommandsRollback(t *testing.T) {
+	// rollback=true must not add the flag: yba-ctl defaults --rollback to true,
+	// and omitting it keeps the command working on yba-ctl versions without it.
+	cmds := getUpgradeCommands("2024.1.0.0", "linux", "x86_64", nil, true)
+	last := cmds[len(cmds)-1]
+	if strings.Contains(last, "--rollback") {
+		t.Errorf("upgrade command should omit --rollback when rollback=true, got %q", last)
+	}
+
+	cmds = getUpgradeCommands("2024.1.0.0", "linux", "x86_64", nil, false)
+	last = cmds[len(cmds)-1]
+	if !strings.Contains(last, "--rollback=false") {
+		t.Errorf("upgrade command should contain --rollback=false, got %q", last)
+	}
+
+	skip := []string{"diskAvailability"}
+	cmds = getUpgradeCommands("2024.1.0.0", "linux", "x86_64", &skip, false)
+	last = cmds[len(cmds)-1]
+	if !strings.Contains(last, "-s diskAvailability") ||
+		!strings.Contains(last, "--rollback=false") {
+		t.Errorf("upgrade command should combine skip and rollback flags, got %q", last)
 	}
 }
 

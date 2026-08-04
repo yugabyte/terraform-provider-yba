@@ -44,6 +44,11 @@ resource "yba_installer" "install" {
   tls_key              = tls_private_key.yba.private_key_pem
 
   yba_version = "<YugabyteDB Anywhere-version-with-build-number>"
+
+  # A failed `yba-ctl upgrade` automatically rolls back to the previous
+  # version by default. Set upgrade_rollback = false to keep the failed
+  # upgrade in place for inspection instead.
+  upgrade_rollback = true
 }
 
 # Alternatively, point each attribute at a local file. The file-based
@@ -124,6 +129,7 @@ For further details on configuration and host requirements, refer to [Install YB
 - `tls_certificate_file` (String) Path to a TLS certificate file used to configure HTTPS. Ensure the application settings have *server_cert_path* set to /tmp/server.crt. Conflicts with `tls_certificate`.
 - `tls_key` (String, Sensitive) Inline TLS key contents used to configure HTTPS. Ensure the application settings have *server_key_path* set to /tmp/server.key.
 - `tls_key_file` (String) Path to a TLS key file used to configure HTTPS. Ensure the application settings have *server_key_path* set to /tmp/server.key. Conflicts with `tls_key`.
+- `upgrade_rollback` (Boolean) Automatically roll back to the previously installed version when a `yba-ctl upgrade` fails. Applies only to upgrades (changes to `yba_version`). Set to false to leave a failed upgrade in place for inspection instead of rolling back. Defaults to true.
 - `yba_license` (String, Sensitive) Inline YugabyteDB Anywhere license contents used for installation. Use this instead of `yba_license_file` to pass the license without writing it to a local file.
 - `yba_license_file` (String) Path to a YugabyteDB Anywhere license file used for installation. Conflicts with `yba_license`.
 

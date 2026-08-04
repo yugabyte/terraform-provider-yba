@@ -18,6 +18,11 @@ resource "yba_installer" "install" {
   tls_key              = tls_private_key.yba.private_key_pem
 
   yba_version = "<YugabyteDB Anywhere-version-with-build-number>"
+
+  # A failed `yba-ctl upgrade` automatically rolls back to the previous
+  # version by default. Set upgrade_rollback = false to keep the failed
+  # upgrade in place for inspection instead.
+  upgrade_rollback = true
 }
 
 # Alternatively, point each attribute at a local file. The file-based
