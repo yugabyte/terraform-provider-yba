@@ -233,7 +233,10 @@ func ResourceYBAInstaller() *schema.Resource {
 				Type:     schema.TypeString,
 				Required: true,
 				// Change in this triggers ./yba-ctl upgrade
-				Description: "Version of YugabyteDB Anywhere to be installed.",
+				Description: "Version of YugabyteDB Anywhere to be installed. " +
+					"Changing this on an existing installation runs `yba-ctl " +
+					"upgrade` to the new version. Downgrades are not supported " +
+					"and are rejected at plan time.",
 			},
 			"host_os": {
 				Type:        schema.TypeString,
@@ -444,7 +447,31 @@ func resourceYBAInstallerDiff() schema.CustomizeDiffFunc {
 				}
 				return nil
 			}),
+		// yba-ctl upgrade refuses a target version lower than the
+		// installed one, but only at runtime on the host - by then the
+		// failed apply has already burned time staging the bundle.
+		// Reject the downgrade at plan time instead.
+		func(ctx context.Context, d *schema.ResourceDiff, meta interface{}) error {
+			if d.Id() == "" || !d.HasChange("yba_version") {
+				return nil
+			}
+			old, new := d.GetChange("yba_version")
+			return validateNoYBAVersionDowngrade(old.(string), new.(string))
+		},
 	)
+}
+
+// validateNoYBAVersionDowngrade rejects a yba_version change to a lower
+// version. Version strings CompareYbVersions cannot parse (e.g. local
+// builds) are left for yba-ctl's own version check at upgrade time.
+func validateNoYBAVersionDowngrade(oldVersion, newVersion string) error {
+	compare, err := utils.CompareYbVersions(newVersion, oldVersion)
+	if err == nil && compare < 0 {
+		return fmt.Errorf(
+			"yba_version %s is lower than the installed version %s: yba-ctl "+
+				"does not support downgrades", newVersion, oldVersion)
+	}
+	return nil
 }
 
 // errEmptyApplicationSettings is returned when a reconfigure is
@@ -568,12 +595,32 @@ func resourceYBAInstallerRead(
 	return diag.Diagnostics{}
 }
 
+// installerUpdateRevertAttrs are the attributes resourceYBAInstallerUpdate
+// applies to the host. On a failed update the SDK persists the planned
+// values to state anyway, so they must be reverted to their pre-update
+// values - otherwise the next plan shows no diff and the unapplied change
+// is silently recorded as done.
+var installerUpdateRevertAttrs = []string{
+	"yba_version",
+	"reconfigure",
+	"yba_license", "yba_license_file",
+	"application_settings", "application_settings_file",
+	"tls_certificate", "tls_certificate_file",
+	"tls_key", "tls_key_file",
+}
+
 func resourceYBAInstallerUpdate(
 	ctx context.Context,
 	d *schema.ResourceData,
-	meta interface{}) diag.Diagnostics {
+	meta interface{}) (diags diag.Diagnostics) {
 	// same steps as installation
 	// run ./yba-ctl with upgrade instead of install
+
+	defer func() {
+		if diags.HasError() {
+			utils.RevertFields(d, installerUpdateRevertAttrs...)
+		}
+	}()
 
 	hostIPForSSH := d.Get("ssh_host_ip").(string)
 	user := d.Get("ssh_user").(string)
