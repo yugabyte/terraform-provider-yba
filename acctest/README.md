@@ -31,7 +31,11 @@ tunnel, which authenticates callers with IAM before any packet reaches the VM.
 The env's YBA endpoints are therefore `127.0.0.1:9443`, and `make acctest`
 opens the tunnel itself (`acctest/with-yba-tunnel.sh`, the same path CI and
 the fixture targets use) as the fixture service account — no personal IAP
-grant or extra terminal needed. To browse the UI, hold a tunnel open with:
+grant or extra terminal needed. Test runs carry the API leg as one
+multiplexed SSH connection over the relay (the fixture SSH key rides in the
+env), so the suite's per-process connection churn never hits the relay's
+per-connection handshake, which flakes under burst. To browse the UI, hold a
+tunnel open with:
 
 ```bash
 acctest/with-yba-tunnel.sh sleep 86400   # then open https://127.0.0.1:9443
@@ -57,10 +61,15 @@ interactive), so run it yourself.
 - **Auth error** (`could not find default credentials`, `Reauthentication
   failed`, `no usable gcloud login`, `403`): re-run `make -C acctest auth` —
   it detects expired sessions, not just missing ones.
-- **`IAP tunnel ... did not become ready`** (or `connection refused` to
+- **`tunnel ... did not become ready`** (or `connection refused` to
   `127.0.0.1:9443`): check `gcloud` is installed and the env is fresh — the
   tunnel authenticates as the fixture SA from `TF_VAR_GCP_CREDENTIALS`, so a
   rotated key means a stale env (see below).
+- **`connection reset by peer` or tests hanging mid-suite**: the env predates
+  `YBA_SSH_PRIVATE_KEY_B64`, so the tunnel silently fell back to per-connection
+  IAP forwards, which flake under test churn. Regenerate the env (below); in
+  CI, refresh the `ACCTEST_ENV` secret with `make -C acctest
+  push-github-secrets`.
 - **Every test is SKIPPED**: the env was not loaded. Run `make -C acctest env`,
   confirm `acctest/env` exists, then `make acctest`.
 - **Env looks stale** (after re-applying a fixture, or rotated keys): delete it
