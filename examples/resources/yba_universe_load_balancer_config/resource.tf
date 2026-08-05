@@ -18,7 +18,6 @@ resource "yba_universe_load_balancer_config" "main" {
   load_balancer {
     region  = "us-west-2"
     lb_name = aws_lb.primary.name
-    lb_fqdn = aws_lb.primary.dns_name
   }
 
   # Zone-local load balancing: az_overrides points individual AZs at their

@@ -37,6 +37,26 @@ data "aws_iam_policy_document" "yba" {
     resources = ["*"]
   }
 
+  # Creating the account's first load balancer auto-creates the ELB
+  # service-linked role (AWSServiceRoleForElasticLoadBalancing); AWS denies
+  # that CreateLoadBalancer call without this grant. The role persists after
+  # first creation, so this only fires once per account — kept so the fixture
+  # reproduces in a fresh account.
+  statement {
+    sid     = "ELBServiceLinkedRole"
+    effect  = "Allow"
+    actions = ["iam:CreateServiceLinkedRole"]
+    resources = [
+      "arn:aws:iam::*:role/aws-service-role/elasticloadbalancing.amazonaws.com/*",
+    ]
+
+    condition {
+      test     = "StringEquals"
+      variable = "iam:AWSServiceName"
+      values   = ["elasticloadbalancing.amazonaws.com"]
+    }
+  }
+
   statement {
     sid    = "BackupsBucket"
     effect = "Allow"
