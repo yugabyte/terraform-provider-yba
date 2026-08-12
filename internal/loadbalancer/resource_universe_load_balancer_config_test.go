@@ -18,6 +18,7 @@ package loadbalancer
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -40,8 +41,9 @@ const (
 )
 
 type updateLBRequest struct {
-	UniverseUUID string           `json:"universeUUID"`
-	Clusters     []client.Cluster `json:"clusters"`
+	UniverseUUID   string                   `json:"universeUUID"`
+	Clusters       []client.Cluster         `json:"clusters"`
+	NodeDetailsSet []client.NodeDetailsResp `json:"nodeDetailsSet"`
 }
 
 // fakeYBA serves universe details, persists update_lb_config PUTs so later
@@ -55,6 +57,21 @@ type fakeYBA struct {
 	// set, to mimic YBA reporting a gone universe through non-404 responses.
 	missingStatus int
 	missingBody   string
+}
+
+// nodeDetails returns one live tserver node per cluster, so the universe GET
+// always carries a nodeDetailsSet the provider can echo back.
+func (f *fakeYBA) nodeDetails() []client.NodeDetailsResp {
+	nodes := []client.NodeDetailsResp{}
+	for i := range f.clusters {
+		nodes = append(nodes, client.NodeDetailsResp{
+			NodeName:      utils.GetStringPointer(fmt.Sprintf("yb-node-%d", i)),
+			PlacementUuid: f.clusters[i].Uuid,
+			State:         utils.GetStringPointer("Live"),
+			IsTserver:     utils.GetBoolPointer(true),
+		})
+	}
+	return nodes
 }
 
 func writeJSON(w http.ResponseWriter, v interface{}) {
@@ -84,7 +101,8 @@ func (f *fakeYBA) handler() http.HandlerFunc {
 				"universeUUID": testUniverse,
 				"name":         "test-universe",
 				"universeDetails": map[string]interface{}{
-					"clusters": f.clusters,
+					"clusters":       f.clusters,
+					"nodeDetailsSet": f.nodeDetails(),
 				},
 			})
 		case r.Method == http.MethodPut &&
@@ -93,6 +111,15 @@ func (f *fakeYBA) handler() http.HandlerFunc {
 			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 				w.WriteHeader(http.StatusBadRequest)
 				_, _ = w.Write([]byte(`{"error":"bad update_lb_config body"}`))
+				return
+			}
+			// The real YBA accepts a PUT without nodeDetailsSet and the task
+			// later dies on an NPE (getNodesInCluster returns null). The fake
+			// front-loads that failure to the request so every CRUD test
+			// enforces the contract.
+			if len(req.NodeDetailsSet) == 0 {
+				w.WriteHeader(http.StatusBadRequest)
+				_, _ = w.Write([]byte(`{"error":"nodeDetailsSet is required"}`))
 				return
 			}
 			f.lbPuts = append(f.lbPuts, req)
@@ -266,9 +293,6 @@ func TestReadReflectsAttachedLoadBalancers(t *testing.T) {
 	}
 	if block["lb_name"] != "my-nlb" {
 		t.Errorf("lb_name = %q, want my-nlb", block["lb_name"])
-	}
-	if block["lb_fqdn"] != "nlb.example.com" {
-		t.Errorf("lb_fqdn = %q, want nlb.example.com", block["lb_fqdn"])
 	}
 	if block["read_replica"] != false {
 		t.Errorf("read_replica = %v, want false", block["read_replica"])
@@ -541,7 +565,7 @@ func TestUpdateRemapsLoadBalancers(t *testing.T) {
 	apiClient := newTestClient(t, f)
 
 	res := ResourceUniverseLoadBalancerConfig()
-	// Config now points at a different LB and drops the FQDN.
+	// Config now points at a different LB.
 	d := schema.TestResourceDataRaw(t, res.Schema, map[string]interface{}{
 		"universe_uuid": testUniverse,
 		"load_balancer": []interface{}{
@@ -568,7 +592,8 @@ func TestUpdateRemapsLoadBalancers(t *testing.T) {
 		}
 	}
 	if region.GetLbFQDN() != "" {
-		t.Errorf("lbFQDN = %q, want cleared (config no longer sets it)", region.GetLbFQDN())
+		t.Errorf("lbFQDN = %q, want cleared (full replace clears out-of-band values)",
+			region.GetLbFQDN())
 	}
 }
 
@@ -638,7 +663,6 @@ func TestCreateAttachesLoadBalancerToPrimaryCluster(t *testing.T) {
 			map[string]interface{}{
 				"region":  "us-west-2",
 				"lb_name": "my-nlb",
-				"lb_fqdn": "nlb.example.com",
 			},
 		},
 	})
@@ -660,14 +684,17 @@ func TestCreateAttachesLoadBalancerToPrimaryCluster(t *testing.T) {
 	if len(sent.Clusters) != 1 {
 		t.Fatalf("payload clusters = %d, want 1", len(sent.Clusters))
 	}
+	// The universe's live nodes must ride along; YBA's task NPEs without them.
+	if len(sent.NodeDetailsSet) != 1 ||
+		sent.NodeDetailsSet[0].GetPlacementUuid() != "cl-primary" {
+		t.Errorf("payload nodeDetailsSet = %+v, want the universe's live node in cl-primary",
+			sent.NodeDetailsSet)
+	}
 	cl := sent.Clusters[0]
 	if !cl.UserIntent.GetEnableLB() {
 		t.Error("primary cluster enableLB not set in payload")
 	}
 	region := cl.PlacementInfo.CloudList[0].RegionList[0]
-	if region.GetLbFQDN() != "nlb.example.com" {
-		t.Errorf("region lbFQDN = %q, want %q", region.GetLbFQDN(), "nlb.example.com")
-	}
 	for _, az := range region.AzList {
 		if az.GetLbName() != "my-nlb" {
 			t.Errorf("az %s lbName = %q, want %q", az.GetName(), az.GetLbName(), "my-nlb")

@@ -98,13 +98,6 @@ func ResourceUniverseLoadBalancerConfig() *schema.Resource {
 								"balancer name on AWS and Azure, the backend service name " +
 								"on GCP.",
 						},
-						"lb_fqdn": {
-							Type:     schema.TypeString,
-							Optional: true,
-							Description: "Optional FQDN clients use to reach this load " +
-								"balancer. Stored as connection metadata on the universe's " +
-								"region placement; not used to manage node membership.",
-						},
 						"read_replica": {
 							Type:     schema.TypeBool,
 							Optional: true,
@@ -130,10 +123,15 @@ func ResourceUniverseLoadBalancerConfig() *schema.Resource {
 }
 
 // updateLoadBalancerConfigParams is the update_lb_config PUT body. YBA binds
-// the full UniverseDefinitionTaskParams; only these two fields are relevant.
+// the full UniverseDefinitionTaskParams. The server derives existingLBs itself
+// but reads the node set from the request: the UpdateLoadBalancerConfig task
+// builds its target-group membership from the submitted nodeDetailsSet and
+// throws an NPE when it is absent, so the universe's live nodes must always
+// ride along with the clusters.
 type updateLoadBalancerConfigParams struct {
-	UniverseUUID string           `json:"universeUUID"`
-	Clusters     []client.Cluster `json:"clusters"`
+	UniverseUUID   string                   `json:"universeUUID"`
+	Clusters       []client.Cluster         `json:"clusters"`
+	NodeDetailsSet []client.NodeDetailsResp `json:"nodeDetailsSet"`
 }
 
 func resourceUniverseLoadBalancerConfigCreate(
@@ -154,6 +152,7 @@ func resourceUniverseLoadBalancerConfigCreate(
 	}
 
 	if diags := dispatchLoadBalancerConfig(ctx, apiClient, uniUUID, clusters,
+		uni.UniverseDetails.GetNodeDetailsSet(),
 		d.Timeout(schema.TimeoutCreate), "Create"); diags != nil {
 		return diags
 	}
@@ -195,10 +194,13 @@ func dispatchLoadBalancerConfig(
 	apiClient *api.APIClient,
 	uniUUID string,
 	clusters []client.Cluster,
+	nodes []client.NodeDetailsResp,
 	timeout time.Duration,
 	operation string,
 ) diag.Diagnostics {
-	payload := updateLoadBalancerConfigParams{UniverseUUID: uniUUID, Clusters: clusters}
+	payload := updateLoadBalancerConfigParams{
+		UniverseUUID: uniUUID, Clusters: clusters, NodeDetailsSet: nodes,
+	}
 	return utils.DispatchAndWait(ctx, "Universe Load Balancer Config "+operation,
 		apiClient.CustomerID, apiClient.YugawareClient, timeout,
 		utils.ResourceEntity, "Universe Load Balancer Config", operation,
@@ -245,12 +247,11 @@ func clusterIndexByType(clusters []client.Cluster, clusterType string) int {
 	return -1
 }
 
-// stampRegionLB writes one load_balancer block's lb_name/lb_fqdn into the
-// matching region of the cluster's placement.
+// stampRegionLB writes one load_balancer block's lb_name into the matching
+// region of the cluster's placement.
 func stampRegionLB(cluster *client.Cluster, block map[string]interface{}) error {
 	regionCode := block["region"].(string)
 	lbName := block["lb_name"].(string)
-	lbFQDN := block["lb_fqdn"].(string)
 	azOverrides := utils.StringMap(block["az_overrides"].(map[string]interface{}))
 
 	if cluster.PlacementInfo == nil {
@@ -262,9 +263,6 @@ func stampRegionLB(cluster *client.Cluster, block map[string]interface{}) error 
 			region := &regions[r]
 			if region.GetCode() != regionCode {
 				continue
-			}
-			if lbFQDN != "" {
-				region.LbFQDN = utils.GetStringPointer(lbFQDN)
 			}
 			for a := range region.AzList {
 				name := lbName
@@ -362,7 +360,6 @@ func flattenRegionLB(region client.PlacementRegion, readReplica bool) map[string
 	return map[string]interface{}{
 		"region":       region.GetCode(),
 		"lb_name":      regionLB,
-		"lb_fqdn":      region.GetLbFQDN(),
 		"read_replica": readReplica,
 		"az_overrides": overrides,
 	}
@@ -386,6 +383,7 @@ func resourceUniverseLoadBalancerConfigUpdate(
 	}
 
 	return dispatchLoadBalancerConfig(ctx, apiClient, uniUUID, clusters,
+		uni.UniverseDetails.GetNodeDetailsSet(),
 		d.Timeout(schema.TimeoutUpdate), "Update")
 }
 
@@ -408,6 +406,7 @@ func resourceUniverseLoadBalancerConfigDelete(
 
 	if diags := dispatchLoadBalancerConfig(ctx, apiClient, uniUUID,
 		disableLoadBalancerConfig(uni.UniverseDetails.Clusters),
+		uni.UniverseDetails.GetNodeDetailsSet(),
 		d.Timeout(schema.TimeoutDelete), "Delete"); diags != nil {
 		return diags
 	}

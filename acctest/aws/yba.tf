@@ -170,6 +170,14 @@ resource "yba_installer" "install" {
     aws_security_group.main,
     aws_route_table_association.yba,
   ]
+
+  lifecycle {
+    # The EIP keeps ssh_host_ip stable across VM replacement (e.g. a
+    # most_recent AMI bump), so no input here changes and terraform would
+    # keep this stale install record for a bare host. Retie the install to
+    # the instance itself.
+    replace_triggered_by = [aws_instance.yba.id]
+  }
 }
 
 # Register the initial superuser; exposes the API token (published as
@@ -184,6 +192,9 @@ resource "yba_customer_resource" "customer" {
 
   lifecycle {
     ignore_changes = [password]
+    # A reinstalled YBA starts with no customers; re-register the superuser
+    # (and republish its API token) whenever the install is replaced.
+    replace_triggered_by = [yba_installer.install.id]
   }
 
   depends_on = [yba_installer.install]
