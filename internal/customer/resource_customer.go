@@ -88,10 +88,8 @@ func ResourceCustomer() *schema.Resource {
 				Computed:  true,
 				Sensitive: true,
 				Description: "API token for the customer. This is generated after registration " +
-					"and login. YugabyteDB Anywhere keeps one valid API token per user, so an " +
-					"out-of-band login (for example, a yba-ctl upgrade) invalidates this token. " +
-					"When that happens, the provider logs in again with the stored email and " +
-					"password on the next refresh and stores the new token. " +
+					"and login. If the token becomes invalid, the provider logs in again with " +
+					"`email` and `password` during refresh and updates this value. " +
 					"Stored in Terraform state - use an encrypted backend for security.",
 			},
 			"cuuid": {
@@ -180,9 +178,9 @@ func resourceCustomerRead(
 		apiKey = storedToken
 	}
 
-	// NewAPIClient validates the key via GetSessionInfo, so a rotated token
-	// surfaces here as 401 (YBA keeps one valid token per user). Re-login with
-	// the credentials in state so the token self-heals.
+	// NewAPIClient validates the key via GetSessionInfo, so a token invalidated
+	// outside Terraform surfaces here as a 401. Re-login with the credentials in
+	// state so the token self-heals.
 	newAPI, err := api.NewAPIClient(vc.EnableHTTPS, vc.Host, apiKey)
 	if err != nil {
 		email := d.Get("email").(string)
