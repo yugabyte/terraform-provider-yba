@@ -39,7 +39,6 @@ resource "yba_universe_load_balancer_config" "main" {
   load_balancer {
     region  = "us-west-2"
     lb_name = aws_lb.primary.name
-    lb_fqdn = aws_lb.primary.dns_name
   }
 
   # Zone-local load balancing: az_overrides points individual AZs at their
@@ -96,7 +95,6 @@ Required:
 Optional:
 
 - `az_overrides` (Map of String) Map of availability zone name to load balancer name for zones that should use a different load balancer than the region default (e.g. one load balancer per AZ for zone-local application traffic).
-- `lb_fqdn` (String) Optional FQDN clients use to reach this load balancer. Stored as connection metadata on the universe's region placement; not used to manage node membership.
 - `read_replica` (Boolean) Attach this load balancer to the universe's read replica cluster instead of the primary cluster. YBA supports at most one read replica per universe. Defaults to `false` (primary).
 
 <a id="nestedblock--timeouts"></a>

@@ -31,10 +31,14 @@ import (
 	"github.com/yugabyte/terraform-provider-yba/internal/utils"
 )
 
-func lbAttachConfig(uniLabel, region, lbNameRef, lbFQDNRef string) string {
-	fqdn := ""
-	if lbFQDNRef != "" {
-		fqdn = fmt.Sprintf("lb_fqdn = %s", lbFQDNRef)
+// lbAttachConfig renders the attach resource. dependsOn lists cloud resources
+// YBA needs live during every LB task — detach included — that the attach
+// does not already reference (e.g. GCP forwarding rules): the explicit edge
+// keeps terraform from destroying them concurrently with the detach.
+func lbAttachConfig(uniLabel, region, lbNameRef, dependsOn string) string {
+	deps := ""
+	if dependsOn != "" {
+		deps = fmt.Sprintf("depends_on = [%s]", dependsOn)
 	}
 	return fmt.Sprintf(`
 	resource "yba_universe_load_balancer_config" "test" {
@@ -43,14 +47,16 @@ func lbAttachConfig(uniLabel, region, lbNameRef, lbFQDNRef string) string {
 		load_balancer {
 			region  = %s
 			lb_name = %s
-			%s
 		}
+
+		%s
 	}
-`, uniLabel, region, lbNameRef, fqdn)
+`, uniLabel, region, lbNameRef, deps)
 }
 
-// awsLBConfig creates a bare NLB — YBA manages target groups and listeners
-// itself. name_prefix keeps the generated name inside AWS's 32-char limit.
+// awsLBConfig creates two bare NLBs — YBA manages target groups and listeners
+// itself. The second is the remap target for the in-place update step.
+// name_prefix keeps the generated names inside AWS's 32-char limit.
 func awsLBConfig() string {
 	return `
 	variable "AWS_ACCESS_KEY_ID" {
@@ -75,11 +81,22 @@ func awsLBConfig() string {
 		internal           = true
 		subnets            = [var.AWS_ZONE_SUBNET_ID]
 	}
+
+	resource "aws_lb" "test2" {
+		name_prefix        = "ybalb-"
+		load_balancer_type = "network"
+		internal           = true
+		subnets            = [var.AWS_ZONE_SUBNET_ID]
+	}
 `
 }
 
-// gcpLBConfig creates the regional backend service (plus its TCP health
-// check) whose NAME is what YBA treats as the load balancer identifier on GCP.
+// gcpLBConfig creates two regional backend services (sharing one TCP health
+// check) whose NAMES are what YBA treats as load balancer identifiers on GCP.
+// The second is the remap target for the in-place update step. YBA validates
+// (but never creates) forwarding rules, and requires every enabled client
+// port (5433 YSQL, 9042 YCQL) to be forwarded, so each backend service also
+// needs an internal forwarding rule covering both ports.
 func gcpLBConfig(name string) string {
 	return fmt.Sprintf(`
 	provider "google" {
@@ -89,7 +106,7 @@ func gcpLBConfig(name string) string {
 	}
 
 	resource "google_compute_region_health_check" "test" {
-		name   = "%s-hc"
+		name   = "%[1]s-hc"
 		region = var.GCP_REGION
 		tcp_health_check {
 			port = 5433
@@ -97,17 +114,58 @@ func gcpLBConfig(name string) string {
 	}
 
 	resource "google_compute_region_backend_service" "test" {
-		name                  = "%s-bs"
+		name                  = "%[1]s-bs"
 		region                = var.GCP_REGION
 		protocol              = "TCP"
 		load_balancing_scheme = "INTERNAL"
 		health_checks         = [google_compute_region_health_check.test.id]
+
+		lifecycle {
+			# YBA owns the backend membership after attach.
+			ignore_changes = [backend]
+		}
 	}
-`, name, name)
+
+	resource "google_compute_forwarding_rule" "test" {
+		name                  = "%[1]s-fr"
+		region                = var.GCP_REGION
+		load_balancing_scheme = "INTERNAL"
+		backend_service       = google_compute_region_backend_service.test.id
+		ip_protocol           = "TCP"
+		ports                 = ["5433", "9042"]
+		network               = var.GCP_VPC_NETWORK
+		subnetwork            = var.GCP_SUBNETWORK
+	}
+
+	resource "google_compute_region_backend_service" "test2" {
+		name                  = "%[1]s-bs2"
+		region                = var.GCP_REGION
+		protocol              = "TCP"
+		load_balancing_scheme = "INTERNAL"
+		health_checks         = [google_compute_region_health_check.test.id]
+
+		lifecycle {
+			# YBA owns the backend membership after attach.
+			ignore_changes = [backend]
+		}
+	}
+
+	resource "google_compute_forwarding_rule" "test2" {
+		name                  = "%[1]s-fr2"
+		region                = var.GCP_REGION
+		load_balancing_scheme = "INTERNAL"
+		backend_service       = google_compute_region_backend_service.test2.id
+		ip_protocol           = "TCP"
+		ports                 = ["5433", "9042"]
+		network               = var.GCP_VPC_NETWORK
+		subnetwork            = var.GCP_SUBNETWORK
+	}
+`, name)
 }
 
-// azureLBConfig creates a Standard load balancer with the frontend IP
-// configuration YBA requires to already exist before attach.
+// azureLBConfig creates two Standard load balancers with the frontend IP
+// configuration YBA requires to already exist before attach; the second is
+// the remap target for the in-place update step.
 func azureLBConfig(name string) string {
 	return fmt.Sprintf(`
 	variable "AZURE_SUBSCRIPTION_ID" {
@@ -140,6 +198,16 @@ func azureLBConfig(name string) string {
 		client_secret   = var.AZURE_CLIENT_SECRET
 	}
 
+	# TF_VAR_AZURE_SUBNET_ID carries the subnet's bare name (the YBA provider
+	# consumes names, not IDs); azurerm_lb needs the full ARM resource ID, so
+	# resolve name -> ID here. AZURE_SUBNET_ID/AZURE_VNET_ID are declared by
+	# the universe base config this is concatenated with.
+	data "azurerm_subnet" "test" {
+		name                 = var.AZURE_SUBNET_ID
+		virtual_network_name = var.AZURE_VNET_ID
+		resource_group_name  = var.AZURE_RG
+	}
+
 	resource "azurerm_lb" "test" {
 		name                = "%s-lb"
 		location            = "westus2"
@@ -148,11 +216,24 @@ func azureLBConfig(name string) string {
 
 		frontend_ip_configuration {
 			name                          = "%s-fe"
-			subnet_id                     = var.AZURE_SUBNET_ID
+			subnet_id                     = data.azurerm_subnet.test.id
 			private_ip_address_allocation = "Dynamic"
 		}
 	}
-`, name, name)
+
+	resource "azurerm_lb" "test2" {
+		name                = "%s-lb2"
+		location            = "westus2"
+		resource_group_name = var.AZURE_RG
+		sku                 = "Standard"
+
+		frontend_ip_configuration {
+			name                          = "%s-fe2"
+			subnet_id                     = data.azurerm_subnet.test.id
+			private_ip_address_allocation = "Dynamic"
+		}
+	}
+`, name, name, name, name)
 }
 
 // testAccCheckUniverseLBDisabled asserts no cluster on the universe still has
@@ -199,9 +280,16 @@ func importCheckSingleLB(states []*terraform.InstanceState) error {
 	return nil
 }
 
-// lbTestSteps: attach with checks, import, then drop only the LB config to
+// lbTestSteps: attach with checks, import, update in place (attachRemapped
+// points lb_name at the second in-test load balancer, making YBA move node
+// membership between live load balancers), then drop only the LB config to
 // prove destroy detaches without touching the surviving universe.
-func lbTestSteps(cloud, uniLabel, base, lbHCL, attach string) []resource.TestStep {
+// remapLBRes is the second LB's resource address; its name attribute must
+// equal the remapped lb_name in state (the name is generated on AWS, so the
+// check is an attr pair, not a literal).
+func lbTestSteps(
+	cloud, uniLabel, base, lbHCL, attach, attachRemapped, remapLBRes string,
+) []resource.TestStep {
 	uniRes := "yba_universe." + uniLabel
 	resName := "yba_universe_load_balancer_config.test"
 	return []resource.TestStep{
@@ -218,6 +306,14 @@ func lbTestSteps(cloud, uniLabel, base, lbHCL, attach string) []resource.TestSte
 			ImportStateCheck: importCheckSingleLB,
 		},
 		{
+			Config: base + lbHCL + attachRemapped,
+			Check: resource.ComposeTestCheckFunc(
+				resource.TestCheckResourceAttr(resName, "load_balancer.#", "1"),
+				resource.TestCheckTypeSetElemAttrPair(resName, "load_balancer.*.lb_name",
+					remapLBRes, "name"),
+			),
+		},
+		{
 			Config: base + lbHCL,
 			Check:  testAccCheckUniverseLBDisabled(cloud, uniRes),
 		},
@@ -231,7 +327,8 @@ func lbTestSteps(cloud, uniLabel, base, lbHCL, attach string) []resource.TestSte
 func TestAccLong_UniverseLoadBalancerConfig_AWS(t *testing.T) {
 	rName := acctest.RandomName("lb-aws")
 	base := universeAwsConfigWithNodes(rName, 3)
-	attach := lbAttachConfig("aws", `"us-west-2"`, "aws_lb.test.name", "aws_lb.test.dns_name")
+	attach := lbAttachConfig("aws", `"us-west-2"`, "aws_lb.test.name", "")
+	attachRemapped := lbAttachConfig("aws", `"us-west-2"`, "aws_lb.test2.name", "")
 
 	resource.ParallelTest(t, resource.TestCase{
 		PreCheck: func() {
@@ -243,15 +340,19 @@ func TestAccLong_UniverseLoadBalancerConfig_AWS(t *testing.T) {
 			"aws": {Source: "hashicorp/aws"},
 		},
 		CheckDestroy: testAccCheckDestroyProviderAndUniverse("AWS"),
-		Steps:        lbTestSteps("AWS", "aws", base, awsLBConfig(), attach),
+		Steps: lbTestSteps("AWS", "aws", base, awsLBConfig(), attach, attachRemapped,
+			"aws_lb.test2"),
 	})
 }
 
 func TestAccLong_UniverseLoadBalancerConfig_GCP(t *testing.T) {
 	rName := acctest.RandomName("lb-gcp")
 	base := universeGcpConfigWithNodes(rName, 3)
+	gcpLBDeps := "google_compute_forwarding_rule.test, google_compute_forwarding_rule.test2"
 	attach := lbAttachConfig("gcp", "var.GCP_REGION",
-		"google_compute_region_backend_service.test.name", "")
+		"google_compute_region_backend_service.test.name", gcpLBDeps)
+	attachRemapped := lbAttachConfig("gcp", "var.GCP_REGION",
+		"google_compute_region_backend_service.test2.name", gcpLBDeps)
 
 	resource.ParallelTest(t, resource.TestCase{
 		PreCheck: func() {
@@ -263,14 +364,20 @@ func TestAccLong_UniverseLoadBalancerConfig_GCP(t *testing.T) {
 			"google": {Source: "hashicorp/google"},
 		},
 		CheckDestroy: testAccCheckDestroyProviderAndUniverse("GCP"),
-		Steps:        lbTestSteps("GCP", "gcp", base, gcpLBConfig(rName), attach),
+		Steps: lbTestSteps("GCP", "gcp", base, gcpLBConfig(rName), attach, attachRemapped,
+			"google_compute_region_backend_service.test2"),
 	})
 }
 
 func TestAccLong_UniverseLoadBalancerConfig_Azure(t *testing.T) {
+	// PLAT-21900: YBA cannot empty an Azure backend pool, so the detach steps
+	// fail the task and the test cannot tear down. Unskip when the fix ships.
+	t.Skip("Azure LB detach blocked on PLAT-21900")
+
 	rName := acctest.RandomName("lb-azu")
 	base := universeAzureConfigWithNodes(rName, 3)
 	attach := lbAttachConfig("azu", `"westus2"`, "azurerm_lb.test.name", "")
+	attachRemapped := lbAttachConfig("azu", `"westus2"`, "azurerm_lb.test2.name", "")
 
 	resource.ParallelTest(t, resource.TestCase{
 		PreCheck: func() {
@@ -282,6 +389,7 @@ func TestAccLong_UniverseLoadBalancerConfig_Azure(t *testing.T) {
 			"azurerm": {Source: "hashicorp/azurerm"},
 		},
 		CheckDestroy: testAccCheckDestroyProviderAndUniverse("AZURE"),
-		Steps:        lbTestSteps("AZURE", "azu", base, azureLBConfig(rName), attach),
+		Steps: lbTestSteps("AZURE", "azu", base, azureLBConfig(rName), attach,
+			attachRemapped, "azurerm_lb.test2"),
 	})
 }

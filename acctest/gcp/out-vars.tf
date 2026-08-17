@@ -15,6 +15,14 @@
 # Both are the tunnel-local endpoint (local.yba_api_host): the standing YBA has
 # no direct ingress. Every consumer tunnels via acctest/with-yba-tunnel.sh —
 # `make acctest` (CI and local) and the apply-gcp/destroy-gcp fixture targets.
+#
+# YBA_SSH_USER/YBA_SSH_PRIVATE_KEY_B64 let with-yba-tunnel.sh carry the API leg
+# as one multiplexed SSH connection instead of per-connection IAP forwards,
+# which flake under test-suite connection churn (see that script). The key is
+# the fixture keypair the installer already uses (tls_private_key.yba); it
+# lives in the remote state either way — this line only transports it to CI
+# through the ACCTEST_ENV secret, next to the SA key and API token it already
+# holds. Base64 keeps the env one line per key.
 
 locals {
   test_env = <<-EOT
@@ -30,6 +38,8 @@ locals {
     TF_VAR_GCP_YBA_API_KEY='${yba_customer_resource.customer.api_token}'
     YBA_HOST='${local.yba_api_host}'
     YBA_API_KEY='${yba_customer_resource.customer.api_token}'
+    YBA_SSH_USER='yugabyte'
+    YBA_SSH_PRIVATE_KEY_B64='${base64encode(tls_private_key.yba.private_key_openssh)}'
   EOT
 }
 
@@ -37,7 +47,7 @@ locals {
 output "test_env" {
   description = "Acceptance-test env (TF_VAR_GCP_*, YBA endpoint) as KEY='value' lines."
   value       = local.test_env
-  sensitive   = true # contains GCP_CREDENTIALS and YBA API tokens
+  sensitive   = true # contains GCP_CREDENTIALS, YBA API tokens, and the YBA VM SSH key
 }
 
 output "yba_url" {

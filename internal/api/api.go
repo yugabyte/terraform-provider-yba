@@ -23,6 +23,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -57,7 +58,17 @@ func NewAPIClient(enableHTTPS bool, host, apiKey string) (*APIClient, error) {
 	cfgV2 := clientv2.NewConfiguration()
 	cfgV2.Host = host
 	if enableHTTPS {
-		tr := &http.Transport{TLSClientConfig: &tls.Config{InsecureSkipVerify: true}}
+		// Bound connection setup and time-to-first-byte. Without these, a
+		// connection that dies without an RST (a black-holed load balancer or
+		// tunnel) hangs its request forever — GetSessionInfo below runs on
+		// context.Background(), so provider configure would never return. No
+		// overall client Timeout: response bodies of any size stay unbounded.
+		tr := &http.Transport{
+			TLSClientConfig:       &tls.Config{InsecureSkipVerify: true},
+			DialContext:           (&net.Dialer{Timeout: 30 * time.Second}).DialContext,
+			TLSHandshakeTimeout:   30 * time.Second,
+			ResponseHeaderTimeout: 2 * time.Minute,
+		}
 		cfg.Scheme = "https"
 		cfg.HTTPClient = &http.Client{Transport: tr}
 		cfgV2.Scheme = "https"
