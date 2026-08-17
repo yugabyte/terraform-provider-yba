@@ -106,7 +106,7 @@ For further details on configuration and host requirements, refer to [Install YB
 
 - `ssh_host_ip` (String) IP address of VM for SSH. Typically same as public_ip or private_ip.
 - `ssh_user` (String) User with sudo access to use for ssh commands.
-- `yba_version` (String) Version of YugabyteDB Anywhere to be installed.
+- `yba_version` (String) Version of YugabyteDB Anywhere to be installed. Changing this on an existing installation runs `yba-ctl upgrade` to the new version. Downgrades are not supported and are rejected at plan time.
 
 ### Optional
 

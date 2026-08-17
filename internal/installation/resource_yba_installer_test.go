@@ -16,6 +16,7 @@
 package installation
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -23,6 +24,7 @@ import (
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
 )
 
 // newInstallerData builds a *schema.ResourceData from the real resource
@@ -331,6 +333,95 @@ func TestInstallerSpecSets(t *testing.T) {
 	install[0] = installerFileSpec{}
 	if installationYBAInstallerSpecs()[0] == (installerFileSpec{}) {
 		t.Fatalf("installationYBAInstallerSpecs returned a shared/mutable slice")
+	}
+}
+
+// TestValidateNoYBAVersionDowngrade guards the plan-time downgrade check:
+// only a confirmed lower target version is rejected; upgrades, equal
+// versions, and version strings CompareYbVersions cannot parse pass
+// through (yba-ctl's own version check handles the latter at runtime).
+func TestValidateNoYBAVersionDowngrade(t *testing.T) {
+	tests := []struct {
+		name       string
+		oldVersion string
+		newVersion string
+		wantErr    bool
+	}{
+		{"GA upgrade", "2024.1.0.0", "2024.2.0.0", false},
+		{"GA downgrade", "2024.2.0.0", "2024.1.0.0", true},
+		{"build number upgrade", "2024.2.0.0-b1", "2024.2.0.0-b2", false},
+		{"build number downgrade", "2024.2.0.0-b2", "2024.2.0.0-b1", true},
+		{"preview upgrade", "2.23.0.0-b100", "2.23.1.0-b220", false},
+		{"preview downgrade", "2.23.1.0-b220", "2.23.0.0-b100", true},
+		{"equal versions", "2024.1.0.0-b5", "2024.1.0.0-b5", false},
+		// Local builds have no comparable build number and are treated
+		// as equal by CompareYbVersions.
+		{"local build", "2024.1.0.0-b5", "2024.1.0.0-custom", false},
+		{"unparseable old version", "dev-build", "2024.1.0.0", false},
+		{"unparseable new version", "2024.1.0.0", "dev-build", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateNoYBAVersionDowngrade(tt.oldVersion, tt.newVersion)
+			if tt.wantErr && err == nil {
+				t.Errorf("%s -> %s: expected downgrade error, got none",
+					tt.oldVersion, tt.newVersion)
+			}
+			if !tt.wantErr && err != nil {
+				t.Errorf("%s -> %s: unexpected error: %v",
+					tt.oldVersion, tt.newVersion, err)
+			}
+		})
+	}
+}
+
+// TestDowngradeRejectedAtPlanTime drives the resource's real Diff path to
+// confirm the downgrade guard is wired into CustomizeDiff (not just that
+// the helper works in isolation).
+func TestDowngradeRejectedAtPlanTime(t *testing.T) {
+	r := ResourceYBAInstaller()
+	state := &terraform.InstanceState{
+		ID: "some-id",
+		Attributes: map[string]string{
+			"yba_version": "2024.2.0.0",
+		},
+	}
+
+	_, err := r.Diff(context.Background(), state, terraform.NewResourceConfigRaw(
+		map[string]interface{}{"yba_version": "2024.1.0.0"}), nil)
+	if err == nil {
+		t.Fatal("expected plan-time error for yba_version downgrade, got none")
+	}
+	if !strings.Contains(err.Error(), "does not support downgrades") {
+		t.Fatalf("unexpected diff error: %v", err)
+	}
+
+	_, err = r.Diff(context.Background(), state, terraform.NewResourceConfigRaw(
+		map[string]interface{}{"yba_version": "2025.1.0.0"}), nil)
+	if err != nil {
+		t.Fatalf("upgrade diff should pass the guard, got: %v", err)
+	}
+}
+
+// TestInstallerUpdateRevertAttrs guards the failed-update state revert:
+// every input the update flow applies to the host (version, reconfigure
+// trigger, and each updatable file/content pair) must be reverted when
+// the update errors, or state records the change as applied.
+func TestInstallerUpdateRevertAttrs(t *testing.T) {
+	reverted := make(map[string]bool, len(installerUpdateRevertAttrs))
+	for _, attr := range installerUpdateRevertAttrs {
+		reverted[attr] = true
+	}
+
+	want := []string{"yba_version", "reconfigure"}
+	for _, spec := range installationYBAInstallerSpecs() {
+		want = append(want, spec.fileAttr, spec.contentAttr)
+	}
+	for _, attr := range want {
+		if !reverted[attr] {
+			t.Errorf("attribute %q is applied during update but missing "+
+				"from installerUpdateRevertAttrs", attr)
+		}
 	}
 }
 
