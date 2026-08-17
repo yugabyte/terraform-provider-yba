@@ -8,7 +8,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/hashicorp/go-cty v1.5.0
 	github.com/hashicorp/terraform-plugin-docs v0.25.0
-	github.com/hashicorp/terraform-plugin-log v0.10.0
+	github.com/hashicorp/terraform-plugin-log v0.11.0
 	github.com/hashicorp/terraform-plugin-sdk/v2 v2.40.1
 	github.com/yugabyte/platform-go-client v0.0.0-20260612051126-0b0414ece83e
 	github.com/yugabyte/platform-go-client/v2 v2.0.0-20260612051126-0b0414ece83e
