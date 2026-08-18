@@ -198,7 +198,13 @@ func ResourceUniverse() *schema.Resource {
 					return len(old) > 0 && new == ""
 				},
 				Description: "The UUID of the rootCA used for node-to-node TLS encryption." +
-					" When not set, YBA creates and assigns a root CA automatically.",
+					" When not set, YBA creates and assigns a root CA automatically." +
+					" Changing the value on an existing universe performs a root certificate" +
+					" rotation (a multi-phase operation with rolling node restarts;" +
+					" see `cert_rotation` and `node_restart_settings`). When the referenced" +
+					" certificate is a Terraform resource, set" +
+					" `lifecycle { create_before_destroy = true }` on it so the replacement" +
+					" exists before the old configuration is deleted.",
 			},
 			"client_root_ca": {
 				Type:     schema.TypeString,
@@ -218,7 +224,63 @@ func ResourceUniverse() *schema.Resource {
 					" (e.g. when node-to-node encryption is disabled but client-to-node" +
 					" encryption is enabled); in that case YBA auto-generates a root CA for" +
 					" node-to-node if needed and uses the provided value for client-to-node." +
-					" When not set, root_ca is reused for client-to-node TLS.",
+					" When not set, root_ca is reused for client-to-node TLS." +
+					" Changing the value on an existing universe performs a certificate" +
+					" rotation: YBA runs the lightweight server-certificate rotation when the" +
+					" new configuration's root CA content is identical to the current one" +
+					" (e.g. a re-issued `yba_custom_server_certificate`), and a full root" +
+					" certificate rotation otherwise.",
+			},
+			"cert_rotation": {
+				Type:     schema.TypeList,
+				Optional: true,
+				MaxItems: 1,
+				Description: "Triggers for same-CA server-certificate rotation: regenerating " +
+					"the per-node server certificates from the unchanged (SelfSigned) root " +
+					"certificate, which YBA issues with a 1-year lifetime by default. " +
+					"Changing a trigger to any new non-empty value fires the rotation on the " +
+					"next apply; the values are otherwise opaque bookkeeping (a date reads " +
+					"well in diffs, or wire in `time_rotating` for automated renewal). " +
+					"Setting a trigger at universe creation records it without rotating; " +
+					"adding a trigger to an already-managed universe fires a rotation on the " +
+					"next apply (first-time set counts as a change). Removing one never " +
+					"fires. Restart behaviour follows `node_restart_settings` (Non-Restart " +
+					"performs a hot certificate reload; among other eligibility gates the " +
+					"universe must first have completed a Rolling certificate rotation — " +
+					"see the universe-edit-actions guide). To change the certificate " +
+					"itself, edit `root_ca`/`client_root_ca` instead — and avoid bumping a " +
+					"trigger in the same apply as a CA change, which already re-issues the " +
+					"server certificates: the trigger adds a second full restart.\n\n" +
+					"~> **Note:** Rolling rotations restart nodes one at a time and honor " +
+					"the `node_restart_settings` sleeps, which compound on multi-node " +
+					"universes — raise the resource's `timeouts { update }` (60 minutes by " +
+					"default) when a rotation can outlast it. If the universe's node-to-node " +
+					"certificates have expired, use Non-Rolling: YBA rejects expired-cert " +
+					"rotations under Rolling (except a client-certificate-only rotation) " +
+					"and Non-Restart.",
+				Elem: &schema.Resource{
+					Schema: map[string]*schema.Schema{
+						"server_cert_trigger": {
+							Type:     schema.TypeString,
+							Optional: true,
+							Description: "Fires `selfSignedServerCertRotate`: fresh " +
+								"node-to-node server certificates signed by the unchanged " +
+								"`root_ca` (which must be a SelfSigned configuration). On " +
+								"universes where one root certificate serves both channels, " +
+								"client-to-node server certificates are rotated in the same task.",
+						},
+						"client_cert_trigger": {
+							Type:     schema.TypeString,
+							Optional: true,
+							Description: "Fires `selfSignedClientCertRotate`: fresh " +
+								"client-to-node server certificates signed by the unchanged " +
+								"`client_root_ca` (which must be a SelfSigned configuration). " +
+								"On universes where one root certificate serves both " +
+								"channels, node-to-node server certificates are rotated in " +
+								"the same task.",
+						},
+					},
+				},
 			},
 			"arch": {
 				Type:     schema.TypeString,
@@ -464,7 +526,8 @@ func ResourceUniverse() *schema.Resource {
 				Optional: true,
 				MaxItems: 1,
 				Description: "Controls how node restarts are performed during upgrade operations " +
-					"(DB version, GFlags, Systemd, Finalize, Rollback). When omitted, " +
+					"(DB version, GFlags, Systemd, Finalize, Rollback, certificate rotation). " +
+					"When omitted, " +
 					"YugabyteDB Anywhere platform defaults apply: Rolling strategy with " +
 					"180000 ms (3 minutes) sleep after each master and TServer restart.",
 				Elem: &schema.Resource{
@@ -2348,41 +2411,6 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 			}
 			return checkUnknown("client_root_ca", c2nEnabled, "enable_client_to_node_encrypt")
 		},
-
-		// YBA cert rotation API: root_ca, client_root_ca.
-		// Remove this block when cert rotation is implemented.
-		customdiff.ValidateChange("root_ca",
-			func(ctx context.Context, old, new, m interface{}) error {
-				oldVal := old.(string)
-				newVal := new.(string)
-				// Allow initial assignment (create) and allow clearing the field
-				// (handled by DiffSuppressFunc).  Block only an explicit change
-				// from one non-empty UUID to a different non-empty UUID.
-				if oldVal != "" && newVal != "" && oldVal != newVal {
-					return errors.New(
-						"root_ca cannot be changed after universe creation: " +
-							"cert rotation update support is not yet implemented in " +
-							"this provider version")
-				}
-				return nil
-			},
-		),
-		customdiff.ValidateChange("client_root_ca",
-			func(ctx context.Context, old, new, m interface{}) error {
-				oldVal := old.(string)
-				newVal := new.(string)
-				// Allow initial assignment (create) and allow clearing the field
-				// (handled by DiffSuppressFunc).  Block only an explicit change
-				// from one non-empty UUID to a different non-empty UUID.
-				if oldVal != "" && newVal != "" && oldVal != newVal {
-					return errors.New(
-						"client_root_ca cannot be changed after universe creation: " +
-							"cert rotation update support is not yet implemented in " +
-							"this provider version")
-				}
-				return nil
-			},
-		),
 
 		// provider UUID is immutable after universe creation; no migration API exists.
 		// Remove this block when provider migration is supported.
@@ -4787,6 +4815,14 @@ func resourceUniverseUpdate(
 		); diags != nil {
 			return diags
 		}
+	}
+
+	// Certificate rotation runs last: TLS toggles and cluster edits above may
+	// already have applied CA changes (making the rotation a no-op), and YBA
+	// rejects rotations that race other universe mutations.
+	if certDiags := performCertRotations(ctx, d, meta, upgradeOption,
+		sleepAfterMasterMs, sleepAfterTServerMs); certDiags != nil {
+		return certDiags
 	}
 
 	return
