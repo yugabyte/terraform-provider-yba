@@ -14,6 +14,8 @@ Custom server certificate configuration for universe client-to-node encryption i
 
 Certificate configurations are immutable in YugabyteDB Anywhere: changing any argument forces replacement, so add `lifecycle { create_before_destroy = true }` when the certificate is referenced by a universe.
 
+~> **Note:** After `terraform import`, `server_certificate` is empty in state (the API never returns it), so the next plan proposes a replacement. Add `lifecycle { ignore_changes = [server_certificate] }` to adopt the imported certificate as-is, or recreate the resource from the original files instead of importing.
+
 ~> **Note:** Labels are unique per customer, and with `create_before_destroy` the replacement is created while the old configuration still exists. Give the replacement a new `label` (include a date or version, for example), or the create fails with a duplicate-label error.
 
 To rotate a server certificate re-issued from the same CA, create the replacement with identical `root_certificate` content and the new `server_certificate`/`server_key`, then point the universe's `client_root_ca` at it — YugabyteDB Anywhere detects the unchanged root and performs the lightweight server-certificate rotation instead of a full root swap.
@@ -55,7 +57,7 @@ resource "yba_custom_server_certificate" "c2n" {
 
 - `label` (String) Name YugabyteDB Anywhere uses to identify the certificate. Must be unique per customer. Certificate configurations cannot be edited (the API has no update for this type), so changing the label forces recreation of the resource.
 - `root_certificate` (String) Root CA certificate in PEM format, provided inline or via `file(...)`. Clients use it to verify the server certificate. Changing the content forces recreation of the resource.
-- `server_certificate` (String) Server certificate in PEM format signed by the root CA, provided inline or via `file(...)`. Placed on every DB node for client-to-node TLS. Never returned by the API, so imported resources cannot recover it. Changing the value forces recreation of the resource.
+- `server_certificate` (String) Server certificate in PEM format signed by the root CA, provided inline or via `file(...)`. Placed on every DB node for client-to-node TLS. Never returned by the API, so imported resources cannot recover it and plan a replacement — see the import note above. Changing the value forces recreation of the resource.
 - `server_key` (String, Sensitive, [Write-only](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments)) Private key of the server certificate in PEM format, provided inline or via `file(...)` or an ephemeral value. Write-only: never stored in the Terraform plan or state, never returned by the API (imported resources cannot recover it). Requires Terraform 1.11+. The key rotates together with `server_certificate`, whose change forces recreation of the resource.
 
 ### Optional
@@ -88,4 +90,17 @@ terraform import yba_custom_server_certificate.example <certificate-uuid>
 ```
 
 `server_certificate` and `server_key` cannot be recovered through the API and stay empty
-after import.
+after import. Because `server_certificate` is required and forces replacement, the next
+plan proposes to replace the imported certificate — and while a universe references it,
+the delete side of that replacement fails. To adopt an imported certificate without
+replacing it, ignore the unrecoverable argument:
+
+```terraform
+lifecycle {
+  ignore_changes = [server_certificate]
+}
+```
+
+Remove the `ignore_changes` entry when you intend to rotate to a re-issued certificate.
+Alternatively, skip the import and recreate the certificate from the original files —
+the plan is then clean from the start.

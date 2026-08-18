@@ -83,7 +83,7 @@ func ResourceSelfSignedCertificate() *schema.Resource {
 				Computed:         true,
 				ForceNew:         true,
 				RequiredWith:     []string{"private_key"},
-				DiffSuppressFunc: suppressPEMWhitespaceDiff,
+				DiffSuppressFunc: suppressPEMContentDiff,
 				Description: "Root certificate in PEM format, provided inline or via " +
 					"`file(...)`. Omit (together with `private_key`) to have YugabyteDB " +
 					"Anywhere mint a new self-signed root certificate; the minted " +

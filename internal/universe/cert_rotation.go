@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/hashicorp/go-cty/cty"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	client "github.com/yugabyte/platform-go-client"
@@ -67,13 +68,18 @@ type liveCertState struct {
 //     Comparing against live (not just d.HasChange) keeps this a no-op when
 //     an earlier step of the same update (e.g. a TLS toggle that carried the
 //     new CA) already applied it.
+//   - On universes where one root certificate serves both channels
+//     (rootAndClientRootCASame), the client channel follows the root unless
+//     client_root_ca is explicitly written in config — the state echo of the
+//     shared CA must not pin client-to-node to the old certificate.
 //   - Trigger semantics: a ServerCert rotation fires when a cert_rotation
 //     trigger changed to a non-empty value. Unsetting a trigger never fires.
-//     On universes where one root certificate serves both channels, a server
-//     trigger also rotates the client-to-node server certificates (matching
-//     YBA CLI/UI behaviour) so the channels never end up half-refreshed.
+//     On shared-CA universes a trigger on either side rotates both channels
+//     (matching YBA CLI/UI behaviour, and required on Kubernetes) so they
+//     never end up half-refreshed.
 func planCertRotations(
 	planRootCA, planClientRootCA string,
+	clientCASetInConfig bool,
 	serverTriggerFired, clientTriggerFired bool,
 	live liveCertState,
 ) certRotationPlan {
@@ -86,6 +92,17 @@ func planCertRotations(
 	effClient := planClientRootCA
 	if effClient == "" {
 		effClient = live.clientRootCA
+	}
+	// On a universe whose channels share one CA (rootAndClientRootCASame), the
+	// client channel follows the root unless client_root_ca is explicitly
+	// written in config: YBA mirrors clientRootCA = rootCA into the stored
+	// universe at create and Read copies that mirror into state, so the plan
+	// value is a state echo, not user intent. Without this, a root_ca change
+	// dispatches {new root, old client, same=false} — a request YBA reads as
+	// "split the channels and pin client-to-node to the old certificate" and
+	// executes without error, leaving the client channel on the expiring CA.
+	if !clientCASetInConfig && live.sameRootCA && live.n2nEnabled {
+		effClient = effRoot
 	}
 	// A disabled channel must keep its CA null: YBA rejects any non-current
 	// value ("rootCA is not required with the current TLS parameters").
@@ -102,10 +119,18 @@ func planCertRotations(
 	plan.caChange = (live.n2nEnabled && effRoot != live.rootCA) ||
 		(live.c2nEnabled && effClient != live.clientRootCA)
 
+	// On universes where one root certificate serves both channels, a trigger
+	// on either side rotates both: the flags ride a single task (no extra
+	// restarts), the channels never end up half-refreshed, and Kubernetes
+	// outright rejects one-sided rotations ("Cannot rotate only ... when ...
+	// encryption is enabled").
 	plan.rotateServerCerts = serverTriggerFired
 	plan.rotateClientCerts = clientTriggerFired
 	if serverTriggerFired && live.sameRootCA && live.c2nEnabled {
 		plan.rotateClientCerts = true
+	}
+	if clientTriggerFired && live.sameRootCA && live.n2nEnabled {
+		plan.rotateServerCerts = true
 	}
 
 	return plan
@@ -168,6 +193,7 @@ func performCertRotations(
 
 	plan := planCertRotations(
 		d.Get("root_ca").(string), d.Get("client_root_ca").(string),
+		clientRootCASetInConfig(d),
 		serverTrigger, clientTrigger,
 		liveCertState{
 			rootCA:       details.GetRootCA(),
@@ -216,6 +242,20 @@ func performCertRotations(
 	}
 
 	return nil
+}
+
+// clientRootCASetInConfig reports whether client_root_ca is explicitly
+// written in the user's HCL config. d.Get cannot answer this: the attribute
+// is Optional+Computed, so on shared-CA universes it returns the state echo
+// of YBA's clientRootCA = rootCA mirror whether or not the user set the
+// field. Unknown values (references not yet resolved) count as set — Update
+// runs at apply time, when they carry the user's value.
+func clientRootCASetInConfig(d *schema.ResourceData) bool {
+	rawConfig := d.GetRawConfig()
+	if rawConfig == cty.NilVal || !rawConfig.IsKnown() || rawConfig.IsNull() {
+		return false
+	}
+	return !rawConfig.GetAttr("client_root_ca").IsNull()
 }
 
 // liveEncryptionFlags reads the encryption-in-transit toggles from the live

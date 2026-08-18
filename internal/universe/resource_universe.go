@@ -241,16 +241,23 @@ func ResourceUniverse() *schema.Resource {
 					"Changing a trigger to any new non-empty value fires the rotation on the " +
 					"next apply; the values are otherwise opaque bookkeeping (a date reads " +
 					"well in diffs, or wire in `time_rotating` for automated renewal). " +
-					"Setting a trigger at universe creation records it without rotating, and " +
-					"removing one never fires. Restart behaviour follows " +
-					"`node_restart_settings` (Non-Restart performs a hot certificate reload " +
-					"on eligible universes). To change the certificate itself, edit " +
-					"`root_ca`/`client_root_ca` instead.\n\n" +
+					"Setting a trigger at universe creation records it without rotating; " +
+					"adding a trigger to an already-managed universe fires a rotation on the " +
+					"next apply (first-time set counts as a change). Removing one never " +
+					"fires. Restart behaviour follows `node_restart_settings` (Non-Restart " +
+					"performs a hot certificate reload; among other eligibility gates the " +
+					"universe must first have completed a Rolling certificate rotation — " +
+					"see the universe-edit-actions guide). To change the certificate " +
+					"itself, edit `root_ca`/`client_root_ca` instead — and avoid bumping a " +
+					"trigger in the same apply as a CA change, which already re-issues the " +
+					"server certificates: the trigger adds a second full restart.\n\n" +
 					"~> **Note:** Rolling rotations restart nodes one at a time and honor " +
 					"the `node_restart_settings` sleeps, which compound on multi-node " +
 					"universes — raise the resource's `timeouts { update }` (60 minutes by " +
 					"default) when a rotation can outlast it. If the universe's node-to-node " +
-					"certificates have already expired, YBA only accepts Non-Rolling rotations.",
+					"certificates have expired, use Non-Rolling: YBA rejects expired-cert " +
+					"rotations under Rolling (except a client-certificate-only rotation) " +
+					"and Non-Restart.",
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
 						"server_cert_trigger": {
@@ -267,7 +274,10 @@ func ResourceUniverse() *schema.Resource {
 							Optional: true,
 							Description: "Fires `selfSignedClientCertRotate`: fresh " +
 								"client-to-node server certificates signed by the unchanged " +
-								"`client_root_ca` (which must be a SelfSigned configuration).",
+								"`client_root_ca` (which must be a SelfSigned configuration). " +
+								"On universes where one root certificate serves both " +
+								"channels, node-to-node server certificates are rotated in " +
+								"the same task.",
 						},
 					},
 				},

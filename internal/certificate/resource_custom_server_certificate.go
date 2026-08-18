@@ -45,6 +45,11 @@ func ResourceCustomServerCertificate() *schema.Resource {
 			"Certificate configurations are immutable in YugabyteDB Anywhere: changing any " +
 			"argument forces replacement, so add `lifecycle { create_before_destroy = true }` " +
 			"when the certificate is referenced by a universe.\n\n" +
+			"~> **Note:** After `terraform import`, `server_certificate` is empty in state " +
+			"(the API never returns it), so the next plan proposes a replacement. Add " +
+			"`lifecycle { ignore_changes = [server_certificate] }` to adopt the imported " +
+			"certificate as-is, or recreate the resource from the original files instead " +
+			"of importing.\n\n" +
 			"~> **Note:** Labels are unique per customer, and with `create_before_destroy` " +
 			"the replacement is created while the old configuration still exists. Give the " +
 			"replacement a new `label` (include a date or version, for example), or the " +
@@ -83,7 +88,7 @@ func ResourceCustomServerCertificate() *schema.Resource {
 				Type:             schema.TypeString,
 				Required:         true,
 				ForceNew:         true,
-				DiffSuppressFunc: suppressPEMWhitespaceDiff,
+				DiffSuppressFunc: suppressPEMContentDiff,
 				Description: "Root CA certificate in PEM format, provided inline or via " +
 					"`file(...)`. Clients use it to verify the server certificate. " +
 					"Changing the content forces recreation of the resource.",
@@ -95,8 +100,8 @@ func ResourceCustomServerCertificate() *schema.Resource {
 				Description: "Server certificate in PEM format signed by the root CA, " +
 					"provided inline or via `file(...)`. Placed on every DB node for " +
 					"client-to-node TLS. Never returned by the API, so imported resources " +
-					"cannot recover it. Changing the value forces recreation of the " +
-					"resource.",
+					"cannot recover it and plan a replacement — see the import note above. " +
+					"Changing the value forces recreation of the resource.",
 			},
 			"server_key": {
 				Type:      schema.TypeString,

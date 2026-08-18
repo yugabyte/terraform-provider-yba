@@ -19,7 +19,9 @@
 package certificate
 
 import (
+	"bytes"
 	"context"
+	"encoding/pem"
 	"fmt"
 	"strings"
 	"time"
@@ -52,11 +54,45 @@ func normalizePEM(content string) string {
 	return strings.TrimRight(content, "\r\n") + "\n"
 }
 
-// suppressPEMWhitespaceDiff treats PEM values that differ only in surrounding
-// whitespace as equal, so YBA's canonical stored form (trailing newline) never
-// produces a perpetual diff against the user's config value.
-func suppressPEMWhitespaceDiff(k, old, new string, d *schema.ResourceData) bool {
-	return strings.TrimSpace(old) == strings.TrimSpace(new)
+// certChainDER returns the DER bytes of every CERTIFICATE block in the PEM
+// input, in order. ok is false when no certificate block is present.
+func certChainDER(content string) (ders [][]byte, ok bool) {
+	rest := []byte(content)
+	for {
+		var block *pem.Block
+		block, rest = pem.Decode(rest)
+		if block == nil {
+			return ders, len(ders) > 0
+		}
+		if block.Type == "CERTIFICATE" {
+			ders = append(ders, block.Bytes)
+		}
+	}
+}
+
+// suppressPEMContentDiff treats two PEM values as equal when they carry the
+// same certificate chain (same DER, same order). Textual comparison is not
+// enough for a ForceNew attribute that is read back from the server: YBA does
+// not store the uploaded bytes — it parses the PEM and re-emits it through
+// its own writer — so a user's CRLF-terminated, 76-column, or
+// header-annotated file differs from the read-back value forever, and the
+// resulting diff proposes a destroy-and-recreate on every plan. Content that
+// does not parse as PEM falls back to a whitespace-insensitive comparison.
+func suppressPEMContentDiff(k, old, new string, d *schema.ResourceData) bool {
+	oldDER, oldOK := certChainDER(old)
+	newDER, newOK := certChainDER(new)
+	if !oldOK || !newOK {
+		return strings.TrimSpace(old) == strings.TrimSpace(new)
+	}
+	if len(oldDER) != len(newDER) {
+		return false
+	}
+	for i := range oldDER {
+		if !bytes.Equal(oldDER[i], newDER[i]) {
+			return false
+		}
+	}
+	return true
 }
 
 // writeOnlyStringAttr reads a write-only string argument from the raw config.

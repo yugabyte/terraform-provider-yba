@@ -17,13 +17,22 @@ package certificate
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/base64"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	"io"
+	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/hashicorp/go-cty/cty"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
@@ -438,5 +447,105 @@ func TestNormalizePEM(t *testing.T) {
 		if got := normalizePEM(in); got != want {
 			t.Errorf("normalizePEM(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+// testCertPEM mints a self-signed certificate and returns it PEM-encoded with
+// 64-column base64 (the encoding/pem and BouncyCastle canonical form).
+func testCertPEM(t *testing.T, cn string) string {
+	t.Helper()
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tmpl := &x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject:      pkix.Name{CommonName: cn},
+		NotBefore:    time.Now(),
+		NotAfter:     time.Now().Add(time.Hour),
+	}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}))
+}
+
+// rewrapPEM re-encodes every certificate block's base64 at the given column
+// width, emulating a PEM authored by a tool other than YBA's writer.
+func rewrapPEM(t *testing.T, content string, width int) string {
+	t.Helper()
+	block, _ := pem.Decode([]byte(content))
+	if block == nil {
+		t.Fatal("rewrapPEM: no PEM block")
+	}
+	b64 := base64.StdEncoding.EncodeToString(block.Bytes)
+	var sb strings.Builder
+	sb.WriteString("-----BEGIN CERTIFICATE-----\n")
+	for i := 0; i < len(b64); i += width {
+		end := i + width
+		if end > len(b64) {
+			end = len(b64)
+		}
+		sb.WriteString(b64[i:end])
+		sb.WriteString("\n")
+	}
+	sb.WriteString("-----END CERTIFICATE-----\n")
+	return sb.String()
+}
+
+// The PEM DiffSuppressFunc must compare the certificates, not the text: YBA
+// does not store the uploaded bytes — it parses the PEM and re-emits it
+// through its own writer — so a user's CRLF-terminated, 76-column, or
+// header-annotated file differs textually from the read-back value forever.
+// On a ForceNew attribute that textual diff is a destroy-and-recreate plan on
+// every run, which the in-use delete guard then blocks.
+func TestSuppressPEMDiffSemanticEquality(t *testing.T) {
+	canonical := testCertPEM(t, "same-cert")
+
+	equal := map[string]string{
+		"crlf line endings": strings.ReplaceAll(canonical, "\n", "\r\n"),
+		"76-column base64":  rewrapPEM(t, canonical, 76),
+		"bag attributes header": "Bag Attributes\n    friendlyName: my-cert\n" +
+			"subject=/CN=same-cert\n" + canonical,
+		"surrounding whitespace": "\n" + canonical + "\n\n",
+	}
+	for name, variant := range equal {
+		if !suppressPEMContentDiff("certificate", canonical, variant, nil) {
+			t.Errorf("%s: same certificate must suppress the diff", name)
+		}
+	}
+}
+
+func TestSuppressPEMDiffChain(t *testing.T) {
+	leaf := testCertPEM(t, "server")
+	root := testCertPEM(t, "root")
+
+	chain := leaf + root
+	spaced := leaf + "\n" + root // blank line between members
+	if !suppressPEMContentDiff("certificate", chain, spaced, nil) {
+		t.Error("same chain with blank line between members must suppress the diff")
+	}
+	reordered := root + leaf
+	if suppressPEMContentDiff("certificate", chain, reordered, nil) {
+		t.Error("reordered chain must not suppress the diff")
+	}
+	if suppressPEMContentDiff("certificate", chain, leaf, nil) {
+		t.Error("dropped chain member must not suppress the diff")
+	}
+}
+
+func TestSuppressPEMDiffDifferentCertificates(t *testing.T) {
+	a := testCertPEM(t, "cert-a")
+	b := testCertPEM(t, "cert-b")
+	if suppressPEMContentDiff("certificate", a, b, nil) {
+		t.Error("different certificates must not suppress the diff")
+	}
+	// Unparseable content falls back to whitespace-insensitive comparison.
+	if !suppressPEMContentDiff("certificate", "not pem\n", " not pem ", nil) {
+		t.Error("equal non-PEM content must still suppress")
+	}
+	if suppressPEMContentDiff("certificate", "not pem", "other", nil) {
+		t.Error("different non-PEM content must not suppress")
 	}
 }

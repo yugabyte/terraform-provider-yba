@@ -357,18 +357,36 @@ rotation types:
   by platform default, so this is the recurring operation. It changes nothing readable in
   the universe's API state, which is why it is expressed as an opaque trigger value: setting
   a trigger for the first time fires it, changing it fires it again, and removing it never
-  fires. On universes where one root certificate serves both channels, a server trigger also
-  refreshes the client-to-node server certificates in the same task. Pair the trigger with
+  fires. On universes where one root certificate serves both channels, a trigger on either
+  channel refreshes both sides in the same task. Pair the trigger with
   [`time_rotating`](https://registry.terraform.io/providers/hashicorp/time/latest/docs/resources/rotating)
   for automated renewal.
 
 When a CA change and a trigger change land in the same apply, the provider dispatches the
 root certificate rotation first, waits for it, then dispatches the server certificate
-rotation (YBA cannot combine them in a single task).
+rotation (YBA cannot combine them in a single task). Avoid this combination: a root
+certificate rotation already re-issues every node's server certificates from the new root,
+so the trigger rotation adds nothing except a second full rolling restart of the universe.
+Bump triggers only in applies that change no CA.
 
-~> **Note:** If the universe's node-to-node certificates have already expired, YBA rejects
-rotations with `Rolling` or `Non-Restart` strategies — set
-`node_restart_settings.upgrade_option = "Non-Rolling"` for the recovery rotation.
+~> **Note:** If the universe's node-to-node certificates have already expired, set
+`node_restart_settings.upgrade_option = "Non-Rolling"` for the recovery rotation: YBA
+rejects `Non-Restart` outright and rejects `Rolling` for everything except a
+client-certificate-only rotation. YBA derives the expiry from the universe's latest
+health check, so the gate takes effect once a health check has recorded it.
+
+~> **Note:** `Non-Restart` rotation (hot certificate reload) has several eligibility
+gates on VM universes: DB version 2.14.0.0-b1 or later, the global runtime flag
+`yb.features.cert_reload.enabled`, node-to-node certificates not already expired, and a
+universe already configured for cert reload — that configuration happens automatically
+during the universe's first **Rolling** certificate rotation, so perform one Rolling
+rotation before the first Non-Restart one. Client-to-node-only universes additionally
+require DB 2025.2.1.0-b0 (preview 2.31.0.0-b0) or later. Kubernetes universes gate on DB
+version alone: 2025.2.0.0-b0 (preview 2.27.0.0-b0) or later.
+
+~> **Note:** Kubernetes universes require both TLS channels to share one root
+certificate: YBA rejects rotations that split `root_ca` and `client_root_ca`, and rejects
+rotations on universes with only client-to-node encryption enabled.
 
 **Example -- rotate to a new client-to-node certificate and refresh node-to-node server
 certificates:**
@@ -714,6 +732,9 @@ fixed order:
 9. **Certificate Rotation** — root certificate rotation first (if `root_ca` /
    `client_root_ca` changed and a preceding step has not already applied it), then server
    certificate rotation (if a `cert_rotation` trigger fired), as two sequential tasks.
+   When both fire, the second task re-issues certificates the first already refreshed at
+   the cost of another full rolling restart — avoid bumping a trigger in the same apply
+   as a CA change.
 
 Each task in the sequence completes (or fails fast) before the next is dispatched. A failure
 in any step causes `terraform apply` to return an error; partial changes already applied to
@@ -729,7 +750,7 @@ The `node_restart_settings.upgrade_option` field applies to most upgrade tasks:
 |---|---|---|
 | `Rolling` | Nodes are restarted one at a time; the universe stays available throughout. | DB version, GFlags, Systemd, Rollback, Finalize, Certificate Rotation |
 | `Non-Rolling` | All nodes are restarted simultaneously; brief downtime during restart. | DB version, GFlags, Systemd, Certificate Rotation |
-| `Non-Restart` | Changes are pushed to running processes without restarting. GFlags: hot-reload flags only. Certificate Rotation: hot certificate reload, on universes whose DB version supports it. | GFlags, Certificate Rotation |
+| `Non-Restart` | Changes are pushed to running processes without restarting. GFlags: hot-reload flags only. Certificate Rotation: hot certificate reload on eligible universes — see the eligibility note in [Certificate Rotation](#certificate-rotation). | GFlags, Certificate Rotation |
 
 **Fixed strategies (not affected by `upgrade_option`):**
 

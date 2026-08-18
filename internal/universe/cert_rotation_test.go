@@ -53,9 +53,37 @@ func TestCertRotationSchemaSanity(t *testing.T) {
 }
 
 func TestPlanCertRotationsRootCAChange(t *testing.T) {
-	// root_ca changed X -> Y on a same-CA universe: RootCert rotation for both
-	// channels via the single root.
-	p := planCertRotations(caY, "", false, false, liveCertState{
+	// root_ca changed X -> Y on a shared-CA universe with client_root_ca not
+	// written in config: the client channel follows the root, so both channels
+	// move to Y with rootAndClientRootCASame kept true. The plan client value
+	// is the state echo of the shared CA (YBA mirrors clientRootCA = rootCA at
+	// create and Read copies it back); it must not read as a pin to the old CA
+	// — {Y, X, same=false} would silently split the universe and leave
+	// client-to-node on the expiring certificate.
+	p := planCertRotations(caY, caX, false, false, false, liveCertState{
+		rootCA: caX, clientRootCA: caX, sameRootCA: true,
+		n2nEnabled: true, c2nEnabled: true,
+	})
+	if !p.caChange {
+		t.Fatal("expected CA change")
+	}
+	if p.rootCA != caY || p.clientRootCA != caY {
+		t.Errorf("effective CAs = (%s, %s), want both channels on the new root %s",
+			p.rootCA, p.clientRootCA, caY)
+	}
+	if !p.sameRootCA {
+		t.Error("shared-CA universe must keep rootAndClientRootCASame=true")
+	}
+	if p.rotateServerCerts || p.rotateClientCerts {
+		t.Error("CA change alone must not set the selfSigned*CertRotate flags")
+	}
+}
+
+func TestPlanCertRotationsRootCAChangeExplicitClientPin(t *testing.T) {
+	// Same rotation, but client_root_ca = X is explicitly written in config:
+	// explicit config always wins over the follows-root inference, so the
+	// universe splits and client-to-node stays pinned to X.
+	p := planCertRotations(caY, caX, true, false, false, liveCertState{
 		rootCA: caX, clientRootCA: caX, sameRootCA: true,
 		n2nEnabled: true, c2nEnabled: true,
 	})
@@ -63,21 +91,33 @@ func TestPlanCertRotationsRootCAChange(t *testing.T) {
 		t.Fatal("expected CA change")
 	}
 	if p.rootCA != caY || p.clientRootCA != caX {
-		t.Errorf("effective CAs = (%s, %s): plan root must win, absent client must "+
-			"resend the live value (absent == null mints a new CA in YBA)",
-			p.rootCA, p.clientRootCA)
+		t.Errorf("effective CAs = (%s, %s), want split (%s, %s)",
+			p.rootCA, p.clientRootCA, caY, caX)
 	}
 	if p.sameRootCA {
-		t.Error("root Y with client still X must derive rootAndClientRootCASame=false")
+		t.Error("explicit pin must derive rootAndClientRootCASame=false")
 	}
-	if p.rotateServerCerts || p.rotateClientCerts {
-		t.Error("CA change alone must not set the selfSigned*CertRotate flags")
+}
+
+func TestPlanCertRotationsSplitCA(t *testing.T) {
+	// client_root_ca = Z newly written on a shared-CA universe: the explicit
+	// value must dispatch the split — the follows-root inference must not
+	// override a config-authored client CA.
+	p := planCertRotations(caX, caZ, true, false, false, liveCertState{
+		rootCA: caX, clientRootCA: caX, sameRootCA: true,
+		n2nEnabled: true, c2nEnabled: true,
+	})
+	if !p.caChange || p.rootCA != caX || p.clientRootCA != caZ {
+		t.Errorf("split must dispatch (%s, %s), got %+v", caX, caZ, p)
+	}
+	if p.sameRootCA {
+		t.Error("split must derive rootAndClientRootCASame=false")
 	}
 }
 
 func TestPlanCertRotationsClientOnlyChange(t *testing.T) {
 	// client_root_ca repointed to a new CustomServerCert config; root untouched.
-	p := planCertRotations("", caZ, false, false, liveCertState{
+	p := planCertRotations("", caZ, true, false, false, liveCertState{
 		rootCA: caX, clientRootCA: caY,
 		n2nEnabled: true, c2nEnabled: true,
 	})
@@ -97,7 +137,7 @@ func TestPlanCertRotationsNoOpWhenLiveAlreadyMatches(t *testing.T) {
 	// A TLS toggle earlier in the same update already carried the CA: the
 	// rotation pass must become a no-op instead of dispatching an upgrade
 	// YBA would 400 ("No changes in rootCA or clientRootCA.").
-	p := planCertRotations(caX, caX, false, false, liveCertState{
+	p := planCertRotations(caX, caX, false, false, false, liveCertState{
 		rootCA: caX, clientRootCA: caX, sameRootCA: true,
 		n2nEnabled: true, c2nEnabled: true,
 	})
@@ -109,7 +149,7 @@ func TestPlanCertRotationsNoOpWhenLiveAlreadyMatches(t *testing.T) {
 func TestPlanCertRotationsDisabledChannelsSendNull(t *testing.T) {
 	// Client-to-node-only universe: rootCA must stay null (YBA rejects any
 	// value when node-to-node encryption is off).
-	p := planCertRotations("", caZ, false, false, liveCertState{
+	p := planCertRotations("", caZ, true, false, false, liveCertState{
 		clientRootCA: caY, c2nEnabled: true,
 	})
 	if p.rootCA != "" {
@@ -127,7 +167,7 @@ func TestPlanCertRotationsDisabledChannelsSendNull(t *testing.T) {
 func TestPlanCertRotationsServerTriggerSameCA(t *testing.T) {
 	// Same-CA universe: a server trigger must also rotate the client-to-node
 	// server certificates (YBA UI/CLI parity) so channels don't half-refresh.
-	p := planCertRotations("", "", true, false, liveCertState{
+	p := planCertRotations("", "", false, true, false, liveCertState{
 		rootCA: caX, clientRootCA: caX, sameRootCA: true,
 		n2nEnabled: true, c2nEnabled: true,
 	})
@@ -141,7 +181,7 @@ func TestPlanCertRotationsServerTriggerSameCA(t *testing.T) {
 
 func TestPlanCertRotationsServerTriggerSplitCA(t *testing.T) {
 	// Split-CA universe: the server trigger only touches the root side.
-	p := planCertRotations("", "", true, false, liveCertState{
+	p := planCertRotations("", "", false, true, false, liveCertState{
 		rootCA: caX, clientRootCA: caY,
 		n2nEnabled: true, c2nEnabled: true,
 	})
@@ -151,7 +191,7 @@ func TestPlanCertRotationsServerTriggerSplitCA(t *testing.T) {
 }
 
 func TestPlanCertRotationsClientTrigger(t *testing.T) {
-	p := planCertRotations("", "", false, true, liveCertState{
+	p := planCertRotations("", "", false, false, true, liveCertState{
 		rootCA: caX, clientRootCA: caY,
 		n2nEnabled: true, c2nEnabled: true,
 	})
@@ -163,15 +203,41 @@ func TestPlanCertRotationsClientTrigger(t *testing.T) {
 	}
 }
 
+func TestPlanCertRotationsClientTriggerSameCA(t *testing.T) {
+	// Shared-CA universe: a client trigger must also rotate the node-to-node
+	// server certificates, mirroring the server-trigger broadening. Both flags
+	// ride the same task (no extra restart), and Kubernetes rejects the
+	// one-sided request outright ("Cannot rotate only client to node
+	// certificate when node to node encryption is enabled.").
+	p := planCertRotations("", "", false, false, true, liveCertState{
+		rootCA: caX, clientRootCA: caX, sameRootCA: true,
+		n2nEnabled: true, c2nEnabled: true,
+	})
+	if !p.rotateServerCerts || !p.rotateClientCerts {
+		t.Errorf("same-CA client trigger must set both rotate flags, got %+v", p)
+	}
+	if p.caChange {
+		t.Error("trigger firing must not dispatch a CA change")
+	}
+}
+
 func TestPlanCertRotationsCombinedChangeAndTrigger(t *testing.T) {
 	// CA swap and trigger bump in one apply: both operations planned; the
-	// caller dispatches them sequentially (YBA cannot combine them).
-	p := planCertRotations(caY, "", true, false, liveCertState{
+	// caller dispatches them sequentially (YBA cannot combine them). The CA
+	// change must keep the universe shared so the follow-up ServerCert
+	// rotation re-issues from the NEW root on both channels.
+	p := planCertRotations(caY, caX, false, true, false, liveCertState{
 		rootCA: caX, clientRootCA: caX, sameRootCA: true,
 		n2nEnabled: true, c2nEnabled: true,
 	})
 	if !p.caChange || !p.rotateServerCerts {
 		t.Errorf("combined edit must plan both dispatches, got %+v", p)
+	}
+	if p.rootCA != caY || p.clientRootCA != caY || !p.sameRootCA {
+		t.Errorf("CA change must move both channels to the new root, got %+v", p)
+	}
+	if !p.rotateClientCerts {
+		t.Error("shared-CA server trigger must broaden to the client side")
 	}
 }
 
@@ -185,7 +251,7 @@ func TestPlanCertRotationsLegacyRootCAOnClientOnlyUniverse(t *testing.T) {
 		rootCA: caX, clientRootCA: caX, sameRootCA: true, c2nEnabled: true,
 	}
 
-	p := planCertRotations(caX, caX, false, true, legacy)
+	p := planCertRotations(caX, caX, false, false, true, legacy)
 	if p.caChange {
 		t.Error("dead rootCA on a client-only universe must not plan a CA change")
 	}
@@ -195,7 +261,7 @@ func TestPlanCertRotationsLegacyRootCAOnClientOnlyUniverse(t *testing.T) {
 
 	// Repointing the client CA on the same universe must dispatch with the
 	// root left null so YBA resets the dead rootCA (its documented handling).
-	p = planCertRotations(caX, caZ, false, false, legacy)
+	p = planCertRotations(caX, caZ, true, false, false, legacy)
 	if !p.caChange || p.rootCA != "" || p.clientRootCA != caZ {
 		t.Errorf("client CA change must rotate with a null root, got %+v", p)
 	}

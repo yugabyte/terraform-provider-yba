@@ -27,4 +27,17 @@ terraform import yba_custom_server_certificate.example <certificate-uuid>
 ```
 
 `server_certificate` and `server_key` cannot be recovered through the API and stay empty
-after import.
+after import. Because `server_certificate` is required and forces replacement, the next
+plan proposes to replace the imported certificate — and while a universe references it,
+the delete side of that replacement fails. To adopt an imported certificate without
+replacing it, ignore the unrecoverable argument:
+
+```terraform
+lifecycle {
+  ignore_changes = [server_certificate]
+}
+```
+
+Remove the `ignore_changes` entry when you intend to rotate to a re-issued certificate.
+Alternatively, skip the import and recreate the certificate from the original files —
+the plan is then clean from the start.
