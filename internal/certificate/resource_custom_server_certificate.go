@@ -183,6 +183,8 @@ func resourceCustomServerCertificateRead(
 	meta interface{}) diag.Diagnostics {
 
 	// The server certificate and key are never returned by the API and remain
-	// state-only; only the root CA is read back.
-	return readCertificateResource(ctx, d, meta, "root_certificate")
+	// state-only; only the root CA is read back. The download is the stored
+	// bundle with the server certificate(s) prepended to the CA chain, so it
+	// is filtered back down to the CA chain root_certificate actually holds.
+	return readCertificateResource(ctx, d, meta, "root_certificate", caCertsPEM)
 }
