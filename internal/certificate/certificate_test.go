@@ -95,6 +95,7 @@ const (
 // zero-valued so tests can assert which endpoints were exercised.
 type fakeYBA struct {
 	listBody      string
+	downloadPEM   string // download response content; testPEM when empty
 	uploadPayload map[string]interface{}
 	mintBody      map[string]string
 	deleteCalled  bool
@@ -109,7 +110,11 @@ func (f *fakeYBA) handler(t *testing.T) http.HandlerFunc {
 		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/certificates"):
 			_, _ = w.Write([]byte(f.listBody))
 		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/download"):
-			_ = json.NewEncoder(w).Encode(map[string]string{"root.crt": testPEM + "\n"})
+			pemBody := f.downloadPEM
+			if pemBody == "" {
+				pemBody = testPEM + "\n"
+			}
+			_ = json.NewEncoder(w).Encode(map[string]string{"root.crt": pemBody})
 		case r.Method == http.MethodPost &&
 			strings.HasSuffix(r.URL.Path, "/create_self_signed_cert"):
 			body, _ := io.ReadAll(r.Body)
@@ -469,6 +474,106 @@ func testCertPEM(t *testing.T, cn string) string {
 		t.Fatal(err)
 	}
 	return string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}))
+}
+
+// testCAAndServerPEM mints a CA certificate and a leaf server certificate
+// signed by it. Only the CA carries basic constraints CA=true — the property
+// caCertsPEM uses to split real YBA download bundles.
+func testCAAndServerPEM(t *testing.T) (caPEM, serverPEM string) {
+	t.Helper()
+	caKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	caTmpl := &x509.Certificate{
+		SerialNumber:          big.NewInt(1),
+		Subject:               pkix.Name{CommonName: "test-root"},
+		NotBefore:             time.Now(),
+		NotAfter:              time.Now().Add(time.Hour),
+		IsCA:                  true,
+		BasicConstraintsValid: true,
+		KeyUsage:              x509.KeyUsageCertSign,
+	}
+	caDER, err := x509.CreateCertificate(rand.Reader, caTmpl, caTmpl, &caKey.PublicKey, caKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	caCert, err := x509.ParseCertificate(caDER)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	serverKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	serverTmpl := &x509.Certificate{
+		SerialNumber: big.NewInt(2),
+		Subject:      pkix.Name{CommonName: "test-server"},
+		NotBefore:    time.Now(),
+		NotAfter:     time.Now().Add(time.Hour),
+	}
+	serverDER, err := x509.CreateCertificate(rand.Reader, serverTmpl, caCert,
+		&serverKey.PublicKey, caKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	caPEM = string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: caDER}))
+	serverPEM = string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: serverDER}))
+	return caPEM, serverPEM
+}
+
+// YBA's stored certificate file for a CustomServerCert configuration is the
+// server certificate(s) prepended to the uploaded CA chain — upload-time
+// validation mutates the CA list in place before it is written. caCertsPEM
+// must reduce that bundle back to the CA chain, and must never rewrite
+// content it cannot positively identify.
+func TestCACertsPEMFiltersServerCertificates(t *testing.T) {
+	caPEM, serverPEM := testCAAndServerPEM(t)
+
+	if got := caCertsPEM(serverPEM + caPEM); got != caPEM {
+		t.Errorf("server+CA bundle must reduce to the CA chain, got:\n%s", got)
+	}
+	if got := caCertsPEM(caPEM); got != caPEM {
+		t.Error("a CA-only download must pass through unchanged")
+	}
+	// Chains keep every CA member in order (e.g. intermediate + root).
+	ca2PEM, _ := testCAAndServerPEM(t)
+	if got := caCertsPEM(serverPEM + caPEM + ca2PEM); got != caPEM+ca2PEM {
+		t.Errorf("multi-CA chain must be kept in order, got:\n%s", got)
+	}
+	// Defensive passthrough: nothing identifiable as a CA is left untouched.
+	if got := caCertsPEM(serverPEM); got != serverPEM {
+		t.Error("a bundle with no CA certificate must pass through unchanged")
+	}
+	if got := caCertsPEM("not pem at all"); got != "not pem at all" {
+		t.Error("non-PEM content must pass through unchanged")
+	}
+}
+
+// The regression this guards: reading a CustomServerCert back verbatim stores
+// the server+CA bundle in root_certificate, which differs from every config
+// (chain count) and turns each subsequent plan into a destroy-and-recreate
+// that the in-use guard then blocks.
+func TestCustomServerReadFiltersServerCertFromDownload(t *testing.T) {
+	caPEM, serverPEM := testCAAndServerPEM(t)
+	f := &fakeYBA{
+		listBody:    listWith(testCertUUID, "c2n", "CustomServerCert", false),
+		downloadPEM: serverPEM + caPEM,
+	}
+	meta := f.apiClient(t)
+
+	d := schema.TestResourceDataRaw(t, ResourceCustomServerCertificate().Schema,
+		map[string]interface{}{"label": "c2n"})
+	d.SetId(testCertUUID)
+
+	if diags := resourceCustomServerCertificateRead(
+		context.Background(), d, meta); diags.HasError() {
+		t.Fatalf("read diags: %v", diags)
+	}
+	if got := d.Get("root_certificate").(string); got != caPEM {
+		t.Errorf("root_certificate must hold only the CA chain, got:\n%s", got)
+	}
 }
 
 // rewrapPEM re-encodes every certificate block's base64 at the given column
