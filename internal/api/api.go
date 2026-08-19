@@ -135,6 +135,20 @@ func (vc VanillaClient) makeRequest(
 	apiKey string,
 ) (
 	*http.Response, error) {
+	return vc.makeRequestWithContentType(ctx, method, url, "application/json", body, apiKey)
+}
+
+// makeRequestWithContentType is makeRequest with a caller-supplied Content-Type,
+// for endpoints that do not take JSON bodies (e.g. the multipart hook endpoints).
+func (vc VanillaClient) makeRequestWithContentType(
+	ctx context.Context,
+	method string,
+	url string,
+	contentType string,
+	body io.Reader,
+	apiKey string,
+) (
+	*http.Response, error) {
 	var req *http.Request
 	var err error
 	if vc.EnableHTTPS {
@@ -165,7 +179,7 @@ func (vc VanillaClient) makeRequest(
 			return nil, err
 		}
 	}
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Type", contentType)
 	req.Header.Set("X-AUTH-YW-API-TOKEN", apiKey)
 
 	r, err := vc.Client.Do(req) //nolint:bodyclose // caller is responsible for closing r.Body
