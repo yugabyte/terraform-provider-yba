@@ -28,6 +28,7 @@ import (
 	"github.com/yugabyte/terraform-provider-yba/internal/certificate"
 	"github.com/yugabyte/terraform-provider-yba/internal/cloud_provider"
 	"github.com/yugabyte/terraform-provider-yba/internal/customer"
+	"github.com/yugabyte/terraform-provider-yba/internal/hooks"
 	"github.com/yugabyte/terraform-provider-yba/internal/installation"
 	"github.com/yugabyte/terraform-provider-yba/internal/loadbalancer"
 	"github.com/yugabyte/terraform-provider-yba/internal/onprem"
@@ -158,6 +159,10 @@ func New() *schema.Provider {
 			// Encryption-in-transit certificate configurations.
 			"yba_self_signed_certificate":   certificate.ResourceSelfSignedCertificate(),
 			"yba_custom_server_certificate": certificate.ResourceCustomServerCertificate(),
+
+			// Custom hooks: scripts YBA runs on universe nodes when lifecycle
+			// triggers fire, bound to a trigger and target by the same resource.
+			"yba_hook": hooks.ResourceHook(),
 		},
 		ConfigureContextFunc: providerConfigure,
 	}
