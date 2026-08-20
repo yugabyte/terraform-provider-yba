@@ -215,9 +215,22 @@ resource "yba_universe_telemetry_config" "test" {
       additional_tags = { env = "acc" }
     }
   }
+
+  master_logs {
+    min_level = "WARNING"
+    exporter {
+      exporter_uuid = %s
+    }
+  }
+
+  tserver_logs {
+    exporter {
+      exporter_uuid = %s
+    }
+  }
 %s
 }
-`, uniRef, provARef, provBRef, provARef, fastUpgradeOptions)
+`, uniRef, provARef, provBRef, provARef, provARef, provARef, fastUpgradeOptions)
 }
 
 func gcpProviderAndUniverse(name string) string {
@@ -349,6 +362,12 @@ func TestAccLong_UniverseTelemetryConfig_GCP(t *testing.T) {
 					resource.TestCheckResourceAttr(resourceName, "audit_logs.#", "1"),
 					resource.TestCheckResourceAttr(
 						resourceName, "audit_logs.0.exporter.0.additional_tags.env", "acc"),
+					resource.TestCheckResourceAttr(
+						resourceName, "master_logs.0.min_level", "WARNING"),
+					resource.TestCheckResourceAttr(
+						resourceName, "master_logs.0.exporter.#", "1"),
+					resource.TestCheckResourceAttr(
+						resourceName, "tserver_logs.0.min_level", "WARNING"),
 				),
 			},
 			{
@@ -411,6 +430,20 @@ func testAccCheckUniverseExportDisabled(uniResource string) resource.TestCheckFu
 		if config.QueryLogs != nil && len(config.QueryLogs.Exporters) > 0 {
 			return fmt.Errorf("universe %s still has %d query exporter(s) after config removal",
 				uniUUID, len(config.QueryLogs.Exporters))
+		}
+		if config.MasterLogs != nil && len(config.MasterLogs.Exporters) > 0 {
+			return fmt.Errorf(
+				"universe %s still has %d master-log exporter(s) after config removal",
+				uniUUID,
+				len(config.MasterLogs.Exporters),
+			)
+		}
+		if config.TserverLogs != nil && len(config.TserverLogs.Exporters) > 0 {
+			return fmt.Errorf(
+				"universe %s still has %d tserver-log exporter(s) after config removal",
+				uniUUID,
+				len(config.TserverLogs.Exporters),
+			)
 		}
 		return nil
 	}

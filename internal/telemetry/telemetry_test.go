@@ -21,7 +21,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	client "github.com/yugabyte/platform-go-client"
+	clientv2 "github.com/yugabyte/platform-go-client/v2"
 
 	"github.com/yugabyte/terraform-provider-yba/internal/utils"
 )
@@ -162,114 +162,160 @@ func TestBuildDisableSpec(t *testing.T) {
 	}
 }
 
-func TestBuildDetachSpec(t *testing.T) {
+// TestFilterTelemetryConfig: the target's exporters are removed from every
+// pipeline, an emptied pipeline is dropped, and untouched settings survive.
+func TestFilterTelemetryConfig(t *testing.T) {
 	keep := "keep-uuid"
 	drop := "drop-uuid"
-	u := client.UniverseResp{
-		UniverseUUID: utils.GetStringPointer("uni-1"),
-		Name:         utils.GetStringPointer("uni-1"),
-		UniverseDetails: &client.UniverseDefinitionTaskParamsResp{
-			Clusters: []client.Cluster{
-				{
-					UserIntent: client.UserIntent{
-						AuditLogConfig: &client.AuditLogConfig{
-							UniverseLogsExporterConfig: []client.UniverseLogsExporterConfig{
-								{ExporterUuid: keep},
-								{ExporterUuid: drop},
-							},
-						},
-						QueryLogConfig: &client.QueryLogConfig{
-							UniverseLogsExporterConfig: []client.UniverseQueryLogsExporterConfig{
-								{ExporterUuid: drop},
-							},
-						},
-						MetricsExportConfig: &client.MetricsExportConfig{
-							UniverseMetricsExporterConfig: []client.UniverseMetricsExporterConfig{
-								{ExporterUuid: keep},
-								{ExporterUuid: drop},
-							},
-							ScrapeConfigTargets: []string{"MASTER_EXPORT"},
-						},
-					},
-				},
+	tc := &clientv2.TelemetryConfig{
+		AuditLogs: &clientv2.AuditLogsTelemetrySpec{
+			YsqlAuditConfig: &clientv2.YSQLAuditConfig{
+				Enabled:  true,
+				LogLevel: utils.GetStringPointer("LOG"),
+			},
+			Exporters: []clientv2.UniverseLogsExporterConfig{
+				{ExporterUuid: keep},
+				{ExporterUuid: drop},
+			},
+		},
+		QueryLogs: &clientv2.QueryLogsTelemetrySpec{
+			Exporters: []clientv2.UniverseQueryLogsExporterConfig{
+				{ExporterUuid: drop},
+			},
+		},
+		Metrics: &clientv2.MetricsTelemetrySpec{
+			Exporters: []clientv2.UniverseMetricsExporterConfig{
+				{ExporterUuid: keep},
+				{ExporterUuid: drop},
+			},
+			ScrapeConfigTargets: []clientv2.ScrapeConfigTargetType{"MASTER_EXPORT"},
+		},
+		MasterLogs: &clientv2.MasterLogsTelemetrySpec{
+			Exporters: []clientv2.UniverseServerLogsExporterConfig{
+				{ExporterUuid: keep},
+				{ExporterUuid: drop},
+			},
+			MinLevel:             utils.GetStringPointer("ERROR"),
+			NoiseSampleDropRatio: utils.GetFloat64Pointer(0.5),
+		},
+		TserverLogs: &clientv2.TServerLogsTelemetrySpec{
+			Exporters: []clientv2.UniverseServerLogsExporterConfig{
+				{ExporterUuid: drop},
 			},
 		},
 	}
 
-	spec := buildDetachSpec(&u, drop)
-
-	if spec.TelemetryConfig == nil {
-		t.Fatalf("telemetry_config nil in detach spec")
+	out, changed := filterTelemetryConfig(tc, drop)
+	if !changed {
+		t.Fatal("filter must report a change when the target is referenced")
 	}
-	a := spec.TelemetryConfig.AuditLogs
-	if a == nil {
-		t.Fatalf("audit_logs dropped even though a non-target exporter remains")
+	a := out.AuditLogs
+	if a == nil || len(a.Exporters) != 1 || a.Exporters[0].ExporterUuid != keep {
+		t.Errorf("audit exporters after filter = %+v; want [%s]", a, keep)
 	}
-	if len(a.Exporters) != 1 || a.Exporters[0].ExporterUuid != keep {
-		t.Errorf("audit exporters after detach = %+v; want [%s]", a.Exporters, keep)
+	if a != nil && (a.YsqlAuditConfig == nil || !a.YsqlAuditConfig.Enabled) {
+		t.Error("ysql audit sub-config must be preserved for the surviving exporter")
 	}
-	if spec.TelemetryConfig.QueryLogs != nil {
-		t.Errorf("query_logs should be dropped when only exporter is the detached provider")
+	if out.QueryLogs != nil {
+		t.Error("query_logs must be dropped when its only exporter is the target")
 	}
-	m := spec.TelemetryConfig.Metrics
-	if m == nil {
-		t.Fatalf("metrics dropped even though a non-target exporter remains")
+	m := out.Metrics
+	if m == nil || len(m.Exporters) != 1 || m.Exporters[0].ExporterUuid != keep {
+		t.Errorf("metrics exporters after filter = %+v; want [%s]", m, keep)
 	}
-	if len(m.Exporters) != 1 || m.Exporters[0].ExporterUuid != keep {
-		t.Errorf("metrics exporters after detach = %+v; want [%s]", m.Exporters, keep)
+	if m != nil && len(m.ScrapeConfigTargets) != 1 {
+		t.Errorf("metrics scrape targets not preserved: %+v", m)
 	}
-	if len(m.ScrapeConfigTargets) != 1 || string(m.ScrapeConfigTargets[0]) != "MASTER_EXPORT" {
-		t.Errorf("metrics scrape targets not preserved: %+v", m.ScrapeConfigTargets)
+	ml := out.MasterLogs
+	if ml == nil || len(ml.Exporters) != 1 || ml.Exporters[0].ExporterUuid != keep {
+		t.Errorf("master_logs exporters after filter = %+v; want [%s]", ml, keep)
+	}
+	if ml != nil && (ml.MinLevel == nil || *ml.MinLevel != "ERROR" ||
+		ml.NoiseSampleDropRatio == nil || *ml.NoiseSampleDropRatio != 0.5) {
+		t.Errorf("master_logs settings not preserved: %+v", ml)
+	}
+	if out.TserverLogs != nil {
+		t.Error("tserver_logs must be dropped when its only exporter is the target")
 	}
 }
 
-func TestUniverseReferencesProvider(t *testing.T) {
+// TestFilterTelemetryConfigDetection: a reference in any single pipeline —
+// including the server-log ones — must be detected, and an unrelated config
+// must be reported unchanged.
+func TestFilterTelemetryConfigDetection(t *testing.T) {
 	target := "target-uuid"
-	mk := func(audit, query, metrics string) *client.UniverseResp {
-		u := &client.UniverseResp{
-			UniverseDetails: &client.UniverseDefinitionTaskParamsResp{
-				Clusters: []client.Cluster{{UserIntent: client.UserIntent{}}},
+	server := func(uuid string) []clientv2.UniverseServerLogsExporterConfig {
+		return []clientv2.UniverseServerLogsExporterConfig{{ExporterUuid: uuid}}
+	}
+	mk := func(mutate func(*clientv2.TelemetryConfig)) *clientv2.TelemetryConfig {
+		tc := &clientv2.TelemetryConfig{
+			AuditLogs: &clientv2.AuditLogsTelemetrySpec{
+				Exporters: []clientv2.UniverseLogsExporterConfig{
+					{ExporterUuid: "other"},
+				},
 			},
 		}
-		intent := &u.UniverseDetails.Clusters[0].UserIntent
-		if audit != "" {
-			intent.AuditLogConfig = &client.AuditLogConfig{
-				UniverseLogsExporterConfig: []client.UniverseLogsExporterConfig{
-					{ExporterUuid: audit},
-				},
-			}
-		}
-		if query != "" {
-			intent.QueryLogConfig = &client.QueryLogConfig{
-				UniverseLogsExporterConfig: []client.UniverseQueryLogsExporterConfig{
-					{ExporterUuid: query},
-				},
-			}
-		}
-		if metrics != "" {
-			intent.MetricsExportConfig = &client.MetricsExportConfig{
-				UniverseMetricsExporterConfig: []client.UniverseMetricsExporterConfig{
-					{ExporterUuid: metrics},
-				},
-			}
-		}
-		return u
+		mutate(tc)
+		return tc
 	}
 	cases := []struct {
 		name string
-		u    *client.UniverseResp
+		tc   *clientv2.TelemetryConfig
 		want bool
 	}{
-		{"none", mk("other", "other", "other"), false},
-		{"audit", mk(target, "other", "other"), true},
-		{"query", mk("other", target, "other"), true},
-		{"metrics", mk("other", "other", target), true},
-		{"empty", &client.UniverseResp{}, false},
+		{"nil", nil, false},
+		{"none", mk(func(*clientv2.TelemetryConfig) {}), false},
+		{"audit", mk(func(tc *clientv2.TelemetryConfig) {
+			tc.AuditLogs.Exporters = append(tc.AuditLogs.Exporters,
+				clientv2.UniverseLogsExporterConfig{ExporterUuid: target})
+		}), true},
+		{"query", mk(func(tc *clientv2.TelemetryConfig) {
+			tc.QueryLogs = &clientv2.QueryLogsTelemetrySpec{
+				Exporters: []clientv2.UniverseQueryLogsExporterConfig{
+					{ExporterUuid: target},
+				},
+			}
+		}), true},
+		{"metrics", mk(func(tc *clientv2.TelemetryConfig) {
+			tc.Metrics = &clientv2.MetricsTelemetrySpec{
+				Exporters: []clientv2.UniverseMetricsExporterConfig{
+					{ExporterUuid: target},
+				},
+			}
+		}), true},
+		{"master_logs", mk(func(tc *clientv2.TelemetryConfig) {
+			tc.MasterLogs = &clientv2.MasterLogsTelemetrySpec{Exporters: server(target)}
+		}), true},
+		{"tserver_logs", mk(func(tc *clientv2.TelemetryConfig) {
+			tc.TserverLogs = &clientv2.TServerLogsTelemetrySpec{Exporters: server(target)}
+		}), true},
+		{"ysql_conn_mgr_logs", mk(func(tc *clientv2.TelemetryConfig) {
+			tc.YsqlConnMgrLogs = &clientv2.YsqlConnMgrLogsTelemetrySpec{
+				Exporters: server(target),
+			}
+		}), true},
+		{"node_agent_logs", mk(func(tc *clientv2.TelemetryConfig) {
+			tc.NodeAgentLogs = &clientv2.NodeAgentLogsTelemetrySpec{
+				Exporters: server(target),
+			}
+		}), true},
+		{"ynp_logs", mk(func(tc *clientv2.TelemetryConfig) {
+			tc.YnpLogs = &clientv2.YnpLogsTelemetrySpec{Exporters: server(target)}
+		}), true},
+		{"controller_logs", mk(func(tc *clientv2.TelemetryConfig) {
+			tc.ControllerLogs = &clientv2.ControllerLogsTelemetrySpec{
+				Exporters: server(target),
+			}
+		}), true},
 	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := universeReferencesProvider(tc.u, target); got != tc.want {
-				t.Errorf("universeReferencesProvider = %v want %v", got, tc.want)
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			out, changed := filterTelemetryConfig(c.tc, target)
+			if changed != c.want {
+				t.Errorf("filterTelemetryConfig changed = %v want %v", changed, c.want)
+			}
+			if !c.want && c.tc != nil && out.AuditLogs == nil {
+				t.Error("an unreferenced pipeline must be carried over verbatim")
 			}
 		})
 	}
