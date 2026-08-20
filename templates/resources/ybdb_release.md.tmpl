@@ -1,0 +1,36 @@
+---
+page_title: "{{.Name}} {{.Type}} - {{.RenderedProviderName}}"
+description: |-
+{{ index (split (trimspace .Description) "\n\n") 0 | plainmarkdown | trimspace | prefixlines "  " }}
+---
+
+# {{.Name}} ({{.Type}})
+
+{{ .Description | trimspace }}
+
+Select releases by architecture with the `yba_release_version` data source's
+`deployment_type` filter, for example to pick the latest release that ships an
+aarch64 artifact.
+
+## Example Usage
+
+{{ tffile "examples/resources/yba_ybdb_release/resource.tf" }}
+
+{{ .SchemaMarkdown | trimspace }}
+
+## Import
+
+Releases can be imported using the release UUID:
+
+```sh
+terraform import yba_ybdb_release.ybdb_release <release-uuid>
+```
+
+The API does not return `local_file` or `sha256`, so both stay empty after import.
+The API also hides `package_url` once YugabyteDB Anywhere has downloaded a
+Kubernetes chart, and it does not return the S3 or GCS source of an artifact
+registered through the legacy release import. On the next apply, the provider
+deletes and adds again each imported artifact whose `local_file` or `package_url`
+it could not read back. YugabyteDB Anywhere rejects this while a universe uses the
+release. The artifact block order after import follows YugabyteDB Anywhere, not the
+configuration.

@@ -72,7 +72,10 @@ failure this project can ship.
 ## Schema and naming
 
 - Resource and attribute names follow the public feature name and `yba-cli`,
-  never the Java model.
+  never the Java model. A new resource takes the name that says what it
+  manages (`yba_ybdb_release`), even when a shipped sibling uses a vaguer one
+  (`yba_release_version`). Renaming the shipped name for consistency is a
+  breaking change with no benefit to users.
 - A family of related configs ships as one resource per type on a shared
   spec factory. A new polymorphic resource with a type switch is a finding.
 - `Sensitive` marks secrets only. A username, region, endpoint or key id
@@ -114,6 +117,12 @@ failure this project can ship.
   server-side section, including ones another writer added. Rebuild the
   spec from live state and clear only what this resource wrote, or say so in
   the resource description.
+- When YBA cannot change a nested object in place, the resource deletes it
+  and adds it again. When YBA blocks that because the object is in use, the
+  apply fails with an error that names what uses it.
+- When the API does not return a value (a local file path, a checksum),
+  `Read` keeps it from state. A heuristic that guesses at an out-of-band
+  change to it is a finding; the field `Description` states the gap.
 
 ## YBA behaviour claims
 
@@ -121,6 +130,9 @@ failure this project can ship.
   flag, prior configuration step, platform (VM or Kubernetes), both
   directions of a rule. "On universes whose DB version supports it" is a
   finding.
+- Code never assumes that a runtime flag holds its default. When a resource
+  works only with a flag set, it reads the flag before it writes and fails
+  with an error that names the flag.
 - A rule checked on VM universes is also checked on Kubernetes, and a rule
   checked in one direction (node-to-node) is checked in the other
   (client-to-node).

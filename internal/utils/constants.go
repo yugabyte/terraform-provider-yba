@@ -30,6 +30,9 @@ const (
 	TestEntity = "Test"
 )
 
+// GlobalRuntimeConfigScope is the scope UUID of global runtime config.
+const GlobalRuntimeConfigScope = "00000000-0000-0000-0000-000000000000"
+
 // Environment variable fields
 const (
 	// GCPCredentialsEnv env variable name for gcp provider/storage config/releases
@@ -86,6 +89,14 @@ const (
 	// YBAAllowFailureSubTaskListMinVersion specifies minimum version
 	// required to fetch failed subtask message from YugabyteDB Anywhere
 	YBAAllowFailureSubTaskListMinVersion = "2.18.1.0-b68"
+
+	// YBANewReleaseAPIMinStableVersion specifies minimum stable version
+	// required to use the /ybdb_release API (yba-cli's gate)
+	YBANewReleaseAPIMinStableVersion = "2024.2.0.0-b1"
+
+	// YBANewReleaseAPIMinPreviewVersion specifies minimum preview version
+	// required to use the /ybdb_release API (yba-cli's gate)
+	YBANewReleaseAPIMinPreviewVersion = "2.23.1.0-b27"
 )
 
 // YugabyteDB Anywhere versions >= the minimum listed versions for operations

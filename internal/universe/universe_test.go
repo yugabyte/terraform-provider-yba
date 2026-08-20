@@ -19,6 +19,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"testing"
 	"time"
 
@@ -31,6 +32,8 @@ import (
 	"github.com/yugabyte/terraform-provider-yba/internal/utils"
 )
 
+// The universe runs on a yba_ybdb_release that the test registers. Only this test
+// may use tfManagedReleaseVersion: YBA allows one release per version.
 func TestAccLong_Universe_GCP_UpdatePrimaryNodes(t *testing.T) {
 	var universe client.UniverseResp
 
@@ -39,12 +42,13 @@ func TestAccLong_Universe_GCP_UpdatePrimaryNodes(t *testing.T) {
 		PreCheck: func() {
 			acctest.TestAccPreCheckGCP(t)
 			acctest.TestAccPreCheckCloudYBA(t, "GCP")
+			deleteLeftoverRelease(t, "GCP", tfManagedReleaseVersion)
 		},
 		ProviderFactories: acctest.ProviderFactories,
 		CheckDestroy:      testAccCheckDestroyProviderAndUniverse("GCP"),
 		Steps: []resource.TestStep{
 			{
-				Config: universeGcpConfigWithNodes(rName, 3),
+				Config: universeGcpConfigWithTFRelease(rName, 3),
 				Check: resource.ComposeTestCheckFunc(
 					testAccCheckUniverseExists("GCP", "yba_universe.gcp", &universe),
 					testAccCheckNumNodes(&universe, 3),
@@ -52,7 +56,7 @@ func TestAccLong_Universe_GCP_UpdatePrimaryNodes(t *testing.T) {
 				),
 			},
 			{
-				Config: universeGcpConfigWithNodes(rName, 4),
+				Config: universeGcpConfigWithTFRelease(rName, 4),
 				Check: resource.ComposeTestCheckFunc(
 					testAccCheckUniverseExists("GCP", "yba_universe.gcp", &universe),
 					testAccCheckNumNodes(&universe, 4),
@@ -151,6 +155,16 @@ func testAccCheckDestroyProviderAndUniverse(cloud string) resource.TestCheckFunc
 				}
 				if !errors.Is(err, api.ErrHookMissing) {
 					return fmt.Errorf("checking destroyed hook %s: %w", r.Primary.ID, err)
+				}
+			case "yba_ybdb_release":
+				_, response, err := conn.NewReleaseManagementAPI.GetNewRelease(
+					context.Background(), cUUID, r.Primary.ID).Execute()
+				if err == nil {
+					return fmt.Errorf("release %s is not destroyed", r.Primary.ID)
+				}
+				if !utils.IsReleaseNotFound(response, err) {
+					return utils.ErrorFromHTTPResponse(response, err, utils.TestEntity,
+						r.Primary.ID, "Destroy Check")
 				}
 			case "yba_cloud_provider":
 				// Provider deletion is async; poll until it disappears rather than
@@ -300,6 +314,79 @@ func universeAzureConfigWithNodes(name string, nodes int) string {
 		universeConfigWithProviderWithNodes("azu", name, nodes)
 }
 
+// An older preview build than the fixture's own, so tests that read
+// yba_release_version without a filter still pick the fixture build.
+const (
+	tfManagedReleaseVersion = "2.25.2.0-b359"
+	tfManagedReleaseURL     = "https://software.yugabyte.com/releases/2.25.2.0/" +
+		"yugabyte-2.25.2.0-b359-linux-x86_64.tar.gz"
+)
+
+// universeGcpConfigWithTFRelease is universeGcpConfigWithNodes with the
+// universe on a yba_ybdb_release. The nodes download package_url themselves.
+func universeGcpConfigWithTFRelease(name string, nodes int) string {
+	return acctest.YBAProviderBlock("GCP") + cloudProviderGCPConfig(name+"-provider") +
+		fmt.Sprintf(`
+	resource "yba_ybdb_release" "gcp" {
+		version      = %q
+		release_type = "PREVIEW"
+		artifact {
+			platform     = "LINUX"
+			architecture = "x86_64"
+			package_url  = %q
+		}
+	}
+`, tfManagedReleaseVersion, tfManagedReleaseURL) +
+		universeConfigWithSoftwareVersion("gcp", name, nodes, "", "yba_ybdb_release.gcp.version")
+}
+
+// deleteLeftoverRelease is a best-effort cleanup of what an aborted run left
+// on version: the universes that use it, then the release, which would
+// otherwise fail the next create. A run in progress on the same fixture loses
+// its universe and release too.
+func deleteLeftoverRelease(t *testing.T, cloud, version string) {
+	t.Helper()
+	apiClient, err := acctest.APIClientForCloud(cloud)
+	if err != nil {
+		t.Logf("leftover release cleanup skipped: %v", err)
+		return
+	}
+	ctx := context.Background()
+	c := apiClient.YugawareClient
+	cUUID := apiClient.CustomerID
+	releases, _, err := c.NewReleaseManagementAPI.ListNewReleases(ctx, cUUID).Execute()
+	if err != nil {
+		t.Logf("leftover release cleanup skipped: %v", err)
+		return
+	}
+	for _, r := range releases {
+		if r.Version != version {
+			continue
+		}
+		for _, u := range r.Universes {
+			t.Logf("deleting leftover universe %s (%s) on release %s", u.Name, u.Uuid, version)
+			diags := utils.DispatchAndWait(ctx, "Delete Universe", cUUID, c, 30*time.Minute,
+				utils.TestEntity, "Universe", "Delete",
+				func() (string, *http.Response, error) {
+					task, resp, err := c.UniverseManagementAPI.DeleteUniverse(ctx, cUUID, u.Uuid).
+						IsForceDelete(true).Execute()
+					if err != nil {
+						return "", resp, err
+					}
+					return task.GetTaskUUID(), resp, nil
+				})
+			if diags.HasError() {
+				t.Logf("delete leftover universe %s: %v", u.Uuid, diags)
+			}
+		}
+		t.Logf("deleting leftover release %s (%s)", version, r.ReleaseUuid)
+		if _, _, err := c.NewReleaseManagementAPI.DeleteNewRelease(
+			ctx, cUUID, r.ReleaseUuid).Execute(); err != nil {
+			t.Logf("delete leftover release %s: %v", r.ReleaseUuid, err)
+		}
+	}
+}
+
 // universeConfigWithProviderWithNodes declares the universe plus a
 // provider-scoped PostNodeProvision hook it depends on. The hook rides along so
 // every long test that provisions nodes also proves custom hooks execute on
@@ -317,6 +404,15 @@ func universeConfigWithProviderWithNodes(p string, name string, nodes int) strin
 // with extra top-level universe HCL placed before communication_ports.
 func universeConfigWithProviderWithNodesAndExtra(
 	p string, name string, nodes int, extra string,
+) string {
+	return universeConfigWithSoftwareVersion(p, name, nodes, extra,
+		"data.yba_release_version.release_version.id")
+}
+
+// universeConfigWithSoftwareVersion is universeConfigWithProviderWithNodesAndExtra
+// with yb_software_version set to the HCL expression softwareVersion.
+func universeConfigWithSoftwareVersion(
+	p string, name string, nodes int, extra string, softwareVersion string,
 ) string {
 	return fmt.Sprintf(`
 	data "yba_provider_key" "%[1]s_key" {
@@ -359,7 +455,7 @@ func universeConfigWithProviderWithNodesAndExtra(
 				enable_ysql                   = true
 				enable_node_to_node_encrypt   = true
 				enable_client_to_node_encrypt = true
-				yb_software_version           = data.yba_release_version.release_version.id
+				yb_software_version           = %[7]s
 				access_key_code               = data.yba_provider_key.%[1]s_key.id
 				instance_tags = {
 					"yb_owner"  = "terraform_acctest"
@@ -371,7 +467,8 @@ func universeConfigWithProviderWithNodesAndExtra(
   		%[6]s
   		communication_ports {}
 	}
-`, p, name, nodes, getUniverseInstanceType(p), getUniverseStorageType(p), extra)
+`, p, name, nodes, getUniverseInstanceType(p), getUniverseStorageType(p), extra,
+		softwareVersion)
 }
 
 func getUniverseStorageType(p string) string {
