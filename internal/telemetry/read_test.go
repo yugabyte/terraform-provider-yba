@@ -34,7 +34,7 @@ func TestUniverseTelemetryConfigReadFromGetAPI(t *testing.T) {
 				YsqlAuditConfig: &clientv2.YSQLAuditConfig{
 					Enabled:  true,
 					Classes:  []string{"READ", "WRITE"},
-					LogLevel: "WARNING",
+					LogLevel: utils.GetStringPointer("WARNING"),
 				},
 				Exporters: []clientv2.UniverseLogsExporterConfig{
 					{ExporterUuid: "exp-1", AdditionalTags: &tags},
@@ -46,6 +46,13 @@ func TestUniverseTelemetryConfigReadFromGetAPI(t *testing.T) {
 				ScrapeConfigTargets:   []clientv2.ScrapeConfigTargetType{"MASTER_EXPORT"},
 				Exporters: []clientv2.UniverseMetricsExporterConfig{
 					{ExporterUuid: "exp-1", MetricsPrefix: utils.GetStringPointer("yb.")},
+				},
+			},
+			MasterLogs: &clientv2.MasterLogsTelemetrySpec{
+				MinLevel:             utils.GetStringPointer("ERROR"),
+				NoiseSampleDropRatio: utils.GetFloat64Pointer(0.5),
+				Exporters: []clientv2.UniverseServerLogsExporterConfig{
+					{ExporterUuid: "exp-1", SendBatchSize: utils.GetInt32Pointer(50)},
 				},
 			},
 		},
@@ -80,8 +87,20 @@ func TestUniverseTelemetryConfigReadFromGetAPI(t *testing.T) {
 	if got := d.Get("metrics.0.exporter.0.metrics_prefix"); got != "yb." {
 		t.Errorf("metrics_prefix = %v", got)
 	}
+	if got := d.Get("master_logs.0.min_level"); got != "ERROR" {
+		t.Errorf("master_logs min_level = %v want ERROR", got)
+	}
+	if got := d.Get("master_logs.0.noise_sample_drop_ratio"); got != 0.5 {
+		t.Errorf("master_logs noise_sample_drop_ratio = %v want 0.5", got)
+	}
+	if got := d.Get("master_logs.0.exporter.0.send_batch_size"); got != 50 {
+		t.Errorf("master_logs exporter send_batch_size = %v want 50", got)
+	}
 	if n := len(d.Get("query_logs").([]interface{})); n != 0 {
 		t.Errorf("query_logs must be empty when unset server-side, got %d", n)
+	}
+	if n := len(d.Get("tserver_logs").([]interface{})); n != 0 {
+		t.Errorf("tserver_logs must be empty when unset server-side, got %d", n)
 	}
 }
 
@@ -100,9 +119,9 @@ func TestUniverseTelemetryConfigReadEmpty(t *testing.T) {
 	if d.Id() != "uni-1" {
 		t.Errorf("id must be preserved on empty config, got %q", d.Id())
 	}
-	for _, block := range []string{"audit_logs", "query_logs", "metrics"} {
-		if n := len(d.Get(block).([]interface{})); n != 0 {
-			t.Errorf("%s must be empty for an empty config, got %d", block, n)
+	for _, p := range telemetryPipelines {
+		if n := len(d.Get(p.label).([]interface{})); n != 0 {
+			t.Errorf("%s must be empty for an empty config, got %d", p.label, n)
 		}
 	}
 }
