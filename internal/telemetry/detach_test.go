@@ -32,171 +32,37 @@ import (
 	"github.com/yugabyte/terraform-provider-yba/internal/utils"
 )
 
-// auditUniverse builds a single-cluster universe with the given audit/query/metrics
-// exporter UUIDs. An empty slice omits the section.
-func auditUniverse(name string, audit, query, metrics []string) client.UniverseResp {
-	intent := client.UserIntent{}
-	if len(audit) > 0 {
-		exp := make([]client.UniverseLogsExporterConfig, 0, len(audit))
-		for _, u := range audit {
-			exp = append(exp, client.UniverseLogsExporterConfig{ExporterUuid: u})
-		}
-		intent.AuditLogConfig = &client.AuditLogConfig{
-			YsqlAuditConfig:            &client.YSQLAuditConfig{Enabled: true, LogLevel: "LOG"},
-			UniverseLogsExporterConfig: exp,
-		}
-	}
-	if len(query) > 0 {
-		exp := make([]client.UniverseQueryLogsExporterConfig, 0, len(query))
-		for _, u := range query {
-			exp = append(exp, client.UniverseQueryLogsExporterConfig{
-				ExporterUuid:     u,
-				SendBatchMaxSize: utils.GetInt32Pointer(1000),
-				MemoryLimitMib:   utils.GetInt32Pointer(2048),
-			})
-		}
-		intent.QueryLogConfig = &client.QueryLogConfig{UniverseLogsExporterConfig: exp}
-	}
-	if len(metrics) > 0 {
-		exp := make([]client.UniverseMetricsExporterConfig, 0, len(metrics))
-		for _, u := range metrics {
-			exp = append(exp, client.UniverseMetricsExporterConfig{
-				ExporterUuid:  u,
-				MetricsPrefix: utils.GetStringPointer("yb."),
-			})
-		}
-		intent.MetricsExportConfig = &client.MetricsExportConfig{
-			UniverseMetricsExporterConfig: exp,
-			ScrapeConfigTargets:           []string{"MASTER_EXPORT"},
-		}
-	}
+// plainUniverse builds a minimal universe list entry. Telemetry configs are
+// served per-universe by fakeYBA's v2 GET handler (getConfigByUni), matching
+// the detach flow, which no longer reads them from the v1 UserIntent.
+func plainUniverse(name string) client.UniverseResp {
 	return client.UniverseResp{
 		UniverseUUID: utils.GetStringPointer(name),
 		Name:         utils.GetStringPointer(name),
-		UniverseDetails: &client.UniverseDefinitionTaskParamsResp{
-			Clusters: []client.Cluster{{UserIntent: intent}},
-		},
 	}
 }
 
-func TestBuildDetachSpecDropsAllWhenSoleExporter(t *testing.T) {
-	u := auditUniverse("u", []string{"P"}, []string{"P"}, []string{"P"})
-	spec := buildDetachSpec(&u, "P")
-	if spec.TelemetryConfig == nil {
-		t.Fatal("telemetry_config must be non-nil even when empty")
+// auditConfig returns a v2 telemetry config exporting audit logs to the given
+// providers.
+func auditConfig(providers ...string) *clientv2.TelemetryConfig {
+	exp := make([]clientv2.UniverseLogsExporterConfig, 0, len(providers))
+	for _, p := range providers {
+		exp = append(exp, clientv2.UniverseLogsExporterConfig{ExporterUuid: p})
 	}
-	if spec.TelemetryConfig.AuditLogs != nil ||
-		spec.TelemetryConfig.QueryLogs != nil ||
-		spec.TelemetryConfig.Metrics != nil {
-		t.Errorf("all sections must drop when P is the sole exporter: %+v",
-			spec.TelemetryConfig)
-	}
-	if spec.UpgradeOptions == nil || spec.UpgradeOptions.RollingUpgrade == nil ||
-		!*spec.UpgradeOptions.RollingUpgrade {
-		t.Error("detach must request a rolling upgrade")
+	return &clientv2.TelemetryConfig{
+		AuditLogs: &clientv2.AuditLogsTelemetrySpec{Exporters: exp},
 	}
 }
 
-func TestBuildDetachSpecPreservesUnrelated(t *testing.T) {
-	u := auditUniverse("u", []string{"keep"}, []string{"keep"}, []string{"keep"})
-	spec := buildDetachSpec(&u, "P-not-here")
-	tc := spec.TelemetryConfig
-	if tc.AuditLogs == nil || len(tc.AuditLogs.Exporters) != 1 ||
-		tc.AuditLogs.Exporters[0].ExporterUuid != "keep" {
-		t.Errorf("audit exporters not preserved: %+v", tc.AuditLogs)
+// masterLogsConfig returns a v2 telemetry config exporting yb-master logs to
+// the given providers — the detach flow must see server-log pipelines too.
+func masterLogsConfig(providers ...string) *clientv2.TelemetryConfig {
+	exp := make([]clientv2.UniverseServerLogsExporterConfig, 0, len(providers))
+	for _, p := range providers {
+		exp = append(exp, clientv2.UniverseServerLogsExporterConfig{ExporterUuid: p})
 	}
-	if tc.QueryLogs == nil || len(tc.QueryLogs.Exporters) != 1 {
-		t.Errorf("query exporters not preserved: %+v", tc.QueryLogs)
-	}
-	if e := tc.QueryLogs.Exporters[0]; e.SendBatchMaxSize == nil || e.MemoryLimitMib == nil {
-		t.Errorf("query exporter batching fields lost: %+v", e)
-	}
-	if tc.Metrics == nil || len(tc.Metrics.Exporters) != 1 {
-		t.Errorf("metrics exporters not preserved: %+v", tc.Metrics)
-	}
-	if e := tc.Metrics.Exporters[0]; e.MetricsPrefix == nil || *e.MetricsPrefix != "yb." {
-		t.Errorf("metrics_prefix lost: %+v", e)
-	}
-	if len(tc.Metrics.ScrapeConfigTargets) != 1 {
-		t.Errorf("scrape targets lost: %+v", tc.Metrics.ScrapeConfigTargets)
-	}
-}
-
-func TestBuildDetachSpecKeepsSiblingExporter(t *testing.T) {
-	u := auditUniverse("u", []string{"keep", "P"}, nil, nil)
-	spec := buildDetachSpec(&u, "P")
-	a := spec.TelemetryConfig.AuditLogs
-	if a == nil {
-		t.Fatal("audit section dropped even though a sibling exporter remains")
-	}
-	if len(a.Exporters) != 1 || a.Exporters[0].ExporterUuid != "keep" {
-		t.Errorf("audit exporters after detach = %+v want [keep]", a.Exporters)
-	}
-	if a.YsqlAuditConfig == nil || !a.YsqlAuditConfig.Enabled {
-		t.Error("ysql audit sub-config must be preserved for the surviving exporter")
-	}
-}
-
-func TestBuildDetachSpecNoClusters(t *testing.T) {
-	u := client.UniverseResp{
-		UniverseUUID:    utils.GetStringPointer("u"),
-		UniverseDetails: &client.UniverseDefinitionTaskParamsResp{},
-	}
-	spec := buildDetachSpec(&u, "P")
-	if spec.TelemetryConfig == nil || spec.TelemetryConfig.AuditLogs != nil {
-		t.Errorf("expected empty telemetry_config for clusterless universe: %+v",
-			spec.TelemetryConfig)
-	}
-}
-
-// twoClusterUniverse puts the ASYNC cluster at index 0 and PRIMARY at index 1, to
-// pin that the primary is identified by clusterType, not array position.
-func twoClusterUniverse(asyncExp, primaryExp string) client.UniverseResp {
-	mkCluster := func(clusterType, exp string) client.Cluster {
-		intent := client.UserIntent{}
-		if exp != "" {
-			intent.AuditLogConfig = &client.AuditLogConfig{
-				YsqlAuditConfig: &client.YSQLAuditConfig{Enabled: true, LogLevel: "LOG"},
-				UniverseLogsExporterConfig: []client.UniverseLogsExporterConfig{
-					{ExporterUuid: exp},
-				},
-			}
-		}
-		return client.Cluster{ClusterType: clusterType, UserIntent: intent}
-	}
-	return client.UniverseResp{
-		UniverseUUID: utils.GetStringPointer("u"),
-		Name:         utils.GetStringPointer("u"),
-		UniverseDetails: &client.UniverseDefinitionTaskParamsResp{
-			Clusters: []client.Cluster{
-				mkCluster("ASYNC", asyncExp),
-				mkCluster(clusterTypePrimary, primaryExp),
-			},
-		},
-	}
-}
-
-// TestPrimaryClusterNotFirst: when the primary isn't clusters[0], detection and
-// detach must follow clusterType, not the array index.
-func TestPrimaryClusterNotFirst(t *testing.T) {
-	u := twoClusterUniverse("" /* async */, "P" /* primary */)
-	if !universeReferencesProvider(&u, "P") {
-		t.Fatal("provider on the primary cluster (index 1) must be detected")
-	}
-	spec := buildDetachSpec(&u, "P")
-	if spec.TelemetryConfig == nil || spec.TelemetryConfig.AuditLogs != nil {
-		t.Errorf("detach must strip P from the primary cluster's config: %+v",
-			spec.TelemetryConfig)
-	}
-}
-
-// TestReadReplicaOnlyReferenceIgnored: a reference only on a read-replica (ASYNC)
-// cluster isn't "in use" — YBA's isProviderInUse reads only the primary.
-func TestReadReplicaOnlyReferenceIgnored(t *testing.T) {
-	u := twoClusterUniverse("P" /* async */, "" /* primary */)
-	if universeReferencesProvider(&u, "P") {
-		t.Error("a reference only on a read-replica must not count as in-use " +
-			"(YBA's isProviderInUse reads only the primary cluster)")
+	return &clientv2.TelemetryConfig{
+		MasterLogs: &clientv2.MasterLogsTelemetrySpec{Exporters: exp},
 	}
 }
 
@@ -230,9 +96,12 @@ type fakeYBA struct {
 	listCallCount   int
 
 	// getStatus, when non-zero, is returned instead of getConfig.
-	getConfig *clientv2.TelemetryConfig
-	getStatus int
-	getBody   string
+	// getConfigByUni serves per-universe configs (keyed by universe UUID) and
+	// wins over getConfig, which is the single-universe fallback.
+	getConfig      *clientv2.TelemetryConfig
+	getConfigByUni map[string]*clientv2.TelemetryConfig
+	getStatus      int
+	getBody        string
 
 	// getProviderStatus, when non-zero, drives the GET telemetry_provider handler
 	// so Read tests can exercise YBA's non-404 "missing provider" responses.
@@ -265,6 +134,14 @@ func (f *fakeYBA) handler() http.HandlerFunc {
 				return
 			}
 			cfg := f.getConfig
+			if f.getConfigByUni != nil {
+				parts := strings.Split(path, "/")
+				for i, p := range parts {
+					if p == "universes" && i+1 < len(parts) {
+						cfg = f.getConfigByUni[parts[i+1]]
+					}
+				}
+			}
 			if cfg == nil {
 				cfg = &clientv2.TelemetryConfig{}
 			}
@@ -359,14 +236,20 @@ func newDetachTestClient(t *testing.T, f *fakeYBA) *api.APIClient {
 	}
 }
 
-// TestProviderDeleteDetachesReferencingUniverses: P is shared by two universes and
-// unrelated to a third; delete must detach only the two, then delete P.
+// TestProviderDeleteDetachesReferencingUniverses: P is referenced by two
+// universes (one via audit logs, one via the master_logs server-log pipeline)
+// and unrelated to a third; delete must detach only the two, then delete P.
 func TestProviderDeleteDetachesReferencingUniverses(t *testing.T) {
 	f := &fakeYBA{
 		universes: []client.UniverseResp{
-			auditUniverse("uni-A", []string{"P"}, nil, nil),
-			auditUniverse("uni-B", nil, nil, []string{"P"}),
-			auditUniverse("uni-C", []string{"other"}, nil, nil),
+			plainUniverse("uni-A"),
+			plainUniverse("uni-B"),
+			plainUniverse("uni-C"),
+		},
+		getConfigByUni: map[string]*clientv2.TelemetryConfig{
+			"uni-A": auditConfig("P"),
+			"uni-B": masterLogsConfig("P"),
+			"uni-C": auditConfig("other"),
 		},
 	}
 	apiClient := newDetachTestClient(t, f)
@@ -404,8 +287,9 @@ func TestProviderDeleteDetachesReferencingUniverses(t *testing.T) {
 // references P (not the in-use race), surface the error and keep the id.
 func TestProviderDeleteSurfacesUnrelatedError(t *testing.T) {
 	f := &fakeYBA{
-		universes: []client.UniverseResp{
-			auditUniverse("uni-C", []string{"other"}, nil, nil),
+		universes: []client.UniverseResp{plainUniverse("uni-C")},
+		getConfigByUni: map[string]*clientv2.TelemetryConfig{
+			"uni-C": auditConfig("other"),
 		},
 		deleteStatus: http.StatusForbidden,
 		deleteBody:   `{"error":"permission denied"}`,
@@ -436,14 +320,13 @@ func TestProviderDeleteSurfacesUnrelatedError(t *testing.T) {
 // the gap, so the first DELETE 400s; the flow must re-detach and retry once.
 func TestProviderDeleteRecoversFromReattachRace(t *testing.T) {
 	f := &fakeYBA{
-		universes: []client.UniverseResp{
-			auditUniverse("uni-A", []string{"P"}, nil, nil),
+		universes: []client.UniverseResp{plainUniverse("uni-A")},
+		getConfigByUni: map[string]*clientv2.TelemetryConfig{
+			"uni-A": auditConfig("P"),
 		},
 		// re-list shows P attached again (the race) -> second detach + DELETE.
 		deleteFailFirst: true,
-		relistOnSecond: []client.UniverseResp{
-			auditUniverse("uni-A", []string{"P"}, nil, nil),
-		},
+		relistOnSecond:  []client.UniverseResp{plainUniverse("uni-A")},
 	}
 	apiClient := newDetachTestClient(t, f)
 

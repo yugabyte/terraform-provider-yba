@@ -37,9 +37,9 @@ func flattenAuditLogsSpec(a *clientv2.AuditLogsTelemetrySpec) []interface{} {
 			"classes":                stringSliceToInterface(y.Classes),
 			"log_catalog":            y.LogCatalog,
 			"log_client":             y.LogClient,
-			"log_level":              y.LogLevel,
+			"log_level":              derefString(y.LogLevel),
 			"log_parameter":          y.LogParameter,
-			"log_parameter_max_size": int(y.LogParameterMaxSize),
+			"log_parameter_max_size": derefInt32(y.LogParameterMaxSize),
 			"log_relation":           y.LogRelation,
 			"log_rows":               y.LogRows,
 			"log_statement":          y.LogStatement,
@@ -48,7 +48,7 @@ func flattenAuditLogsSpec(a *clientv2.AuditLogsTelemetrySpec) []interface{} {
 	}
 	if y := a.YcqlAuditConfig; y != nil {
 		out["ycql_audit_config"] = []interface{}{map[string]interface{}{
-			"log_level":           y.LogLevel,
+			"log_level":           derefString(y.LogLevel),
 			"included_categories": stringSliceToInterface(y.IncludedCategories),
 			"excluded_categories": stringSliceToInterface(y.ExcludedCategories),
 			"included_keyspaces":  stringSliceToInterface(y.IncludedKeyspaces),
@@ -141,6 +141,93 @@ func flattenMetricsSpec(m *clientv2.MetricsTelemetrySpec) []interface{} {
 		out["exporter"] = exporters
 	}
 	return []interface{}{out}
+}
+
+// flattenServerLogsExporters flattens the exporter list shared by all six
+// server-log pipelines.
+func flattenServerLogsExporters(
+	in []clientv2.UniverseServerLogsExporterConfig,
+) []interface{} {
+	exporters := make([]interface{}, 0, len(in))
+	for _, e := range in {
+		entry := map[string]interface{}{
+			"exporter_uuid":   e.ExporterUuid,
+			"additional_tags": tagsToInterface(e.AdditionalTags),
+		}
+		addBatchingFields(entry, e.SendBatchMaxSize, e.SendBatchSize,
+			e.SendBatchTimeoutSeconds, e.MemoryLimitMib, e.MemoryLimitCheckIntervalSeconds)
+		exporters = append(exporters, entry)
+	}
+	return exporters
+}
+
+// serverLogsBlock assembles a single-element pipeline block from its exporters
+// plus any per-pipeline scalar fields.
+func serverLogsBlock(
+	exporters []clientv2.UniverseServerLogsExporterConfig,
+	extra map[string]interface{},
+) []interface{} {
+	out := map[string]interface{}{}
+	for k, v := range extra {
+		out[k] = v
+	}
+	if flat := flattenServerLogsExporters(exporters); len(flat) > 0 {
+		out["exporter"] = flat
+	}
+	return []interface{}{out}
+}
+
+func flattenMasterLogsSpec(s *clientv2.MasterLogsTelemetrySpec) []interface{} {
+	if s == nil {
+		return nil
+	}
+	extra := map[string]interface{}{}
+	if s.MinLevel != nil {
+		extra["min_level"] = *s.MinLevel
+	}
+	if s.NoiseSampleDropRatio != nil {
+		extra["noise_sample_drop_ratio"] = *s.NoiseSampleDropRatio
+	}
+	return serverLogsBlock(s.Exporters, extra)
+}
+
+func flattenTserverLogsSpec(s *clientv2.TServerLogsTelemetrySpec) []interface{} {
+	if s == nil {
+		return nil
+	}
+	extra := map[string]interface{}{}
+	if s.MinLevel != nil {
+		extra["min_level"] = *s.MinLevel
+	}
+	return serverLogsBlock(s.Exporters, extra)
+}
+
+func flattenYsqlConnMgrLogsSpec(s *clientv2.YsqlConnMgrLogsTelemetrySpec) []interface{} {
+	if s == nil {
+		return nil
+	}
+	return serverLogsBlock(s.Exporters, nil)
+}
+
+func flattenNodeAgentLogsSpec(s *clientv2.NodeAgentLogsTelemetrySpec) []interface{} {
+	if s == nil {
+		return nil
+	}
+	return serverLogsBlock(s.Exporters, nil)
+}
+
+func flattenYnpLogsSpec(s *clientv2.YnpLogsTelemetrySpec) []interface{} {
+	if s == nil {
+		return nil
+	}
+	return serverLogsBlock(s.Exporters, nil)
+}
+
+func flattenControllerLogsSpec(s *clientv2.ControllerLogsTelemetrySpec) []interface{} {
+	if s == nil {
+		return nil
+	}
+	return serverLogsBlock(s.Exporters, nil)
 }
 
 func addBatchingFields(

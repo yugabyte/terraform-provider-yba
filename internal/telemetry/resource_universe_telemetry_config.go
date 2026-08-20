@@ -82,6 +82,7 @@ var (
 	allowedYCQLAuditLogLevels  = []string{"INFO", "WARNING", "ERROR"}
 	allowedQueryLogStatements  = []string{"ALL", "NONE", "DDL", "MOD"}
 	allowedQueryErrorVerbosity = []string{"VERBOSE", "TERSE", "DEFAULT"}
+	allowedServerLogLevels     = []string{"INFO", "WARNING", "ERROR", "FATAL"}
 )
 
 // Schema defaults are wired to these client constructors so they track the YBA
@@ -89,10 +90,13 @@ var (
 // Audit-log config is the exception: those fields are required with no server
 // default, so the provider picks its own (see the audit schema Defaults).
 var (
-	queryLogDefaults       = clientv2.NewYSQLQueryLogConfigWithDefaults()
-	metricsDefaults        = clientv2.NewMetricsTelemetrySpecWithDefaults()
-	queryExporterDefaults  = clientv2.NewUniverseQueryLogsExporterConfigWithDefaults()
-	metricExporterDefaults = clientv2.NewUniverseMetricsExporterConfigWithDefaults()
+	queryLogDefaults           = clientv2.NewYSQLQueryLogConfigWithDefaults()
+	metricsDefaults            = clientv2.NewMetricsTelemetrySpecWithDefaults()
+	queryExporterDefaults      = clientv2.NewUniverseQueryLogsExporterConfigWithDefaults()
+	metricExporterDefaults     = clientv2.NewUniverseMetricsExporterConfigWithDefaults()
+	masterLogsDefaults         = clientv2.NewMasterLogsTelemetrySpecWithDefaults()
+	tserverLogsDefaults        = clientv2.NewTServerLogsTelemetrySpecWithDefaults()
+	serverLogsExporterDefaults = clientv2.NewUniverseServerLogsExporterConfigWithDefaults()
 )
 
 func derefInt32(p *int32) int {
@@ -109,19 +113,33 @@ func derefString(p *string) string {
 	return *p
 }
 
-// ResourceUniverseTelemetryConfig configures audit-log, query-log, and metric
-// export pipelines for a single universe via the unified export-telemetry-configs
-// API. Every write queues a universe upgrade task the resource waits on.
+func derefFloat64(p *float64) float64 {
+	if p == nil {
+		return 0
+	}
+	return *p
+}
+
+// ResourceUniverseTelemetryConfig configures audit-log, query-log, server-log,
+// and metric export pipelines for a single universe via the unified
+// export-telemetry-configs API. Every write queues a universe upgrade task the
+// resource waits on.
 func ResourceUniverseTelemetryConfig() *schema.Resource {
 	return &schema.Resource{
 		Description: experimentalAdmonition +
 			"Universe Telemetry Config Resource. Attaches audit log, query log, " +
-			"and metrics export pipelines to a YBA universe via the unified " +
+			"server log (yb-master, yb-tserver, YSQL Connection Manager, " +
+			"node-agent, node provisioning, YB-Controller), and metrics export " +
+			"pipelines to a YBA universe via the unified " +
 			"`export-telemetry-configs` API. Each exporter references a " +
 			"telemetry provider resource (`yba_datadog_telemetry_provider`, " +
 			"`yba_otlp_telemetry_provider`, ... — or any pre-existing telemetry " +
 			"provider UUID) and triggers a rolling/non-rolling restart of the " +
 			"universe to install or update the OpenTelemetry collector.\n\n" +
+			"~> **Note:** The server-log pipelines (`master_logs`, `tserver_logs`, " +
+			"`ysql_conn_mgr_logs`, `node_agent_logs`, `ynp_logs`, " +
+			"`controller_logs`) require a YBA version whose export API supports " +
+			"them; an older YBA rejects a spec containing these sections.\n\n" +
 			"~> **Note:** OTLP-based exporters require the global runtime config " +
 			"`yb.telemetry.allow_otlp` to be set to `true`. Manage that with the " +
 			"`yba_runtime_config` resource.\n\n" +
@@ -133,8 +151,9 @@ func ResourceUniverseTelemetryConfig() *schema.Resource {
 			"configuration per universe and this resource owns it wholesale — " +
 			"Terraform is the source of truth. On apply it **replaces** whatever the " +
 			"universe currently has (including anything configured out-of-band in " +
-			"the YBA UI), so manage all three pipelines (`audit_logs`, `query_logs`, " +
-			"`metrics`) from a **single** `yba_universe_telemetry_config` block. " +
+			"the YBA UI), so manage every pipeline (`audit_logs`, `query_logs`, " +
+			"`metrics`, and the server-log blocks) from a **single** " +
+			"`yba_universe_telemetry_config` block. " +
 			"Declaring two resources for the same `universe_uuid` is rejected at " +
 			"plan time (they would otherwise overwrite each other on every apply). " +
 			"On destroy the resource disables every exporter on the universe, but " +
@@ -174,9 +193,15 @@ func ResourceUniverseTelemetryConfig() *schema.Resource {
 				ForceNew:    true,
 				Description: "UUID of the universe whose telemetry pipelines are managed.",
 			},
-			"audit_logs": auditLogsSchema(),
-			"query_logs": queryLogsSchema(),
-			"metrics":    metricsSchema(),
+			"audit_logs":         auditLogsSchema(),
+			"query_logs":         queryLogsSchema(),
+			"metrics":            metricsSchema(),
+			"master_logs":        masterLogsSchema(),
+			"tserver_logs":       tserverLogsSchema(),
+			"ysql_conn_mgr_logs": serverLogsSchema("YSQL Connection Manager"),
+			"node_agent_logs":    serverLogsSchema("node-agent"),
+			"ynp_logs":           serverLogsSchema("YNP (node provisioning)"),
+			"controller_logs":    serverLogsSchema("YB-Controller"),
 			"upgrade_options": {
 				Type:     schema.TypeList,
 				Optional: true,
@@ -642,6 +667,140 @@ func metricsExporterSchema() *schema.Schema {
 	}
 }
 
+// serverLogsElem is the shared Elem of the six server-log pipeline blocks
+// (master/tserver/ysql_conn_mgr/node_agent/ynp/controller): a repeatable
+// exporter list plus any per-pipeline extra fields.
+func serverLogsElem(extra map[string]*schema.Schema) *schema.Resource {
+	s := map[string]*schema.Schema{"exporter": serverLogsExporterSchema()}
+	for k, v := range extra {
+		s[k] = v
+	}
+	return &schema.Resource{Schema: s}
+}
+
+func serverLogsSchema(display string) *schema.Schema {
+	return &schema.Schema{
+		Type:     schema.TypeList,
+		Optional: true,
+		MaxItems: 1,
+		Description: display + " log export configuration. Omit to disable " +
+			display + " log export.",
+		Elem: serverLogsElem(nil),
+	}
+}
+
+func masterLogsSchema() *schema.Schema {
+	return &schema.Schema{
+		Type:     schema.TypeList,
+		Optional: true,
+		MaxItems: 1,
+		Description: "yb-master log export configuration. Omit to disable " +
+			"yb-master log export.",
+		Elem: serverLogsElem(map[string]*schema.Schema{
+			"min_level": serverLogMinLevelSchema(
+				"yb-master", derefString(masterLogsDefaults.MinLevel)),
+			"noise_sample_drop_ratio": {
+				Type:         schema.TypeFloat,
+				Optional:     true,
+				Default:      derefFloat64(masterLogsDefaults.NoiseSampleDropRatio),
+				ValidateFunc: validation.FloatBetween(0, 1),
+				Description: "Fraction (0.0-1.0) of high-volume, low-value noise " +
+					"log lines to drop. Set to 0.0 to keep every line. `Default` " +
+					"is sourced from the YBA API's own `default:` (via the " +
+					"generated client) so it tracks the server.",
+			},
+		}),
+	}
+}
+
+func tserverLogsSchema() *schema.Schema {
+	return &schema.Schema{
+		Type:     schema.TypeList,
+		Optional: true,
+		MaxItems: 1,
+		Description: "yb-tserver log export configuration. Omit to disable " +
+			"yb-tserver log export.\n\n" +
+			"~> **Note:** `min_level` defaults to `WARNING` here (not `INFO`) — " +
+			"yb-tserver INFO logs are very high volume.",
+		Elem: serverLogsElem(map[string]*schema.Schema{
+			"min_level": serverLogMinLevelSchema(
+				"yb-tserver", derefString(tserverLogsDefaults.MinLevel)),
+		}),
+	}
+}
+
+func serverLogMinLevelSchema(process, defaultLevel string) *schema.Schema {
+	return &schema.Schema{
+		Type:         schema.TypeString,
+		Optional:     true,
+		Default:      defaultLevel,
+		ValidateFunc: validation.StringInSlice(allowedServerLogLevels, false),
+		Description: "Minimum " + process + " glog severity to export; lines " +
+			"below this level are dropped. `Default` is sourced from the YBA " +
+			"API's own `default:` (via the generated client) so it tracks the " +
+			"server.",
+	}
+}
+
+// serverLogsExporterSchema mirrors exporterListSchema's batching shape, wired to
+// the UniverseServerLogsExporterConfig defaults so a client bump tracks the server.
+func serverLogsExporterSchema() *schema.Schema {
+	s := map[string]*schema.Schema{
+		"exporter_uuid": {
+			Type:        schema.TypeString,
+			Required:    true,
+			Description: "UUID of the telemetry provider that receives the log data.",
+		},
+		"additional_tags": {
+			Type:        schema.TypeMap,
+			Optional:    true,
+			Description: "Additional string tags appended to each log record.",
+			Elem:        &schema.Schema{Type: schema.TypeString},
+		},
+		// See exporterListSchema: IntBetween(1, MaxInt32) guards int32 wrap and
+		// the 0-dropped-diff footgun.
+		"send_batch_max_size": {
+			Type:         schema.TypeInt,
+			Optional:     true,
+			Default:      derefInt32(serverLogsExporterDefaults.SendBatchMaxSize),
+			ValidateFunc: validation.IntBetween(1, math.MaxInt32),
+		},
+		"send_batch_size": {
+			Type:         schema.TypeInt,
+			Optional:     true,
+			Default:      derefInt32(serverLogsExporterDefaults.SendBatchSize),
+			ValidateFunc: validation.IntBetween(1, math.MaxInt32),
+		},
+		"send_batch_timeout_seconds": {
+			Type:         schema.TypeInt,
+			Optional:     true,
+			Default:      derefInt32(serverLogsExporterDefaults.SendBatchTimeoutSeconds),
+			ValidateFunc: validation.IntBetween(1, math.MaxInt32),
+		},
+		"memory_limit_mib": {
+			Type:         schema.TypeInt,
+			Optional:     true,
+			Default:      derefInt32(serverLogsExporterDefaults.MemoryLimitMib),
+			ValidateFunc: validation.IntBetween(1, math.MaxInt32),
+		},
+		"memory_limit_check_interval_seconds": {
+			Type:     schema.TypeInt,
+			Optional: true,
+			Default: derefInt32(
+				serverLogsExporterDefaults.MemoryLimitCheckIntervalSeconds),
+			ValidateFunc: validation.IntBetween(1, math.MaxInt32),
+		},
+	}
+	return &schema.Schema{
+		Type:     schema.TypeList,
+		Optional: true,
+		Description: "Exporter (telemetry destination). Repeat this block to send to " +
+			"multiple destinations — each becomes one entry in the API's " +
+			"`exporters` array.",
+		Elem: &schema.Resource{Schema: s},
+	}
+}
+
 func customizeUniverseTelemetryDiff(
 	ctx context.Context, d *schema.ResourceDiff, meta interface{},
 ) error {
@@ -651,20 +810,31 @@ func customizeUniverseTelemetryDiff(
 	return validateSingleManagerPerUniverse(ctx, d, meta)
 }
 
+// telemetryPipelines lists every pipeline block and its exporter path. The
+// exporter guardrails and the claim fingerprint iterate it, so a new pipeline
+// needs exactly one entry here.
+var telemetryPipelines = []struct {
+	label string
+	path  string
+}{
+	{"audit_logs", "audit_logs.0.exporter"},
+	{"query_logs", "query_logs.0.exporter"},
+	{"metrics", "metrics.0.exporter"},
+	{"master_logs", "master_logs.0.exporter"},
+	{"tserver_logs", "tserver_logs.0.exporter"},
+	{"ysql_conn_mgr_logs", "ysql_conn_mgr_logs.0.exporter"},
+	{"node_agent_logs", "node_agent_logs.0.exporter"},
+	{"ynp_logs", "ynp_logs.0.exporter"},
+	{"controller_logs", "controller_logs.0.exporter"},
+}
+
 // validateExporters rejects a duplicate or empty exporter_uuid within one
 // pipeline. A provider may repeat across pipelines or universes — only
 // intra-pipeline duplicates are the mistake. Unknown values are skipped.
 func validateExporters(
 	_ context.Context, d *schema.ResourceDiff, _ interface{},
 ) error {
-	for _, section := range []struct {
-		label string
-		path  string
-	}{
-		{"audit_logs", "audit_logs.0.exporter"},
-		{"query_logs", "query_logs.0.exporter"},
-		{"metrics", "metrics.0.exporter"},
-	} {
+	for _, section := range telemetryPipelines {
 		list, ok := d.Get(section.path).([]interface{})
 		if !ok {
 			continue
@@ -748,9 +918,8 @@ func validateSingleManagerPerUniverse(
 		return fmt.Errorf(
 			"universe %s is already managed by another "+
 				"yba_universe_telemetry_config resource in this configuration; "+
-				"declare exactly one per universe (a single resource's "+
-				"audit_logs / query_logs / metrics blocks manage all three "+
-				"pipelines together)", universeUUID)
+				"declare exactly one per universe (a single resource's pipeline "+
+				"blocks manage every pipeline together)", universeUUID)
 	}
 	return nil
 }
@@ -761,13 +930,9 @@ func validateSingleManagerPerUniverse(
 // scalar defaults and TypeSet internals aren't stable between those passes.
 func universeConfigFingerprint(d *schema.ResourceDiff) string {
 	var b strings.Builder
-	for _, path := range []string{
-		"audit_logs.0.exporter",
-		"query_logs.0.exporter",
-		"metrics.0.exporter",
-	} {
+	for _, section := range telemetryPipelines {
 		uuids := []string{}
-		if list, ok := d.Get(path).([]interface{}); ok {
+		if list, ok := d.Get(section.path).([]interface{}); ok {
 			for _, e := range list {
 				if m, _ := e.(map[string]interface{}); m != nil {
 					uuids = append(uuids, stringValue(m["exporter_uuid"]))
@@ -796,6 +961,44 @@ func buildExportTelemetryConfigSpec(d *schema.ResourceData) clientv2.ExportTelem
 	if v, ok := d.GetOk("metrics"); ok {
 		if m := buildMetrics(v); m != nil {
 			tc.Metrics = m
+		}
+	}
+	if v, ok := d.GetOk("master_logs"); ok {
+		if s := buildMasterLogs(v); s != nil {
+			tc.MasterLogs = s
+		}
+	}
+	if v, ok := d.GetOk("tserver_logs"); ok {
+		if s := buildTserverLogs(v); s != nil {
+			tc.TserverLogs = s
+		}
+	}
+	if v, ok := d.GetOk("ysql_conn_mgr_logs"); ok {
+		if m := firstMap(v); len(m) > 0 {
+			tc.YsqlConnMgrLogs = &clientv2.YsqlConnMgrLogsTelemetrySpec{
+				Exporters: buildServerLogsExporters(m["exporter"]),
+			}
+		}
+	}
+	if v, ok := d.GetOk("node_agent_logs"); ok {
+		if m := firstMap(v); len(m) > 0 {
+			tc.NodeAgentLogs = &clientv2.NodeAgentLogsTelemetrySpec{
+				Exporters: buildServerLogsExporters(m["exporter"]),
+			}
+		}
+	}
+	if v, ok := d.GetOk("ynp_logs"); ok {
+		if m := firstMap(v); len(m) > 0 {
+			tc.YnpLogs = &clientv2.YnpLogsTelemetrySpec{
+				Exporters: buildServerLogsExporters(m["exporter"]),
+			}
+		}
+	}
+	if v, ok := d.GetOk("controller_logs"); ok {
+		if m := firstMap(v); len(m) > 0 {
+			tc.ControllerLogs = &clientv2.ControllerLogsTelemetrySpec{
+				Exporters: buildServerLogsExporters(m["exporter"]),
+			}
 		}
 	}
 	upgrade := buildUpgradeOptions(d.Get("upgrade_options"))
@@ -864,15 +1067,21 @@ func buildYsqlAuditConfig(in interface{}) *clientv2.YSQLAuditConfig {
 	if len(m) == 0 {
 		return nil
 	}
+	// log_level / log_parameter_max_size became optional in the YBA API. Send
+	// them unconditionally anyway: the schema always has a value (Default), and
+	// 0 / "" are not "unset" here (utils.GetInt32Pointer would drop a
+	// deliberate log_parameter_max_size = 0).
+	logLevel := stringValue(m["log_level"])
+	logParameterMaxSize := int32Value(m["log_parameter_max_size"])
 	return &clientv2.YSQLAuditConfig{
 		// enabled is derived server-side from block presence; required field, so set it.
 		Enabled:             true,
 		Classes:             stringList(m["classes"]),
 		LogCatalog:          boolValue(m["log_catalog"]),
 		LogClient:           boolValue(m["log_client"]),
-		LogLevel:            stringValue(m["log_level"]),
+		LogLevel:            &logLevel,
 		LogParameter:        boolValue(m["log_parameter"]),
-		LogParameterMaxSize: int32Value(m["log_parameter_max_size"]),
+		LogParameterMaxSize: &logParameterMaxSize,
 		LogRelation:         boolValue(m["log_relation"]),
 		LogRows:             boolValue(m["log_rows"]),
 		LogStatement:        boolValue(m["log_statement"]),
@@ -885,10 +1094,13 @@ func buildYcqlAuditConfig(in interface{}) *clientv2.YCQLAuditConfig {
 	if len(m) == 0 {
 		return nil
 	}
+	// log_level became optional in the YBA API; the schema always has a value
+	// (Default), so send it unconditionally to keep the previous behavior.
+	logLevel := stringValue(m["log_level"])
 	return &clientv2.YCQLAuditConfig{
 		// enabled is derived server-side from block presence; required field, so set it.
 		Enabled:            true,
-		LogLevel:           stringValue(m["log_level"]),
+		LogLevel:           &logLevel,
 		IncludedCategories: stringList(m["included_categories"]),
 		ExcludedCategories: stringList(m["excluded_categories"]),
 		IncludedKeyspaces:  stringList(m["included_keyspaces"]),
@@ -1013,6 +1225,69 @@ func buildMetricsExporters(in interface{}) []clientv2.UniverseMetricsExporterCon
 	return out
 }
 
+func buildMasterLogs(in interface{}) *clientv2.MasterLogsTelemetrySpec {
+	m := firstMap(in)
+	if len(m) == 0 {
+		return nil
+	}
+	// Always send both scalars: the schema fills them with defaults, and 0.0 is
+	// a deliberate noise_sample_drop_ratio ("keep every line"), so a
+	// drop-zero-values pointer helper would silently flip it to the server
+	// default of 0.99.
+	minLevel := stringValue(m["min_level"])
+	noiseRatio := floatValue(m["noise_sample_drop_ratio"])
+	return &clientv2.MasterLogsTelemetrySpec{
+		Exporters:            buildServerLogsExporters(m["exporter"]),
+		MinLevel:             &minLevel,
+		NoiseSampleDropRatio: &noiseRatio,
+	}
+}
+
+func buildTserverLogs(in interface{}) *clientv2.TServerLogsTelemetrySpec {
+	m := firstMap(in)
+	if len(m) == 0 {
+		return nil
+	}
+	minLevel := stringValue(m["min_level"])
+	return &clientv2.TServerLogsTelemetrySpec{
+		Exporters: buildServerLogsExporters(m["exporter"]),
+		MinLevel:  &minLevel,
+	}
+}
+
+// buildServerLogsExporters builds the exporter list shared by all six server-log
+// pipelines (UniverseServerLogsExporterConfig carries the same batching fields
+// as the query-log exporter).
+func buildServerLogsExporters(in interface{}) []clientv2.UniverseServerLogsExporterConfig {
+	rows := exporterRows(in)
+	out := make([]clientv2.UniverseServerLogsExporterConfig, 0, len(rows))
+	for _, m := range rows {
+		entry := clientv2.UniverseServerLogsExporterConfig{
+			ExporterUuid: stringValue(m["exporter_uuid"]),
+			SendBatchMaxSize: utils.GetInt32Pointer(
+				int32(intValue(m["send_batch_max_size"])),
+			),
+			SendBatchSize: utils.GetInt32Pointer(
+				int32(intValue(m["send_batch_size"])),
+			),
+			SendBatchTimeoutSeconds: utils.GetInt32Pointer(
+				int32(intValue(m["send_batch_timeout_seconds"])),
+			),
+			MemoryLimitMib: utils.GetInt32Pointer(
+				int32(intValue(m["memory_limit_mib"])),
+			),
+			MemoryLimitCheckIntervalSeconds: utils.GetInt32Pointer(
+				int32(intValue(m["memory_limit_check_interval_seconds"])),
+			),
+		}
+		if tags := stringMap(m["additional_tags"]); len(tags) > 0 {
+			entry.AdditionalTags = &tags
+		}
+		out = append(out, entry)
+	}
+	return out
+}
+
 // buildUpgradeOptions translates the optional upgrade_options block. When absent,
 // only RollingUpgrade is sent (true) and YBA picks its own restart sleeps.
 func buildUpgradeOptions(in interface{}) clientv2.ExportTelemetryUpgradeOptions {
@@ -1113,7 +1388,10 @@ func resourceUniverseTelemetryConfigDelete(
 
 func telemetryConfigIsEmpty(c *clientv2.TelemetryConfig) bool {
 	return c == nil ||
-		(c.AuditLogs == nil && c.QueryLogs == nil && c.Metrics == nil)
+		(c.AuditLogs == nil && c.QueryLogs == nil && c.Metrics == nil &&
+			c.MasterLogs == nil && c.TserverLogs == nil &&
+			c.YsqlConnMgrLogs == nil && c.NodeAgentLogs == nil &&
+			c.YnpLogs == nil && c.ControllerLogs == nil)
 }
 
 // dispatchExportTelemetryConfig runs the request through utils.DispatchAndWait so
@@ -1180,6 +1458,27 @@ func resourceUniverseTelemetryConfigRead(
 	if err := d.Set("metrics", flattenMetricsSpec(config.Metrics)); err != nil {
 		return diag.FromErr(err)
 	}
+	if err := d.Set("master_logs", flattenMasterLogsSpec(config.MasterLogs)); err != nil {
+		return diag.FromErr(err)
+	}
+	if err := d.Set("tserver_logs", flattenTserverLogsSpec(config.TserverLogs)); err != nil {
+		return diag.FromErr(err)
+	}
+	if err := d.Set("ysql_conn_mgr_logs",
+		flattenYsqlConnMgrLogsSpec(config.YsqlConnMgrLogs)); err != nil {
+		return diag.FromErr(err)
+	}
+	if err := d.Set("node_agent_logs",
+		flattenNodeAgentLogsSpec(config.NodeAgentLogs)); err != nil {
+		return diag.FromErr(err)
+	}
+	if err := d.Set("ynp_logs", flattenYnpLogsSpec(config.YnpLogs)); err != nil {
+		return diag.FromErr(err)
+	}
+	if err := d.Set("controller_logs",
+		flattenControllerLogsSpec(config.ControllerLogs)); err != nil {
+		return diag.FromErr(err)
+	}
 	return nil
 }
 
@@ -1244,6 +1543,13 @@ func boolValue(in interface{}) bool {
 		return v
 	}
 	return false
+}
+
+func floatValue(in interface{}) float64 {
+	if v, ok := in.(float64); ok {
+		return v
+	}
+	return 0
 }
 
 func int32Value(in interface{}) int32 {
