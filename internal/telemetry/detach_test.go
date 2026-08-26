@@ -42,7 +42,7 @@ func auditUniverse(name string, audit, query, metrics []string) client.UniverseR
 			exp = append(exp, client.UniverseLogsExporterConfig{ExporterUuid: u})
 		}
 		intent.AuditLogConfig = &client.AuditLogConfig{
-			YsqlAuditConfig:            &client.YSQLAuditConfig{Enabled: true, LogLevel: "LOG"},
+			YsqlAuditConfig:            &client.YSQLAuditConfig{Enabled: true, LogLevel: utils.GetStringPointer("LOG")},
 			UniverseLogsExporterConfig: exp,
 		}
 	}
@@ -156,7 +156,7 @@ func twoClusterUniverse(asyncExp, primaryExp string) client.UniverseResp {
 		intent := client.UserIntent{}
 		if exp != "" {
 			intent.AuditLogConfig = &client.AuditLogConfig{
-				YsqlAuditConfig: &client.YSQLAuditConfig{Enabled: true, LogLevel: "LOG"},
+				YsqlAuditConfig: &client.YSQLAuditConfig{Enabled: true, LogLevel: utils.GetStringPointer("LOG")},
 				UniverseLogsExporterConfig: []client.UniverseLogsExporterConfig{
 					{ExporterUuid: exp},
 				},

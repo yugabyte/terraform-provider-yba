@@ -870,9 +870,9 @@ func buildYsqlAuditConfig(in interface{}) *clientv2.YSQLAuditConfig {
 		Classes:             stringList(m["classes"]),
 		LogCatalog:          boolValue(m["log_catalog"]),
 		LogClient:           boolValue(m["log_client"]),
-		LogLevel:            stringValue(m["log_level"]),
+		LogLevel:            utils.GetStringPointer(stringValue(m["log_level"])),
 		LogParameter:        boolValue(m["log_parameter"]),
-		LogParameterMaxSize: int32Value(m["log_parameter_max_size"]),
+		LogParameterMaxSize: utils.GetInt32Pointer(int32Value(m["log_parameter_max_size"])),
 		LogRelation:         boolValue(m["log_relation"]),
 		LogRows:             boolValue(m["log_rows"]),
 		LogStatement:        boolValue(m["log_statement"]),
@@ -888,7 +888,7 @@ func buildYcqlAuditConfig(in interface{}) *clientv2.YCQLAuditConfig {
 	return &clientv2.YCQLAuditConfig{
 		// enabled is derived server-side from block presence; required field, so set it.
 		Enabled:            true,
-		LogLevel:           stringValue(m["log_level"]),
+		LogLevel:           utils.GetStringPointer(stringValue(m["log_level"])),
 		IncludedCategories: stringList(m["included_categories"]),
 		ExcludedCategories: stringList(m["excluded_categories"]),
 		IncludedKeyspaces:  stringList(m["included_keyspaces"]),

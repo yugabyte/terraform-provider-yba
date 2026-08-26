@@ -223,11 +223,11 @@ func TestFlattenRoundTripNoPhantomDiff(t *testing.T) {
 		YsqlAuditConfig: &clientv2.YSQLAuditConfig{
 			Enabled:  true,
 			Classes:  []string{"WRITE", "READ", "DDL"}, // server order differs
-			LogLevel: "WARNING",
+			LogLevel: utils.GetStringPointer("WARNING"),
 		},
 		YcqlAuditConfig: &clientv2.YCQLAuditConfig{
 			Enabled:            true,
-			LogLevel:           "ERROR",
+			LogLevel:           utils.GetStringPointer("ERROR"),
 			IncludedCategories: []string{"DML", "DDL"},
 		},
 		Exporters: []clientv2.UniverseLogsExporterConfig{
@@ -262,14 +262,14 @@ func TestFlattenRoundTripNoPhantomDiff(t *testing.T) {
 
 	spec := buildExportTelemetryConfigSpec(d)
 	ysql := spec.TelemetryConfig.AuditLogs.YsqlAuditConfig
-	if !ysql.Enabled || ysql.LogLevel != "WARNING" {
+	if !ysql.Enabled || ysql.GetLogLevel() != "WARNING" {
 		t.Errorf("ysql audit lost in round trip: %+v", ysql)
 	}
 	if got := sortedStrings(ysql.Classes); !equalStrings(got, []string{"DDL", "READ", "WRITE"}) {
 		t.Errorf("audit classes round trip = %v", got)
 	}
 	ycql := spec.TelemetryConfig.AuditLogs.YcqlAuditConfig
-	if ycql == nil || ycql.LogLevel != "ERROR" {
+	if ycql == nil || ycql.GetLogLevel() != "ERROR" {
 		t.Errorf("ycql audit lost in round trip: %+v", ycql)
 	}
 	m := spec.TelemetryConfig.Metrics
