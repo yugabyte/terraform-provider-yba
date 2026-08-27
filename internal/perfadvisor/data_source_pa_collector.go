@@ -13,6 +13,8 @@
 // specific language governing permissions and limitations
 // under the License.
 
+// Package perfadvisor manages the YugabyteDB Anywhere Perf Advisor endpoints
+// (yba_perf_advisor_endpoint), collector lookup, and universe registration.
 package perfadvisor
 
 import (
