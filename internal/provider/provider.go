@@ -31,6 +31,7 @@ import (
 	"github.com/yugabyte/terraform-provider-yba/internal/installation"
 	"github.com/yugabyte/terraform-provider-yba/internal/loadbalancer"
 	"github.com/yugabyte/terraform-provider-yba/internal/onprem"
+	"github.com/yugabyte/terraform-provider-yba/internal/perfadvisor"
 	// New provider packages following yba-cli patterns
 	awsProvider "github.com/yugabyte/terraform-provider-yba/internal/provider/aws"
 	azureProvider "github.com/yugabyte/terraform-provider-yba/internal/provider/azure"
@@ -110,6 +111,7 @@ func New() *schema.Provider {
 			"yba_universe_schema":        universe.DataSourceUniverseSchema(),
 			"yba_runtime_config":         runtimeconfig.DataSourceRuntimeConfig(),
 			"yba_telemetry_provider":     telemetry.DataSourceTelemetryProvider(),
+			"yba_pa_collector":           perfadvisor.DataSourcePACollector(),
 			"yba_certificate":            certificate.DataSourceCertificate(),
 		},
 		ResourcesMap: map[string]*schema.Resource{
@@ -154,6 +156,12 @@ func New() *schema.Provider {
 			"yba_s3_telemetry_provider":                   telemetry.ResourceS3TelemetryProvider(),
 			"yba_universe_telemetry_config":               telemetry.ResourceUniverseTelemetryConfig(),
 			"yba_universe_load_balancer_config":           loadbalancer.ResourceUniverseLoadBalancerConfig(),
+
+			// Perf Advisor: one endpoint resource covering every endpoint kind
+			// (they differ in valid values, not in fields), plus the
+			// universe-side registration that attaches one.
+			"yba_perf_advisor_endpoint":              perfadvisor.ResourcePerfAdvisorEndpoint(),
+			"yba_universe_perf_advisor_registration": perfadvisor.ResourceUniversePerfAdvisorRegistration(),
 
 			// Encryption-in-transit certificate configurations.
 			"yba_self_signed_certificate":   certificate.ResourceSelfSignedCertificate(),

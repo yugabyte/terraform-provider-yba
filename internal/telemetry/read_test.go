@@ -34,7 +34,7 @@ func TestUniverseTelemetryConfigReadFromGetAPI(t *testing.T) {
 				YsqlAuditConfig: &clientv2.YSQLAuditConfig{
 					Enabled:  true,
 					Classes:  []string{"READ", "WRITE"},
-					LogLevel: "WARNING",
+					LogLevel: utils.GetStringPointer("WARNING"),
 				},
 				Exporters: []clientv2.UniverseLogsExporterConfig{
 					{ExporterUuid: "exp-1", AdditionalTags: &tags},
