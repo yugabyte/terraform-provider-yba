@@ -57,6 +57,9 @@ signs:
 
 release:
   mode: append
+  # Mark tags like v1.1.0-alpha.1 as pre-releases so they do not show up as the
+  # latest release on GitHub.
+  prerelease: auto
   header: |
     ## {{ .Version }} ({{ .Date }})
   extra_files:
