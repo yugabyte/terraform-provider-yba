@@ -132,7 +132,17 @@ than leaving the build red.
 - Pre-validating a request against a stable, obvious YBA rule (e.g. a
   rotation trigger on a disabled TLS channel) is preferred when the
   provider error can name the Terraform field; let the server error
-  surface for anything version-dependent.
+  surface for value-level rules that vary by version.
+- Gate a resource or block on the YBA build that ships its API with a
+  `utils.YBAMinimumVersion{Stable, Preview}`: one minimum per release
+  line, each the first build where the API the provider targets is
+  public on that line (name the yugabyte-db commit in the comment).
+  Check it at plan time in `CustomizeDiff` through the cached
+  `meta.AppVersion(ctx)` and `utils.MeetsMinimum`, name the block in
+  the error, and let a build the parser cannot read through with a
+  `tflog.Warn` — the server stays the backstop. Custom builds without a
+  `-bN` compare equal within their release (YBA's own rule) and pass.
+  Reference: `internal/telemetry/version_gate.go`.
 
 ## Use `internal/utils` First
 

@@ -136,10 +136,10 @@ func ResourceUniverseTelemetryConfig() *schema.Resource {
 			"`yba_otlp_telemetry_provider`, ... — or any pre-existing telemetry " +
 			"provider UUID) and triggers a rolling/non-rolling restart of the " +
 			"universe to install or update the OpenTelemetry collector.\n\n" +
-			"~> **Note:** The server-log pipelines (`master_logs`, `tserver_logs`, " +
-			"`ysql_conn_mgr_logs`, `node_agent_logs`, `ynp_logs`, " +
-			"`controller_logs`) require a YBA version whose export API supports " +
-			"them; an older YBA rejects a spec containing these sections.\n\n" +
+			"~> **Note:** " + versionNote("This resource requires", unifiedTelemetryAPIMin) +
+			"\n\n~> **Note:** " + versionNote("The server-log pipelines (`master_logs`, `tserver_logs`, "+
+			"`ysql_conn_mgr_logs`, `node_agent_logs`, `ynp_logs`, "+
+			"`controller_logs`) require", serverLogPipelinesMin) + "\n\n" +
 			"~> **Note:** OTLP-based exporters require the global runtime config " +
 			"`yb.telemetry.allow_otlp` to be set to `true`. Manage that with the " +
 			"`yba_runtime_config` resource.\n\n" +
@@ -684,7 +684,7 @@ func serverLogsSchema(display string) *schema.Schema {
 		Optional: true,
 		MaxItems: 1,
 		Description: display + " log export configuration. Omit to disable " +
-			display + " log export.",
+			display + " log export. " + versionNote("Requires", serverLogPipelinesMin),
 		Elem: serverLogsElem(nil),
 	}
 }
@@ -695,7 +695,7 @@ func masterLogsSchema() *schema.Schema {
 		Optional: true,
 		MaxItems: 1,
 		Description: "yb-master log export configuration. Omit to disable " +
-			"yb-master log export.",
+			"yb-master log export. " + versionNote("Requires", serverLogPipelinesMin),
 		Elem: serverLogsElem(map[string]*schema.Schema{
 			"min_level": serverLogMinLevelSchema(
 				"yb-master", derefString(masterLogsDefaults.MinLevel)),
@@ -719,8 +719,8 @@ func tserverLogsSchema() *schema.Schema {
 		Optional: true,
 		MaxItems: 1,
 		Description: "yb-tserver log export configuration. Omit to disable " +
-			"yb-tserver log export.\n\n" +
-			"~> **Note:** `min_level` defaults to `WARNING` here (not `INFO`) — " +
+			"yb-tserver log export. " + versionNote("Requires", serverLogPipelinesMin) +
+			"\n\n~> **Note:** `min_level` defaults to `WARNING` here (not `INFO`) — " +
 			"yb-tserver INFO logs are very high volume.",
 		Elem: serverLogsElem(map[string]*schema.Schema{
 			"min_level": serverLogMinLevelSchema(
@@ -804,28 +804,38 @@ func serverLogsExporterSchema() *schema.Schema {
 func customizeUniverseTelemetryDiff(
 	ctx context.Context, d *schema.ResourceDiff, meta interface{},
 ) error {
+	if err := validateYBAVersion(ctx, d, meta); err != nil {
+		return err
+	}
 	if err := validateExporters(ctx, d, meta); err != nil {
 		return err
 	}
 	return validateSingleManagerPerUniverse(ctx, d, meta)
 }
 
-// telemetryPipelines lists every pipeline block and its exporter path. The
-// exporter guardrails and the claim fingerprint iterate it, so a new pipeline
-// needs exactly one entry here.
+// telemetryPipelines lists every pipeline block, its exporter path, and the
+// YBA build that ships it. The exporter guardrails, the version gate, and the
+// claim fingerprint iterate it, so a new pipeline needs exactly one entry here.
 var telemetryPipelines = []struct {
 	label string
 	path  string
+	// min is the first YBA build whose API accepts the block; nil means the
+	// resource floor (unifiedTelemetryAPIMin) is the only requirement.
+	min *utils.YBAMinimumVersion
 }{
-	{"audit_logs", "audit_logs.0.exporter"},
-	{"query_logs", "query_logs.0.exporter"},
-	{"metrics", "metrics.0.exporter"},
-	{"master_logs", "master_logs.0.exporter"},
-	{"tserver_logs", "tserver_logs.0.exporter"},
-	{"ysql_conn_mgr_logs", "ysql_conn_mgr_logs.0.exporter"},
-	{"node_agent_logs", "node_agent_logs.0.exporter"},
-	{"ynp_logs", "ynp_logs.0.exporter"},
-	{"controller_logs", "controller_logs.0.exporter"},
+	{label: "audit_logs", path: "audit_logs.0.exporter"},
+	{label: "query_logs", path: "query_logs.0.exporter"},
+	{label: "metrics", path: "metrics.0.exporter"},
+	{label: "master_logs", path: "master_logs.0.exporter", min: &serverLogPipelinesMin},
+	{label: "tserver_logs", path: "tserver_logs.0.exporter", min: &serverLogPipelinesMin},
+	{
+		label: "ysql_conn_mgr_logs",
+		path:  "ysql_conn_mgr_logs.0.exporter",
+		min:   &serverLogPipelinesMin,
+	},
+	{label: "node_agent_logs", path: "node_agent_logs.0.exporter", min: &serverLogPipelinesMin},
+	{label: "ynp_logs", path: "ynp_logs.0.exporter", min: &serverLogPipelinesMin},
+	{label: "controller_logs", path: "controller_logs.0.exporter", min: &serverLogPipelinesMin},
 }
 
 // validateExporters rejects a duplicate or empty exporter_uuid within one

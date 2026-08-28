@@ -26,6 +26,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	client "github.com/yugabyte/platform-go-client"
@@ -42,6 +43,10 @@ type APIClient struct {
 	APIKey           string
 	CustomerID       string
 	UserID           string // UUID of the logged-in user (API token holder)
+
+	// appVersion caches GET /app_version; see AppVersion.
+	appVersion   string
+	appVersionMu sync.Mutex
 }
 
 // NewAPIClient creates a wrapper for public and non-public APIs
