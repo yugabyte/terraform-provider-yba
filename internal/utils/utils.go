@@ -480,11 +480,11 @@ func ErrorFromHTTPResponse(resp *http.Response, apiError error, entity, entityNa
 
 	// Handle authentication errors with clear messages
 	if response.StatusCode == http.StatusUnauthorized {
-		return fmt.Errorf("%s: %s, Operation: %s - authentication failed (HTTP 401): "+
+		return fmt.Errorf("%s: %s, Operation: %s - %w: "+
 			"the API token is invalid, expired, or missing. "+
 			"Please verify your 'api_token' provider configuration or "+
 			"YBA_API_TOKEN/YBA_API_KEY/YB_API_KEY environment variable",
-			entity, entityName, operation)
+			entity, entityName, operation, ErrHTTPUnauthorized)
 	}
 	if response.StatusCode == http.StatusForbidden {
 		return fmt.Errorf("%s: %s, Operation: %s - authorization failed (HTTP 403): "+
@@ -588,6 +588,15 @@ func IsResourceNotFoundError(err error) bool {
 		return false
 	}
 	return errors.Is(err, ErrResourceNotFound)
+}
+
+// ErrHTTPUnauthorized is the sentinel wrapped into every HTTP 401 error built
+// by ErrorFromHTTPResponse.
+var ErrHTTPUnauthorized = errors.New("authentication failed (HTTP 401)")
+
+// IsHTTPUnauthorizedError checks if an error came from an HTTP 401 response.
+func IsHTTPUnauthorizedError(err error) bool {
+	return errors.Is(err, ErrHTTPUnauthorized)
 }
 
 // FileExist checks if file in the given path exists
