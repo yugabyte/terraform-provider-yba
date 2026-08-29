@@ -569,6 +569,21 @@ func IsHTTPBadRequestNotFound(resp *http.Response) bool {
 	return strings.Contains(bodyStr, "Cannot find")
 }
 
+// IsReleaseNotFound reports whether a /ybdb_release endpoint response indicates
+// the release does not exist. YBA returns 400 with an "Invalid Release UUID"
+// body (Release.getOrBadRequest) instead of 404 for unknown release UUIDs, so
+// both shapes are treated as "not found". The body is taken from the error
+// chain via OpenAPIErrorBody, leaving resp.Body untouched.
+func IsReleaseNotFound(resp *http.Response, err error) bool {
+	if IsHTTPNotFound(resp) {
+		return true
+	}
+	if resp == nil || resp.StatusCode != http.StatusBadRequest {
+		return false
+	}
+	return strings.Contains(OpenAPIErrorBody(err), "Invalid Release UUID")
+}
+
 // ErrResourceNotFound is a sentinel error returned when a resource cannot be found.
 // This error is used to signal that a resource has been deleted outside of Terraform.
 // Wrap this error when returning "not found" errors from find/lookup functions.

@@ -146,6 +146,9 @@ func New() *schema.Provider {
 			// Runtime configuration: set individual YBA runtime config keys (e.g. feature flags).
 			"yba_runtime_config": runtimeconfig.ResourceRuntimeConfig(),
 
+			// YBDB software releases via the new release management (/ybdb_release) API.
+			"yba_release": releases.ResourceRelease(),
+
 			// Telemetry / observability export resources for log and metric pipelines.
 			"yba_datadog_telemetry_provider":              telemetry.ResourceDatadogTelemetryProvider(),
 			"yba_otlp_telemetry_provider":                 telemetry.ResourceOTLPTelemetryProvider(),
