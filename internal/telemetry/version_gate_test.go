@@ -64,6 +64,10 @@ func TestValidateYBAVersionPlanTime(t *testing.T) {
 		{"downstream suffix on an old build fails", "2.31.0.0-b100-ybm7",
 			block("master_logs"), "master_logs requires"},
 		{"stable downstream suffix", "2026.1.2.0-b90-ybm", block("node_agent_logs"), ""},
+		{"YBM internal build is assumed compatible", "2.31.0.2083",
+			block("master_logs"), ""},
+		{"YBM internal build on an older-looking line still passes", "2.29.0.4263",
+			block("master_logs"), ""},
 		{"unparseable version is let through", "dev-build", block("master_logs"), ""},
 		{"no version seeded skips the gate", "", block("master_logs"), ""},
 	}

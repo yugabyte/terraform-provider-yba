@@ -71,6 +71,25 @@ func TestCompareYbVersions(t *testing.T) {
 	}
 }
 
+func TestIsYBMExperimentalVersion(t *testing.T) {
+	cases := map[string]bool{
+		"2.31.0.2083":     true,
+		"2.31.0.4263":     true,
+		"2026.1.2.4263":   true,
+		"2.31.0.0":        false, // a bare release name, not a YBM counter
+		"2.31.0.0-b386":   false,
+		"2.31.0.2083-b1":  false, // a suffix means a release-line build
+		"2.31.0.2083-ybm": false,
+		"2.31.0":          false,
+		"garbage":         false,
+	}
+	for v, want := range cases {
+		if got := IsYBMExperimentalVersion(v); got != want {
+			t.Errorf("IsYBMExperimentalVersion(%q) = %v, want %v", v, got, want)
+		}
+	}
+}
+
 func TestMeetsMinimum(t *testing.T) {
 	minimum := YBAMinimumVersion{Stable: "2026.1.2.0-b84", Preview: "2.31.0.0-b386"}
 	cases := []struct {
@@ -96,6 +115,12 @@ func TestMeetsMinimum(t *testing.T) {
 		{"2.31.0.0-b395-ybm7", true, "2.31.0.0-b386"},
 		{"2.31.0.0-b100-ybm7", false, "2.31.0.0-b386"},
 		{"2026.1.2.0-b90-ybm", true, "2026.1.2.0-b84"},
+		// YBM internal builds (no -bN, nonzero fourth part) are assumed to meet
+		// every minimum: their counter is not comparable to -bN builds and their
+		// branch point is unknowable, so even an older-looking line passes.
+		{"2.31.0.2083", true, "2.31.0.0-b386"},
+		{"2.29.0.9999", true, "2.31.0.0-b386"},
+		{"2026.1.2.4263", true, "2026.1.2.0-b84"},
 	}
 	for _, c := range cases {
 		got, applied, err := MeetsMinimum(c.version, minimum)

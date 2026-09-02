@@ -15,7 +15,23 @@
 
 package utils
 
-import "fmt"
+import (
+	"fmt"
+	"regexp"
+)
+
+// ybmExperimentalVersionRegex matches YBM's internal builds of YBA
+// ("2.31.0.2083"): four numeric parts, no -bN or other suffix, and a nonzero
+// fourth part, which is YBM's internal build counter rather than a release
+// revision. A released YBA always reports a -bN build, so this shape only
+// comes from YBM's internally built YBAs.
+var ybmExperimentalVersionRegex = regexp.MustCompile(`^\d+\.\d+\.\d+\.[1-9]\d*$`)
+
+// IsYBMExperimentalVersion reports whether version is an internal YBM build
+// of YBA. See ybmExperimentalVersionRegex for the shape.
+func IsYBMExperimentalVersion(version string) bool {
+	return ybmExperimentalVersionRegex.MatchString(version)
+}
 
 // MinimumFor returns the bound that applies to version: Stable when the build
 // is on the stable line (2024.1.x, 2.20.x), Preview otherwise (2.31.x). This is
@@ -40,6 +56,14 @@ func (m YBAMinimumVersion) MinimumFor(version string) string {
 // feature gate, where the server's own error remains the backstop).
 func MeetsMinimum(version string, minimum YBAMinimumVersion) (bool, string, error) {
 	applied := minimum.MinimumFor(version)
+	// A YBM internal build's counter has no fixed relation to the -bN builds
+	// on the public lines and its branch point (with cherry-picks) is not
+	// derivable from the string. Only Yugabyte-run tooling targets these
+	// builds, so they are assumed to meet every minimum; the server's own
+	// error is the backstop.
+	if IsYBMExperimentalVersion(version) {
+		return true, applied, nil
+	}
 	cmp, err := CompareYbVersions(version, applied)
 	if err != nil {
 		return false, applied, err
