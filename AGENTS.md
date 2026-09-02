@@ -142,6 +142,11 @@ than leaving the build red.
   the error, and let a build the parser cannot read through with a
   `tflog.Warn` — the server stays the backstop. Custom builds without a
   `-bN` compare equal within their release (YBA's own rule) and pass.
+  YBM's internal builds ("2.31.0.2083": four numeric parts, no `-bN`,
+  nonzero fourth part) are assumed to meet every minimum
+  (`utils.IsYBMExperimentalVersion` short-circuits `MeetsMinimum`):
+  their counter is not comparable to `-bN` builds, their branch point
+  is unknowable, and only Yugabyte-run tooling targets them.
   Reference: `internal/telemetry/version_gate.go`.
 
 ## Use `internal/utils` First
