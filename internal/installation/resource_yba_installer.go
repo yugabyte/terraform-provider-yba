@@ -721,8 +721,8 @@ func resourceYBAInstallerDelete(
 	sshClient, err := connectSSHForDelete(ctx, user, hostIPForSSH, sshPort, pk)
 	if err != nil {
 		if errors.Is(err, errSSHHostUnreachable) {
-			// Host never answered TCP within the retry budget: it's already gone
-			// (e.g. replace_triggered_by destroyed the VM first) — nothing to clean up.
+			// Host gone (replace_triggered_by destroyed the VM first) or a tunnel
+			// to nowhere: nothing to clean up.
 			tflog.Warn(ctx, fmt.Sprintf(
 				"yba_installer: host %s unreachable after retries, treating as "+
 					"already destroyed: %v", hostIPForSSH, err))
