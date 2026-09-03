@@ -192,9 +192,14 @@ func providerConfigure(ctx context.Context, d *schema.ResourceData) (interface{}
 		return c, diags
 	}
 
-	// Enforce minimum YBA version requirement
-	// The Terraform provider requires YBA >= 2024.2.0.0-b1
-	if err := utils.CheckMinimumYBAVersion(ctx, c.YugawareClient); err != nil {
+	// Enforce the provider's minimum YBA version (>= 2024.2.0.0-b1 stable,
+	// 2.23.1.0-b1 preview). The build is cached on the client for the
+	// feature gates resources run at plan time.
+	version, err := c.AppVersion(ctx)
+	if err != nil {
+		return nil, diag.FromErr(err)
+	}
+	if err := utils.ValidateProviderMinimumVersion(version); err != nil {
 		return nil, diag.FromErr(err)
 	}
 

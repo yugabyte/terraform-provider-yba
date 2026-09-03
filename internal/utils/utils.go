@@ -266,24 +266,11 @@ func CheckValidYBAVersion(ctx context.Context, c *client.APIClient, versions YBA
 	}
 	currentVersion := r["version"]
 
-	// Check if current version is stable or preview
-	// If stable, check with stable release, else with preview release
-	var v string
-	if IsVersionStable(currentVersion) {
-		v = versions.Stable
-	} else {
-		v = versions.Preview
-	}
-
-	check, err := CompareYbVersions(currentVersion, v)
+	ok, _, err := MeetsMinimum(currentVersion, versions)
 	if err != nil {
 		return false, "", err
 	}
-	if check == 0 || check == 1 {
-		return true, currentVersion, err
-	}
-
-	return false, currentVersion, err
+	return ok, currentVersion, nil
 }
 
 // IsPreviewVersionAllowed checks if a current version (>= Min version)
@@ -975,33 +962,6 @@ func DispatchAndWait(
 	if err := WaitForTask(ctx, taskUUID, cUUID, c, timeout); err != nil {
 		return diag.FromErr(err)
 	}
-	return nil
-}
-
-// CheckMinimumYBAVersion validates that the YBA version meets the minimum requirement
-// for the Terraform provider. Returns an error if the version is below the minimum.
-// Matches yba-cli's IsCLISupported pattern in internal/client/client.go
-func CheckMinimumYBAVersion(ctx context.Context, c *client.APIClient) error {
-	allowedVersions := YBAMinimumVersion{
-		Stable:  YBATerraformProviderMinStableVersion,
-		Preview: YBATerraformProviderMinPreviewVersion,
-	}
-
-	allowed, version, err := CheckValidYBAVersion(ctx, c, allowedVersions)
-	if err != nil {
-		return err
-	}
-
-	if !allowed {
-		return fmt.Errorf(
-			"YugabyteDB Anywhere Terraform provider is not supported for YugabyteDB Anywhere "+
-				"Host version %s. Please use a version greater than or equal to "+
-				"Stable: %s, Preview: %s",
-			version,
-			allowedVersions.Stable,
-			allowedVersions.Preview)
-	}
-
 	return nil
 }
 

@@ -16,7 +16,9 @@
 package telemetry
 
 import (
+	"encoding/json"
 	"sort"
+	"strings"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
@@ -291,7 +293,7 @@ func TestFlattenRoundTripNoPhantomDiff(t *testing.T) {
 	}
 }
 
-// No blocks -> all three sections nil (disables everything), not empty structs
+// No blocks -> every section nil (disables everything), not empty structs
 // that trip YBA's "export active but no exporter" check.
 func TestEmptySectionsDisabled(t *testing.T) {
 	res := ResourceUniverseTelemetryConfig()
@@ -301,9 +303,7 @@ func TestEmptySectionsDisabled(t *testing.T) {
 	if spec.TelemetryConfig == nil {
 		t.Fatal("telemetry_config must always be set (empty disables exporters)")
 	}
-	if spec.TelemetryConfig.AuditLogs != nil ||
-		spec.TelemetryConfig.QueryLogs != nil ||
-		spec.TelemetryConfig.Metrics != nil {
+	if !telemetryConfigIsEmpty(spec.TelemetryConfig) {
 		t.Errorf("all sections must be nil when unconfigured: %+v", spec.TelemetryConfig)
 	}
 }
@@ -365,5 +365,162 @@ func TestEnabledDerivedFromBlockPresence(t *testing.T) {
 	}
 	if err := d.Set("query_logs", flatQuery); err != nil {
 		t.Fatalf("set flattened query_logs: %v", err)
+	}
+}
+
+// Server-log pipelines: raw config -> spec -> flatten -> state -> spec must be
+// stable (the perpetual-diff regression) and batching defaults must be filled.
+func TestServerLogsBuildFlattenRoundTrip(t *testing.T) {
+	res := ResourceUniverseTelemetryConfig()
+	d := schema.TestResourceDataRaw(t, res.Schema, map[string]interface{}{
+		"universe_uuid": "uni-1",
+		"master_logs": []interface{}{map[string]interface{}{
+			"min_level":               "ERROR",
+			"noise_sample_drop_ratio": 0.25,
+			"exporter": []interface{}{map[string]interface{}{
+				"exporter_uuid":   "exp-1",
+				"additional_tags": map[string]interface{}{"env": "prod"},
+			}},
+		}},
+		"tserver_logs": []interface{}{map[string]interface{}{
+			"exporter": []interface{}{map[string]interface{}{
+				"exporter_uuid":       "exp-1",
+				"send_batch_max_size": 500,
+			}},
+		}},
+		"controller_logs": []interface{}{map[string]interface{}{
+			"exporter": []interface{}{map[string]interface{}{
+				"exporter_uuid": "exp-2",
+			}},
+		}},
+	})
+
+	tc := buildExportTelemetryConfigSpec(d).TelemetryConfig
+	ml := tc.MasterLogs
+	if ml == nil || len(ml.Exporters) != 1 || ml.Exporters[0].ExporterUuid != "exp-1" {
+		t.Fatalf("master_logs spec = %+v", ml)
+	}
+	if ml.MinLevel == nil || *ml.MinLevel != "ERROR" {
+		t.Errorf("master min_level = %v want ERROR", ml.MinLevel)
+	}
+	if ml.NoiseSampleDropRatio == nil || *ml.NoiseSampleDropRatio != 0.25 {
+		t.Errorf("noise_sample_drop_ratio = %v want 0.25", ml.NoiseSampleDropRatio)
+	}
+	if e := ml.Exporters[0]; e.SendBatchMaxSize == nil || e.MemoryLimitMib == nil {
+		t.Errorf("master exporter batching defaults not filled: %+v", e)
+	}
+	tl := tc.TserverLogs
+	if tl == nil || tl.MinLevel == nil || *tl.MinLevel != "WARNING" {
+		t.Errorf("tserver min_level must default to WARNING, got %+v", tl)
+	}
+	if len(tl.Exporters) != 1 || tl.Exporters[0].SendBatchMaxSize == nil ||
+		*tl.Exporters[0].SendBatchMaxSize != 500 {
+		t.Errorf("tserver exporter override lost: %+v", tl.Exporters)
+	}
+	cl := tc.ControllerLogs
+	if cl == nil || len(cl.Exporters) != 1 || cl.Exporters[0].ExporterUuid != "exp-2" {
+		t.Errorf("controller_logs spec = %+v", cl)
+	}
+	if tc.YsqlConnMgrLogs != nil || tc.NodeAgentLogs != nil || tc.YnpLogs != nil {
+		t.Errorf("undeclared server-log pipelines must stay nil: %+v", tc)
+	}
+
+	// Round trip through flatten + state, then rebuild and compare.
+	if err := d.Set("master_logs", flattenMasterLogsSpec(ml)); err != nil {
+		t.Fatalf("set master_logs: %v", err)
+	}
+	if err := d.Set("tserver_logs", flattenTserverLogsSpec(tl)); err != nil {
+		t.Fatalf("set tserver_logs: %v", err)
+	}
+	if err := d.Set("controller_logs", flattenControllerLogsSpec(cl)); err != nil {
+		t.Fatalf("set controller_logs: %v", err)
+	}
+	rt := buildExportTelemetryConfigSpec(d).TelemetryConfig
+	if rt.MasterLogs == nil || *rt.MasterLogs.MinLevel != "ERROR" ||
+		*rt.MasterLogs.NoiseSampleDropRatio != 0.25 {
+		t.Errorf("master_logs round trip = %+v", rt.MasterLogs)
+	}
+	if a := rt.MasterLogs.Exporters; len(a) != 1 || a[0].AdditionalTags == nil ||
+		(*a[0].AdditionalTags)["env"] != "prod" {
+		t.Errorf("master exporter tags round trip = %+v", a)
+	}
+	if rt.TserverLogs == nil || *rt.TserverLogs.Exporters[0].SendBatchMaxSize != 500 {
+		t.Errorf("tserver_logs round trip = %+v", rt.TserverLogs)
+	}
+	if rt.ControllerLogs == nil || len(rt.ControllerLogs.Exporters) != 1 {
+		t.Errorf("controller_logs round trip = %+v", rt.ControllerLogs)
+	}
+}
+
+// noise_sample_drop_ratio = 0.0 means "keep every line" and must reach the API
+// as an explicit 0 — a drop-zero-values helper would silently fall back to the
+// server default of 0.99.
+func TestMasterLogsNoiseRatioZeroIsSent(t *testing.T) {
+	res := ResourceUniverseTelemetryConfig()
+	d := schema.TestResourceDataRaw(t, res.Schema, map[string]interface{}{
+		"universe_uuid": "uni-1",
+		"master_logs": []interface{}{map[string]interface{}{
+			"noise_sample_drop_ratio": 0.0,
+			"exporter": []interface{}{map[string]interface{}{
+				"exporter_uuid": "exp-1",
+			}},
+		}},
+	})
+	ml := buildExportTelemetryConfigSpec(d).TelemetryConfig.MasterLogs
+	if ml == nil || ml.NoiseSampleDropRatio == nil {
+		t.Fatalf("noise_sample_drop_ratio must be sent explicitly, got %+v", ml)
+	}
+	if *ml.NoiseSampleDropRatio != 0.0 {
+		t.Errorf("noise_sample_drop_ratio = %v want 0.0", *ml.NoiseSampleDropRatio)
+	}
+}
+
+// TestAuditLogDefaultsReachTheServer pins that the audit-log fields the
+// regenerated client made optional pointers still go on the wire when they
+// hold the schema default. YBA's bean validation rejects a request without
+// logParameterMaxSize ("must not be null"); building the pointer with
+// utils.GetInt32Pointer(0) returns nil and drops the field, which is what broke
+// TestAccLong_UniverseTelemetryConfig_GCP.
+func TestAuditLogDefaultsReachTheServer(t *testing.T) {
+	res := ResourceUniverseTelemetryConfig()
+	d := schema.TestResourceDataRaw(t, res.Schema, map[string]interface{}{
+		"universe_uuid": "uni-1",
+		"audit_logs": []interface{}{map[string]interface{}{
+			// Same shape as the long acceptance test: log_parameter_max_size
+			// is not set, so the schema default 0 applies.
+			"ysql_audit_config": []interface{}{map[string]interface{}{
+				"classes":   []interface{}{"READ", "WRITE", "DDL"},
+				"log_level": "LOG",
+			}},
+			"ycql_audit_config": []interface{}{map[string]interface{}{}},
+			"exporter": []interface{}{map[string]interface{}{
+				"exporter_uuid": "exp-1",
+			}},
+		}},
+	})
+	a := buildExportTelemetryConfigSpec(d).TelemetryConfig.AuditLogs
+	if a == nil || a.YsqlAuditConfig == nil || a.YcqlAuditConfig == nil {
+		t.Fatalf("audit sub-configs missing: %+v", a)
+	}
+	ysql, ycql := a.YsqlAuditConfig, a.YcqlAuditConfig
+	if ysql.LogParameterMaxSize == nil || *ysql.LogParameterMaxSize != 0 {
+		t.Errorf("ysql log_parameter_max_size = %v, want pointer to 0", ysql.LogParameterMaxSize)
+	}
+	if ysql.LogLevel == nil || *ysql.LogLevel != "LOG" {
+		t.Errorf("ysql log_level = %v, want pointer to LOG", ysql.LogLevel)
+	}
+	if ycql.LogLevel == nil || *ycql.LogLevel != "WARNING" {
+		t.Errorf("ycql log_level = %v, want pointer to schema default WARNING", ycql.LogLevel)
+	}
+	// The pointers only matter for what the client serializes: omitempty drops
+	// a nil pointer, so check the request body itself.
+	body, err := json.Marshal(ysql)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`"log_parameter_max_size":0`, `"log_level":"LOG"`} {
+		if !strings.Contains(string(body), want) {
+			t.Errorf("ysql audit body %s lacks %s", body, want)
+		}
 	}
 }
