@@ -18,19 +18,27 @@ package utils
 import (
 	"fmt"
 	"regexp"
+	"strconv"
 )
 
-// ybmExperimentalVersionRegex matches YBM's internal builds of YBA
-// ("2.31.0.2083"): four numeric parts, no -bN or other suffix, and a nonzero
-// fourth part, which is YBM's internal build counter rather than a release
-// revision. A released YBA always reports a -bN build, so this shape only
-// comes from YBM's internally built YBAs.
-var ybmExperimentalVersionRegex = regexp.MustCompile(`^\d+\.\d+\.\d+\.[1-9]\d*$`)
+// experimentalPatchCoreRegex captures the fourth part of a version core; see
+// IsExperimentalPatchVersion.
+var experimentalPatchCoreRegex = regexp.MustCompile(`^\d+\.\d+\.\d+\.(\d+)(-|$)`)
 
-// IsYBMExperimentalVersion reports whether version is an internal YBM build
-// of YBA. See ybmExperimentalVersionRegex for the shape.
-func IsYBMExperimentalVersion(version string) bool {
-	return ybmExperimentalVersionRegex.MatchString(version)
+// IsExperimentalPatchVersion reports whether version is a build of an
+// experimental patch branch. The release tooling reserves fourth version
+// parts above 999 for those branches: an experimental branch keeps its base
+// tag's first three parts and replaces the fourth with a patch counter
+// >= 1000, and its builds carry a normal -bN ("2.31.0.4263-b4" — the shape
+// YBM's internal YBAs report). Released lines keep small fourth parts
+// ("2025.2.2.2-b11").
+func IsExperimentalPatchVersion(version string) bool {
+	m := experimentalPatchCoreRegex.FindStringSubmatch(version)
+	if m == nil {
+		return false
+	}
+	patch, err := strconv.Atoi(m[1])
+	return err == nil && patch >= 1000
 }
 
 // MinimumFor returns the bound that applies to version: Stable when the build
@@ -56,12 +64,11 @@ func (m YBAMinimumVersion) MinimumFor(version string) string {
 // feature gate, where the server's own error remains the backstop).
 func MeetsMinimum(version string, minimum YBAMinimumVersion) (bool, string, error) {
 	applied := minimum.MinimumFor(version)
-	// A YBM internal build's counter has no fixed relation to the -bN builds
-	// on the public lines and its branch point (with cherry-picks) is not
-	// derivable from the string. Only Yugabyte-run tooling targets these
-	// builds, so they are assumed to meet every minimum; the server's own
-	// error is the backstop.
-	if IsYBMExperimentalVersion(version) {
+	// An experimental patch build's base and cherry-picks are not derivable
+	// from its version string, so no minimum can be computed for it. Only
+	// Yugabyte-run tooling (YBM) targets such builds; assume they meet every
+	// minimum and leave the server's own error as the backstop.
+	if IsExperimentalPatchVersion(version) {
 		return true, applied, nil
 	}
 	cmp, err := CompareYbVersions(version, applied)
