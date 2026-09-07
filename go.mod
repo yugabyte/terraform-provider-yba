@@ -1,6 +1,6 @@
 module github.com/yugabyte/terraform-provider-yba
 
-go 1.25.11
+go 1.26.0
 
 require (
 	github.com/bramvdbogaerde/go-scp v1.6.1
@@ -12,7 +12,7 @@ require (
 	github.com/hashicorp/terraform-plugin-sdk/v2 v2.40.1
 	github.com/yugabyte/platform-go-client v0.0.0-20260827080343-3a6860974a82
 	github.com/yugabyte/platform-go-client/v2 v2.0.0-20260827080343-3a6860974a82
-	golang.org/x/crypto v0.55.0
+	golang.org/x/crypto v0.56.0
 )
 
 require (
