@@ -1,0 +1,32 @@
+---
+page_title: "{{.Name}} {{.Type}} - {{.RenderedProviderName}}"
+description: |-
+{{ index (split (trimspace .Description) "\n\n") 0 | plainmarkdown | trimspace | prefixlines "  " }}
+---
+
+# {{.Name}} ({{.Type}})
+
+{{ .Description | trimspace }}
+
+Attach the configuration to a universe through its `encryption_at_rest` block. Enabling,
+master key rotation, universe key rotation and disabling are documented in the
+[Universe Edit Actions](../guides/universe-edit-actions.md#encryption-at-rest) guide. For the
+YugabyteDB Anywhere side, see [Enable encryption at rest](https://docs.yugabyte.com/stable/yugabyte-platform/security/enable-encryption-at-rest/).
+
+## Example Usage
+
+{{ tffile "examples/resources/yba_gcp_ear_config/resource.tf" }}
+
+{{ .SchemaMarkdown | trimspace }}
+
+## Import
+
+GCP encryption-at-rest configurations can be imported using the configuration UUID. The
+`yba_ear_config` data source returns it for a configuration name:
+
+```sh
+terraform import yba_gcp_ear_config.example <config-uuid>
+```
+
+`credentials` cannot be recovered through the API and stays empty after import; the first
+apply submits the configured key again.

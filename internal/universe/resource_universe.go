@@ -282,6 +282,7 @@ func ResourceUniverse() *schema.Resource {
 					},
 				},
 			},
+			"encryption_at_rest": encryptionAtRestSchema(),
 			"arch": {
 				Type:     schema.TypeString,
 				Optional: true,
@@ -662,6 +663,7 @@ func getClusterByType(clusters []client.Cluster, clusterType string) (client.Clu
 
 func resourceUniverseDiff() schema.CustomizeDiffFunc {
 	return customdiff.All(
+		validateEncryptionAtRestDiff,
 		customdiff.ValidateValue("clusters", func(ctx context.Context, value,
 			meta interface{}) error {
 			// Exactly one PRIMARY cluster and at most one ASYNC cluster are allowed.
@@ -2999,6 +3001,11 @@ func resourceUniverseCreate(
 		return diag.FromErr(err)
 	}
 	req := buildUniverse(d)
+	earConfig, err := encryptionAtRestCreateConfig(d)
+	if err != nil {
+		return diag.FromErr(err)
+	}
+	req.EncryptionAtRestConfig = earConfig
 	r, response, err := c.UniverseClusterMutationsAPI.CreateAllClusters(ctx, cUUID).
 		UniverseConfigureTaskParams(req).Execute()
 	if err != nil {
@@ -3050,6 +3057,10 @@ func resourceUniverseRead(
 		return diag.FromErr(err)
 	}
 	if err = d.Set("arch", u.GetArch()); err != nil {
+		return diag.FromErr(err)
+	}
+	if err = d.Set("encryption_at_rest",
+		flattenEncryptionAtRest(d, u.EncryptionAtRestConfig)); err != nil {
 		return diag.FromErr(err)
 	}
 	newClusters := flattenClusters(u.Clusters)
@@ -4823,6 +4834,12 @@ func resourceUniverseUpdate(
 	if certDiags := performCertRotations(ctx, d, meta, upgradeOption,
 		sleepAfterMasterMs, sleepAfterTServerMs); certDiags != nil {
 		return certDiags
+	}
+
+	// Encryption-at-rest changes take the universe lock like any other task
+	// and never restart nodes, so they run after every restarting operation.
+	if earDiags := performEncryptionAtRest(ctx, d, meta); earDiags != nil {
+		return earDiags
 	}
 
 	return

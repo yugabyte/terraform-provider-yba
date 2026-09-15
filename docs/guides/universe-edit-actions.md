@@ -45,6 +45,7 @@ no task is dispatched. To change one of these, destroy and recreate the universe
 | [GFlags Upgrade](#gflags-upgrade) | `specific_gflags` changes (or legacy `master_gflags` / `tserver_gflags`) | Upgrading GFlags |
 | [TLS Toggle](#tls-toggle) | `enable_node_to_node_encrypt` or `enable_client_to_node_encrypt` changes | Toggling TLS |
 | [Certificate Rotation](#certificate-rotation) | `root_ca` / `client_root_ca` changes, or a `cert_rotation` trigger changes | Updating Certificate |
+| [Encryption at Rest](#encryption-at-rest) | `encryption_at_rest` block added with `enabled = true`, or its `kms_config_uuid`, `universe_key_rotation_trigger` or `enabled` changes | Enable Encryption At Rest / Rotate Encryption Key / Disable Encryption At Rest |
 | [Systemd Upgrade](#systemd-upgrade) | `use_systemd` changes from `false` to `true` | Upgrading to Systemd |
 | [VM Image Upgrade](#vm-image-upgrade) | `image_bundle_uuid` changes | Upgrading VM Image |
 | [Resize Nodes](#resize-nodes) | `volume_size` increases with no instance type change | Resizing Node |
@@ -416,6 +417,117 @@ resource "yba_universe" "example" {
 
 ---
 
+## Encryption at Rest
+
+**Trigger:** the `encryption_at_rest` block is added with `enabled = true` (the default),
+`encryption_at_rest.kms_config_uuid` changes on an enabled universe,
+`encryption_at_rest.universe_key_rotation_trigger` changes to a new non-empty value, or
+`encryption_at_rest.enabled` changes.
+
+**Task name:** Enable Encryption At Rest, Rotate Encryption Key (master key or universe
+key), or Disable Encryption At Rest
+
+**Controlling fields:**
+
+| Field | Purpose |
+|---|---|
+| `encryption_at_rest.enabled` | Whether the universe encrypts data at rest. Defaults to `true` when the block is present; `false` disables in place. |
+| `encryption_at_rest.kms_config_uuid` | The encryption-at-rest configuration (`yba_gcp_ear_config`, or a `yba_ear_config` lookup) whose master key wraps the universe keys. Changing it rotates the master key. |
+| `encryption_at_rest.universe_key_rotation_trigger` | Any change to a new non-empty value rotates the universe key under the current master key. |
+
+**Behavior:** YugabyteDB encrypts each data file with its own data key, wraps the data keys
+with one universe key, and YugabyteDB Anywhere wraps the universe key with the master key
+that lives in the key management service named by the configuration. None of the
+operations below restart nodes; each is one YugabyteDB Anywhere task that pushes keys to
+the masters over RPC.
+
+- **Enable** — YugabyteDB Anywhere generates a universe key, wraps it with the
+  configuration's master key, sends it to every master and turns encryption on. Data
+  written from then on is encrypted; existing files are encrypted as compactions rewrite
+  them. Setting the block at universe creation encrypts from the first write.
+- **Master key rotation** — a different `kms_config_uuid` on an enabled universe. YugabyteDB
+  Anywhere unwraps every universe key with the old configuration and re-wraps it with the
+  new one. No data is rewritten and no new universe key is generated. The old configuration
+  keeps the universe's key history and cannot be deleted while the universe exists.
+- **Universe key rotation** — a changed `universe_key_rotation_trigger`. YugabyteDB Anywhere
+  generates a fresh universe key under the current master key and makes it active. New
+  files use it; earlier keys stay available for the files they encrypted. The trigger has no
+  server-side counterpart, so it is an opaque value: setting it for the first time fires,
+  changing it fires again, removing it never fires. Pair it with
+  [`time_rotating`](https://registry.terraform.io/providers/hashicorp/time/latest/docs/resources/rotating)
+  for automated rotation. A trigger that changes in the same apply that enables encryption
+  is absorbed by the enable, which already generates a fresh key.
+- **Disable** — `enabled = false`. YugabyteDB Anywhere turns encryption off in the masters
+  and keeps every key, so files encrypted earlier stay readable and the universe can be
+  re-enabled later with the same or another configuration. YugabyteDB Anywhere keeps
+  reporting the last configuration in `kms_config_uuid` after a disable.
+
+When `kms_config_uuid` and the trigger change in the same apply, the provider dispatches the
+master key rotation first, then the universe key rotation, as two sequential tasks. A trigger
+change on a universe that is being disabled in the same apply is an error.
+
+The block is read from the universe when it is omitted, like `root_ca`: removing it from
+the configuration changes nothing, and a universe imported into Terraform shows its live
+encryption state. Disabling is always the explicit `enabled = false`.
+
+~> **Note:** A configuration that a universe has used keeps that universe's key history
+until the universe is deleted, including after a disable or a master key rotation away from
+it, and YugabyteDB Anywhere refuses to delete it before then. To retire a configuration,
+create its replacement, change `kms_config_uuid` on every universe, and keep the old
+resource (or remove it from state) until the universes are gone.
+
+**Example -- enable at creation, later rotate the universe key:**
+
+```terraform
+resource "yba_gcp_ear_config" "kms" {
+  name          = "gcp-kms-prod"
+  use_gcp_iam   = true
+  location_id   = "us-east1"
+  key_ring_id   = "yugabyte-ring"
+  crypto_key_id = "yugabyte-master-key"
+}
+
+resource "yba_universe" "example" {
+  encryption_at_rest {
+    kms_config_uuid               = yba_gcp_ear_config.kms.uuid
+    universe_key_rotation_trigger = "2026-Q3" # bump to rotate the universe key
+  }
+  # ... other fields ...
+}
+```
+
+**Example -- enable on an existing universe:**
+
+A universe Terraform already manages gains the block and nothing else changes. A universe
+created in the YugabyteDB Anywhere UI is imported first; after the import its state carries the
+live encryption settings (`enabled = false`, no configuration), and the block is added on the
+next apply. The configuration can be a `yba_gcp_ear_config` resource or, as here, one created
+in the UI and found by name.
+
+```sh
+terraform import yba_universe.existing <universe-uuid>
+```
+
+```terraform
+data "yba_ear_config" "kms" {
+  name = "gcp-kms-prod"
+}
+
+resource "yba_universe" "existing" {
+  encryption_at_rest {
+    kms_config_uuid = data.yba_ear_config.kms.uuid
+  }
+  # ... the universe's existing fields, unchanged ...
+}
+```
+
+The plan shows only the block being added. The apply runs one Enable Encryption At Rest task
+with no node restarts: data written from then on is encrypted, and existing files are
+encrypted as compactions rewrite them. Adding `universe_key_rotation_trigger` in the same
+apply is absorbed by the enable; set it afterwards to rotate.
+
+---
+
 ## Systemd Upgrade
 
 **Trigger:** `clusters[*].user_intent.use_systemd` changes from `false` to `true` on the
@@ -735,6 +847,9 @@ fixed order:
    When both fire, the second task re-issues certificates the first already refreshed at
    the cost of another full rolling restart — avoid bumping a trigger in the same apply
    as a CA change.
+10. **Encryption at Rest** — enable, master key rotation or disable first, then universe
+    key rotation (if `universe_key_rotation_trigger` fired), as sequential tasks. None of
+    them restart nodes.
 
 Each task in the sequence completes (or fails fast) before the next is dispatched. A failure
 in any step causes `terraform apply` to return an error; partial changes already applied to

@@ -141,6 +141,39 @@ resource "yba_universe" "with_certificates" {
   }
   communication_ports {}
 }
+
+# Universe encrypted at rest from its first write. The encryption_at_rest block
+# names the encryption-at-rest configuration whose master key wraps the universe
+# keys; changing it later rotates the master key, bumping the trigger rotates
+# the universe key, and enabled = false turns encryption off.
+resource "yba_universe" "encrypted_at_rest" {
+  encryption_at_rest {
+    kms_config_uuid               = yba_gcp_ear_config.kms.uuid
+    universe_key_rotation_trigger = "2026-Q3" # bump to rotate the universe key
+  }
+
+  clusters {
+    cluster_type = "PRIMARY"
+    user_intent {
+      universe_name      = "<universe-name>"
+      provider           = yba_gcp_provider.gcp.id
+      region_list        = yba_gcp_provider.gcp.regions[*].uuid
+      num_nodes          = 3
+      replication_factor = 3
+      instance_type      = "<instance-type>"
+      device_info {
+        num_volumes  = 1
+        volume_size  = 375
+        storage_type = "<storage-type>"
+      }
+      use_time_sync       = true
+      enable_ysql         = true
+      yb_software_version = data.yba_release_version.release_version.id
+      access_key_code     = data.yba_provider_key.cloud_key.id
+    }
+  }
+  communication_ports {}
+}
 ```
 
 The details for configuration are available in the [YugabyteDB Anywhere Create YugabyteDB universe deployments](https://docs.yugabyte.com/stable/yugabyte-platform/create-deployments/) and [YugabyteDB Anywhere Manage YugabyteDB universe deployments](https://docs.yugabyte.com/stable/yugabyte-platform/manage-deployments/).
@@ -150,7 +183,10 @@ The details for configuration are available in the [YugabyteDB Anywhere Create Y
 ~> **Warning:** Read replica (ASYNC cluster) support is not fully documented in this provider. Configuration options for ASYNC clusters may be incomplete or subject to change. Use read replicas with caution and refer to the YugabyteDB Anywhere UI or API documentation for the full set of supported options.
 
 The full set of in-place edit operations -- triggers, behavior, and ordering rules -- is
-documented in the [Universe Edit Actions](../guides/universe-edit-actions.md) guide.
+documented in the [Universe Edit Actions](../guides/universe-edit-actions.md) guide. That
+includes encryption at rest: the `encryption_at_rest` block enables it, rotates the master
+key or the universe key, and disables it (see
+[Encryption at Rest](../guides/universe-edit-actions.md#encryption-at-rest)).
 
 ~> **Note:** `clusters[*].user_intent.access_key_code` is listed in the Optional schema group, but it is required when the cluster targets a cloud provider (`aws`, `gcp`, `azu`). It is only optional for on-prem providers whose nodes have the YBA node agent installed. The provider rejects a plan that omits it for a cloud provider at plan time.
 
@@ -172,6 +208,10 @@ documented in the [Universe Edit Actions](../guides/universe-edit-actions.md) gu
 - `communication_ports` (Block List, Max: 1) Communication ports. See the universe edit actions guide for which ports can be changed after creation and which trigger a full move when edited. (see [below for nested schema](#nestedblock--communication_ports))
 - `db_version_upgrade_options` (Block List, Max: 1) Options controlling the DB version upgrade path (UpgradeDBVersion). By default finalize = false pauses the upgrade in PreFinalize state for a monitoring phase; flip to true and re-apply to commit, or set rollback = true to revert to the previous DB version. (see [below for nested schema](#nestedblock--db_version_upgrade_options))
 - `delete_options` (Block List, Max: 1) (see [below for nested schema](#nestedblock--delete_options))
+- `encryption_at_rest` (Block List, Max: 1) Encryption at rest for the universe's data, keyed through an encryption-at-rest configuration (`yba_gcp_ear_config`, or one found with `yba_ear_config`). Set at creation to encrypt from the first write, or add to an existing universe to enable it in place. Changing `kms_config_uuid` on an enabled universe rotates the master key: YugabyteDB Anywhere re-wraps every universe key with the new configuration in one task, without restarting nodes. Changing `universe_key_rotation_trigger` rotates the universe key itself under the current master key. The block is read from the universe when omitted, so removing it changes nothing; set `enabled = false` to turn encryption off.
+
+~> **Note:** A configuration that a universe has used keeps that universe's key history until the universe is deleted, and cannot be deleted before then, even after encryption is disabled or the universe moves to another configuration. YugabyteDB Anywhere needs the history to restore backups taken under earlier keys. (see [below for nested schema](#nestedblock--encryption_at_rest))
+
 - `full_move` (Block List, Max: 1) Block controlling whether and how full-move-triggering edits are permitted. A full move provisions new nodes with the new configuration, migrates data from the old nodes, and decommissions the old nodes; it requires temporary 2x node capacity during migration and takes significantly longer than in-place operations. (see [below for nested schema](#nestedblock--full_move))
 - `node_restart_settings` (Block List, Max: 1) Controls how node restarts are performed during upgrade operations (DB version, GFlags, Systemd, Finalize, Rollback, certificate rotation). When omitted, YugabyteDB Anywhere platform defaults apply: Rolling strategy with 180000 ms (3 minutes) sleep after each master and TServer restart. (see [below for nested schema](#nestedblock--node_restart_settings))
 - `root_ca` (String) The UUID of the rootCA used for node-to-node TLS encryption. When not set, YBA creates and assigns a root CA automatically. Changing the value on an existing universe performs a root certificate rotation (a multi-phase operation with rolling node restarts; see `cert_rotation` and `node_restart_settings`). When the referenced certificate is a Terraform resource, set `lifecycle { create_before_destroy = true }` on it so the replacement exists before the old configuration is deleted.
@@ -422,6 +462,16 @@ Optional:
 - `delete_backups` (Boolean) Flag indicating whether the backups should be deleted with the universe. False by default.
 - `delete_certs` (Boolean) Flag indicating whether the certificates should be deleted with the universe. False by default.
 - `force_delete` (Boolean) Force delete universe with errors. False by default.
+
+<a id="nestedblock--encryption_at_rest"></a>
+
+### Nested Schema for `encryption_at_rest`
+
+Optional:
+
+- `enabled` (Boolean) Whether encryption at rest is enabled. `false` disables it in place through a YugabyteDB Anywhere task; data written afterwards is stored in clear.
+- `kms_config_uuid` (String) UUID of the encryption-at-rest configuration whose master key wraps the universe keys. Required when `enabled` is true. Changing it on an enabled universe rotates the master key. After disabling, YugabyteDB Anywhere keeps reporting the last configuration here.
+- `universe_key_rotation_trigger` (String) Opaque trigger for universe key rotation: changing it to any new non-empty value generates a fresh universe key under the current master key on the next apply (setting it for the first time counts). Removing it never fires. A date reads well in diffs; pair it with `time_rotating` for automated rotation. It applies to an enabled universe only, and when it changes in the same apply that enables encryption the enable itself already generates a fresh key. When it changes together with `kms_config_uuid`, the master key rotation runs first.
 
 <a id="nestedblock--full_move"></a>
 

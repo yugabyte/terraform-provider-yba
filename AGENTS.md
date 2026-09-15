@@ -171,7 +171,12 @@ Two classes:
   lifecycle-affecting change. Run with `make acctest`.
 
 Write tests that protect against the regressions another agent is most
-likely to introduce — not for coverage percentage.
+likely to introduce — not for coverage percentage. **critical: be ruthless
+about test count.** Keep only tests that exercise an interesting or
+difficult bit of logic (a decision table, a merge rule, a fallback path, a
+guard). Delete straight plumbing tests (field-to-key mapping, setters,
+error-string echoes) and anything brittle (mocked library classes, exact
+message prefixes). One test per rule; fold related assertions together.
 
 ## Git
 
