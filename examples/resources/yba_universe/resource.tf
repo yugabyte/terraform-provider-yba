@@ -128,3 +128,36 @@ resource "yba_universe" "with_certificates" {
   }
   communication_ports {}
 }
+
+# Universe encrypted at rest from its first write. The encryption_at_rest block
+# names the encryption-at-rest configuration whose master key wraps the universe
+# keys; changing it later rotates the master key, bumping the trigger rotates
+# the universe key, and enabled = false turns encryption off.
+resource "yba_universe" "encrypted_at_rest" {
+  encryption_at_rest {
+    kms_config_uuid               = yba_gcp_ear_config.kms.uuid
+    universe_key_rotation_trigger = "2026-Q3" # bump to rotate the universe key
+  }
+
+  clusters {
+    cluster_type = "PRIMARY"
+    user_intent {
+      universe_name      = "<universe-name>"
+      provider           = yba_gcp_provider.gcp.id
+      region_list        = yba_gcp_provider.gcp.regions[*].uuid
+      num_nodes          = 3
+      replication_factor = 3
+      instance_type      = "<instance-type>"
+      device_info {
+        num_volumes  = 1
+        volume_size  = 375
+        storage_type = "<storage-type>"
+      }
+      use_time_sync       = true
+      enable_ysql         = true
+      yb_software_version = data.yba_release_version.release_version.id
+      access_key_code     = data.yba_provider_key.cloud_key.id
+    }
+  }
+  communication_ports {}
+}

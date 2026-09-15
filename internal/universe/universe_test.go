@@ -310,6 +310,14 @@ func universeAzureConfigWithNodes(name string, nodes int) string {
 // enabled on each fixture YBA by yba_runtime_config.enable_custom_hooks in
 // acctest/<cloud>/yba.tf, not by the tests.
 func universeConfigWithProviderWithNodes(p string, name string, nodes int) string {
+	return universeConfigWithProviderWithNodesAndExtra(p, name, nodes, "")
+}
+
+// universeConfigWithProviderWithNodesAndExtra is universeConfigWithProviderWithNodes
+// with extra top-level universe HCL placed before communication_ports.
+func universeConfigWithProviderWithNodesAndExtra(
+	p string, name string, nodes int, extra string,
+) string {
 	return fmt.Sprintf(`
 	data "yba_provider_key" "%[1]s_key" {
   		provider_id = yba_cloud_provider.%[1]s.id
@@ -360,9 +368,10 @@ func universeConfigWithProviderWithNodes(p string, name string, nodes int) strin
 				}
     		}
   		}
+  		%[6]s
   		communication_ports {}
 	}
-`, p, name, nodes, getUniverseInstanceType(p), getUniverseStorageType(p))
+`, p, name, nodes, getUniverseInstanceType(p), getUniverseStorageType(p), extra)
 }
 
 func getUniverseStorageType(p string) string {
