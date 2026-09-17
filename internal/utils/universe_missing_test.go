@@ -50,6 +50,12 @@ func TestIsUniverseMissing(t *testing.T) {
 			false,
 		},
 		{
+			"400 unrelated sub-resource does not exist",
+			&http.Response{StatusCode: http.StatusBadRequest},
+			&HTTPResponseError{StatusCode: 400, Body: "telemetry config does not exist"},
+			false,
+		},
+		{
 			"plain error carries no body",
 			&http.Response{StatusCode: http.StatusBadRequest},
 			errors.New("Cannot find universe 5f0e4c93"),
