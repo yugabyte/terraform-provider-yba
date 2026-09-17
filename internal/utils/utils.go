@@ -805,15 +805,18 @@ func OpenAPIErrorBody(err error) string {
 // errors.Is, not substring matching. See AGENTS.md, Error & Task Handling.
 var ErrUniverseMissing = errors.New("universe does not exist")
 
-// universeMissingMarkers are the body fragments YBA uses when reporting a gone
-// universe through non-404 responses.
+// universeMissingMarkers are body fragments that, on their own, unambiguously
+// name the universe as missing.
 var universeMissingMarkers = []string{
 	"Cannot find universe",
-	"does not exist",
 }
 
-// IsUniverseMissing reports whether response/err indicate the universe is gone.
-// Fetch helpers map a true result to ErrUniverseMissing.
+// IsUniverseMissing reports whether response/err indicate the universe itself is
+// gone. Fetch helpers map a true result to ErrUniverseMissing.
+//
+// Beyond a 404 and the universeMissingMarkers fragments, a body is only treated
+// as "universe missing" when it mentions "universe" alongside "does not exist".
+// "does not exist" is also how YBA reports an unrelated missing sub-resource.
 func IsUniverseMissing(response *http.Response, err error) bool {
 	if IsHTTPNotFound(response) {
 		return true
@@ -824,7 +827,8 @@ func IsUniverseMissing(response *http.Response, err error) bool {
 			return true
 		}
 	}
-	return false
+	lower := strings.ToLower(body)
+	return strings.Contains(lower, "universe") && strings.Contains(lower, "does not exist")
 }
 
 // RetryOnUniverseTaskConflict calls fn repeatedly whenever YBA returns a 409 Conflict

@@ -174,6 +174,29 @@ func TestUniverseTelemetryConfigReadUniverseGone(t *testing.T) {
 	}
 }
 
+// Regression for a false "universe gone" positive: a Read failure whose body
+// reports an unrelated sub-resource missing (not the universe itself) must
+// surface as an error rather than clearing the ID.
+func TestUniverseTelemetryConfigReadSubResourceNotUniverseGone(t *testing.T) {
+	f := &fakeYBA{
+		getStatus: http.StatusBadRequest,
+		getBody:   `{"error":"telemetry config does not exist"}`,
+	}
+	apiClient := newDetachTestClient(t, f)
+
+	res := ResourceUniverseTelemetryConfig()
+	d := res.TestResourceData()
+	d.SetId("uni-1")
+
+	diags := resourceUniverseTelemetryConfigRead(context.Background(), d, apiClient)
+	if !diags.HasError() {
+		t.Fatal("read should surface the error, not treat it as a gone universe")
+	}
+	if d.Id() != "uni-1" {
+		t.Errorf("id must be preserved when Read errors, got %q", d.Id())
+	}
+}
+
 // Replace-not-merge regression: state has exporter A, server reports B; Read must
 // replace (exactly one exporter, = B), else a plan never converges.
 func TestUniverseTelemetryConfigReadReplacesDrift(t *testing.T) {
