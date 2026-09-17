@@ -28,6 +28,7 @@ import (
 	"github.com/yugabyte/terraform-provider-yba/internal/certificate"
 	"github.com/yugabyte/terraform-provider-yba/internal/cloud_provider"
 	"github.com/yugabyte/terraform-provider-yba/internal/customer"
+	"github.com/yugabyte/terraform-provider-yba/internal/ear"
 	"github.com/yugabyte/terraform-provider-yba/internal/installation"
 	"github.com/yugabyte/terraform-provider-yba/internal/loadbalancer"
 	"github.com/yugabyte/terraform-provider-yba/internal/onprem"
@@ -113,6 +114,7 @@ func New() *schema.Provider {
 			"yba_telemetry_provider":     telemetry.DataSourceTelemetryProvider(),
 			"yba_pa_collector":           perfadvisor.DataSourcePACollector(),
 			"yba_certificate":            certificate.DataSourceCertificate(),
+			"yba_ear_config":             ear.DataSourceEARConfig(),
 		},
 		ResourcesMap: map[string]*schema.Resource{
 			"yba_installer": installation.ResourceYBAInstaller(),
@@ -166,6 +168,10 @@ func New() *schema.Provider {
 			// Encryption-in-transit certificate configurations.
 			"yba_self_signed_certificate":   certificate.ResourceSelfSignedCertificate(),
 			"yba_custom_server_certificate": certificate.ResourceCustomServerCertificate(),
+
+			// Encryption-at-rest configurations, one resource per key management
+			// service. Universes attach one through their encryption_at_rest block.
+			"yba_gcp_ear_config": ear.ResourceGCPEARConfig(),
 		},
 		ConfigureContextFunc: providerConfigure,
 	}

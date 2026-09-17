@@ -60,3 +60,16 @@ func TestProviderInternalValidate(t *testing.T) {
 		t.Fatalf("provider schema is invalid: %v", err)
 	}
 }
+
+func TestProviderRegistersEncryptionAtRest(t *testing.T) {
+	p := New()
+	if _, ok := p.ResourcesMap["yba_gcp_ear_config"]; !ok {
+		t.Error("yba_gcp_ear_config must be registered")
+	}
+	if _, ok := p.DataSourcesMap["yba_ear_config"]; !ok {
+		t.Error("yba_ear_config data source must be registered")
+	}
+	if _, ok := p.ResourcesMap["yba_universe"].Schema["encryption_at_rest"]; !ok {
+		t.Error("yba_universe must expose the encryption_at_rest block")
+	}
+}
