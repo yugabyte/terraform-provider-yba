@@ -478,8 +478,16 @@ func ErrorFromHTTPResponse(resp *http.Response, apiError error, entity, entityNa
 	}
 	response := *resp
 
-	// Handle authentication errors with clear messages
+	// Handle authentication errors with clear messages. YBA also answers with
+	// 401/403 for application-level rejections that have nothing to do with the
+	// token (e.g. a feature disabled by runtime config, or an endpoint
+	// restricted to Super Admins), so when the body carries YBA's own message,
+	// surface that instead of blaming the token.
 	if response.StatusCode == http.StatusUnauthorized {
+		if serverMessage := errorMessageFromBody(&response); serverMessage != "" {
+			return fmt.Errorf("%s: %s, Operation: %s - YBA rejected the request "+
+				"(HTTP 401): %s", entity, entityName, operation, serverMessage)
+		}
 		return fmt.Errorf("%s: %s, Operation: %s - authentication failed (HTTP 401): "+
 			"the API token is invalid, expired, or missing. "+
 			"Please verify your 'api_token' provider configuration or "+
@@ -487,6 +495,10 @@ func ErrorFromHTTPResponse(resp *http.Response, apiError error, entity, entityNa
 			entity, entityName, operation)
 	}
 	if response.StatusCode == http.StatusForbidden {
+		if serverMessage := errorMessageFromBody(&response); serverMessage != "" {
+			return fmt.Errorf("%s: %s, Operation: %s - YBA rejected the request "+
+				"(HTTP 403): %s", entity, entityName, operation, serverMessage)
+		}
 		return fmt.Errorf("%s: %s, Operation: %s - authorization failed (HTTP 403): "+
 			"the API token does not have permission for this operation",
 			entity, entityName, operation)
@@ -507,6 +519,21 @@ func ErrorFromHTTPResponse(resp *http.Response, apiError error, entity, entityNa
 	}
 	errorString := ErrorFromResponseBody(errorBlock)
 	return fmt.Errorf("%w: %s", errorTag, errorString)
+}
+
+// errorMessageFromBody extracts YBA's structured error message from a response
+// body, or "" when the body is empty or not in YBA's error shape. It consumes
+// the response body.
+func errorMessageFromBody(resp *http.Response) string {
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return ""
+	}
+	errorBlock := YbaStructuredError{}
+	if err := json.Unmarshal(body, &errorBlock); err != nil || errorBlock.Error == nil {
+		return ""
+	}
+	return ErrorFromResponseBody(errorBlock)
 }
 
 // ErrorFromResponseBody is a function to extract error interfaces into string
