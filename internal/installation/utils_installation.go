@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"strconv"
 	"strings"
@@ -63,14 +64,22 @@ const (
 	sshConnectBudget = 30 * time.Second
 )
 
-// errSSHHostUnreachable: every attempt failed at the TCP layer within the retry
-// budget — the host never answered.
+// errSSHHostUnreachable: nothing answered SSH within the retry budget.
 var errSSHHostUnreachable = errors.New("ssh host unreachable after retries")
 
-// connectSSHForDelete dials SSH for teardown, retrying TCP-layer failures within
-// sshConnectBudget. Outcomes: (client, nil) host answered, caller must Close;
-// (nil, errSSHHostUnreachable) host gone, nothing to clean up remotely;
-// (nil, other) bad key or handshake/auth failure — host is alive, fail loudly.
+// A port-forward (Teleport, ssh -L) accepts TCP and then finds nothing behind
+// it: "ssh: handshake failed: EOF", not a *net.OpError. x/crypto/ssh formats
+// the cause with %v, hence the string check.
+func isDroppedConnection(err error) bool {
+	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+		return true
+	}
+	msg := err.Error()
+	return strings.HasSuffix(msg, ": EOF") || strings.HasSuffix(msg, ": unexpected EOF")
+}
+
+// connectSSHForDelete retries within sshConnectBudget. (nil, errSSHHostUnreachable)
+// = host gone, nothing to clean up; any other error = host alive, fail loudly.
 func connectSSHForDelete(ctx context.Context, user, ip string, port int, key string) (
 	*ssh.Client, error) {
 	signer, err := ssh.ParsePrivateKey([]byte(key))
@@ -96,11 +105,10 @@ func connectSSHForDelete(ctx context.Context, user, ip string, port int, key str
 		}
 		lastErr = dialErr
 
-		// *net.OpError = TCP-layer failure (refused, timeout, no route): host
-		// didn't answer, retry. Anything else = handshake/auth — host is alive,
-		// retrying won't help. Type check avoids OpenSSH-specific error text.
+		// Not answering (TCP failure or dropped connection): retry. Anything
+		// else is auth: host alive, retrying won't help.
 		var netErr *net.OpError
-		if !errors.As(dialErr, &netErr) {
+		if !errors.As(dialErr, &netErr) && !isDroppedConnection(dialErr) {
 			return nil, dialErr
 		}
 
