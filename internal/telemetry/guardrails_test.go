@@ -119,6 +119,31 @@ func TestValidateNoDuplicateExportersPlanTime(t *testing.T) {
 			},
 			wantErr: "audit_logs: exporter #1 has an empty exporter_uuid",
 		},
+		{
+			name: "master_logs duplicate rejected",
+			raw: map[string]interface{}{
+				"universe_uuid": "u",
+				"master_logs": []interface{}{map[string]interface{}{
+					"exporter": exp("s", "s"),
+				}},
+			},
+			wantErr: "master_logs: exporter_uuid \"s\" is listed more than once",
+		},
+		{
+			name: "same provider shared across server-log pipelines accepted",
+			raw: map[string]interface{}{
+				"universe_uuid": "u",
+				"master_logs": []interface{}{map[string]interface{}{
+					"exporter": exp("shared"),
+				}},
+				"tserver_logs": []interface{}{map[string]interface{}{
+					"exporter": exp("shared"),
+				}},
+				"controller_logs": []interface{}{map[string]interface{}{
+					"exporter": exp("shared"),
+				}},
+			},
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -296,5 +321,105 @@ func TestAuditAndQueryLogEnums(t *testing.T) {
 				t.Errorf("%s %q must be rejected", tc.name, tc.bad)
 			}
 		})
+	}
+}
+
+// Every telemetryPipelines entry must exist in the schema, and vice versa every
+// pipeline block must be registered there — the guardrails and the claim
+// fingerprint only see pipelines listed in that slice.
+func TestTelemetryPipelinesMatchSchema(t *testing.T) {
+	res := ResourceUniverseTelemetryConfig()
+	registered := map[string]bool{}
+	for _, p := range telemetryPipelines {
+		registered[p.label] = true
+		s, ok := res.Schema[p.label]
+		if !ok {
+			t.Errorf("telemetryPipelines entry %q has no schema block", p.label)
+			continue
+		}
+		elem, ok := s.Elem.(*schema.Resource)
+		if !ok || elem.Schema["exporter"] == nil {
+			t.Errorf("pipeline %q must carry an exporter block", p.label)
+		}
+	}
+	for name, s := range res.Schema {
+		if name == "universe_uuid" || name == "upgrade_options" {
+			continue
+		}
+		if s.MaxItems != 1 {
+			t.Errorf("pipeline %q must set MaxItems=1", name)
+		}
+		if !registered[name] {
+			t.Errorf("schema block %q is missing from telemetryPipelines — the "+
+				"duplicate-exporter guardrail and claim fingerprint skip it", name)
+		}
+	}
+}
+
+func TestServerLogsEnumsAndDefaults(t *testing.T) {
+	res := ResourceUniverseTelemetryConfig()
+	masterElem := res.Schema["master_logs"].Elem.(*schema.Resource)
+	tserverElem := res.Schema["tserver_logs"].Elem.(*schema.Resource)
+
+	for name, s := range map[string]*schema.Schema{
+		"master min_level":  masterElem.Schema["min_level"],
+		"tserver min_level": tserverElem.Schema["min_level"],
+	} {
+		if s.ValidateFunc == nil {
+			t.Fatalf("%s must have a ValidateFunc", name)
+		}
+		for _, ok := range []string{"INFO", "WARNING", "ERROR", "FATAL"} {
+			if _, errs := s.ValidateFunc(ok, name); len(errs) > 0 {
+				t.Errorf("%s %q should be valid, got %v", name, ok, errs)
+			}
+		}
+		if _, errs := s.ValidateFunc("DEBUG", name); len(errs) == 0 {
+			t.Errorf("%s \"DEBUG\" must be rejected", name)
+		}
+	}
+
+	// Defaults track the YBA API via the generated client: master exports INFO+,
+	// tserver defaults to WARNING+ (INFO is very high volume).
+	if got := masterElem.Schema["min_level"].Default; got != "INFO" {
+		t.Errorf("master_logs min_level default = %v want INFO", got)
+	}
+	if got := tserverElem.Schema["min_level"].Default; got != "WARNING" {
+		t.Errorf("tserver_logs min_level default = %v want WARNING", got)
+	}
+
+	noise := masterElem.Schema["noise_sample_drop_ratio"]
+	if noise == nil || noise.ValidateFunc == nil {
+		t.Fatal("master_logs noise_sample_drop_ratio must exist with a ValidateFunc")
+	}
+	if got := noise.Default; got != 0.99 {
+		t.Errorf("noise_sample_drop_ratio default = %v want 0.99", got)
+	}
+	if _, errs := noise.ValidateFunc(1.5, "noise_sample_drop_ratio"); len(errs) == 0 {
+		t.Error("noise_sample_drop_ratio 1.5 must be rejected")
+	}
+	if _, errs := noise.ValidateFunc(0.0, "noise_sample_drop_ratio"); len(errs) > 0 {
+		t.Errorf("noise_sample_drop_ratio 0.0 must be accepted, got %v", errs)
+	}
+	if tserverElem.Schema["noise_sample_drop_ratio"] != nil {
+		t.Error("noise_sample_drop_ratio is master-only; tserver_logs must not have it")
+	}
+
+	// Server-log exporters carry the batching fields with client-sourced defaults.
+	exporterElem := masterElem.Schema["exporter"].Elem.(*schema.Resource)
+	for field, want := range map[string]interface{}{
+		"send_batch_max_size":                 1000,
+		"send_batch_size":                     100,
+		"send_batch_timeout_seconds":          10,
+		"memory_limit_mib":                    2048,
+		"memory_limit_check_interval_seconds": 10,
+	} {
+		s, ok := exporterElem.Schema[field]
+		if !ok {
+			t.Errorf("server-log exporter must carry %q", field)
+			continue
+		}
+		if s.Default != want {
+			t.Errorf("server-log exporter %s default = %v want %v", field, s.Default, want)
+		}
 	}
 }

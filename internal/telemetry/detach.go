@@ -21,12 +21,12 @@ package telemetry
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-log/tflog"
-	client "github.com/yugabyte/platform-go-client"
 	clientv2 "github.com/yugabyte/platform-go-client/v2"
 
 	"github.com/yugabyte/terraform-provider-yba/internal/api"
@@ -38,65 +38,18 @@ type universeRef struct {
 	Name string
 }
 
-const clusterTypePrimary = "PRIMARY"
-
-// primaryUserIntent returns the primary cluster's UserIntent. Selected by
-// clusterType, not index — YBA doesn't guarantee the primary is clusters[0].
-func primaryUserIntent(u *client.UniverseResp) *client.UserIntent {
-	if u == nil {
-		return nil
-	}
-	details := u.GetUniverseDetails()
-	if len(details.Clusters) == 0 {
-		return nil
-	}
-	for i := range details.Clusters {
-		if details.Clusters[i].ClusterType == clusterTypePrimary {
-			ui := details.Clusters[i].UserIntent
-			return &ui
-		}
-	}
-	ui := details.Clusters[0].UserIntent
-	return &ui
-}
-
-// universeReferencesProvider reports whether any exporter in the primary cluster's
-// audit/query/metrics config uses providerUUID. Scoped to the primary cluster to
-// match YBA's isProviderInUse (the "as it is in use" delete gate).
-func universeReferencesProvider(u *client.UniverseResp, providerUUID string) bool {
-	intent := primaryUserIntent(u)
-	if intent == nil {
-		return false
-	}
-	if a := intent.AuditLogConfig; a != nil {
-		for _, e := range a.UniverseLogsExporterConfig {
-			if e.ExporterUuid == providerUUID {
-				return true
-			}
-		}
-	}
-	if q := intent.QueryLogConfig; q != nil {
-		for _, e := range q.UniverseLogsExporterConfig {
-			if e.ExporterUuid == providerUUID {
-				return true
-			}
-		}
-	}
-	if m := intent.MetricsExportConfig; m != nil {
-		for _, e := range m.UniverseMetricsExporterConfig {
-			if e.ExporterUuid == providerUUID {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-// detachTelemetryProviderFromUniverses rewrites every universe that references
-// providerUUID, resubmitting its telemetry spec with the provider filtered out,
-// and blocks until each upgrade task finishes. Called before the YBA provider
-// delete so a destroy-and-recreate doesn't race YBA's "as it is in use" check.
-// No-op (empty slice) when nothing references it; universes are never destroyed.
+// detachTelemetryProviderFromUniverses rewrites every universe whose telemetry
+// config references providerUUID, resubmitting the config with that provider's
+// exporters filtered out, and blocks until each upgrade task finishes. Called
+// before the YBA provider delete so a destroy-and-recreate doesn't race YBA's
+// "as it is in use" check. No-op (empty slice) when nothing references it;
+// universes are never destroyed.
+//
+// Reference detection and the rewrite both go through the v2
+// export-telemetry-configs GET, which covers every pipeline (audit, query,
+// metrics, and the server-log pipelines) and reads the primary cluster's
+// config — the same scope as YBA's isProviderInUse delete gate. The v1
+// UserIntent no longer carries the telemetry sections.
 func detachTelemetryProviderFromUniverses(
 	ctx context.Context, apiClient *api.APIClient, providerUUID string,
 	timeout time.Duration,
@@ -111,15 +64,34 @@ func detachTelemetryProviderFromUniverses(
 	var detached []universeRef
 	for i := range universes {
 		u := universes[i]
-		if !universeReferencesProvider(&u, providerUUID) {
+		ref := universeRef{UUID: u.GetUniverseUUID(), Name: u.GetName()}
+
+		config, err := getExportTelemetryConfig(
+			ctx, apiClient, ref.UUID, "Detach - Get Config")
+		if err != nil {
+			if errors.Is(err, utils.ErrUniverseMissing) {
+				// The universe disappeared between the list and this read.
+				continue
+			}
+			return detached, err
+		}
+
+		filtered, changed := filterTelemetryConfig(config, providerUUID)
+		if !changed {
 			continue
 		}
-		ref := universeRef{UUID: u.GetUniverseUUID(), Name: u.GetName()}
 		tflog.Info(ctx, fmt.Sprintf(
 			"Detaching telemetry provider %s from universe %s (%s)",
 			providerUUID, ref.Name, ref.UUID))
 
-		spec := buildDetachSpec(&u, providerUUID)
+		// Rolling upgrade with YBA's default sleeps — the telemetry provider
+		// resources have no upgrade_options block, so we don't hard-code a sleep.
+		spec := clientv2.ExportTelemetryConfigSpec{
+			TelemetryConfig: &filtered,
+			UpgradeOptions: &clientv2.ExportTelemetryUpgradeOptions{
+				RollingUpgrade: utils.GetBoolPointer(true),
+			},
+		}
 
 		// Retry on a YBA 409 (a ConfigureExportTelemetryConfig task left in
 		// flight by a prior interrupted apply) instead of failing the destroy;
@@ -168,187 +140,118 @@ func detachTelemetryProviderFromUniverses(
 	return detached, nil
 }
 
-// buildDetachSpec rebuilds a universe's telemetry config as a v2 spec, omitting
-// any exporter matching providerUUID. A section with no remaining content is
-// dropped so the endpoint disables it (YBA's "empty/missing section == disable").
-func buildDetachSpec(
-	u *client.UniverseResp,
-	providerUUID string,
-) clientv2.ExportTelemetryConfigSpec {
-	tc := clientv2.TelemetryConfig{}
-	if intent := primaryUserIntent(u); intent != nil {
-		if a := intent.AuditLogConfig; a != nil {
-			if spec := auditConfigToSpec(a, providerUUID); spec != nil {
-				tc.AuditLogs = spec
-			}
-		}
-		if q := intent.QueryLogConfig; q != nil {
-			if spec := queryConfigToSpec(q, providerUUID); spec != nil {
-				tc.QueryLogs = spec
-			}
-		}
-		if m := intent.MetricsExportConfig; m != nil {
-			if spec := metricsConfigToSpec(m, providerUUID); spec != nil {
-				tc.Metrics = spec
-			}
-		}
-	}
-	// Rolling upgrade with YBA's default sleeps — the telemetry provider
-	// resources have no upgrade_options block, so we don't hard-code a sleep.
-	upgrade := clientv2.ExportTelemetryUpgradeOptions{
-		RollingUpgrade: utils.GetBoolPointer(true),
-	}
-	return clientv2.ExportTelemetryConfigSpec{
-		TelemetryConfig: &tc,
-		UpgradeOptions:  &upgrade,
-	}
-}
-
-// auditConfigToSpec converts a v1 AuditLogConfig to a v2 spec, dropping exporters
-// that reference skipUUID. Returns nil when no exporters remain, so the caller
-// drops the section and disables audit export.
-func auditConfigToSpec(a *client.AuditLogConfig, skipUUID string) *clientv2.AuditLogsTelemetrySpec {
-	exporters := make([]clientv2.UniverseLogsExporterConfig, 0, len(a.UniverseLogsExporterConfig))
-	for _, e := range a.UniverseLogsExporterConfig {
-		if e.ExporterUuid == skipUUID {
+// filterExporters returns in minus the entries whose UUID (per the accessor)
+// matches skip, and whether any entry was removed.
+func filterExporters[T any](in []T, uuid func(T) string, skip string) ([]T, bool) {
+	kept := make([]T, 0, len(in))
+	for _, e := range in {
+		if uuid(e) == skip {
 			continue
 		}
-		entry := clientv2.UniverseLogsExporterConfig{ExporterUuid: e.ExporterUuid}
-		if len(e.AdditionalTags) > 0 {
-			tags := map[string]string{}
-			for k, v := range e.AdditionalTags {
-				tags[k] = v
-			}
-			entry.AdditionalTags = &tags
-		}
-		exporters = append(exporters, entry)
+		kept = append(kept, e)
 	}
-	if len(exporters) == 0 {
-		return nil
-	}
-	out := &clientv2.AuditLogsTelemetrySpec{Exporters: exporters}
-	if y := a.YsqlAuditConfig; y != nil {
-		out.YsqlAuditConfig = &clientv2.YSQLAuditConfig{
-			Enabled:             y.Enabled,
-			Classes:             append([]string{}, y.Classes...),
-			LogCatalog:          y.LogCatalog,
-			LogClient:           y.LogClient,
-			LogLevel:            y.LogLevel,
-			LogParameter:        y.LogParameter,
-			LogParameterMaxSize: y.LogParameterMaxSize,
-			LogRelation:         y.LogRelation,
-			LogRows:             y.LogRows,
-			LogStatement:        y.LogStatement,
-			LogStatementOnce:    y.LogStatementOnce,
-		}
-	}
-	if y := a.YcqlAuditConfig; y != nil {
-		out.YcqlAuditConfig = &clientv2.YCQLAuditConfig{
-			Enabled:            y.Enabled,
-			LogLevel:           y.LogLevel,
-			IncludedCategories: append([]string{}, y.IncludedCategories...),
-			ExcludedCategories: append([]string{}, y.ExcludedCategories...),
-			IncludedKeyspaces:  append([]string{}, y.IncludedKeyspaces...),
-			ExcludedKeyspaces:  append([]string{}, y.ExcludedKeyspaces...),
-			IncludedUsers:      append([]string{}, y.IncludedUsers...),
-			ExcludedUsers:      append([]string{}, y.ExcludedUsers...),
-		}
-	}
-	return out
+	return kept, len(kept) != len(in)
 }
 
-func queryConfigToSpec(q *client.QueryLogConfig, skipUUID string) *clientv2.QueryLogsTelemetrySpec {
-	exporters := make(
-		[]clientv2.UniverseQueryLogsExporterConfig,
-		0,
-		len(q.UniverseLogsExporterConfig),
-	)
-	for _, e := range q.UniverseLogsExporterConfig {
-		if e.ExporterUuid == skipUUID {
-			continue
-		}
-		entry := clientv2.UniverseQueryLogsExporterConfig{
-			ExporterUuid:                    e.ExporterUuid,
-			SendBatchMaxSize:                e.SendBatchMaxSize,
-			SendBatchSize:                   e.SendBatchSize,
-			SendBatchTimeoutSeconds:         e.SendBatchTimeoutSeconds,
-			MemoryLimitMib:                  e.MemoryLimitMib,
-			MemoryLimitCheckIntervalSeconds: e.MemoryLimitCheckIntervalSeconds,
-		}
-		if len(e.AdditionalTags) > 0 {
-			tags := map[string]string{}
-			for k, v := range e.AdditionalTags {
-				tags[k] = v
-			}
-			entry.AdditionalTags = &tags
-		}
-		exporters = append(exporters, entry)
+// filterTelemetryConfig returns a copy of tc with every exporter referencing
+// skipUUID removed, and reports whether anything was removed. A pipeline left
+// with no exporters is dropped so the endpoint disables it (YBA's
+// "empty/missing section == disable"); untouched pipelines are carried over
+// verbatim so a detach never alters unrelated export config.
+func filterTelemetryConfig(
+	tc *clientv2.TelemetryConfig, skipUUID string,
+) (clientv2.TelemetryConfig, bool) {
+	out := clientv2.TelemetryConfig{}
+	if tc == nil {
+		return out, false
 	}
-	if len(exporters) == 0 {
-		return nil
-	}
-	out := &clientv2.QueryLogsTelemetrySpec{Exporters: exporters}
-	if y := q.YsqlQueryLogConfig; y != nil {
-		out.YsqlQueryLogConfig = &clientv2.YSQLQueryLogConfig{
-			Enabled:                 y.Enabled,
-			LogStatement:            y.LogStatement,
-			LogMinErrorStatement:    y.LogMinErrorStatement,
-			LogErrorVerbosity:       y.LogErrorVerbosity,
-			LogDuration:             y.LogDuration,
-			DebugPrintPlan:          y.DebugPrintPlan,
-			LogConnections:          y.LogConnections,
-			LogDisconnections:       y.LogDisconnections,
-			LogMinDurationStatement: y.LogMinDurationStatement,
-		}
-	}
-	return out
-}
+	changed := false
 
-func metricsConfigToSpec(
-	m *client.MetricsExportConfig,
-	skipUUID string,
-) *clientv2.MetricsTelemetrySpec {
-	exporters := make(
-		[]clientv2.UniverseMetricsExporterConfig,
-		0,
-		len(m.UniverseMetricsExporterConfig),
-	)
-	for _, e := range m.UniverseMetricsExporterConfig {
-		if e.ExporterUuid == skipUUID {
-			continue
+	logsUUID := func(e clientv2.UniverseLogsExporterConfig) string { return e.ExporterUuid }
+	queryUUID := func(e clientv2.UniverseQueryLogsExporterConfig) string { return e.ExporterUuid }
+	metricsUUID := func(e clientv2.UniverseMetricsExporterConfig) string { return e.ExporterUuid }
+	serverUUID := func(e clientv2.UniverseServerLogsExporterConfig) string { return e.ExporterUuid }
+
+	if a := tc.AuditLogs; a != nil {
+		kept, removed := filterExporters(a.Exporters, logsUUID, skipUUID)
+		changed = changed || removed
+		if len(kept) > 0 {
+			spec := *a
+			spec.Exporters = kept
+			out.AuditLogs = &spec
 		}
-		entry := clientv2.UniverseMetricsExporterConfig{
-			ExporterUuid:                    e.ExporterUuid,
-			SendBatchMaxSize:                e.SendBatchMaxSize,
-			SendBatchSize:                   e.SendBatchSize,
-			SendBatchTimeoutSeconds:         e.SendBatchTimeoutSeconds,
-			MemoryLimitMib:                  e.MemoryLimitMib,
-			MemoryLimitCheckIntervalSeconds: e.MemoryLimitCheckIntervalSeconds,
-			MetricsPrefix:                   e.MetricsPrefix,
+	}
+	if q := tc.QueryLogs; q != nil {
+		kept, removed := filterExporters(q.Exporters, queryUUID, skipUUID)
+		changed = changed || removed
+		if len(kept) > 0 {
+			spec := *q
+			spec.Exporters = kept
+			out.QueryLogs = &spec
 		}
-		if len(e.AdditionalTags) > 0 {
-			tags := map[string]string{}
-			for k, v := range e.AdditionalTags {
-				tags[k] = v
-			}
-			entry.AdditionalTags = &tags
+	}
+	if m := tc.Metrics; m != nil {
+		kept, removed := filterExporters(m.Exporters, metricsUUID, skipUUID)
+		changed = changed || removed
+		if len(kept) > 0 {
+			spec := *m
+			spec.Exporters = kept
+			out.Metrics = &spec
 		}
-		exporters = append(exporters, entry)
 	}
-	if len(exporters) == 0 {
-		return nil
+	if s := tc.MasterLogs; s != nil {
+		kept, removed := filterExporters(s.Exporters, serverUUID, skipUUID)
+		changed = changed || removed
+		if len(kept) > 0 {
+			spec := *s
+			spec.Exporters = kept
+			out.MasterLogs = &spec
+		}
 	}
-	out := &clientv2.MetricsTelemetrySpec{
-		Exporters:             exporters,
-		ScrapeIntervalSeconds: m.ScrapeIntervalSeconds,
-		ScrapeTimeoutSeconds:  m.ScrapeTimeoutSeconds,
-		CollectionLevel:       m.CollectionLevel,
+	if s := tc.TserverLogs; s != nil {
+		kept, removed := filterExporters(s.Exporters, serverUUID, skipUUID)
+		changed = changed || removed
+		if len(kept) > 0 {
+			spec := *s
+			spec.Exporters = kept
+			out.TserverLogs = &spec
+		}
 	}
-	for _, t := range m.ScrapeConfigTargets {
-		out.ScrapeConfigTargets = append(
-			out.ScrapeConfigTargets,
-			clientv2.ScrapeConfigTargetType(t),
-		)
+	if s := tc.YsqlConnMgrLogs; s != nil {
+		kept, removed := filterExporters(s.Exporters, serverUUID, skipUUID)
+		changed = changed || removed
+		if len(kept) > 0 {
+			spec := *s
+			spec.Exporters = kept
+			out.YsqlConnMgrLogs = &spec
+		}
 	}
-	return out
+	if s := tc.NodeAgentLogs; s != nil {
+		kept, removed := filterExporters(s.Exporters, serverUUID, skipUUID)
+		changed = changed || removed
+		if len(kept) > 0 {
+			spec := *s
+			spec.Exporters = kept
+			out.NodeAgentLogs = &spec
+		}
+	}
+	if s := tc.YnpLogs; s != nil {
+		kept, removed := filterExporters(s.Exporters, serverUUID, skipUUID)
+		changed = changed || removed
+		if len(kept) > 0 {
+			spec := *s
+			spec.Exporters = kept
+			out.YnpLogs = &spec
+		}
+	}
+	if s := tc.ControllerLogs; s != nil {
+		kept, removed := filterExporters(s.Exporters, serverUUID, skipUUID)
+		changed = changed || removed
+		if len(kept) > 0 {
+			spec := *s
+			spec.Exporters = kept
+			out.ControllerLogs = &spec
+		}
+	}
+	return out, changed
 }
