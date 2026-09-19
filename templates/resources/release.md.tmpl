@@ -1,0 +1,32 @@
+---
+page_title: "{{.Name}} {{.Type}} - {{.RenderedProviderName}}"
+description: |-
+{{ index (split (trimspace .Description) "\n\n") 0 | plainmarkdown | trimspace | prefixlines "  " }}
+---
+
+# {{.Name}} ({{.Type}})
+
+{{ .Description | trimspace }}
+
+Select releases by architecture with the `yba_release_version` data source's
+`deployment_type` filter, for example to pick the latest release that ships an
+aarch64 artifact.
+
+## Example Usage
+
+{{ tffile "examples/resources/yba_release/resource.tf" }}
+
+{{ .SchemaMarkdown | trimspace }}
+
+## Import
+
+Releases can be imported using the release UUID:
+
+```sh
+terraform import yba_release.ybdb_release <release-uuid>
+```
+
+`local_file` and `sha256` cannot be recovered through the API and stay empty after
+import. Declaring `local_file` on an imported artifact block plans a re-upload of
+that file on the next apply. The artifact block order after import follows
+YugabyteDB Anywhere, not the configuration.

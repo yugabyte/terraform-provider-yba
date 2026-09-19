@@ -155,7 +155,7 @@ it is not a `go.mod` dependency and is not used in code.
 
 For YBA endpoints not yet in the generated client, add a typed wrapper to
 `internal/api` on the `VanillaClient` type (`internal/api/api.go`) — see
-`internal/api/releases.go` / `internal/api/update_options.go` for the
+`internal/api/release_upload.go` / `internal/api/update_options.go` for the
 reference shape.
 
 ## Tests

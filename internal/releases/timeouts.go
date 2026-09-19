@@ -15,34 +15,12 @@
 
 package releases
 
-import (
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+import "time"
+
+// Create/Update may stream multi-GB release tarballs to the YBA node and then
+// wait while YBA synchronously hashes and untars each one, hence 3h.
+const (
+	releaseCreateTimeout = 3 * time.Hour
+	releaseUpdateTimeout = 3 * time.Hour
+	releaseDeleteTimeout = 1 * time.Hour
 )
-
-// PackageSchema is used to hold the package path and corresponding architecture
-func PackageSchema() *schema.Schema {
-	return &schema.Schema{
-		Type:        schema.TypeList,
-		ForceNew:    true,
-		Optional:    true,
-		Computed:    true,
-		Description: "Package path and architecture.",
-		Elem: &schema.Resource{
-			Schema: map[string]*schema.Schema{
-				"path": {
-					Type:        schema.TypeString,
-					Computed:    true,
-					Optional:    true,
-					Description: "Path.",
-				},
-				"arch": {
-					Type:        schema.TypeString,
-					Computed:    true,
-					Optional:    true,
-					Description: "Architecture.",
-				},
-			},
-		},
-	}
-
-}
