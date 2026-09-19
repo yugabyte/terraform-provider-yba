@@ -60,7 +60,7 @@ resource "yba_customer_resource" "customer" {
 
 ### Read-Only
 
-- `api_token` (String, Sensitive) API token for the customer. This is generated after registration and login. Stored in Terraform state - use an encrypted backend for security.
+- `api_token` (String, Sensitive) API token for the customer. This is generated after registration and login. If the token becomes invalid, the provider logs in again with `email` and `password` during refresh and updates this value. Stored in Terraform state - use an encrypted backend for security.
 - `cuuid` (String) Customer UUID.
 - `id` (String) The ID of this resource.
 

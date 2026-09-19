@@ -88,7 +88,8 @@ func ResourceCustomer() *schema.Resource {
 				Computed:  true,
 				Sensitive: true,
 				Description: "API token for the customer. This is generated after registration " +
-					"and login. " +
+					"and login. If the token becomes invalid, the provider logs in again with " +
+					"`email` and `password` during refresh and updates this value. " +
 					"Stored in Terraform state - use an encrypted backend for security.",
 			},
 			"cuuid": {
@@ -177,9 +178,26 @@ func resourceCustomerRead(
 		apiKey = storedToken
 	}
 
+	// NewAPIClient validates the key via GetSessionInfo, so a token invalidated
+	// outside Terraform surfaces here as a 401. Re-login with the credentials in
+	// state so the token self-heals.
 	newAPI, err := api.NewAPIClient(vc.EnableHTTPS, vc.Host, apiKey)
 	if err != nil {
-		return diag.FromErr(err)
+		email := d.Get("email").(string)
+		password := d.Get("password").(string)
+		if !utils.IsHTTPUnauthorizedError(err) || email == "" || password == "" {
+			return diag.FromErr(err)
+		}
+		tflog.Warn(ctx, "Stored API token rejected (HTTP 401), logging in again")
+		freshToken, loginErr := refreshAPIToken(ctx, vc, email, password)
+		if loginErr != nil {
+			return diag.FromErr(loginErr)
+		}
+		newAPI, err = api.NewAPIClient(vc.EnableHTTPS, vc.Host, freshToken)
+		if err != nil {
+			return diag.FromErr(err)
+		}
+		storedToken = freshToken
 	}
 	newClient := newAPI.YugawareClient
 
@@ -211,7 +229,8 @@ func resourceCustomerRead(
 		return diag.FromErr(err)
 	}
 
-	// Keep the existing API token (don't overwrite with provider key)
+	// storedToken is this user's token (possibly refreshed above) — never write
+	// the provider key into api_token.
 	if storedToken != "" {
 		if err = d.Set("api_token", storedToken); err != nil {
 			return diag.FromErr(err)
@@ -220,6 +239,32 @@ func resourceCustomerRead(
 
 	d.SetId(*r.CustomerUUID)
 	return diags
+}
+
+// refreshAPIToken mints a fresh API token via ApiLogin, the same call
+// resourceCustomerCreate makes.
+func refreshAPIToken(
+	ctx context.Context,
+	vc *api.VanillaClient,
+	email, password string) (string, error) {
+	// Empty API key skips NewAPIClient's session-info check; ApiLogin needs no auth.
+	unauthAPI, err := api.NewAPIClient(vc.EnableHTTPS, vc.Host, "")
+	if err != nil {
+		return "", err
+	}
+	loginResp, response, err := unauthAPI.YugawareClient.SessionManagementAPI.ApiLogin(ctx).
+		CustomerLoginFormData(client.CustomerLoginFormData{
+			Email:    email,
+			Password: password,
+		}).Execute()
+	if err != nil {
+		return "", utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
+			"Customer", "Read - Re-login")
+	}
+	if loginResp.ApiToken == nil || loginResp.GetApiToken() == "" {
+		return "", errors.New("re-login response did not include an API token")
+	}
+	return loginResp.GetApiToken(), nil
 }
 
 func resourceCustomerUpdate(
