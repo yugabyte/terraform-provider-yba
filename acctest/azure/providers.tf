@@ -67,3 +67,16 @@ provider "yba" {
   alias = "bootstrap"
   host  = azurerm_public_ip.yba.ip_address
 }
+
+# Authenticated provider for post-install settings on the standing YBA (the
+# runtime config keys in yba.tf). Its token is minted by yba_customer_resource,
+# and Terraform configures providers before any resource is created, so on a
+# first-ever bootstrap this alias cannot work in the same apply: run
+# `terraform apply -target=yba_customer_resource.customer` first, then a full
+# apply. On a standing fixture the token is already in state and one apply
+# suffices.
+provider "yba" {
+  alias     = "admin"
+  host      = azurerm_public_ip.yba.ip_address
+  api_token = yba_customer_resource.customer.api_token
+}

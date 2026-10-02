@@ -90,6 +90,12 @@ make -C acctest apply-gcp     # create or update a fixture (gcp / azure / aws)
 make -C acctest destroy-gcp   # tear it down
 ```
 
+Besides the install, each fixture sets the YBA runtime config keys the test
+suite relies on (`yba_runtime_config` resources in `yba.tf`, through the
+authenticated `yba.admin` provider alias). On a first-ever apply that alias has
+no token yet, so apply the customer first:
+`terraform apply -target=yba_customer_resource.customer`, then a full apply.
+
 For **gcp**, `apply-gcp` and `destroy-gcp` open their own IAP tunnels (API plus
 an SSH leg for the YBA install and destroy-time `yba-ctl clean` — the VM
 accepts nothing else). This works even on a first-ever apply: the tunnel legs
