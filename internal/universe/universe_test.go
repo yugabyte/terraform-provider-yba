@@ -228,6 +228,14 @@ func universeAzureConfigWithNodes(name string, nodes int) string {
 }
 
 func universeConfigWithProviderWithNodes(p string, name string, nodes int) string {
+	return universeConfigWithProviderWithNodesAndExtra(p, name, nodes, "")
+}
+
+// universeConfigWithProviderWithNodesAndExtra is universeConfigWithProviderWithNodes
+// with extra top-level universe HCL placed before communication_ports.
+func universeConfigWithProviderWithNodesAndExtra(
+	p string, name string, nodes int, extra string,
+) string {
 	return fmt.Sprintf(`
 	data "yba_provider_key" "%s_key" {
   		provider_id = yba_cloud_provider.%s.id
@@ -268,10 +276,11 @@ func universeConfigWithProviderWithNodes(p string, name string, nodes int) strin
 				}
     		}
   		}
+  		%s
   		communication_ports {}
 	}
 `, p, p, p, p, name, p, p, nodes, getUniverseInstanceType(p),
-		getUniverseStorageType(p), p)
+		getUniverseStorageType(p), p, extra)
 }
 
 func getUniverseStorageType(p string) string {
