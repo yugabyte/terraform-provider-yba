@@ -182,7 +182,8 @@ func resourceCustomServerCertificateRead(
 	d *schema.ResourceData,
 	meta interface{}) diag.Diagnostics {
 
-	// The server certificate and key are never returned by the API and remain
-	// state-only; only the root CA is read back.
-	return readCertificateResource(ctx, d, meta, "root_certificate")
+	// Server certificate and key never come back from the API and stay
+	// state-only. The download is YBA's stored bundle (server cert prepended),
+	// so it is filtered to the CA chain root_certificate holds.
+	return readCertificateResource(ctx, d, meta, "root_certificate", caCertsPEM)
 }

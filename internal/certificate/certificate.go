@@ -21,6 +21,7 @@ package certificate
 import (
 	"bytes"
 	"context"
+	"crypto/x509"
 	"encoding/pem"
 	"fmt"
 	"strings"
@@ -93,6 +94,42 @@ func suppressPEMContentDiff(k, old, new string, d *schema.ResourceData) bool {
 		}
 	}
 	return true
+}
+
+// caCertsPEM reduces a downloaded bundle to its CA certificates, in order.
+// YBA's upload validation prepends the server certificate(s) to a
+// CustomServerCert's CA list in place (CertificateHelper.verifyCertificateConfig),
+// so /download returns server+CA while root_certificate holds the CA chain
+// only: stored verbatim it diffs forever and plans a replacement the in-use
+// guard blocks. YBA requires CA=true on every uploaded root member, so basic
+// constraints recover the chain exactly. A bundle that does not fully parse,
+// or has no CA member, is returned unchanged.
+func caCertsPEM(bundle string) string {
+	rest := []byte(bundle)
+	var kept []byte
+	found := false
+	for {
+		var block *pem.Block
+		block, rest = pem.Decode(rest)
+		if block == nil {
+			break
+		}
+		if block.Type != "CERTIFICATE" {
+			continue
+		}
+		cert, err := x509.ParseCertificate(block.Bytes)
+		if err != nil {
+			return bundle
+		}
+		if cert.IsCA {
+			kept = append(kept, pem.EncodeToMemory(block)...)
+			found = true
+		}
+	}
+	if !found {
+		return bundle
+	}
+	return string(kept)
 }
 
 // writeOnlyStringAttr reads a write-only string argument from the raw config.
@@ -191,12 +228,12 @@ func formatCertDate(t *time.Time) string {
 	return t.UTC().Format(time.RFC3339)
 }
 
-// readCertificateResource loads the certificate into state, exporting the
-// root CA PEM (via download) into pemAttr — the resources differ only in
-// which attribute carries it. Missing certificates clear the ID so Terraform
-// plans a recreate (out-of-band delete idempotency).
+// readCertificateResource loads the certificate into state and exports the
+// downloaded root CA PEM into pemAttr, through pemFilter when non-nil.
+// Missing certificates clear the ID (out-of-band delete idempotency).
 func readCertificateResource(
 	ctx context.Context, d *schema.ResourceData, meta interface{}, pemAttr string,
+	pemFilter func(string) string,
 ) diag.Diagnostics {
 	c := meta.(*api.APIClient).YugawareClient
 	cUUID := meta.(*api.APIClient).CustomerID
@@ -219,6 +256,9 @@ func readCertificateResource(
 	pem, err := downloadRootCertPEM(ctx, c, cUUID, d.Id())
 	if err != nil {
 		return diag.FromErr(err)
+	}
+	if pemFilter != nil {
+		pem = pemFilter(pem)
 	}
 	if err = d.Set(pemAttr, pem); err != nil {
 		return diag.FromErr(err)
