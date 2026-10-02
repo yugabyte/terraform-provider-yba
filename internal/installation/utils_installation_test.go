@@ -15,7 +15,10 @@
 
 package installation
 
-import "testing"
+import (
+	"errors"
+	"testing"
+)
 
 // TestSSHAddr guards the dial-address join every SSH/SCP connection uses:
 // non-default ports honored, IPv6 literals bracketed.
@@ -37,5 +40,18 @@ func TestSSHAddr(t *testing.T) {
 				t.Errorf("sshAddr(%q, %d) = %q, want %q", tt.ip, tt.port, got, tt.want)
 			}
 		})
+	}
+}
+
+// The real-world error is a plain string: x/crypto/ssh formats the cause with %v,
+// so errors.Is(err, io.EOF) alone would miss it.
+func TestIsDroppedConnection(t *testing.T) {
+	if !isDroppedConnection(errors.New("ssh: handshake failed: EOF")) {
+		t.Error("handshake EOF must count as a dropped connection")
+	}
+	if isDroppedConnection(errors.New(
+		"ssh: handshake failed: ssh: unable to authenticate, attempted methods [none publickey]",
+	)) {
+		t.Error("auth failure must not count as a dropped connection")
 	}
 }
