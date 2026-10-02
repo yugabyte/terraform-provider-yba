@@ -27,31 +27,6 @@ incidental churn. Keep reviews focused; run formatters on files you
 actually touch unless the operator explicitly asked for a repo-wide
 cleanup.
 
-## Compatibility (non-negotiable)
-
-**critical: a provider upgrade must never change what happens to a resource
-that is already managed.** Customers upgrade the provider without reading the
-changelog or the docs. A YBA that goes down, gets reinstalled, or is replaced
-because `terraform apply` now does something it did not do before is the most
-severe failure this project can ship. Concretely:
-
-- A resource already in state plans clean after the upgrade with its existing
-  config. New behaviour is opt-in through a new argument that defaults to the
-  old behaviour, never a changed default.
-- `Read` never gains the ability to drop a resource from state on a verdict
-  that can be wrong, and never gains a dependency (SSH, a tunnel, a new
-  endpoint) that `terraform plan` did not have before. A heuristic that is
-  wrong once recreates something live.
-- `ForceNew`, `Computed`, defaults and `DiffSuppressFunc` on an existing
-  attribute are contract. Changing them replaces or rewrites customer
-  resources on the next apply.
-- A doc note, a `~> **Warning:**`, or an upgrade guide does not make a change
-  safe. If the change is only safe for an operator who read something first,
-  it is not safe.
-
-When a fix for a real gap cannot meet this, the gap stays open and is
-documented as a limitation. Say so in the PR instead of shipping the fix.
-
 ## License
 
 Use the **MPL-2.0** boilerplate at the top of every Go, shell, and Markdown
@@ -219,10 +194,11 @@ including it in any response or log line.
 
 When the operator corrects you, add the rule here and commit it with the
 code change. Mark repeated or emphasised corrections **critical** in
-bold. `AGENTS.md` is the tracked source of truth for provider conventions
-(a local, gitignored `CLAUDE.md` may `@AGENTS.md` to load it into Claude
-Code; durable cross-session memory lives in the Meko datapack below) — do
-not add other tracked convention files.
+bold. A correction that only a reviewer can judge (no linter or CI check
+can enforce it) goes in `REVIEW.md` instead. `AGENTS.md` and `REVIEW.md`
+are the only tracked convention files (a local, gitignored `CLAUDE.md` may
+`@AGENTS.md` to load it into Claude Code; durable cross-session memory
+lives in the Meko datapack below).
 
 ## Meko (memory & knowledge)
 
