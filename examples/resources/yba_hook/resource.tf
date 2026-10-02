@@ -12,14 +12,21 @@ resource "yba_runtime_config" "enable_sudo_hooks" {
 
 # A Bash hook that runs on every node provision, on nodes backed by one cloud
 # provider. Hooks that fire on the same trigger run in natural sort order of
-# their names, so a numeric prefix pins the execution order. runtime_args are
-# exposed to the script when it runs.
+# their names, so a numeric prefix pins the execution order. YBA passes each
+# runtime_args entry to the script as a "--KEY VALUE" command-line flag, after
+# its own "--parent_task" and "--trigger" flags.
 resource "yba_hook" "mount_volume" {
   name           = "10-mount-volume.sh"
   execution_lang = "Bash"
   hook_text      = <<-EOT
     #!/bin/bash
     set -euo pipefail
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --DEVICE) DEVICE="$2"; shift 2 ;;
+        *) shift ;;
+      esac
+    done
     mount "$DEVICE" /data
   EOT
   use_sudo       = true

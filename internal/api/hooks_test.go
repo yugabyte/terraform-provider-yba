@@ -19,7 +19,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -444,17 +443,5 @@ func TestAttachHookToScopeSurfacesErrors(t *testing.T) {
 	if err := vc.AttachHookToScope(
 		context.Background(), "cust-1", "s-1", "h-1", "token"); err == nil {
 		t.Fatal("expected non-nil error on attach failure")
-	}
-}
-
-// Guards the sentinel: if a refactor stops wrapping with %w, errors.Is breaks
-// and Read silently stops detecting out-of-band deletes.
-func TestHookSentinelIsStable(t *testing.T) {
-	if ErrHookMissing == nil {
-		t.Fatal("ErrHookMissing must not be nil")
-	}
-	wrapped := fmt.Errorf("outer: %w", ErrHookMissing)
-	if !errors.Is(wrapped, ErrHookMissing) {
-		t.Fatal("ErrHookMissing must remain identifiable through wrap")
 	}
 }

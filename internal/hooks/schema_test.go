@@ -20,21 +20,41 @@
 package hooks
 
 import (
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 )
 
-func TestHookSchemaContract(t *testing.T) {
+// TestHookGuardrails pins the schema contract: these properties ship into
+// customer state files and must not regress silently.
+func TestHookGuardrails(t *testing.T) {
 	res := ResourceHook()
 	if err := res.InternalValidate(nil, true); err != nil {
 		t.Fatalf("schema fails InternalValidate: %v", err)
+	}
+	if res.Description == "" {
+		t.Error("resource description is required")
 	}
 	if res.UpdateContext == nil {
 		t.Error("yba_hook must support in-place update")
 	}
 	if res.Importer == nil {
 		t.Error("yba_hook must be importable")
+	}
+	if _, ok := res.Schema["customer_uuid"]; ok {
+		t.Error("customer_uuid is a noise field and must not be exposed")
+	}
+	for op, timeout := range map[string]*time.Duration{
+		"create": res.Timeouts.Create,
+		"read":   res.Timeouts.Read,
+		"update": res.Timeouts.Update,
+		"delete": res.Timeouts.Delete,
+	} {
+		if timeout == nil || *timeout != hookOperationTimeout {
+			t.Errorf("%s timeout must default to hookOperationTimeout", op)
+		}
 	}
 	// Script fields update through the PUT endpoint and binding fields through
 	// re-attachment; a ForceNew flag would needlessly destroy and recreate.
@@ -63,6 +83,21 @@ func TestHookSchemaContract(t *testing.T) {
 
 	if res.Schema["trigger_type"].Required != true {
 		t.Error("trigger_type must be Required: an unbound hook never runs")
+	}
+	// YBA caps the name at 100 characters (Hook.name column width); the plan
+	// must reject a longer name instead of failing at apply with a 400.
+	nameValidate := res.Schema["name"].ValidateFunc
+	if nameValidate == nil {
+		t.Fatal("name must validate its length")
+	}
+	if _, errs := nameValidate(strings.Repeat("a", hookNameMaxLen), "name"); len(errs) > 0 {
+		t.Errorf("a %d-character name must validate, got %v", hookNameMaxLen, errs)
+	}
+	if _, errs := nameValidate(strings.Repeat("a", hookNameMaxLen+1), "name"); len(errs) == 0 {
+		t.Errorf("a %d-character name must be rejected", hookNameMaxLen+1)
+	}
+	if _, errs := nameValidate("", "name"); len(errs) == 0 {
+		t.Error("an empty name must be rejected")
 	}
 	if res.Schema["execution_lang"].ValidateFunc == nil {
 		t.Fatal("execution_lang must validate against hookExecutionLangs")

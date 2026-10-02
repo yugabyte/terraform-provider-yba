@@ -69,6 +69,10 @@ var hookScopeMu sync.Mutex
 // YBA database operation, no long-running task is involved.
 const hookOperationTimeout = 2 * time.Minute
 
+// hookNameMaxLen is the hook name column width in YBA (Hook.name, length=100);
+// YBA rejects longer names at apply time with a 400.
+const hookNameMaxLen = 100
+
 // ResourceHook manages a YBA custom hook and its trigger binding.
 func ResourceHook() *schema.Resource {
 	return &schema.Resource{
@@ -118,11 +122,13 @@ func ResourceHook() *schema.Resource {
 
 		Schema: map[string]*schema.Schema{
 			"name": {
-				Type:     schema.TypeString,
-				Required: true,
-				Description: "Name of the hook, unique per customer. The name also " +
-					"determines execution order: hooks firing on the same trigger " +
-					"run in natural sort order of their names.",
+				Type:         schema.TypeString,
+				Required:     true,
+				ValidateFunc: validation.StringLenBetween(1, hookNameMaxLen),
+				Description: "Name of the hook, unique per customer, at most 100 " +
+					"characters. The name also determines execution order: hooks " +
+					"firing on the same trigger run in natural sort order of their " +
+					"names.",
 			},
 			"execution_lang": {
 				Type:         schema.TypeString,
@@ -148,21 +154,29 @@ func ResourceHook() *schema.Resource {
 				Type:     schema.TypeMap,
 				Optional: true,
 				Elem:     &schema.Schema{Type: schema.TypeString},
-				Description: "Optional string arguments exposed to the hook at " +
-					"runtime.",
+				Description: "Optional string arguments for the hook. YBA passes " +
+					"each entry to the script as a `--KEY VALUE` command-line flag, " +
+					"after its own `--parent_task <task>` and `--trigger <trigger>` " +
+					"flags.",
 			},
 			"trigger_type": {
 				Type:     schema.TypeString,
 				Required: true,
 				Description: "Trigger the hook runs on. Node lifecycle triggers are " +
-					"`PreNodeProvision` and `PostNodeProvision`; `ApiTriggered` " +
+					"`PreNodeProvision` and `PostNodeProvision`. `ApiTriggered` " +
 					"hooks run only when explicitly invoked through the YBA " +
-					"run-hooks API. Upgrade-task triggers follow the pattern " +
+					"run-hooks API, which also requires the global runtime config " +
+					"key `yb.security.custom_hooks.enable_api_triggered_hooks`. " +
+					"Upgrade-task triggers follow the pattern " +
 					"`Pre<Task>`/`Post<Task>` (around the whole task) and " +
 					"`Pre<Task>NodeUpgrade`/`Post<Task>NodeUpgrade` (around each " +
-					"node), for example `PreRestartUniverse` or " +
-					"`PostSoftwareUpgradeNodeUpgrade`. The full set depends on the " +
-					"YBA version; YBA rejects unknown values.",
+					"node) for the tasks `RestartUniverse`, `SoftwareUpgrade`, " +
+					"`RebootUniverse`, `ThirdpartySoftwareUpgrade` and " +
+					"`ConfigureDBApis`, for example `PreRestartUniverse` or " +
+					"`PostSoftwareUpgradeNodeUpgrade`. The `ConfigureDBApis` " +
+					"triggers need YugabyteDB Anywhere 2025.2.0.0 or later; every " +
+					"other trigger is available on every YBA version the provider " +
+					"supports. YBA rejects unknown values.",
 			},
 			"universe_uuid": {
 				Type:          schema.TypeString,
