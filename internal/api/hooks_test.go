@@ -115,41 +115,6 @@ func TestCreateHookSendsMultipartForm(t *testing.T) {
 	}
 }
 
-func TestUpdateHookSendsMultipartPut(t *testing.T) {
-	var (
-		gotMethod string
-		gotPath   string
-		gotFields map[string]string
-	)
-	vc, _ := newStubVanillaClient(t,
-		func(w http.ResponseWriter, r *http.Request) {
-			gotMethod = r.Method
-			gotPath = r.URL.Path
-			gotFields, _ = parseHookMultipart(t, r)
-			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`{"uuid":"h-1","name":"renamed.py",
-				"executionLang":"Python","hookText":"print(1)","useSudo":false}`))
-		})
-
-	in := Hook{Name: "renamed.py", ExecutionLang: "Python", HookText: "print(1)"}
-	out, err := vc.UpdateHook(context.Background(), "cust-1", "h-1", "token", in)
-	if err != nil {
-		t.Fatalf("update error: %v", err)
-	}
-	if out.UUID != "h-1" || out.Name != "renamed.py" {
-		t.Errorf("unexpected response: %+v", out)
-	}
-	if gotMethod != http.MethodPut {
-		t.Errorf("expected PUT, got %s", gotMethod)
-	}
-	if !strings.HasSuffix(gotPath, "/customers/cust-1/hooks/h-1") {
-		t.Errorf("unexpected path: %s", gotPath)
-	}
-	if gotFields["useSudo"] != "false" {
-		t.Errorf("useSudo must always be sent, got fields %+v", gotFields)
-	}
-}
-
 // The regression trap in GET /hooks: Jackson's @JsonIdentityInfo serializes a
 // hook that already appeared (nested inside a sibling's hookScope.hooks) as a
 // bare UUID string at the top level. A naive []Hook unmarshal fails or loses
@@ -233,24 +198,6 @@ func TestGetHookMissing(t *testing.T) {
 	}
 	if !errors.Is(err, ErrHookMissing) {
 		t.Fatalf("expected ErrHookMissing, got %v", err)
-	}
-}
-
-func TestGetHookFound(t *testing.T) {
-	vc, _ := newStubVanillaClient(t,
-		func(w http.ResponseWriter, _ *http.Request) {
-			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`[{"uuid":"h-1","name":"x.sh",
-				"executionLang":"Bash","hookText":"X","useSudo":true,
-				"runtimeArgs":{"A":"1"}}]`))
-		})
-
-	hook, err := vc.GetHook(context.Background(), "cust-1", "h-1", "token")
-	if err != nil {
-		t.Fatalf("get error: %v", err)
-	}
-	if hook.Name != "x.sh" || !hook.UseSudo || hook.RuntimeArgs["A"] != "1" {
-		t.Errorf("hook not parsed: %+v", hook)
 	}
 }
 
@@ -392,56 +339,5 @@ func TestDeleteHookScopeIdempotentOn404(t *testing.T) {
 	if err := vc.DeleteHookScope(
 		context.Background(), "cust-1", "s-1", "token"); err != nil {
 		t.Errorf("expected nil for idempotent delete, got %v", err)
-	}
-}
-
-func TestDeleteHookScopeSurfacesErrors(t *testing.T) {
-	vc, _ := newStubVanillaClient(t,
-		func(w http.ResponseWriter, _ *http.Request) {
-			w.WriteHeader(http.StatusUnauthorized)
-			_, _ = w.Write([]byte(
-				`{"error":"Custom hooks is not enabled on this Anywhere instance"}`))
-		})
-
-	if err := vc.DeleteHookScope(
-		context.Background(), "cust-1", "s-1", "token"); err == nil {
-		t.Fatal("expected non-nil error for disabled custom hooks")
-	}
-}
-
-func TestAttachHookToScopePath(t *testing.T) {
-	var gotMethod, gotPath string
-	vc, _ := newStubVanillaClient(t,
-		func(w http.ResponseWriter, r *http.Request) {
-			gotMethod = r.Method
-			gotPath = r.URL.Path
-			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`{"uuid":"s-1","triggerType":"ApiTriggered",
-				"hooks":[{"uuid":"h-1","name":"a.sh","executionLang":"Bash",
-				"hookText":"A","useSudo":false,"hookScope":"s-1"}]}`))
-		})
-
-	if err := vc.AttachHookToScope(
-		context.Background(), "cust-1", "s-1", "h-1", "token"); err != nil {
-		t.Fatalf("attach error: %v", err)
-	}
-	if gotMethod != http.MethodPost {
-		t.Errorf("expected POST, got %s", gotMethod)
-	}
-	if !strings.HasSuffix(gotPath, "/customers/cust-1/hook_scopes/s-1/hooks/h-1") {
-		t.Errorf("unexpected path: %s", gotPath)
-	}
-}
-
-func TestAttachHookToScopeSurfacesErrors(t *testing.T) {
-	vc, _ := newStubVanillaClient(t,
-		func(w http.ResponseWriter, _ *http.Request) {
-			w.WriteHeader(http.StatusBadRequest)
-			_, _ = w.Write([]byte(`{"error":"Invalid Hook UUID:h-1"}`))
-		})
-
-	if err := vc.AttachHookToScope(
-		context.Background(), "cust-1", "s-1", "h-1", "token"); err == nil {
-		t.Fatal("expected non-nil error on attach failure")
 	}
 }

@@ -10,11 +10,11 @@ YBA Hook Resource. Manages a custom hook — a Bash or Python script that Yugaby
 
 Behind the API, YBA binds hooks to triggers through hook scope objects shared by every hook with the same trigger and target. The resource manages those scopes automatically: it reuses an existing scope or creates one on demand, and deletes a scope when its last hook is removed.
 
-~> **Note:** Custom hooks must be enabled on the YBA instance: set the global runtime config key `yb.security.custom_hooks.enable_custom_hooks` to `true` (for example with the `yba_runtime_config` resource). All custom hook operations require a Super Admin API token (an Admin token when YBA runs in cloud mode).
+~> **Note:** Custom hooks must be enabled on the YBA instance: set the global runtime config key `yb.security.custom_hooks.enable_custom_hooks` to `true` (for example with the `yba_runtime_config` resource). All custom hook operations require a Super Admin API token (an Admin token when YBA runs in cloud mode). Hooks run on VM-based universes only (cloud and on-prem providers); YBA inserts no hook tasks into Kubernetes universe operations.
 
 ~> **Note:** All hooks that fire on the same trigger run in natural sort order of their names. Prefix names with a number (`10-mount.sh`, `20-tune.sh`) to control execution order.
 
-~> **Warning:** Deleting a hook scope in YBA cascade-deletes every hook attached to it. This resource only deletes a scope it is about to leave empty, but a hook attached to the same trigger and target outside Terraform at that same moment can be lost to the cascade. Avoid mixing out-of-band hook management with Terraform-managed hooks on the same trigger and target.
+~> **Warning:** Deleting a hook scope in YBA cascade-deletes every hook attached to it. This resource deletes a scope only after re-reading it and finding it empty, but any other writer (the YBA UI, the API, or a second Terraform state managing hooks on the same trigger and target) can attach a hook between that check and the delete and lose it to the cascade. Keep every hook on one trigger and target in a single Terraform state, and do not manage hooks on that pair outside Terraform.
 
 ## Example Usage
 
@@ -102,7 +102,7 @@ resource "yba_hook" "rotate_credentials" {
 - `execution_lang` (String) Language the hook is written in. Allowed values: `Bash`, `Python`.
 - `hook_text` (String) Full contents of the hook script. Use the Terraform `file()` function to load it from disk.
 - `name` (String) Name of the hook, unique per customer, at most 100 characters. The name also determines execution order: hooks firing on the same trigger run in natural sort order of their names.
-- `trigger_type` (String) Trigger the hook runs on. Node lifecycle triggers are `PreNodeProvision` and `PostNodeProvision`. `ApiTriggered` hooks run only when explicitly invoked through the YBA run-hooks API, which also requires the global runtime config key `yb.security.custom_hooks.enable_api_triggered_hooks`. Upgrade-task triggers follow the pattern `Pre<Task>`/`Post<Task>` (around the whole task) and `Pre<Task>NodeUpgrade`/`Post<Task>NodeUpgrade` (around each node) for the tasks `RestartUniverse`, `SoftwareUpgrade`, `RebootUniverse`, `ThirdpartySoftwareUpgrade` and `ConfigureDBApis`, for example `PreRestartUniverse` or `PostSoftwareUpgradeNodeUpgrade`. The `ConfigureDBApis` triggers need YugabyteDB Anywhere 2025.2.0.0 or later; every other trigger is available on every YBA version the provider supports. YBA rejects unknown values.
+- `trigger_type` (String) Trigger the hook runs on. Node lifecycle triggers are `PreNodeProvision` and `PostNodeProvision`. `ApiTriggered` hooks run only when explicitly invoked through the YBA run-hooks API, which also requires the global runtime config key `yb.security.custom_hooks.enable_api_triggered_hooks`. Upgrade-task triggers follow the pattern `Pre<Task>`/`Post<Task>` (around the whole task) and `Pre<Task>NodeUpgrade`/`Post<Task>NodeUpgrade` (around each node) for the tasks `RestartUniverse`, `SoftwareUpgrade`, `RebootUniverse`, `ThirdpartySoftwareUpgrade` and `ConfigureDBApis`, for example `PreRestartUniverse` or `PostSoftwareUpgradeNodeUpgrade`. The `ConfigureDBApis` triggers need YugabyteDB Anywhere 2025.2.0.0 or later; every other trigger is available on every YBA version the provider supports. Every trigger fires on VM-based universes only; Kubernetes universe tasks run no hooks. YBA rejects unknown values.
 
 ### Optional
 

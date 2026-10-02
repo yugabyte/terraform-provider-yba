@@ -262,8 +262,9 @@ func (vc *VanillaClient) CreateHook(
 	return vc.writeHook(ctx, http.MethodPost, url, token, hook, "Create")
 }
 
-// UpdateHook replaces every field of the hook (YBA's update is a full
-// replace, including clearing runtime args that are no longer sent).
+// UpdateHook replaces every field of the hook. HookController.update copies
+// name, executionLang, the uploaded hookText, useSudo and runtimeArgs from the
+// form onto the entity and calls update(), so a runtime arg not sent is cleared.
 func (vc *VanillaClient) UpdateHook(
 	ctx context.Context, cUUID, hookUUID, token string, hook Hook,
 ) (*Hook, error) {
@@ -309,8 +310,9 @@ func (vc *VanillaClient) GetHook(
 	return nil, fmt.Errorf("hook %s: %w", hookUUID, ErrHookMissing)
 }
 
-// DeleteHook deletes a hook by UUID. Idempotent: a 404 or YBA's 400
-// "Invalid Hook UUID" body returns nil; every other error propagates.
+// DeleteHook deletes a hook by UUID. Idempotent: a 404 or the 400 "Invalid Hook
+// UUID" body that Hook.getOrBadRequest raises for a missing hook returns nil;
+// every other error propagates.
 func (vc *VanillaClient) DeleteHook(
 	ctx context.Context, cUUID, hookUUID, token string,
 ) error {
@@ -386,13 +388,14 @@ func (vc *VanillaClient) ListHookScopes(
 	return out, nil
 }
 
-// DeleteHookScope deletes a hook scope by UUID. Idempotent: YBA answers a
-// missing scope with a real 404, which returns nil; every other error
-// propagates.
+// DeleteHookScope deletes a hook scope by UUID. Idempotent: HookScope.
+// getOrBadRequest answers a missing scope with NOT_FOUND ("Invalid HookScope
+// UUID:"), which returns nil; every other error propagates.
 //
-// YBA's hook table cascades on scope delete: any hook still attached is
-// deleted with the scope. Callers must only delete a scope whose hooks are
-// meant to go with it.
+// The hook table's foreign key to hook_scope is ON DELETE CASCADE (migration
+// V175__Create_Hook_Tables.sql, fk_hook_scope): any hook still attached is
+// deleted with the scope. Callers must only delete a scope they have just
+// confirmed empty.
 func (vc *VanillaClient) DeleteHookScope(
 	ctx context.Context, cUUID, scopeUUID, token string,
 ) error {
@@ -408,8 +411,10 @@ func (vc *VanillaClient) DeleteHookScope(
 	return vanillaHTTPError(resp, "Hook Scope", "Delete")
 }
 
-// AttachHookToScope attaches a hook to a hook scope. A hook can be attached to
-// at most one scope: attaching an already-attached hook re-points it.
+// AttachHookToScope attaches a hook to a hook scope. A hook holds a single
+// hook_scope_uuid column, and HookScopeController.addHook calls
+// HookScope.addHook, which is hook.setHookScope(this) + hook.update(): attaching
+// an already-attached hook moves it, there is no detach step.
 func (vc *VanillaClient) AttachHookToScope(
 	ctx context.Context, cUUID, scopeUUID, hookUUID, token string,
 ) error {

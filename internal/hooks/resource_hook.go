@@ -92,17 +92,20 @@ func ResourceHook() *schema.Resource {
 			"`yb.security.custom_hooks.enable_custom_hooks` to `true` (for " +
 			"example with the `yba_runtime_config` resource). All custom " +
 			"hook operations require a Super Admin API token (an Admin " +
-			"token when YBA runs in cloud mode).\n\n" +
+			"token when YBA runs in cloud mode). Hooks run on VM-based " +
+			"universes only (cloud and on-prem providers); YBA inserts no " +
+			"hook tasks into Kubernetes universe operations.\n\n" +
 			"~> **Note:** All hooks that fire on the same trigger run in " +
 			"natural sort order of their names. Prefix names with a number " +
 			"(`10-mount.sh`, `20-tune.sh`) to control execution order.\n\n" +
 			"~> **Warning:** Deleting a hook scope in YBA cascade-deletes " +
-			"every hook attached to it. This resource only deletes a scope " +
-			"it is about to leave empty, but a hook attached to the same " +
-			"trigger and target outside Terraform at that same moment can " +
-			"be lost to the cascade. Avoid mixing out-of-band hook " +
-			"management with Terraform-managed hooks on the same trigger " +
-			"and target.",
+			"every hook attached to it. This resource deletes a scope only " +
+			"after re-reading it and finding it empty, but any other writer " +
+			"(the YBA UI, the API, or a second Terraform state managing hooks " +
+			"on the same trigger and target) can attach a hook between that " +
+			"check and the delete and lose it to the cascade. Keep every hook " +
+			"on one trigger and target in a single Terraform state, and do " +
+			"not manage hooks on that pair outside Terraform.",
 
 		CreateContext: resourceHookCreate,
 		ReadContext:   resourceHookRead,
@@ -176,7 +179,9 @@ func ResourceHook() *schema.Resource {
 					"`PostSoftwareUpgradeNodeUpgrade`. The `ConfigureDBApis` " +
 					"triggers need YugabyteDB Anywhere 2025.2.0.0 or later; every " +
 					"other trigger is available on every YBA version the provider " +
-					"supports. YBA rejects unknown values.",
+					"supports. Every trigger fires on VM-based universes only; " +
+					"Kubernetes universe tasks run no hooks. YBA rejects unknown " +
+					"values.",
 			},
 			"universe_uuid": {
 				Type:          schema.TypeString,
@@ -304,16 +309,39 @@ func reconcileHookAttachment(
 		ctx, apiClient.CustomerID, target.UUID, hookUUID, apiClient.APIKey); err != nil {
 		return err
 	}
-	// The attach moved the hook out of its previous scope; if this hook was
-	// that scope's only occupant, the scope is now empty — remove it.
-	if current != nil && len(current.HookUUIDs) == 1 {
-		tflog.Info(ctx, fmt.Sprintf(
-			"Deleting now-empty hook scope %q (trigger %q)",
-			current.UUID, current.TriggerType))
-		if err := vc.DeleteHookScope(
-			ctx, apiClient.CustomerID, current.UUID, apiClient.APIKey); err != nil {
-			return fmt.Errorf("removing now-empty hook scope %s: %w", current.UUID, err)
+	if current == nil {
+		return nil
+	}
+	// The attach moved the hook out of its previous scope (HookScope.addHook
+	// re-points the hook's single scope column). Remove that scope only if YBA
+	// now reports it empty: its delete cascades onto any hook still attached.
+	return deleteScopeIfEmpty(ctx, apiClient, current.UUID)
+}
+
+// deleteScopeIfEmpty re-lists the scopes and deletes scopeUUID only when YBA
+// reports no hook attached to it; a scope that is already gone, or that
+// another writer has since attached a hook to, is left alone. Callers hold
+// hookScopeMu.
+func deleteScopeIfEmpty(ctx context.Context, apiClient *api.APIClient, scopeUUID string) error {
+	vc := apiClient.VanillaClient
+	scopes, err := vc.ListHookScopes(ctx, apiClient.CustomerID, apiClient.APIKey)
+	if err != nil {
+		return err
+	}
+	for i := range scopes {
+		if scopes[i].UUID != scopeUUID {
+			continue
 		}
+		if len(scopes[i].HookUUIDs) > 0 {
+			return nil
+		}
+		tflog.Info(ctx, fmt.Sprintf("Deleting empty hook scope %q (trigger %q)",
+			scopeUUID, scopes[i].TriggerType))
+		if err := vc.DeleteHookScope(
+			ctx, apiClient.CustomerID, scopeUUID, apiClient.APIKey); err != nil {
+			return fmt.Errorf("removing empty hook scope %s: %w", scopeUUID, err)
+		}
+		return nil
 	}
 	return nil
 }
@@ -440,24 +468,20 @@ func resourceHookDelete(
 	if err != nil {
 		return diag.FromErr(err)
 	}
-	if current := findScopeContaining(scopes, d.Id()); current != nil &&
-		len(current.HookUUIDs) == 1 {
-		// This hook is its scope's only occupant: delete the scope, whose
-		// cascade removes the hook with it, instead of leaving an empty scope
-		// behind.
-		tflog.Info(ctx, fmt.Sprintf(
-			"Deleting hook %q via its now-single-use hook scope %q", d.Id(), current.UUID))
-		if err := vc.DeleteHookScope(
-			ctx, apiClient.CustomerID, current.UUID, apiClient.APIKey); err != nil {
-			return diag.FromErr(err)
-		}
-		d.SetId("")
-		return nil
-	}
+	current := findScopeContaining(scopes, d.Id())
+
 	tflog.Info(ctx, fmt.Sprintf("Deleting hook %q", d.Id()))
 	if err := vc.DeleteHook(
 		ctx, apiClient.CustomerID, d.Id(), apiClient.APIKey); err != nil {
 		return diag.FromErr(err)
+	}
+	// The hook is gone. Its scope stays only while other hooks still use it;
+	// deleteScopeIfEmpty re-reads before deleting so the cascade never takes a
+	// hook that arrived in the meantime.
+	if current != nil {
+		if err := deleteScopeIfEmpty(ctx, apiClient, current.UUID); err != nil {
+			return diag.FromErr(err)
+		}
 	}
 	d.SetId("")
 	return nil

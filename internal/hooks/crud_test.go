@@ -238,6 +238,41 @@ func TestHookReadUnattachedClearsTrigger(t *testing.T) {
 	}
 }
 
+// Drift: state holds binding A (ApiTriggered on universe u-1) while YBA has the
+// hook in scope B (PreNodeProvision on provider p-1). Read must overwrite every
+// binding field with B, not only fill empty ones.
+func TestHookReadOverwritesStaleBinding(t *testing.T) {
+	apiClient := newHookTestClient(t,
+		func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			if strings.HasSuffix(r.URL.Path, "/hook_scopes") {
+				_, _ = w.Write([]byte(`[{
+					"uuid":"s-b","triggerType":"PreNodeProvision",
+					"providerUUID":"p-1","hooks":["h-1"]}]`))
+				return
+			}
+			_, _ = w.Write([]byte("[" + stubHookJSON + "]"))
+		})
+
+	d := stubHookData(t, ResourceHook())
+	d.SetId("h-1")
+	if err := d.Set("universe_uuid", "u-1"); err != nil {
+		t.Fatal(err)
+	}
+	if diags := resourceHookRead(context.Background(), d, apiClient); diags.HasError() {
+		t.Fatalf("read returned diags: %v", diags)
+	}
+	if got := d.Get("trigger_type"); got != "PreNodeProvision" {
+		t.Errorf("trigger_type = %v, want PreNodeProvision (server value)", got)
+	}
+	if got := d.Get("provider_uuid"); got != "p-1" {
+		t.Errorf("provider_uuid = %v, want p-1 (server value)", got)
+	}
+	if got := d.Get("universe_uuid"); got != "" {
+		t.Errorf("universe_uuid = %v, want empty: the stale target must be cleared", got)
+	}
+}
+
 func TestHookReadDropsMissingFromState(t *testing.T) {
 	apiClient := newHookTestClient(t,
 		func(w http.ResponseWriter, _ *http.Request) {
@@ -255,19 +290,31 @@ func TestHookReadDropsMissingFromState(t *testing.T) {
 	}
 }
 
-// Deleting the only hook of a scope must remove the scope with it (via YBA's
-// cascade) instead of leaving an empty scope behind.
-func TestHookDeleteCascadesSingleUseScope(t *testing.T) {
+// Deleting the only hook of a scope must delete the hook, then the scope it
+// left, and only after a re-read shows the scope empty.
+func TestHookDeleteRemovesEmptiedScope(t *testing.T) {
+	var hookDeleted bool
 	var requests []string
 	apiClient := newHookTestClient(t,
 		func(w http.ResponseWriter, r *http.Request) {
 			requests = append(requests, r.Method+" "+r.URL.Path)
 			w.Header().Set("Content-Type", "application/json")
-			switch r.Method {
-			case http.MethodGet:
-				_, _ = w.Write([]byte(
-					`[{"uuid":"s-1","triggerType":"ApiTriggered","hooks":["h-1"]}]`))
-			case http.MethodDelete:
+			switch {
+			case r.Method == http.MethodGet:
+				if hookDeleted {
+					_, _ = w.Write([]byte(`[{"uuid":"s-1","triggerType":"ApiTriggered"}]`))
+				} else {
+					_, _ = w.Write([]byte(
+						`[{"uuid":"s-1","triggerType":"ApiTriggered","hooks":["h-1"]}]`))
+				}
+			case r.Method == http.MethodDelete && strings.HasSuffix(r.URL.Path, "/hooks/h-1"):
+				hookDeleted = true
+				_, _ = w.Write([]byte(`{"success":true}`))
+			case r.Method == http.MethodDelete &&
+				strings.HasSuffix(r.URL.Path, "/hook_scopes/s-1"):
+				if !hookDeleted {
+					t.Errorf("scope deleted before its hook: %v", requests)
+				}
 				_, _ = w.Write([]byte(`{"success":true}`))
 			default:
 				t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
@@ -282,18 +329,18 @@ func TestHookDeleteCascadesSingleUseScope(t *testing.T) {
 	if d.Id() != "" {
 		t.Errorf("id must be cleared after delete, got %q", d.Id())
 	}
-	if countRequests(requests, deleteScopePath) != 1 {
-		t.Errorf("expected the single-use scope to be deleted, got %v", requests)
+	if countRequests(requests, deleteHookPath) != 1 {
+		t.Errorf("expected the hook itself to be deleted once, got %v", requests)
 	}
-	if countRequests(requests, deleteHookPath) != 0 {
-		t.Errorf("the scope cascade removes the hook; no direct hook delete expected: %v",
-			requests)
+	if countRequests(requests, deleteScopePath) != 1 {
+		t.Errorf("expected the emptied scope to be deleted once, got %v", requests)
 	}
 }
 
 // Deleting one of several hooks sharing a scope must leave the scope (and its
 // other hooks) alone.
 func TestHookDeleteKeepsSharedScope(t *testing.T) {
+	var hookDeleted bool
 	var requests []string
 	apiClient := newHookTestClient(t,
 		func(w http.ResponseWriter, r *http.Request) {
@@ -301,9 +348,15 @@ func TestHookDeleteKeepsSharedScope(t *testing.T) {
 			w.Header().Set("Content-Type", "application/json")
 			switch r.Method {
 			case http.MethodGet:
-				_, _ = w.Write([]byte(
-					`[{"uuid":"s-1","triggerType":"ApiTriggered","hooks":["h-1","h-2"]}]`))
+				if hookDeleted {
+					_, _ = w.Write([]byte(
+						`[{"uuid":"s-1","triggerType":"ApiTriggered","hooks":["h-2"]}]`))
+				} else {
+					_, _ = w.Write([]byte(
+						`[{"uuid":"s-1","triggerType":"ApiTriggered","hooks":["h-1","h-2"]}]`))
+				}
 			case http.MethodDelete:
+				hookDeleted = true
 				_, _ = w.Write([]byte(`{"success":true}`))
 			default:
 				t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
@@ -339,8 +392,9 @@ func TestHookUpdateMovesBinding(t *testing.T) {
 				_, _ = w.Write([]byte("[" + stubHookJSON + "]"))
 			case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/hook_scopes"):
 				if attached {
-					_, _ = w.Write([]byte(
-						`[{"uuid":"s-new","triggerType":"PreRebootUniverse","hooks":["h-1"]}]`))
+					_, _ = w.Write([]byte(`[
+						{"uuid":"s-old","triggerType":"PostNodeProvision"},
+						{"uuid":"s-new","triggerType":"PreRebootUniverse","hooks":["h-1"]}]`))
 				} else {
 					_, _ = w.Write([]byte(
 						`[{"uuid":"s-old","triggerType":"PostNodeProvision","hooks":["h-1"]}]`))
@@ -382,6 +436,55 @@ func TestHookUpdateMovesBinding(t *testing.T) {
 	}
 	if got := d.Get("trigger_type"); got != "PreRebootUniverse" {
 		t.Errorf("trigger_type = %v, want PreRebootUniverse", got)
+	}
+}
+
+// If another writer attached a hook to the old scope between the first list
+// and the attach, the re-read shows it non-empty and the scope must stay:
+// deleting it would cascade onto that other hook.
+func TestHookUpdateKeepsRefilledOldScope(t *testing.T) {
+	var attached bool
+	var requests []string
+	apiClient := newHookTestClient(t,
+		func(w http.ResponseWriter, r *http.Request) {
+			requests = append(requests, r.Method+" "+r.URL.Path)
+			w.Header().Set("Content-Type", "application/json")
+			switch {
+			case r.Method == http.MethodPut:
+				_, _ = w.Write([]byte(stubHookJSON))
+			case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/hooks"):
+				_, _ = w.Write([]byte("[" + stubHookJSON + "]"))
+			case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/hook_scopes"):
+				if attached {
+					_, _ = w.Write([]byte(`[
+						{"uuid":"s-old","triggerType":"PostNodeProvision","hooks":["h-other"]},
+						{"uuid":"s-new","triggerType":"PreRebootUniverse","hooks":["h-1"]}]`))
+				} else {
+					_, _ = w.Write([]byte(`[
+						{"uuid":"s-old","triggerType":"PostNodeProvision","hooks":["h-1"]},
+						{"uuid":"s-new","triggerType":"PreRebootUniverse"}]`))
+				}
+			case r.Method == http.MethodPost && strings.Contains(r.URL.Path, "/hooks/"):
+				attached = true
+				_, _ = w.Write([]byte(
+					`{"uuid":"s-new","triggerType":"PreRebootUniverse","hooks":["h-1"]}`))
+			default:
+				t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
+			}
+		})
+
+	d := stubHookData(t, ResourceHook())
+	d.SetId("h-1")
+	if err := d.Set("trigger_type", "PreRebootUniverse"); err != nil {
+		t.Fatal(err)
+	}
+	if diags := resourceHookUpdate(context.Background(), d, apiClient); diags.HasError() {
+		t.Fatalf("update returned diags: %v", diags)
+	}
+	for _, req := range requests {
+		if strings.HasPrefix(req, "DELETE ") {
+			t.Errorf("old scope still holds another hook; it must not be deleted: %v", requests)
+		}
 	}
 }
 
