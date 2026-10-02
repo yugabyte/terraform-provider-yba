@@ -19,6 +19,7 @@ package installation
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -209,7 +210,15 @@ func ResourceYBAInstaller() *schema.Resource {
 			"**same** host preserves the existing data: the recreate detects " +
 			"the populated data directory and starts in place instead of " +
 			"performing a clean install. To force a fresh install, wipe " +
-			"`/opt/yugabyte/data` on the host between destroy and apply.",
+			"`/opt/yugabyte/data` on the host between destroy and apply.\n\n" +
+			"~> **Note:** Every refresh connects to the host and reads yba-ctl's " +
+			"own install record (`/opt/yba-ctl/.yba_installer.state`). A host " +
+			"that was rebuilt out of band, or cleaned with `yba-ctl clean`, has no " +
+			"install, so the resource is dropped from state and the next apply " +
+			"installs again, rehydrating from `/opt/yugabyte/data` when that " +
+			"survived. A host that does not answer is an error, not a missing " +
+			"install; the `read` timeout (default 5m) is how long it is waited " +
+			"for.",
 
 		CreateContext: resourceYBAInstallerCreate,
 		ReadContext:   resourceYBAInstallerRead,
@@ -222,6 +231,7 @@ func ResourceYBAInstaller() *schema.Resource {
 
 		Timeouts: &schema.ResourceTimeout{
 			Create: schema.DefaultTimeout(10 * time.Minute),
+			Read:   schema.DefaultTimeout(5 * time.Minute),
 			Update: schema.DefaultTimeout(5 * time.Minute),
 			Delete: schema.DefaultTimeout(10 * time.Minute),
 		},
@@ -587,11 +597,52 @@ func resourceYBAInstallerCreate(
 	return diags
 }
 
+// resourceYBAInstallerRead asks the host whether the install is still there.
+// There is no API to read this resource back, and a host rebuilt out of band
+// boots from an empty disk with the resource still in state, so without this
+// the plan stays clean and YBA stays missing. An install that is gone drops the
+// resource from state and the next apply recreates it, rehydrating from the
+// data directory when that survived (see getInstallCommands).
 func resourceYBAInstallerRead(
 	ctx context.Context,
 	d *schema.ResourceData,
 	meta interface{}) diag.Diagnostics {
-	// remote state is not read for this resource
+	hostIP := d.Get("ssh_host_ip").(string)
+	if hostIP == "" {
+		// A passthrough import carries only the ID. Nothing to probe yet.
+		return diag.Diagnostics{}
+	}
+	user := d.Get("ssh_user").(string)
+	sshPort := d.Get("ssh_port").(int)
+	pk, err := resolveSSHPrivateKey(d)
+	if err != nil {
+		return diag.FromErr(err)
+	}
+	// Not answering is an error, not a missing install: a tunnel that is down
+	// must not read as a lost YBA. The budget is the read timeout, so a host
+	// still booting after a rebuild is waited for.
+	sshClient, err := connectSSHRetrying(
+		ctx, user, hostIP, sshPort, pk, d.Timeout(schema.TimeoutRead))
+	if err != nil {
+		return diag.FromErr(fmt.Errorf(
+			"yba_installer: reaching the host (ssh_host_ip=%s): %w", hostIP, err))
+	}
+	defer func() { _ = sshClient.Close() }()
+	out, err := runCommandOutput(ctx, sshClient, installProbeCommand())
+	if err != nil {
+		return diag.FromErr(fmt.Errorf(
+			"yba_installer: reading %s (ssh_host_ip=%s): %w", ybactlStateFile, hostIP, err))
+	}
+	if err := installStateFromProbe(out); err != nil {
+		if errors.Is(err, errYBANotInstalled) {
+			tflog.Warn(ctx, fmt.Sprintf(
+				"yba_installer: %v (ssh_host_ip=%s), removing from state so the next "+
+					"apply installs again", err, hostIP))
+			d.SetId("")
+			return diag.Diagnostics{}
+		}
+		return diag.FromErr(err)
+	}
 	return diag.Diagnostics{}
 }
 
@@ -862,6 +913,57 @@ func getUpgradeCommands(version, os, arch string, skipPreflightCheckList *[]stri
 	}
 	updateCommands = append(updateCommands, s)
 	return updateCommands
+}
+
+// ybactlStateFile is yba-ctl's record of the install, kept beside its binary
+// (ybactlstate in yugabyte-db/managed/yba-installer). `yba-ctl install`
+// consults it before it will run, so Read trusts it too. The binary alone is
+// no evidence: it survives a soft `yba-ctl clean`.
+const ybactlStateFile = "/opt/yba-ctl/.yba_installer.state"
+
+// ybactlStateAbsent is what the probe prints in place of a file that is not
+// there, so the two cases are told apart without parsing shell errors.
+const ybactlStateAbsent = "yba-ctl-state-absent"
+
+// errYBANotInstalled: the host answered and has no install on it.
+var errYBANotInstalled = errors.New("YBA is not installed on the host")
+
+// installProbeCommand prints the state file, or ybactlStateAbsent.
+func installProbeCommand() string {
+	return fmt.Sprintf("if sudo test -f %[1]s; then sudo cat %[1]s; else echo %[2]s; fi",
+		ybactlStateFile, ybactlStateAbsent)
+}
+
+// ybactlState is the part of the state file Read decides on. current_status
+// is marshalled as yba-ctl's status name (install_status.go).
+type ybactlState struct {
+	CurrentStatus string `json:"current_status"`
+}
+
+// installStateFromProbe turns the probe's output into a verdict: nil for an
+// install to keep managing, errYBANotInstalled for one that is gone, and any
+// other error for a host in a state terraform must not guess about. A status
+// that names an operation in progress is what a crash leaves behind; a state
+// file older than statuses has none, and the install it records still exists.
+func installStateFromProbe(out string) error {
+	out = strings.TrimSpace(out)
+	if out == ybactlStateAbsent {
+		return fmt.Errorf("%w: no %s", errYBANotInstalled, ybactlStateFile)
+	}
+	var st ybactlState
+	if err := json.Unmarshal([]byte(out), &st); err != nil {
+		return fmt.Errorf("yba_installer: parsing %s: %w", ybactlStateFile, err)
+	}
+	switch st.CurrentStatus {
+	case "Installed", "NoStatus", "":
+		return nil
+	case "Soft Cleaned", "Uninstalled":
+		return fmt.Errorf("%w: yba-ctl reports %q", errYBANotInstalled, st.CurrentStatus)
+	default:
+		return fmt.Errorf(
+			"yba_installer: yba-ctl reports %q (current_status in %s), an operation that did "+
+				"not finish", st.CurrentStatus, ybactlStateFile)
+	}
 }
 
 // getDeleteCommands runs `clean` without --all: /opt/yugabyte/data must outlive

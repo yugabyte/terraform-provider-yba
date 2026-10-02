@@ -12,6 +12,8 @@ Manages the installation of YugabyteDB Anywhere on an existing virtual machine u
 
 ~> **Note:** When `/opt/yugabyte/data` is already populated (typically because it lives on a separately managed persistent disk that survives the host VM), the resource installs with `--without-data` and starts services in place rather than reinitialising storage. Destroy runs `yba-ctl clean` only and leaves `/opt/yugabyte/data` intact; wiping the data directory is the operator's responsibility. Consequently, destroying and recreating this resource on the **same** host preserves the existing data: the recreate detects the populated data directory and starts in place instead of performing a clean install. To force a fresh install, wipe `/opt/yugabyte/data` on the host between destroy and apply.
 
+~> **Note:** Every refresh connects to the host and reads yba-ctl's own install record (`/opt/yba-ctl/.yba_installer.state`). A host that was rebuilt out of band, or cleaned with `yba-ctl clean`, has no install, so the resource is dropped from state and the next apply installs again, rehydrating from `/opt/yugabyte/data` when that survived. A host that does not answer is an error, not a missing install; the `read` timeout (default 5m) is how long it is waited for.
+
 ## Supported Versions
 
 Both GA releases and pre-release CI builds are supported.
@@ -139,4 +141,5 @@ Optional:
 
 - `create` (String)
 - `delete` (String)
+- `read` (String)
 - `update` (String)

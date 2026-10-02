@@ -107,6 +107,108 @@ func TestAccLong_YBA_GCP_OSImageUpgrade(t *testing.T) {
 	})
 }
 
+// TestAccLong_YBA_GCP_ReinstallAfterReimage proves Read notices a host rebuilt
+// out from under the install. Same throwaway stand, but yba_installer carries
+// no replace_triggered_by and nothing in the config needs YBA up: flipping the
+// boot image replaces the VM and leaves the resource in state. The refresh
+// after that apply must find yba-ctl's state file gone and drop the resource,
+// and the apply after that must install again onto the surviving data disk.
+// ~30 min (two real YBA installs); skips on the same conditions as above.
+func TestAccLong_YBA_GCP_ReinstallAfterReimage(t *testing.T) {
+	ybaVersion := os.Getenv("TF_VAR_GCP_YBA_VERSION")
+	licensePath := repoPath("yugabyte_anywhere.lic")
+	settingsPath := repoPath("acctest", "resources", "yba-ctl.yml")
+	bootScriptPath := repoPath("acctest", "resources", "gcp-bootscript.sh")
+
+	var installIDBefore, installIDAfter string
+	var instanceIDBefore, instanceIDAfter string
+	var bootImageBefore, bootImageAfter string
+
+	name := gcpSafeName(acctest.RandomName("ybareinst"))
+	hostConfig := func(bootImageRef string) string {
+		return osUpgradeHostConfig(name, bootImageRef, ybaVersion,
+			bootScriptPath, licensePath, settingsPath, "")
+	}
+
+	resource.Test(t, resource.TestCase{
+		PreCheck: func() {
+			acctest.TestAccPreCheckGCP(t)
+			if ybaVersion == "" {
+				t.Skip("TF_VAR_GCP_YBA_VERSION not set; skipping YBA reinstall-after-reimage test")
+			}
+			if _, err := os.Stat(licensePath); err != nil {
+				t.Skipf("YBA license not found at %s; skipping YBA reinstall-after-reimage test",
+					licensePath)
+			}
+		},
+		ProviderFactories: acctest.ProviderFactories,
+		ExternalProviders: map[string]resource.ExternalProvider{
+			"google": {Source: "hashicorp/google", VersionConstraint: ">= 5.0"},
+			"tls":    {Source: "hashicorp/tls", VersionConstraint: ">= 4.0"},
+			"null":   {Source: "hashicorp/null", VersionConstraint: ">= 3.0"},
+		},
+		Steps: []resource.TestStep{
+			{
+				Config: hostConfig("data.google_compute_image.old.self_link"),
+				Check: resource.ComposeTestCheckFunc(
+					captureAttr("yba_installer.install", "id", &installIDBefore),
+					captureAttr("google_compute_instance.yba", "instance_id",
+						&instanceIDBefore),
+					checkBootDiskImage(t, "data.google_compute_image.old",
+						&bootImageBefore),
+				),
+			},
+			{
+				// The reimage alone: the apply replaces the VM and touches nothing
+				// else. The refresh that follows is where Read drops the install,
+				// so the plan after this step is allowed to be non-empty.
+				Config:             hostConfig("data.google_compute_image.new.self_link"),
+				ExpectNonEmptyPlan: true,
+				Check: resource.ComposeTestCheckFunc(
+					captureAttr("google_compute_instance.yba", "instance_id",
+						&instanceIDAfter),
+					checkBootDiskImage(t, "data.google_compute_image.new",
+						&bootImageAfter),
+					checkBootImageChanged(t, &bootImageBefore, &bootImageAfter),
+				),
+			},
+			{
+				// Same config again: the only change left is the install Read
+				// dropped, so this apply is the reinstall.
+				Config: hostConfig("data.google_compute_image.new.self_link"),
+				Check: resource.ComposeTestCheckFunc(
+					captureAttr("yba_installer.install", "id", &installIDAfter),
+					checkReinstalled(t, &instanceIDBefore, &instanceIDAfter,
+						&installIDBefore, &installIDAfter),
+				),
+			},
+		},
+	})
+}
+
+// checkReinstalled asserts the host was replaced and the install redone on it:
+// both ids changed. An unchanged install id would mean Read kept a resource
+// whose host had gone.
+func checkReinstalled(t *testing.T,
+	instBefore, instAfter, installBefore, installAfter *string) resource.TestCheckFunc {
+	return func(*terraform.State) error {
+		if *instBefore == "" || *instAfter == "" || *installBefore == "" || *installAfter == "" {
+			return errors.New("instance_id and yba_installer id were not captured in every step")
+		}
+		if *instBefore == *instAfter {
+			return fmt.Errorf("expected the YBA host VM to be reimaged (instance_id change), "+
+				"got %s both times", *instBefore)
+		}
+		if *installBefore == *installAfter {
+			return fmt.Errorf("expected yba_installer to be recreated on the new host, "+
+				"id %s unchanged", *installBefore)
+		}
+		t.Logf("VERIFIED reinstall: instance_id %s -> %s, yba_installer %s -> %s",
+			*instBefore, *instAfter, *installBefore, *installAfter)
+		return nil
+	}
+}
+
 // checkOSUpgradePreservedProvider asserts the host was actually reimaged and the
 // cloud provider object was not recreated in the process.
 func checkOSUpgradePreservedProvider(t *testing.T,
@@ -250,12 +352,33 @@ func stateAttr(s *terraform.State, resourceName, attr string) string {
 	return rs.Primary.Attributes[attr]
 }
 
+// osUpgradeTriggerLifecycle is the lifecycle block the OS-image-upgrade test
+// puts on yba_installer: the reinstall rides on the VM's replacement, the way a
+// root that owns its VM has always arranged it.
+const osUpgradeTriggerLifecycle = `  # Reinstall on the replaced VM: sees the re-attached, pre-populated
+  # /opt/yugabyte/data and runs 'install --without-data', rehydrating YBA.
+  lifecycle {
+    replace_triggered_by = [google_compute_instance.yba]
+  }
+`
+
 // osUpgradeGCPConfig renders the throwaway-YBA-stand config. bootImageRef is an
 // HCL reference to the boot-image data source for this step (old then new);
 // everything else is constant so the only planned change between steps is the
 // host reimage.
 func osUpgradeGCPConfig(
 	name, bootImageRef, ybaVersion, bootScript, license, settings string) string {
+	return osUpgradeHostConfig(name, bootImageRef, ybaVersion, bootScript, license, settings,
+		osUpgradeTriggerLifecycle) + osUpgradeYBAConfig(name)
+}
+
+// osUpgradeHostConfig is the host half of that stand: the VM, the data disk
+// that outlives it, and the install itself on the bootstrap provider. Nothing
+// in it needs YBA to be up. installerLifecycle is spliced into yba_installer,
+// empty for a test that leaves the reinstall to Read.
+func osUpgradeHostConfig(
+	name, bootImageRef, ybaVersion, bootScript, license, settings, installerLifecycle string,
+) string {
 	return fmt.Sprintf(`
 variable "GCP_PROJECT_ID" { type = string }
 variable "GCP_REGION"     { type = string }
@@ -301,14 +424,6 @@ provider "yba" {
   host  = google_compute_address.yba.address
 
   api_token = ""
-}
-
-# Authenticated YBA provider: token comes from the customer above, so it
-# configures only after YBA is up; creates the provider whose survival is asserted.
-provider "yba" {
-  host         = google_compute_address.yba.address
-  api_token    = yba_customer_resource.customer.api_token
-  enable_https = true
 }
 
 resource "tls_private_key" "yba" {
@@ -388,15 +503,6 @@ data "google_compute_disk" "boot" {
   zone = "${var.GCP_REGION}-a"
 }
 
-resource "random_password" "customer" {
-  length           = 16
-  min_upper        = 1
-  min_lower        = 1
-  min_numeric      = 1
-  min_special      = 1
-  override_special = "!#$%%*-_"
-}
-
 # Block the install until the startup script has mounted /opt/yugabyte/data.
 resource "null_resource" "wait_for_data_mount" {
   triggers = {
@@ -430,15 +536,32 @@ resource "yba_installer" "install" {
   host_os                   = "linux"
   host_architecture         = "x86_64"
 
-  # Reinstall on the replaced VM: sees the re-attached, pre-populated
-  # /opt/yugabyte/data and runs 'install --without-data', rehydrating YBA.
-  lifecycle {
-    replace_triggered_by = [google_compute_instance.yba]
-  }
-
+%[7]s
   depends_on = [null_resource.wait_for_data_mount]
 }
 
+`, name, bootImageRef, bootScript, license, settings, ybaVersion, installerLifecycle)
+}
+
+// osUpgradeYBAConfig is the YBA half: the first customer, the authenticated
+// provider its token unlocks, and a cloud provider whose survival across the
+// reimage is what the upgrade test asserts.
+func osUpgradeYBAConfig(name string) string {
+	return fmt.Sprintf(`# Authenticated YBA provider: token comes from the customer above, so it
+# configures only after YBA is up; creates the provider whose survival is asserted.
+provider "yba" {
+  host         = google_compute_address.yba.address
+  api_token    = yba_customer_resource.customer.api_token
+  enable_https = true
+}
+resource "random_password" "customer" {
+  length           = 16
+  min_upper        = 1
+  min_lower        = 1
+  min_numeric      = 1
+  min_special      = 1
+  override_special = "!#$%%*-_"
+}
 resource "yba_customer_resource" "customer" {
   provider = yba.bootstrap
 
@@ -470,7 +593,7 @@ resource "yba_gcp_provider" "test" {
 
   depends_on = [yba_customer_resource.customer]
 }
-`, name, bootImageRef, bootScript, license, settings, ybaVersion)
+`, name)
 }
 
 // repoPath resolves repo-relative paths via runtime.Caller so file() references

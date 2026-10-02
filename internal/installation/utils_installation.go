@@ -73,6 +73,15 @@ var errSSHHostUnreachable = errors.New("ssh host unreachable after retries")
 // (nil, other) bad key or handshake/auth failure — host is alive, fail loudly.
 func connectSSHForDelete(ctx context.Context, user, ip string, port int, key string) (
 	*ssh.Client, error) {
+	return connectSSHRetrying(ctx, user, ip, port, key, sshConnectBudget)
+}
+
+// connectSSHRetrying dials SSH, retrying TCP-layer failures within budget, with
+// the outcomes connectSSHForDelete documents. Read passes its timeout as the
+// budget, so a host still booting is waited for rather than mistaken for a
+// lost install.
+func connectSSHRetrying(ctx context.Context, user, ip string, port int, key string,
+	budget time.Duration) (*ssh.Client, error) {
 	signer, err := ssh.ParsePrivateKey([]byte(key))
 	if err != nil {
 		return nil, err
@@ -85,7 +94,7 @@ func connectSSHForDelete(ctx context.Context, user, ip string, port int, key str
 	}
 	addr := sshAddr(ip, port)
 
-	budgetCtx, cancel := context.WithTimeout(ctx, sshConnectBudget)
+	budgetCtx, cancel := context.WithTimeout(ctx, budget)
 	defer cancel()
 
 	var lastErr error
@@ -119,6 +128,25 @@ func connectSSHForDelete(ctx context.Context, user, ip string, port int, key str
 		return nil, ctx.Err()
 	}
 	return nil, fmt.Errorf("%w: %w", errSSHHostUnreachable, lastErr)
+}
+
+// runCommandOutput runs cmd and returns its stdout, for a command whose output
+// is the answer. runCommand below returns stderr, which suits the yba-ctl
+// invocations whose output is only logged.
+func runCommandOutput(ctx context.Context, client *ssh.Client, cmd string) (string, error) {
+	tflog.Info(ctx, fmt.Sprintf("Running command: %s", cmd))
+	session, err := client.NewSession()
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = session.Close() }()
+	var stdout, stderr bytes.Buffer
+	session.Stdout = &stdout
+	session.Stderr = &stderr
+	if err := session.Run(cmd); err != nil {
+		return stdout.String(), fmt.Errorf("%w: %s", err, strings.TrimSpace(stderr.String()))
+	}
+	return stdout.String(), nil
 }
 
 func runCommand(ctx context.Context, client *ssh.Client, cmd string) (string, error) {
