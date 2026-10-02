@@ -1,8 +1,9 @@
 # Review guide
 
-Judgement calls for reviewing PRs in this repository. `make lint` owns
-formatting, import order, line length and spelling. `AGENTS.md` owns the hard
-rules (ForceNew, ExactlyOneOf, Sensitive, Importer, Description,
+For the review agent: how a change fits the codebase and holds up over time.
+`make lint` owns formatting, import order, line length and spelling.
+`AGENTS.md` owns what the implementer needs for correctness (ForceNew,
+ExactlyOneOf, Sensitive, Importer, Description, lifecycle idempotency,
 DispatchAndWait, utils-first). Apply both from their source; do not repeat
 their findings here.
 
@@ -76,6 +77,8 @@ failure this project can ship.
   spec factory. A new polymorphic resource with a type switch is a finding.
 - `Sensitive` marks secrets only. A username, region, endpoint or key id
   stays visible so a typo shows in `terraform plan`.
+- A computed value that is identical for every resource of a provider
+  instance (`customer_uuid`) is noise. Do not expose it.
 - When one field's default follows another, the code tells "set in config"
   from "echoed from state" with `d.GetRawConfig()`. `d.Get` treats a state
   echo as an explicit pin.
@@ -162,6 +165,12 @@ failure this project can ship.
   is broken. Docs describe supported behaviour.
 - Explanations use the identifiers from the YBA source, never imported
   vocabulary. An external term may appear once, as an alias.
+- `Description` callouts use `~> **Note:**` and `~> **Warning:**`. A
+  performance gotcha (a per-node sleep default that compounds on multi-node
+  universes) is documented there, not left for the user to discover.
+- The example at `examples/resources/yba_<name>/resource.tf` shows every
+  attribute and every nested block variant. Mutually exclusive fields get
+  separate example resources in the same file.
 - Template front matter takes the first paragraph only:
   `index (split (trimspace .Description) "\n\n") 0`. A full `.Description`
   there puts every callout into the registry summary.
@@ -178,6 +187,9 @@ a third form is a finding.
   that returns `nil` after `d.SetId` leaves computed fields unset.
 - An Update that writes credentials uses a named `diags` return, a deferred
   Read, and `utils.RevertFields` before every error return.
+- Long-running operations take their timeouts from named constants in
+  hours, defined once per package so every CRUD timeout shares one source
+  of truth. An inline duration is a finding.
 - Every resource has one `Test<X>Guardrails` test: importer, every
   `Description`, no `customer_uuid`, the timeout constant. An importable
   resource's acceptance test has an import step with `ImportStateVerify`.
