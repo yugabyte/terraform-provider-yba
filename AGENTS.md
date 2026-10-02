@@ -168,8 +168,11 @@ likely to introduce — not for coverage percentage.
   The Cursor CLI injects `Made-with: Cursor` automatically; strip it
   with `git commit --amend -m "$(git log --format=%B -1 | sed
   '/^Made-with:/d')"` before every push.
-- Never force-push to `main`, never amend a commit that has been pushed,
-  never `--no-verify` without explicit operator approval.
+- **critical: rebase feature branches on `main`; a merge commit is never
+  acceptable.** Amending or rewriting pushed commits on a feature branch for
+  a cleaner history is fine; force-push the branch with `--force-with-lease`.
+- Never force-push to `main`, never `--no-verify` without explicit operator
+  approval.
 
 ## Secrets
 
