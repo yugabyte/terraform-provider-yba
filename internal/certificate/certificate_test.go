@@ -95,7 +95,7 @@ const (
 // zero-valued so tests can assert which endpoints were exercised.
 type fakeYBA struct {
 	listBody      string
-	downloadPEM   string // download response content; testPEM when empty
+	downloadPEM   string
 	uploadPayload map[string]interface{}
 	mintBody      map[string]string
 	deleteCalled  bool
@@ -476,9 +476,8 @@ func testCertPEM(t *testing.T, cn string) string {
 	return string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}))
 }
 
-// testCAAndServerPEM mints a CA certificate and a leaf server certificate
-// signed by it. Only the CA carries basic constraints CA=true — the property
-// caCertsPEM uses to split real YBA download bundles.
+// testCAAndServerPEM mints a CA and a server certificate signed by it; only
+// the CA carries basic constraints CA=true, the property caCertsPEM keys on.
 func testCAAndServerPEM(t *testing.T) (caPEM, serverPEM string) {
 	t.Helper()
 	caKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -523,38 +522,38 @@ func testCAAndServerPEM(t *testing.T) (caPEM, serverPEM string) {
 	return caPEM, serverPEM
 }
 
-// YBA's stored certificate file for a CustomServerCert configuration is the
-// server certificate(s) prepended to the uploaded CA chain — upload-time
-// validation mutates the CA list in place before it is written. caCertsPEM
-// must reduce that bundle back to the CA chain, and must never rewrite
-// content it cannot positively identify.
-func TestCACertsPEMFiltersServerCertificates(t *testing.T) {
+// YBA's stored file for a CustomServerCert is the server certificate(s)
+// prepended to the uploaded CA chain, and that is what /download returns.
+func TestCACertsPEM(t *testing.T) {
 	caPEM, serverPEM := testCAAndServerPEM(t)
-
-	if got := caCertsPEM(serverPEM + caPEM); got != caPEM {
-		t.Errorf("server+CA bundle must reduce to the CA chain, got:\n%s", got)
-	}
-	if got := caCertsPEM(caPEM); got != caPEM {
-		t.Error("a CA-only download must pass through unchanged")
-	}
-	// Chains keep every CA member in order (e.g. intermediate + root).
 	ca2PEM, _ := testCAAndServerPEM(t)
-	if got := caCertsPEM(serverPEM + caPEM + ca2PEM); got != caPEM+ca2PEM {
-		t.Errorf("multi-CA chain must be kept in order, got:\n%s", got)
+	garbage := string(pem.EncodeToMemory(&pem.Block{
+		Type: "CERTIFICATE", Bytes: []byte("not der")}))
+
+	cases := []struct {
+		name, in, want string
+	}{
+		{"server cert prepended to CA is dropped", serverPEM + caPEM, caPEM},
+		{"CA-only bundle is unchanged", caPEM, caPEM},
+		{"multi-member CA chain keeps order", serverPEM + caPEM + ca2PEM, caPEM + ca2PEM},
+		{"bundle with no CA member is unchanged", serverPEM, serverPEM},
+		{"unparseable member leaves whole bundle unchanged",
+			serverPEM + caPEM + garbage, serverPEM + caPEM + garbage},
+		{"non-PEM content is unchanged", "not pem at all", "not pem at all"},
+		{"empty input stays empty", "", ""},
 	}
-	// Defensive passthrough: nothing identifiable as a CA is left untouched.
-	if got := caCertsPEM(serverPEM); got != serverPEM {
-		t.Error("a bundle with no CA certificate must pass through unchanged")
-	}
-	if got := caCertsPEM("not pem at all"); got != "not pem at all" {
-		t.Error("non-PEM content must pass through unchanged")
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := caCertsPEM(tc.in); got != tc.want {
+				t.Errorf("caCertsPEM() =\n%s\nwant:\n%s", got, tc.want)
+			}
+		})
 	}
 }
 
-// The regression this guards: reading a CustomServerCert back verbatim stores
-// the server+CA bundle in root_certificate, which differs from every config
-// (chain count) and turns each subsequent plan into a destroy-and-recreate
-// that the in-use guard then blocks.
+// Regression guard: a verbatim read-back stores server+CA in root_certificate,
+// which differs from every config (chain count) and plans a replacement the
+// in-use guard blocks.
 func TestCustomServerReadFiltersServerCertFromDownload(t *testing.T) {
 	caPEM, serverPEM := testCAAndServerPEM(t)
 	f := &fakeYBA{

@@ -19,6 +19,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -30,19 +31,17 @@ import (
 	"github.com/yugabyte/terraform-provider-yba/internal/acctest"
 )
 
-// The certificate resources need a live YBA but no universe or cloud
-// resources, so these run in the short acceptance tier against the GCP
-// fixture YBA (same pattern as the storage-config tests). The write-only
-// key arguments (private_key, server_key) additionally require the test
-// runner's terraform binary to be 1.11 or later.
+// Short tier: needs a live YBA (the GCP fixture) but no universe or cloud
+// resources. The write-only key arguments need terraform 1.11+ on the runner.
 
 func testAccPreCheckCertificate(t *testing.T) {
 	acctest.TestAccPreCheckCloudYBA(t, "GCP")
 }
 
-// TestAccSelfSignedCertificate_MintAndImport covers mint mode round-tripping:
-// YBA generates the root certificate, the resource exports it, and a
-// subsequent import reproduces the state exactly.
+var pemCertificate = regexp.MustCompile(`^-----BEGIN CERTIFICATE-----\n`)
+
+// Mint mode: YBA generates the root certificate, the resource exports it, and
+// import reproduces the state exactly.
 func TestAccSelfSignedCertificate_MintAndImport(t *testing.T) {
 	label := acctest.RandomName("cert-mint")
 
@@ -56,8 +55,8 @@ func TestAccSelfSignedCertificate_MintAndImport(t *testing.T) {
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttrSet(
 						"yba_self_signed_certificate.mint", "uuid"),
-					resource.TestCheckResourceAttrSet(
-						"yba_self_signed_certificate.mint", "certificate"),
+					resource.TestMatchResourceAttr(
+						"yba_self_signed_certificate.mint", "certificate", pemCertificate),
 					resource.TestCheckResourceAttrSet(
 						"yba_self_signed_certificate.mint", "expiry_date"),
 					resource.TestCheckResourceAttr(
@@ -75,13 +74,11 @@ func TestAccSelfSignedCertificate_MintAndImport(t *testing.T) {
 	})
 }
 
-// TestAccSelfSignedCertificate_BringYourOwnPEMStability uploads a
-// bring-your-own root certificate whose PEM is deliberately mangled (CRLF
-// endings, 76-column base64). YBA re-encodes uploads through its own writer,
-// so the read-back never matches the config textually; the framework's
-// post-apply empty-plan check proves the semantic PEM comparison suppresses
-// the would-be destroy-and-recreate diff. The import step then verifies the
-// adopted state matches, with the write-only private_key excluded.
+// Bring-your-own with mangled PEM (CRLF, 76-column): YBA re-encodes uploads,
+// so the read-back never matches the config textually. The framework's
+// post-apply empty-plan check is the assertion that the semantic PEM diff
+// suppresses the replacement; import then verifies the adopted state, minus
+// the write-only private_key.
 func TestAccSelfSignedCertificate_BringYourOwnPEMStability(t *testing.T) {
 	label := acctest.RandomName("cert-byo")
 	ca := acctest.NewTestCA(t, "tf-acc-byo-root")
@@ -111,12 +108,10 @@ func TestAccSelfSignedCertificate_BringYourOwnPEMStability(t *testing.T) {
 	})
 }
 
-// TestAccCustomServerCertificate_ImportAdoption exercises the documented
-// adoption story for certificates created outside Terraform: the API never
-// returns server_certificate, so the imported state carries it empty, the
-// documented `ignore_changes = [server_certificate]` escape hatch yields a
-// clean plan, and managing the resource without it replaces the
-// configuration (delete + re-upload) as the docs warn.
+// Adopting a certificate created outside Terraform: the API never returns
+// server_certificate, so import leaves it empty; the documented
+// `ignore_changes = [server_certificate]` escape hatch plans clean, and
+// without it the resource is replaced (delete + re-upload), as the docs warn.
 func TestAccCustomServerCertificate_ImportAdoption(t *testing.T) {
 	label := acctest.RandomName("cert-adopt")
 	ca := acctest.NewTestCA(t, "tf-acc-adopt-root")
@@ -130,7 +125,6 @@ func TestAccCustomServerCertificate_ImportAdoption(t *testing.T) {
 		CheckDestroy:      testAccCheckCertificatesDestroyed,
 		Steps: []resource.TestStep{
 			{
-				// Adopt a certificate that was uploaded outside Terraform.
 				PreConfig: func() {
 					importedUUID = uploadCustomServerCert(t, label, ca.CertPEM,
 						serverCert, serverKey)
@@ -152,8 +146,9 @@ func TestAccCustomServerCertificate_ImportAdoption(t *testing.T) {
 						return errors.New("server_certificate must be empty after " +
 							"import: the API never returns it")
 					}
-					if attrs["root_certificate"] == "" {
-						return errors.New("root_certificate must be restored on import")
+					if attrs["root_certificate"] != ca.CertPEM {
+						return fmt.Errorf("imported root_certificate must be exactly the "+
+							"uploaded CA chain, got:\n%s", attrs["root_certificate"])
 					}
 					if attrs["label"] != label {
 						return fmt.Errorf("imported label = %q, want %q",
@@ -163,16 +158,13 @@ func TestAccCustomServerCertificate_ImportAdoption(t *testing.T) {
 				},
 			},
 			{
-				// The documented escape hatch: ignoring server_certificate
-				// adopts the imported certificate as-is with a clean plan.
+				// Escape hatch: ignore_changes on server_certificate plans clean.
 				Config: customServerCertConfig("adopted", label, ca.CertPEM, serverCert,
 					serverKey, true),
 				PlanOnly: true,
 			},
 			{
-				// Without the escape hatch the lost server_certificate plans a
-				// replacement; applying it deletes the imported configuration
-				// and uploads a fresh one.
+				// Without it the empty server_certificate forces a replacement.
 				Config: customServerCertConfig("adopted", label, ca.CertPEM, serverCert,
 					serverKey, false),
 				Check: resource.ComposeTestCheckFunc(
@@ -235,9 +227,8 @@ resource "yba_custom_server_certificate" "%s" {
 		lifecycle)
 }
 
-// uploadCustomServerCert uploads a CustomServerCert configuration directly
-// through the API — simulating a certificate created in the YBA UI — and
-// returns its UUID for the import step.
+// uploadCustomServerCert uploads a CustomServerCert through the API (as the
+// YBA UI would) and returns its UUID for import.
 func uploadCustomServerCert(t *testing.T, label, rootPEM, serverCert, serverKey string) string {
 	t.Helper()
 	apiClient, err := acctest.APIClientForCloud("GCP")
@@ -263,8 +254,6 @@ func uploadCustomServerCert(t *testing.T, label, rootPEM, serverCert, serverKey 
 	return strings.Trim(strings.TrimSpace(r), `"`)
 }
 
-// testAccCheckCertificatesDestroyed fails when any certificate resource left
-// in state still exists in YBA.
 func testAccCheckCertificatesDestroyed(s *terraform.State) error {
 	apiClient, err := acctest.APIClientForCloud("GCP")
 	if err != nil {

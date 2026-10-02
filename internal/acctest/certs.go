@@ -28,12 +28,11 @@ import (
 	"time"
 )
 
-// TestCA is a freshly minted RSA root CA that acceptance tests upload to
-// YugabyteDB Anywhere as bring-your-own certificate content, and use to issue
-// server certificates for yba_custom_server_certificate.
+// TestCA is a freshly minted RSA root CA for bring-your-own uploads and for
+// issuing server certificates to yba_custom_server_certificate.
 type TestCA struct {
-	// CertPEM and KeyPEM are the root certificate and its private key, in the
-	// canonical form Go's encoder emits (64-column base64, LF endings).
+	// Canonical Go encoding (64-column base64, LF): tests compare read-back
+	// PEM against CertPEM exactly.
 	CertPEM string
 	KeyPEM  string
 
@@ -41,9 +40,8 @@ type TestCA struct {
 	key  *rsa.PrivateKey
 }
 
-// NewTestCA mints an RSA-2048 root CA valid for two years. YBA signs (or
-// verifies) per-node server certificates against it, so the certificate
-// carries the full CA key-usage set.
+// NewTestCA mints an RSA-2048 root CA valid for two years with the full CA
+// key-usage set, so YBA can sign or verify per-node server certs against it.
 func NewTestCA(t *testing.T, cn string) *TestCA {
 	t.Helper()
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
@@ -77,10 +75,9 @@ func NewTestCA(t *testing.T, cn string) *TestCA {
 	}
 }
 
-// IssueServerCert issues a one-year TLS server certificate signed by the CA,
-// shaped like the org-issued certificates yba_custom_server_certificate
-// carries: serverAuth extended key usage plus DNS SANs for the given name and
-// its wildcard domain.
+// IssueServerCert issues a one-year server certificate signed by the CA,
+// shaped like an org-issued one: serverAuth EKU plus DNS SANs for cn and its
+// wildcard.
 func (ca *TestCA) IssueServerCert(t *testing.T, cn string) (certPEM, keyPEM string) {
 	t.Helper()
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
@@ -106,12 +103,10 @@ func (ca *TestCA) IssueServerCert(t *testing.T, cn string) (certPEM, keyPEM stri
 	return certPEM, keyPEM
 }
 
-// MangledPEM re-encodes certificate PEM the way real-world tooling often
-// emits it — CRLF line endings and 76-column base64 — so it differs textually
-// from both the input and YBA's re-encoded read-back while carrying identical
-// DER. Acceptance tests feed it into configs to prove the semantic PEM diff
-// suppression: without it, every plan after the first apply proposes a
-// destroy-and-recreate of the certificate.
+// MangledPEM re-encodes certificate PEM with CRLF endings and 76-column
+// base64: same DER, textually unlike both the input and YBA's read-back. A
+// config built from it plans clean only if the PEM diff suppression compares
+// DER.
 func MangledPEM(t *testing.T, content string) string {
 	t.Helper()
 	block, _ := pem.Decode([]byte(content))

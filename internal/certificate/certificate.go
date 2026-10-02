@@ -96,18 +96,14 @@ func suppressPEMContentDiff(k, old, new string, d *schema.ResourceData) bool {
 	return true
 }
 
-// caCertsPEM reduces a downloaded certificate bundle to its CA certificates,
-// preserving order. YBA's stored certificate file for a CustomServerCert
-// configuration is not the uploaded root chain: upload-time validation
-// prepends the server certificate(s) to the CA list in place
-// (CertificateHelper.verifyCertificateConfig), and that mutated bundle is
-// what the download endpoint returns. root_certificate holds only the CA
-// chain, so reading the bundle back verbatim would diff against every config
-// forever — the chain comparison is by count, order, and DER — and propose a
-// destroy-and-recreate that the in-use guard then blocks. YBA requires
-// CA=true on every member of the uploaded root chain, so the
-// basic-constraints flag reconstructs that chain exactly. Content that does
-// not fully parse, or contains no CA certificate, is returned unchanged.
+// caCertsPEM reduces a downloaded bundle to its CA certificates, in order.
+// YBA's upload validation prepends the server certificate(s) to a
+// CustomServerCert's CA list in place (CertificateHelper.verifyCertificateConfig),
+// so /download returns server+CA while root_certificate holds the CA chain
+// only: stored verbatim it diffs forever and plans a replacement the in-use
+// guard blocks. YBA requires CA=true on every uploaded root member, so basic
+// constraints recover the chain exactly. A bundle that does not fully parse,
+// or has no CA member, is returned unchanged.
 func caCertsPEM(bundle string) string {
 	rest := []byte(bundle)
 	var kept []byte
@@ -232,11 +228,9 @@ func formatCertDate(t *time.Time) string {
 	return t.UTC().Format(time.RFC3339)
 }
 
-// readCertificateResource loads the certificate into state, exporting the
-// root CA PEM (via download) into pemAttr — the resources differ in which
-// attribute carries it and in the pemFilter applied to the downloaded
-// content before it reaches state (nil for none). Missing certificates clear
-// the ID so Terraform plans a recreate (out-of-band delete idempotency).
+// readCertificateResource loads the certificate into state and exports the
+// downloaded root CA PEM into pemAttr, through pemFilter when non-nil.
+// Missing certificates clear the ID (out-of-band delete idempotency).
 func readCertificateResource(
 	ctx context.Context, d *schema.ResourceData, meta interface{}, pemAttr string,
 	pemFilter func(string) string,
