@@ -195,7 +195,9 @@ including it in any response or log line.
 When the operator corrects you, add the rule here and commit it with the
 code change. Mark repeated or emphasised corrections **critical** in
 bold. A correction that only a reviewer can judge (no linter or CI check
-can enforce it) goes in `REVIEW.md` instead. `AGENTS.md` and `REVIEW.md`
+can enforce it) goes in `REVIEW.md` instead, as the general rule it
+teaches; **critical: `REVIEW.md` never cites an issue, PR or date.**
+`AGENTS.md` and `REVIEW.md`
 are the only tracked convention files (a local, gitignored `CLAUDE.md` may
 `@AGENTS.md` to load it into Claude Code; durable cross-session memory
 lives in the Meko datapack below).
