@@ -17,6 +17,10 @@ names, and lifecycle behaviour are API contracts that ship into customer
 state files. Bias toward the safer, more thoroughly tested, more clearly
 documented option.
 
+This file is for the implementing agent: what a change needs to be correct.
+`REVIEW.md` is for the reviewing agent: how a change fits the codebase and
+holds up over time.
+
 ## Change scope
 
 Limit edits to the files and symbols needed for the requested behaviour or
@@ -71,18 +75,9 @@ than leaving the build red.
   `~> **Note:**` explaining the write-only behaviour is enough.
 - `Importer` is required unless YBA truly cannot import.
 - `Description` is required on every field and the resource itself —
-  these strings render directly into user-facing docs. Use `~> **Note:**`
-  / `~> **Warning:**` callouts; document performance gotchas (e.g.
-  per-node sleep defaults that compound on multi-node universes).
-- No noise fields — never expose computed values that are identical for
-  every resource managed by a given provider instance (e.g.
-  `customer_uuid`).
+  these strings render directly into user-facing docs.
 - Every resource gets a working example at
-  `examples/resources/yba_<name>/resource.tf` showing **every field**:
-  plain attributes (string/bool/map arguments such as `tags`) as well
-  as every nested block variant. Fields that are mutually exclusive
-  (e.g. per-`auth_type` credentials) get separate example resources in
-  the same file.
+  `examples/resources/yba_<name>/resource.tf`.
 - **critical: every new resource (and data source) also gets a doc
   template at `templates/resources/<name>.md.tmpl`** — copy a sibling's
   shape: front matter, `{{ .Description }}`, an Example Usage section
@@ -91,10 +86,6 @@ than leaving the build red.
   `make documents` silently falls back to tfplugindocs' default layout
   and the published doc ships with **no Import section**; `make lint`
   does not catch this because the defaulted doc still validates.
-- Telemetry sinks ship as per-sink resources
-  (`yba_<sink>_telemetry_provider`) built on the `sinkSpec` factory in
-  `internal/telemetry/sink.go` — add a new sink as a new spec + resource,
-  not as a block on a shared polymorphic resource.
 
 ## Lifecycle
 
@@ -112,9 +103,6 @@ than leaving the build red.
   certificate — repointing universes is a user decision), fail with an
   error that names the referencing resources instead. Either way, do not
   substring-match YBA's error body in the resource layer.
-- Long-running ops (e.g. rolling restarts): define timeout constants in
-  **hours** in one place per package so all three CRUD timeouts share one
-  source of truth.
 
 ## Error & Task Handling
 
@@ -180,8 +168,11 @@ likely to introduce — not for coverage percentage.
   The Cursor CLI injects `Made-with: Cursor` automatically; strip it
   with `git commit --amend -m "$(git log --format=%B -1 | sed
   '/^Made-with:/d')"` before every push.
-- Never force-push to `main`, never amend a commit that has been pushed,
-  never `--no-verify` without explicit operator approval.
+- **critical: rebase feature branches on `main`; a merge commit is never
+  acceptable.** Amending or rewriting pushed commits on a feature branch for
+  a cleaner history is fine; force-push the branch with `--force-with-lease`.
+- Never force-push to `main`, never `--no-verify` without explicit operator
+  approval.
 
 ## Secrets
 
@@ -194,10 +185,13 @@ including it in any response or log line.
 
 When the operator corrects you, add the rule here and commit it with the
 code change. Mark repeated or emphasised corrections **critical** in
-bold. `AGENTS.md` is the tracked source of truth for provider conventions
-(a local, gitignored `CLAUDE.md` may `@AGENTS.md` to load it into Claude
-Code; durable cross-session memory lives in the Meko datapack below) — do
-not add other tracked convention files.
+bold. A correction that only a reviewer can judge (no linter or CI check
+can enforce it) goes in `REVIEW.md` instead, as the general rule it
+teaches; **critical: `REVIEW.md` never cites an issue, PR or date.**
+`AGENTS.md` and `REVIEW.md`
+are the only tracked convention files (a local, gitignored `CLAUDE.md` may
+`@AGENTS.md` to load it into Claude Code; durable cross-session memory
+lives in the Meko datapack below).
 
 ## Meko (memory & knowledge)
 
