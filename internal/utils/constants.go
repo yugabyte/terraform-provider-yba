@@ -86,6 +86,16 @@ const (
 	// YBAAllowFailureSubTaskListMinVersion specifies minimum version
 	// required to fetch failed subtask message from YugabyteDB Anywhere
 	YBAAllowFailureSubTaskListMinVersion = "2.18.1.0-b68"
+
+	// YBANewReleaseAPIMinStableVersion specifies the minimum stable YBA version
+	// required to use the new release management (/ybdb_release) APIs.
+	// Matches yba-cli's gate for the same endpoints.
+	YBANewReleaseAPIMinStableVersion = "2024.2.0.0-b1"
+
+	// YBANewReleaseAPIMinPreviewVersion specifies the minimum preview YBA version
+	// required to use the new release management (/ybdb_release) APIs.
+	// Matches yba-cli's gate for the same endpoints.
+	YBANewReleaseAPIMinPreviewVersion = "2.23.1.0-b27"
 )
 
 // YugabyteDB Anywhere versions >= the minimum listed versions for operations

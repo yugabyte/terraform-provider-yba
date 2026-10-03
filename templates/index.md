@@ -36,6 +36,7 @@ The YugabyteDB Anywhere Provider currently supports the following YugabyteDB Any
   - On-Premises Node Instance (yba_onprem_node_instance)
   - On-Premises Provider (yba_onprem_provider)
   - Restores (yba_restore)
+  - YBDB Software Releases (yba_release)
   - Storage Configuration - AWS S3 (yba_s3_storage_config)
   - Storage Configuration - Azure Blob (yba_azure_storage_config)
   - Storage Configuration - GCS (yba_gcs_storage_config)

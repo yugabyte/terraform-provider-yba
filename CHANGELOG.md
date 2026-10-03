@@ -1,3 +1,17 @@
+## Unreleased
+
+### New resources
+
+- `yba_release` - manage YBDB software releases through the new release management API, including uploading release tarballs from the machine running Terraform and registering per-architecture artifacts (x86_64, aarch64, Kubernetes). Requires YugabyteDB Anywhere stable `2024.2.0.0-b1` or preview `2.23.1.0-b27` and later.
+
+### Enhancements
+
+- `yba_release_version` data source: new optional `deployment_type` filter (`x86_64`, `aarch64`, `kubernetes`) to select only versions that ship an artifact for that deployment type. The default (unfiltered) behavior is unchanged.
+
+### Internal
+
+- Removed the unregistered legacy release resource code that targeted the deprecated release import API.
+
 ## v1.0.0 (May 2026)
 
 The first major release of the YugabyteDB Anywhere Terraform Provider. It introduces typed, simplified replacements for the generic resources that shipped in the v0.1.x line, and removes two unsupported resources. The deprecated v0.1.x resources continue to work throughout v1.x; their planned removal is v2.0.0.

@@ -57,6 +57,17 @@ func ReleaseVersion() *schema.Resource {
 				Description: "YugabyteDB release verion track. Allowed values: stable, preview." +
 					" Uses the latest/user given version from the corresponding track.",
 			},
+			"deployment_type": {
+				Type:     schema.TypeString,
+				Optional: true,
+				ValidateDiagFunc: validation.ToDiagFunc(
+					validation.StringInSlice(releaseDeploymentTypes, false)),
+				Description: "Only return versions that have an artifact for this deployment " +
+					"type. Allowed values: x86_64, aarch64, kubernetes. Uses the new release " +
+					"management API, which requires YugabyteDB Anywhere version 2024.2.0.0-b1 " +
+					"(stable) or 2.23.1.0-b27 (preview) and above. Releases in DELETED state " +
+					"are excluded; DISABLED and INCOMPLETE releases are included.",
+			},
 			"version_list": {
 				Type:     schema.TypeList,
 				Elem:     &schema.Schema{Type: schema.TypeString},
@@ -72,29 +83,64 @@ func dataSourceReleaseVersionRead(
 	ctx context.Context,
 	d *schema.ResourceData,
 	meta interface{}) diag.Diagnostics {
-	var diags diag.Diagnostics
 
 	c := meta.(*api.APIClient).YugawareClient
 	cUUID := meta.(*api.APIClient).CustomerID
 
-	_, response, err := c.ReleaseManagementAPI.Refresh(ctx, cUUID).Execute()
-	if err != nil {
-		errMessage := utils.ErrorFromHTTPResponse(response, err, utils.DataSourceEntity,
-			"Release Version", "Read - Refresh")
-		return diag.FromErr(errMessage)
+	versions := make([]string, 0)
+	if deploymentType := d.Get("deployment_type").(string); deploymentType != "" {
+		// The new release management list filters by artifact deployment type
+		// server-side. The legacy list's arch filter is not an option: it
+		// throws server-side when any release carries a Kubernetes artifact.
+		if err := newReleaseAPIVersionCheck(ctx, c); err != nil {
+			return diag.FromErr(err)
+		}
+		r, response, err := c.NewReleaseManagementAPI.ListNewReleases(ctx, cUUID).
+			DeploymentType(deploymentType).Execute()
+		if err != nil {
+			errMessage := utils.ErrorFromHTTPResponse(response, err, utils.DataSourceEntity,
+				"Release Version", "Read - List Releases")
+			return diag.FromErr(errMessage)
+		}
+		for _, release := range r {
+			// Unlike the legacy list, the new list includes DELETED releases.
+			if release.State == "DELETED" {
+				continue
+			}
+			versions = append(versions, release.Version)
+		}
+	} else {
+		_, response, err := c.ReleaseManagementAPI.Refresh(ctx, cUUID).Execute()
+		if err != nil {
+			errMessage := utils.ErrorFromHTTPResponse(response, err, utils.DataSourceEntity,
+				"Release Version", "Read - Refresh")
+			return diag.FromErr(errMessage)
+		}
+
+		r, response, err := c.ReleaseManagementAPI.GetListOfReleases(ctx, cUUID).IncludeMetadata(
+			true).Execute()
+		if err != nil {
+			errMessage := utils.ErrorFromHTTPResponse(response, err, utils.DataSourceEntity,
+				"Release Version", "Read")
+			return diag.FromErr(errMessage)
+		}
+		for v := range r {
+			versions = append(versions, v)
+		}
 	}
 
-	r, response, err := c.ReleaseManagementAPI.GetListOfReleases(ctx, cUUID).IncludeMetadata(
-		true).Execute()
-	if err != nil {
-		errMessage := utils.ErrorFromHTTPResponse(response, err, utils.DataSourceEntity,
-			"Release Version", "Read")
-		return diag.FromErr(errMessage)
-	}
+	return selectVersions(d, versions)
+}
+
+// selectVersions applies the track/version filters to the fetched versions
+// and stores the sorted result. Shared by the legacy (unfiltered) and
+// deployment-type-filtered read paths so both behave identically.
+func selectVersions(d *schema.ResourceData, allVersions []string) diag.Diagnostics {
+	var diags diag.Diagnostics
 
 	versionsStable := make([]string, 0)
 	versionsPreview := make([]string, 0)
-	for v := range r {
+	for _, v := range allVersions {
 		if utils.IsVersionStable(v) {
 			versionsStable = append(versionsStable, v)
 		} else {
