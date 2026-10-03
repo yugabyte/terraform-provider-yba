@@ -27,6 +27,7 @@ import (
 	client "github.com/yugabyte/platform-go-client"
 
 	"github.com/yugabyte/terraform-provider-yba/internal/acctest"
+	"github.com/yugabyte/terraform-provider-yba/internal/api"
 	"github.com/yugabyte/terraform-provider-yba/internal/utils"
 )
 
@@ -47,6 +48,7 @@ func TestAccLong_Universe_GCP_UpdatePrimaryNodes(t *testing.T) {
 				Check: resource.ComposeTestCheckFunc(
 					testAccCheckUniverseExists("GCP", "yba_universe.gcp", &universe),
 					testAccCheckNumNodes(&universe, 3),
+					testAccCheckCreateTaskRanHooks("GCP", &universe),
 				),
 			},
 			{
@@ -77,6 +79,7 @@ func TestAccLong_Universe_AWS_UpdatePrimaryNodes(t *testing.T) {
 				Check: resource.ComposeTestCheckFunc(
 					testAccCheckUniverseExists("AWS", "yba_universe.aws", &universe),
 					testAccCheckNumNodes(&universe, 3),
+					testAccCheckCreateTaskRanHooks("AWS", &universe),
 				),
 			},
 			{
@@ -107,6 +110,7 @@ func TestAccLong_Universe_Azure_UpdatePrimaryNodes(t *testing.T) {
 				Check: resource.ComposeTestCheckFunc(
 					testAccCheckUniverseExists("AZURE", "yba_universe.azu", &universe),
 					testAccCheckNumNodes(&universe, 3),
+					testAccCheckCreateTaskRanHooks("AZURE", &universe),
 				),
 			},
 			{
@@ -139,6 +143,15 @@ func testAccCheckDestroyProviderAndUniverse(cloud string) resource.TestCheckFunc
 				if err == nil {
 					return errors.New("Universe resource is not destroyed")
 				}
+			case "yba_hook":
+				_, err := apiClient.VanillaClient.GetHook(context.Background(), cUUID,
+					r.Primary.ID, apiClient.APIKey)
+				if err == nil {
+					return fmt.Errorf("hook %s is not destroyed", r.Primary.ID)
+				}
+				if !errors.Is(err, api.ErrHookMissing) {
+					return fmt.Errorf("checking destroyed hook %s: %w", r.Primary.ID, err)
+				}
 			case "yba_cloud_provider":
 				// Provider deletion is async; poll until it disappears rather than
 				// sleeping a fixed interval (which can false-fail and leak the
@@ -170,6 +183,66 @@ func testAccCheckDestroyProviderAndUniverse(cloud string) resource.TestCheckFunc
 		}
 
 		return nil
+	}
+}
+
+// testAccCheckCreateTaskRanHooks asserts from the task record on YBA that the
+// universe's Create task ran its "Running Hooks" subtask group to Success: the
+// provider-scoped PostNodeProvision hook in the config executed on the new
+// nodes. A disabled flag or an unbound hook leaves the group out of the task
+// entirely; a failing script fails the create itself.
+func testAccCheckCreateTaskRanHooks(
+	cloud string, universe *client.UniverseResp) resource.TestCheckFunc {
+	return func(_ *terraform.State) error {
+		apiClient, err := acctest.APIClientForCloud(cloud)
+		if err != nil {
+			return err
+		}
+		conn := apiClient.YugawareClient
+		cUUID := apiClient.CustomerID
+		tasks, response, err := conn.CustomerTasksAPI.
+			TasksList(context.Background(), cUUID).
+			UUUID(universe.GetUniverseUUID()).Execute()
+		if err != nil {
+			return utils.ErrorFromHTTPResponse(response, err, utils.TestEntity,
+				"Universe", "Read - Tasks")
+		}
+		createTask := ""
+		for i := range tasks {
+			if tasks[i].GetType() == "Create" {
+				createTask = tasks[i].GetId()
+				break
+			}
+		}
+		if createTask == "" {
+			return fmt.Errorf("no Create task found for universe %s",
+				universe.GetUniverseUUID())
+		}
+		status, response, err := conn.CustomerTasksAPI.
+			TaskStatus(context.Background(), cUUID, createTask).Execute()
+		if err != nil {
+			return utils.ErrorFromHTTPResponse(response, err, utils.TestEntity,
+				"Universe", "Read - Task Status")
+		}
+		details, _ := status["details"].(map[string]interface{})
+		groups, _ := details["taskDetails"].([]interface{})
+		seen := make([]string, 0, len(groups))
+		for _, g := range groups {
+			group, _ := g.(map[string]interface{})
+			title, _ := group["title"].(string)
+			state, _ := group["state"].(string)
+			seen = append(seen, title+"="+state)
+			if title != "Running Hooks" {
+				continue
+			}
+			if state != "Success" {
+				return fmt.Errorf("Create task %s ran hooks but the group is %q, want Success",
+					createTask, state)
+			}
+			return nil
+		}
+		return fmt.Errorf("Create task %s has no \"Running Hooks\" subtask group, so the "+
+			"PostNodeProvision hook did not run (groups: %v)", createTask, seen)
 	}
 }
 
@@ -227,32 +300,51 @@ func universeAzureConfigWithNodes(name string, nodes int) string {
 		universeConfigWithProviderWithNodes("azu", name, nodes)
 }
 
+// universeConfigWithProviderWithNodes declares the universe plus a
+// provider-scoped PostNodeProvision hook it depends on. The hook rides along so
+// every long test that provisions nodes also proves custom hooks execute on
+// them, without a universe of its own: a no-op Bash script, run as the yugabyte
+// user (no sudo), scoped to this test's provider so it never fires on another
+// test's nodes. depends_on makes Terraform create the hook before provisioning
+// starts; testAccCheckCreateTaskRanHooks verifies it ran. Custom hooks are
+// enabled on each fixture YBA by yba_runtime_config.enable_custom_hooks in
+// acctest/<cloud>/yba.tf, not by the tests.
 func universeConfigWithProviderWithNodes(p string, name string, nodes int) string {
 	return fmt.Sprintf(`
-	data "yba_provider_key" "%s_key" {
-  		provider_id = yba_cloud_provider.%s.id
+	data "yba_provider_key" "%[1]s_key" {
+  		provider_id = yba_cloud_provider.%[1]s.id
 	}
 
 	data "yba_release_version" "release_version"{
 		depends_on = [
-			data.yba_provider_key.%s_key
+			data.yba_provider_key.%[1]s_key
   		]
 	}
 
-	resource "yba_universe" "%s" {
+	resource "yba_hook" "%[1]s_post_provision" {
+		name           = "%[2]s-post-provision.sh"
+		execution_lang = "Bash"
+		hook_text      = "#!/bin/bash\necho yba-acctest-post-node-provision\n"
+		trigger_type   = "PostNodeProvision"
+		provider_uuid  = yba_cloud_provider.%[1]s.id
+	}
+
+	resource "yba_universe" "%[1]s" {
+		depends_on = [yba_hook.%[1]s_post_provision]
+
   		clusters {
     		cluster_type = "PRIMARY"
     		user_intent {
-      			universe_name      = "%s"
-      			provider           = yba_cloud_provider.%s.id
-      			region_list        = yba_cloud_provider.%s.regions[*].uuid
-      			num_nodes          = %d
+      			universe_name      = "%[2]s"
+      			provider           = yba_cloud_provider.%[1]s.id
+      			region_list        = yba_cloud_provider.%[1]s.regions[*].uuid
+      			num_nodes          = %[3]d
       			replication_factor = 3
-      			instance_type      = "%s"
+      			instance_type      = "%[4]s"
       			device_info {
         			num_volumes  = 1
         			volume_size  = 375
-        			storage_type = "%s"
+        			storage_type = "%[5]s"
       			}
 				assign_public_ip              = true
 				use_time_sync                 = true
@@ -260,7 +352,7 @@ func universeConfigWithProviderWithNodes(p string, name string, nodes int) strin
 				enable_node_to_node_encrypt   = true
 				enable_client_to_node_encrypt = true
 				yb_software_version           = data.yba_release_version.release_version.id
-				access_key_code               = data.yba_provider_key.%s_key.id
+				access_key_code               = data.yba_provider_key.%[1]s_key.id
 				instance_tags = {
 					"yb_owner"  = "terraform_acctest"
 					"yb_task"   = "dev"
@@ -270,8 +362,7 @@ func universeConfigWithProviderWithNodes(p string, name string, nodes int) strin
   		}
   		communication_ports {}
 	}
-`, p, p, p, p, name, p, p, nodes, getUniverseInstanceType(p),
-		getUniverseStorageType(p), p)
+`, p, name, nodes, getUniverseInstanceType(p), getUniverseStorageType(p))
 }
 
 func getUniverseStorageType(p string) string {

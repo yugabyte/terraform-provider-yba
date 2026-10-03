@@ -161,3 +161,15 @@ resource "yba_customer_resource" "customer" {
 
   depends_on = [terraform_data.wait_for_yba_api]
 }
+
+# Custom hooks are off by default in YBA. The long-tier universe configs attach
+# a PostNodeProvision hook to every universe they create, so the flag is set
+# once here, on the fixture, rather than from test PreChecks: no test mutates
+# the shared YBA, and the key survives test runs. The short hook tier sets the
+# same key on its own.
+resource "yba_runtime_config" "enable_custom_hooks" {
+  provider = yba.admin
+
+  key   = "yb.security.custom_hooks.enable_custom_hooks"
+  value = "true"
+}

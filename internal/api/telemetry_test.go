@@ -143,6 +143,35 @@ func TestGetTelemetryProviderSuccess(t *testing.T) {
 	}
 }
 
+// An auth rejection carries YBA's message in the error string since
+// ErrorFromHTTPResponse surfaces 401/403 bodies. A body that happens to contain a
+// missing-marker must not turn a 401/403 into "gone": Read would drop a live
+// provider from state and Delete would report a refused delete as done.
+func TestTelemetryProviderAuthRejectionIsNotMissing(t *testing.T) {
+	for _, status := range []int{http.StatusUnauthorized, http.StatusForbidden} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			vc, _ := newStubVanillaClient(t,
+				func(w http.ResponseWriter, _ *http.Request) {
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(status)
+					_, _ = w.Write([]byte(`{"error":"telemetry provider tp-1 does not exist"}`))
+				})
+
+			//nolint:bodyclose // response body is closed inside GetTelemetryProvider
+			provider, _, err := vc.GetTelemetryProvider(
+				context.Background(), "cust-uuid", "tp-1", "token")
+			if provider != nil || err == nil || errors.Is(err, ErrTelemetryProviderMissing) {
+				t.Errorf("get: HTTP %d must be an error, not missing; got provider=%v err=%v",
+					status, provider, err)
+			}
+			if err := vc.DeleteTelemetryProvider(
+				context.Background(), "cust-uuid", "tp-1", "token"); err == nil {
+				t.Errorf("delete: HTTP %d must surface an error, got nil", status)
+			}
+		})
+	}
+}
+
 func TestDeleteTelemetryProviderIdempotent(t *testing.T) {
 	cases := []struct {
 		name   string
