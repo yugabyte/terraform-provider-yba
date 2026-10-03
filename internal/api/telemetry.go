@@ -48,6 +48,9 @@ var ErrTelemetryProviderMissing = errors.New("telemetry provider does not exist"
 // telemetryProviderMissingMarkers are body substrings YBA returns (as 400, not
 // 404) when a provider is already gone, so body matching is unavoidable. Verified
 // against server source; neither collides with the "...as it is in use." rejection.
+// errorIndicatesProviderMissing never consults them on a 401 or 403: since
+// ErrorFromHTTPResponse inlines YBA's message on those statuses too, an auth
+// rejection whose text happened to contain a marker must never read as "gone".
 var telemetryProviderMissingMarkers = []string{
 	"does not exist",                  // DELETE path: "Telemetry Provider '<uuid>' does not exist."
 	"Invalid Telemetry Provider UUID", // GET path: "Invalid Telemetry Provider UUID: <uuid>"
@@ -97,7 +100,7 @@ func (vc *VanillaClient) GetTelemetryProvider(
 		return nil, resp, ErrTelemetryProviderMissing
 	}
 	if httpErr := vanillaHTTPError(resp, "Telemetry Provider", "Get"); httpErr != nil {
-		if errorIndicatesProviderMissing(httpErr) {
+		if errorIndicatesProviderMissing(resp, httpErr) {
 			return nil, resp, ErrTelemetryProviderMissing
 		}
 		return nil, resp, httpErr
@@ -153,7 +156,7 @@ func (vc *VanillaClient) DeleteTelemetryProvider(
 		return nil
 	}
 	if httpErr := vanillaHTTPError(resp, "Telemetry Provider", "Delete"); httpErr != nil {
-		if errorIndicatesProviderMissing(httpErr) {
+		if errorIndicatesProviderMissing(resp, httpErr) {
 			return nil
 		}
 		return httpErr
@@ -161,8 +164,9 @@ func (vc *VanillaClient) DeleteTelemetryProvider(
 	return nil
 }
 
-func errorIndicatesProviderMissing(err error) bool {
-	if err == nil {
+func errorIndicatesProviderMissing(resp *http.Response, err error) bool {
+	if err == nil || resp == nil ||
+		resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
 		return false
 	}
 	msg := err.Error()

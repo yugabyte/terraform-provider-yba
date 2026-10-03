@@ -231,20 +231,46 @@ func TestDeleteHookIdempotent(t *testing.T) {
 	}
 }
 
+// The other arm of the idempotent-delete rule: every non-missing error
+// propagates, and the missing-marker only counts on the 400 that
+// Hook.getOrBadRequest raises, never on an auth rejection whose surfaced body
+// happens to carry the same text.
 func TestDeleteHookSurfacesErrors(t *testing.T) {
-	vc, _ := newStubVanillaClient(t,
-		func(w http.ResponseWriter, _ *http.Request) {
-			w.WriteHeader(http.StatusUnauthorized)
-			_, _ = w.Write([]byte(
-				`{"error":"Custom hooks is not enabled on this Anywhere instance"}`))
-		})
-
-	err := vc.DeleteHook(context.Background(), "cust-1", "h-1", "token")
-	if err == nil {
-		t.Fatal("expected non-nil error for disabled custom hooks")
+	cases := []struct {
+		name     string
+		status   int
+		body     string
+		wantPart string
+	}{
+		{
+			name:     "401 feature disabled",
+			status:   http.StatusUnauthorized,
+			body:     `{"error":"Custom hooks is not enabled on this Anywhere instance"}`,
+			wantPart: "Custom hooks is not enabled",
+		},
+		{
+			name:     "401 carrying the missing marker",
+			status:   http.StatusUnauthorized,
+			body:     `{"error":"Invalid Hook UUID:h-1"}`,
+			wantPart: "Invalid Hook UUID",
+		},
 	}
-	if !strings.Contains(err.Error(), "Custom hooks is not enabled") {
-		t.Errorf("error did not surface body: %v", err)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			vc, _ := newStubVanillaClient(t,
+				func(w http.ResponseWriter, _ *http.Request) {
+					w.WriteHeader(tc.status)
+					_, _ = w.Write([]byte(tc.body))
+				})
+
+			err := vc.DeleteHook(context.Background(), "cust-1", "h-1", "token")
+			if err == nil {
+				t.Fatal("expected non-nil error")
+			}
+			if !strings.Contains(err.Error(), tc.wantPart) {
+				t.Errorf("error did not surface body: %v", err)
+			}
+		})
 	}
 }
 

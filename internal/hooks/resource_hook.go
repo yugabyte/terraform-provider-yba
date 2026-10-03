@@ -314,14 +314,18 @@ func reconcileHookAttachment(
 	}
 	// The attach moved the hook out of its previous scope (HookScope.addHook
 	// re-points the hook's single scope column). Remove that scope only if YBA
-	// now reports it empty: its delete cascades onto any hook still attached.
+	// now reports it empty: its delete cascades onto any hook still attached,
+	// and the re-read narrows that window rather than closing it.
 	return deleteScopeIfEmpty(ctx, apiClient, current.UUID)
 }
 
 // deleteScopeIfEmpty re-lists the scopes and deletes scopeUUID only when YBA
 // reports no hook attached to it; a scope that is already gone, or that
-// another writer has since attached a hook to, is left alone. Callers hold
-// hookScopeMu.
+// another writer has since attached a hook to, is left alone. YBA has no
+// conditional delete, so a hook attached between this read and the delete
+// still goes with the scope: the re-read narrows that window, it does not
+// close it (see the resource Warning). Callers hold hookScopeMu, which only
+// serializes writers in this process.
 func deleteScopeIfEmpty(ctx context.Context, apiClient *api.APIClient, scopeUUID string) error {
 	vc := apiClient.VanillaClient
 	scopes, err := vc.ListHookScopes(ctx, apiClient.CustomerID, apiClient.APIKey)
@@ -476,8 +480,8 @@ func resourceHookDelete(
 		return diag.FromErr(err)
 	}
 	// The hook is gone. Its scope stays only while other hooks still use it;
-	// deleteScopeIfEmpty re-reads before deleting so the cascade never takes a
-	// hook that arrived in the meantime.
+	// deleteScopeIfEmpty re-reads before deleting, which narrows (not closes)
+	// the window in which the cascade could take a hook another writer attached.
 	if current != nil {
 		if err := deleteScopeIfEmpty(ctx, apiClient, current.UUID); err != nil {
 			return diag.FromErr(err)

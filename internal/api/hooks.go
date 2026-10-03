@@ -326,7 +326,11 @@ func (vc *VanillaClient) DeleteHook(
 		return nil
 	}
 	if httpErr := vanillaHTTPError(resp, "Hook", "Delete"); httpErr != nil {
-		if strings.Contains(httpErr.Error(), hookMissingMarker) {
+		// The marker is only meaningful on the 400 Hook.getOrBadRequest raises;
+		// ErrorFromHTTPResponse inlines YBA's message on 401/403 as well, and an
+		// auth rejection must never be recorded as a completed delete.
+		if resp.StatusCode == http.StatusBadRequest &&
+			strings.Contains(httpErr.Error(), hookMissingMarker) {
 			return nil
 		}
 		return httpErr
