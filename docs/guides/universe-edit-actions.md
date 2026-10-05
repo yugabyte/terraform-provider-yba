@@ -419,7 +419,7 @@ resource "yba_universe" "example" {
 
 ## Encryption at Rest
 
-**Trigger:** the `encryption_at_rest` block is added with `enabled = true` (the default),
+**Trigger:** the `encryption_at_rest` block is added with `enabled = true`,
 `encryption_at_rest.kms_config_uuid` changes on an enabled universe,
 `encryption_at_rest.universe_key_rotation_trigger` changes to a new non-empty value, or
 `encryption_at_rest.enabled` changes.
@@ -431,7 +431,7 @@ key), or Disable Encryption At Rest
 
 | Field | Purpose |
 |---|---|
-| `encryption_at_rest.enabled` | Whether the universe encrypts data at rest. Defaults to `true` when the block is present; `false` disables in place. |
+| `encryption_at_rest.enabled` | Whether the universe encrypts data at rest. Required inside the block: `true` enables, `false` disables in place. |
 | `encryption_at_rest.kms_config_uuid` | The encryption-at-rest configuration (`yba_gcp_ear_config`, or a `yba_ear_config` lookup) whose master key wraps the universe keys. Changing it rotates the master key. |
 | `encryption_at_rest.universe_key_rotation_trigger` | Any change to a new non-empty value rotates the universe key under the current master key. |
 
@@ -489,6 +489,7 @@ resource "yba_gcp_ear_config" "kms" {
 
 resource "yba_universe" "example" {
   encryption_at_rest {
+    enabled                       = true
     kms_config_uuid               = yba_gcp_ear_config.kms.uuid
     universe_key_rotation_trigger = "2026-Q3" # bump to rotate the universe key
   }
@@ -515,6 +516,7 @@ data "yba_ear_config" "kms" {
 
 resource "yba_universe" "existing" {
   encryption_at_rest {
+    enabled         = true
     kms_config_uuid = data.yba_ear_config.kms.uuid
   }
   # ... the universe's existing fields, unchanged ...

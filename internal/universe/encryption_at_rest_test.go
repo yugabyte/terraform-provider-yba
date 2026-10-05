@@ -16,6 +16,7 @@
 package universe
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -193,6 +194,33 @@ func TestRevertEncryptionAtRestKeepsRotationPending(t *testing.T) {
 	}
 }
 
+// A plain universe after its first Read: state carries the computed block
+// with enabled = false and the config omits the block. The plan must be
+// empty. The SDK's config reader synthesizes a nested Default for an omitted
+// block, so a Default on enabled would surface here as "kms_config_uuid is
+// required" on every universe.
+func TestPlanWithOmittedBlockIsEmpty(t *testing.T) {
+	res := &schema.Resource{
+		Schema:        earTestSchema(),
+		CustomizeDiff: validateEncryptionAtRestDiff,
+	}
+	state := &terraform.InstanceState{ID: "u-1", Attributes: map[string]string{
+		"id":                                   "u-1",
+		"encryption_at_rest.#":                 "1",
+		"encryption_at_rest.0.enabled":         "false",
+		"encryption_at_rest.0.kms_config_uuid": "",
+		"encryption_at_rest.0.universe_key_rotation_trigger": "",
+	}}
+	cfg := terraform.NewResourceConfigRaw(map[string]interface{}{})
+	diff, err := res.Diff(context.Background(), state, cfg, nil)
+	if err != nil {
+		t.Fatalf("plan of a plain universe with the block omitted: %v", err)
+	}
+	if diff != nil && !diff.Empty() {
+		t.Fatalf("unexpected diff: %v", diff)
+	}
+}
+
 func TestEncryptionAtRestSchemaSanity(t *testing.T) {
 	s := encryptionAtRestSchema()
 	if !s.Optional || !s.Computed {
@@ -202,8 +230,8 @@ func TestEncryptionAtRestSchemaSanity(t *testing.T) {
 		t.Error("the block must be a singleton")
 	}
 	elem := s.Elem.(*schema.Resource).Schema
-	if elem["enabled"].Default != true {
-		t.Error("a block that names a config must mean enabled")
+	if !elem["enabled"].Required || elem["enabled"].Default != nil {
+		t.Error("enabled must be Required with no Default: see TestPlanWithOmittedBlockIsEmpty")
 	}
 	if !elem["kms_config_uuid"].Computed {
 		t.Error("kms_config_uuid must be Computed: YBA keeps it after a disable")

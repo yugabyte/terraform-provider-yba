@@ -20,6 +20,7 @@ data "yba_ear_config" "ui_created" {
 # A universe attaches it through its encryption_at_rest block:
 #
 #   encryption_at_rest {
+#     enabled         = true
 #     kms_config_uuid = data.yba_ear_config.ui_created.uuid
 #   }
 #

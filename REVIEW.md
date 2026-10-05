@@ -84,6 +84,11 @@ failure this project can ship.
   echo as an explicit pin.
 - An `Optional + Computed` block that models a server-side toggle carries an
   explicit `enabled` field, and removing the block changes nothing.
+- No attribute inside an `Optional + Computed` block carries a `Default`. The
+  SDK's config reader synthesizes a nested default for a block the
+  configuration omits, so `CustomizeDiff` and `d.Get` see a block that is
+  half state, half default on every resource after its first Read. Make the
+  attribute `Required`, or resolve the default in code from `d.GetRawConfig()`.
 - A `DiffSuppressFunc` on a value the server re-encodes (PEM, JSON, YAML)
   compares the decoded form, not trimmed text. Trimmed text on a `ForceNew`
   attribute diffs forever.

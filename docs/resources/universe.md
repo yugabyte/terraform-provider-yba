@@ -148,6 +148,7 @@ resource "yba_universe" "with_certificates" {
 # the universe key, and enabled = false turns encryption off.
 resource "yba_universe" "encrypted_at_rest" {
   encryption_at_rest {
+    enabled                       = true
     kms_config_uuid               = yba_gcp_ear_config.kms.uuid
     universe_key_rotation_trigger = "2026-Q3" # bump to rotate the universe key
   }
@@ -467,9 +468,12 @@ Optional:
 
 ### Nested Schema for `encryption_at_rest`
 
+Required:
+
+- `enabled` (Boolean) Whether encryption at rest is enabled. `true` enables it at creation or in place; `false` disables it in place through a YugabyteDB Anywhere task, and data written afterwards is stored in clear.
+
 Optional:
 
-- `enabled` (Boolean) Whether encryption at rest is enabled. `false` disables it in place through a YugabyteDB Anywhere task; data written afterwards is stored in clear.
 - `kms_config_uuid` (String) UUID of the encryption-at-rest configuration whose master key wraps the universe keys. Required when `enabled` is true. Changing it on an enabled universe rotates the master key. After disabling, YugabyteDB Anywhere keeps reporting the last configuration here.
 - `universe_key_rotation_trigger` (String) Opaque trigger for universe key rotation: changing it to any new non-empty value generates a fresh universe key under the current master key on the next apply (setting it for the first time counts). Removing it never fires. A date reads well in diffs; pair it with `time_rotating` for automated rotation. It applies to an enabled universe only, and when it changes in the same apply that enables encryption the enable itself already generates a fresh key. When it changes together with `kms_config_uuid`, the master key rotation runs first.
 

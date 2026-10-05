@@ -42,6 +42,12 @@ const (
 // encryptionAtRestSchema is the universe's encryption_at_rest block. It is
 // Optional+Computed like root_ca: omitting it leaves the universe as it is,
 // and disabling is an explicit enabled = false.
+//
+// enabled is Required, not Optional with a Default. The SDK's config reader
+// synthesizes a nested Default for a block the configuration omits, so a
+// Default of true would make CustomizeDiff and d.Get see enabled = true with
+// no configuration on every universe after its first Read, and the plan
+// would fail. TestPlanWithOmittedBlockIsEmpty pins this.
 func encryptionAtRestSchema() *schema.Schema {
 	return &schema.Schema{
 		Type:     schema.TypeList,
@@ -66,11 +72,11 @@ func encryptionAtRestSchema() *schema.Schema {
 			Schema: map[string]*schema.Schema{
 				"enabled": {
 					Type:     schema.TypeBool,
-					Optional: true,
-					Default:  true,
-					Description: "Whether encryption at rest is enabled. `false` disables it " +
-						"in place through a YugabyteDB Anywhere task; data written afterwards " +
-						"is stored in clear.",
+					Required: true,
+					Description: "Whether encryption at rest is enabled. `true` enables it at " +
+						"creation or in place; `false` disables it in place through a " +
+						"YugabyteDB Anywhere task, and data written afterwards is stored in " +
+						"clear.",
 				},
 				"kms_config_uuid": {
 					Type:     schema.TypeString,

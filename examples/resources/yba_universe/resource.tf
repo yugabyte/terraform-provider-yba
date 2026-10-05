@@ -135,6 +135,7 @@ resource "yba_universe" "with_certificates" {
 # the universe key, and enabled = false turns encryption off.
 resource "yba_universe" "encrypted_at_rest" {
   encryption_at_rest {
+    enabled                       = true
     kms_config_uuid               = yba_gcp_ear_config.kms.uuid
     universe_key_rotation_trigger = "2026-Q3" # bump to rotate the universe key
   }

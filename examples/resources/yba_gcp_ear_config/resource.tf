@@ -31,6 +31,7 @@ resource "yba_gcp_ear_config" "host_identity" {
 # A universe attaches a configuration through its encryption_at_rest block:
 #
 #   encryption_at_rest {
+#     enabled         = true
 #     kms_config_uuid = yba_gcp_ear_config.service_account.uuid
 #   }
 #
