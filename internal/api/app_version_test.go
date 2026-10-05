@@ -36,7 +36,7 @@ func appVersionClient(t *testing.T, handler http.HandlerFunc) (*APIClient, *int)
 	cfg := client.NewConfiguration()
 	cfg.Host = strings.TrimPrefix(srv.URL, "http://")
 	cfg.Scheme = "http"
-	return &APIClient{YugawareClient: client.NewAPIClient(cfg)}, &hits
+	return &APIClient{YugawareClient: client.NewAPIClient(cfg), APIKey: "token"}, &hits
 }
 
 func TestAppVersionFetchesOnceAndCaches(t *testing.T) {
@@ -86,9 +86,19 @@ func TestAppVersionMissingFieldIsError(t *testing.T) {
 	}
 }
 
-// A client with no server (bootstrap mode, unit tests) reports "" so gates
-// skip; a seeded value is served without a server.
+// A client without an api_token (bootstrap mode) or without a server (unit
+// tests) reports "" without a request, so gates skip; a seeded value is served
+// without a server.
 func TestAppVersionWithoutServer(t *testing.T) {
+	bootstrap, hits := appVersionClient(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	})
+	bootstrap.APIKey = ""
+	if got, err := bootstrap.AppVersion(context.Background()); err != nil || got != "" ||
+		*hits != 0 {
+		t.Fatalf("bootstrap client: (%q, %v) after %d requests, want (\"\", nil) after 0",
+			got, err, *hits)
+	}
 	c := &APIClient{}
 	if got, err := c.AppVersion(context.Background()); err != nil || got != "" {
 		t.Fatalf("bare client: (%q, %v), want (\"\", nil)", got, err)

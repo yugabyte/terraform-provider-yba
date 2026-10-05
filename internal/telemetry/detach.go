@@ -154,10 +154,11 @@ func filterExporters[T any](in []T, uuid func(T) string, skip string) ([]T, bool
 }
 
 // filterTelemetryConfig returns a copy of tc with every exporter referencing
-// skipUUID removed, and reports whether anything was removed. A pipeline left
-// with no exporters is dropped so the endpoint disables it (YBA's
-// "empty/missing section == disable"); untouched pipelines are carried over
-// verbatim so a detach never alters unrelated export config.
+// skipUUID removed, and reports whether anything was removed. A pipeline whose
+// last exporter was removed is dropped so the endpoint disables it (YBA's
+// "empty/missing section == disable"); every other pipeline, including one
+// that never had an exporter, is carried over verbatim so a detach never
+// alters unrelated export config.
 func filterTelemetryConfig(
 	tc *clientv2.TelemetryConfig, skipUUID string,
 ) (clientv2.TelemetryConfig, bool) {
@@ -175,7 +176,7 @@ func filterTelemetryConfig(
 	if a := tc.AuditLogs; a != nil {
 		kept, removed := filterExporters(a.Exporters, logsUUID, skipUUID)
 		changed = changed || removed
-		if len(kept) > 0 {
+		if len(kept) > 0 || !removed {
 			spec := *a
 			spec.Exporters = kept
 			out.AuditLogs = &spec
@@ -184,7 +185,7 @@ func filterTelemetryConfig(
 	if q := tc.QueryLogs; q != nil {
 		kept, removed := filterExporters(q.Exporters, queryUUID, skipUUID)
 		changed = changed || removed
-		if len(kept) > 0 {
+		if len(kept) > 0 || !removed {
 			spec := *q
 			spec.Exporters = kept
 			out.QueryLogs = &spec
@@ -193,7 +194,7 @@ func filterTelemetryConfig(
 	if m := tc.Metrics; m != nil {
 		kept, removed := filterExporters(m.Exporters, metricsUUID, skipUUID)
 		changed = changed || removed
-		if len(kept) > 0 {
+		if len(kept) > 0 || !removed {
 			spec := *m
 			spec.Exporters = kept
 			out.Metrics = &spec
@@ -202,7 +203,7 @@ func filterTelemetryConfig(
 	if s := tc.MasterLogs; s != nil {
 		kept, removed := filterExporters(s.Exporters, serverUUID, skipUUID)
 		changed = changed || removed
-		if len(kept) > 0 {
+		if len(kept) > 0 || !removed {
 			spec := *s
 			spec.Exporters = kept
 			out.MasterLogs = &spec
@@ -211,7 +212,7 @@ func filterTelemetryConfig(
 	if s := tc.TserverLogs; s != nil {
 		kept, removed := filterExporters(s.Exporters, serverUUID, skipUUID)
 		changed = changed || removed
-		if len(kept) > 0 {
+		if len(kept) > 0 || !removed {
 			spec := *s
 			spec.Exporters = kept
 			out.TserverLogs = &spec
@@ -220,7 +221,7 @@ func filterTelemetryConfig(
 	if s := tc.YsqlConnMgrLogs; s != nil {
 		kept, removed := filterExporters(s.Exporters, serverUUID, skipUUID)
 		changed = changed || removed
-		if len(kept) > 0 {
+		if len(kept) > 0 || !removed {
 			spec := *s
 			spec.Exporters = kept
 			out.YsqlConnMgrLogs = &spec
@@ -229,7 +230,7 @@ func filterTelemetryConfig(
 	if s := tc.NodeAgentLogs; s != nil {
 		kept, removed := filterExporters(s.Exporters, serverUUID, skipUUID)
 		changed = changed || removed
-		if len(kept) > 0 {
+		if len(kept) > 0 || !removed {
 			spec := *s
 			spec.Exporters = kept
 			out.NodeAgentLogs = &spec
@@ -238,7 +239,7 @@ func filterTelemetryConfig(
 	if s := tc.YnpLogs; s != nil {
 		kept, removed := filterExporters(s.Exporters, serverUUID, skipUUID)
 		changed = changed || removed
-		if len(kept) > 0 {
+		if len(kept) > 0 || !removed {
 			spec := *s
 			spec.Exporters = kept
 			out.YnpLogs = &spec
@@ -247,7 +248,7 @@ func filterTelemetryConfig(
 	if s := tc.ControllerLogs; s != nil {
 		kept, removed := filterExporters(s.Exporters, serverUUID, skipUUID)
 		changed = changed || removed
-		if len(kept) > 0 {
+		if len(kept) > 0 || !removed {
 			spec := *s
 			spec.Exporters = kept
 			out.ControllerLogs = &spec

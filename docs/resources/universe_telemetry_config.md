@@ -118,15 +118,16 @@ resource "yba_universe_telemetry_config" "main" {
     }
   }
 
-  # Server-log pipelines: yb-master and yb-tserver glog export. min_level
-  # bounds the exported severity; master_logs can additionally drop a fraction
-  # of high-volume noise lines.
+  # Server-log pipelines: yb-master and yb-tserver glog export. They send logs
+  # to the same log destination as audit_logs and query_logs. min_level bounds
+  # the exported severity; master_logs can additionally drop a fraction of
+  # high-volume noise lines.
   master_logs {
     min_level               = "INFO"
     noise_sample_drop_ratio = 0.99
 
     exporter {
-      exporter_uuid = yba_otlp_telemetry_provider.prometheus.id
+      exporter_uuid = yba_datadog_telemetry_provider.datadog.id
       additional_tags = {
         log_type = "yb-master"
       }
@@ -143,32 +144,32 @@ resource "yba_universe_telemetry_config" "main" {
     min_level = "WARNING"
 
     exporter {
-      exporter_uuid = yba_otlp_telemetry_provider.prometheus.id
+      exporter_uuid = yba_datadog_telemetry_provider.datadog.id
     }
   }
 
   # The remaining server-log pipelines carry only exporter blocks.
   ysql_conn_mgr_logs {
     exporter {
-      exporter_uuid = yba_otlp_telemetry_provider.prometheus.id
+      exporter_uuid = yba_datadog_telemetry_provider.datadog.id
     }
   }
 
   node_agent_logs {
     exporter {
-      exporter_uuid = yba_otlp_telemetry_provider.prometheus.id
+      exporter_uuid = yba_datadog_telemetry_provider.datadog.id
     }
   }
 
   ynp_logs {
     exporter {
-      exporter_uuid = yba_otlp_telemetry_provider.prometheus.id
+      exporter_uuid = yba_datadog_telemetry_provider.datadog.id
     }
   }
 
   controller_logs {
     exporter {
-      exporter_uuid = yba_otlp_telemetry_provider.prometheus.id
+      exporter_uuid = yba_datadog_telemetry_provider.datadog.id
     }
   }
 
@@ -211,13 +212,13 @@ resource "yba_universe_telemetry_config" "main" {
 ### Optional
 
 - `audit_logs` (Block List, Max: 1) Audit log export configuration. Omit to disable audit log export. (see [below for nested schema](#nestedblock--audit_logs))
-- `controller_logs` (Block List, Max: 1) YB-Controller log export configuration. Omit to disable YB-Controller log export. Requires YugabyteDB Anywhere `2026.1.2.0-b84` (stable) or `2.31.0.0-b386` (preview) or later; `terraform plan` fails against an older build. (see [below for nested schema](#nestedblock--controller_logs))
-- `master_logs` (Block List, Max: 1) yb-master log export configuration. Omit to disable yb-master log export. Requires YugabyteDB Anywhere `2026.1.2.0-b84` (stable) or `2.31.0.0-b386` (preview) or later; `terraform plan` fails against an older build. (see [below for nested schema](#nestedblock--master_logs))
+- `controller_logs` (Block List, Max: 1) YB-Controller log export configuration. Omit to disable YB-Controller log export. Requires YugabyteDB Anywhere `2026.1.2.0-b84` (stable) or `2.31.0.0-b386` (preview) or later; `terraform plan` fails against an older build. On a Kubernetes universe, YBA also requires the universe's YugabyteDB version to be `2026.1.2.0` (stable) or `2.31.0.0` (preview) or later. (see [below for nested schema](#nestedblock--controller_logs))
+- `master_logs` (Block List, Max: 1) yb-master log export configuration. Omit to disable yb-master log export. Requires YugabyteDB Anywhere `2026.1.2.0-b84` (stable) or `2.31.0.0-b386` (preview) or later; `terraform plan` fails against an older build. On a Kubernetes universe, YBA also requires the universe's YugabyteDB version to be `2026.1.2.0` (stable) or `2.31.0.0` (preview) or later. (see [below for nested schema](#nestedblock--master_logs))
 - `metrics` (Block List, Max: 1) Metric export configuration. Omit to disable metric export. (see [below for nested schema](#nestedblock--metrics))
-- `node_agent_logs` (Block List, Max: 1) node-agent log export configuration. Omit to disable node-agent log export. Requires YugabyteDB Anywhere `2026.1.2.0-b84` (stable) or `2.31.0.0-b386` (preview) or later; `terraform plan` fails against an older build. (see [below for nested schema](#nestedblock--node_agent_logs))
+- `node_agent_logs` (Block List, Max: 1) node-agent log export configuration. Omit to disable node-agent log export. Requires YugabyteDB Anywhere `2026.1.2.0-b84` (stable) or `2.31.0.0-b386` (preview) or later; `terraform plan` fails against an older build. VM universes only: YBA rejects this block on a Kubernetes universe. (see [below for nested schema](#nestedblock--node_agent_logs))
 - `query_logs` (Block List, Max: 1) Query log export configuration. Omit to disable query log export. (see [below for nested schema](#nestedblock--query_logs))
 - `timeouts` (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))
-- `tserver_logs` (Block List, Max: 1) yb-tserver log export configuration. Omit to disable yb-tserver log export. Requires YugabyteDB Anywhere `2026.1.2.0-b84` (stable) or `2.31.0.0-b386` (preview) or later; `terraform plan` fails against an older build.
+- `tserver_logs` (Block List, Max: 1) yb-tserver log export configuration. Omit to disable yb-tserver log export. Requires YugabyteDB Anywhere `2026.1.2.0-b84` (stable) or `2.31.0.0-b386` (preview) or later; `terraform plan` fails against an older build. On a Kubernetes universe, YBA also requires the universe's YugabyteDB version to be `2026.1.2.0` (stable) or `2.31.0.0` (preview) or later.
 
 ~> **Note:** `min_level` defaults to `WARNING` here (not `INFO`) — yb-tserver INFO logs are very high volume. (see [below for nested schema](#nestedblock--tserver_logs))
 
@@ -225,8 +226,8 @@ resource "yba_universe_telemetry_config" "main" {
 
 ~> **Performance Note:** The `sleep_after_*_restart_millis` defaults of 180000 (3 minutes) are applied per node. A 9-node universe therefore spends ~27 minutes just sleeping between restarts on top of the actual restart work. Lower these values for faster reconfigures on healthy clusters, or raise them for clusters under heavy traffic. (see [below for nested schema](#nestedblock--upgrade_options))
 
-- `ynp_logs` (Block List, Max: 1) YNP (node provisioning) log export configuration. Omit to disable YNP (node provisioning) log export. Requires YugabyteDB Anywhere `2026.1.2.0-b84` (stable) or `2.31.0.0-b386` (preview) or later; `terraform plan` fails against an older build. (see [below for nested schema](#nestedblock--ynp_logs))
-- `ysql_conn_mgr_logs` (Block List, Max: 1) YSQL Connection Manager log export configuration. Omit to disable YSQL Connection Manager log export. Requires YugabyteDB Anywhere `2026.1.2.0-b84` (stable) or `2.31.0.0-b386` (preview) or later; `terraform plan` fails against an older build. (see [below for nested schema](#nestedblock--ysql_conn_mgr_logs))
+- `ynp_logs` (Block List, Max: 1) YNP (node provisioning) log export configuration. Omit to disable YNP (node provisioning) log export. Requires YugabyteDB Anywhere `2026.1.2.0-b84` (stable) or `2.31.0.0-b386` (preview) or later; `terraform plan` fails against an older build. VM universes only: YBA rejects this block on a Kubernetes universe. (see [below for nested schema](#nestedblock--ynp_logs))
+- `ysql_conn_mgr_logs` (Block List, Max: 1) YSQL Connection Manager log export configuration. Omit to disable YSQL Connection Manager log export. Requires YugabyteDB Anywhere `2026.1.2.0-b84` (stable) or `2.31.0.0-b386` (preview) or later; `terraform plan` fails against an older build. On a Kubernetes universe, YBA also requires the universe's YugabyteDB version to be `2026.1.2.0` (stable) or `2.31.0.0` (preview) or later. (see [below for nested schema](#nestedblock--ysql_conn_mgr_logs))
 
 ### Read-Only
 

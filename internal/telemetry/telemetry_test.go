@@ -163,7 +163,8 @@ func TestBuildDisableSpec(t *testing.T) {
 }
 
 // TestFilterTelemetryConfig: the target's exporters are removed from every
-// pipeline, an emptied pipeline is dropped, and untouched settings survive.
+// pipeline, an emptied pipeline is dropped, and untouched settings and
+// pipelines survive, including a pipeline that never had an exporter.
 func TestFilterTelemetryConfig(t *testing.T) {
 	keep := "keep-uuid"
 	drop := "drop-uuid"
@@ -203,6 +204,9 @@ func TestFilterTelemetryConfig(t *testing.T) {
 				{ExporterUuid: drop},
 			},
 		},
+		ControllerLogs: &clientv2.ControllerLogsTelemetrySpec{
+			Exporters: []clientv2.UniverseServerLogsExporterConfig{},
+		},
 	}
 
 	out, changed := filterTelemetryConfig(tc, drop)
@@ -236,6 +240,9 @@ func TestFilterTelemetryConfig(t *testing.T) {
 	}
 	if out.TserverLogs != nil {
 		t.Error("tserver_logs must be dropped when its only exporter is the target")
+	}
+	if out.ControllerLogs == nil {
+		t.Error("controller_logs never referenced the target and must be carried over")
 	}
 }
 

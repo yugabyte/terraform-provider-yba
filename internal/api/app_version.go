@@ -24,13 +24,13 @@ import (
 
 // AppVersion returns the YBA build this client talks to ("2.31.0.0-b395"),
 // read once from GET /api/v1/app_version and cached for the life of the
-// terraform run so every version gate shares one call. It is "" when the
-// client has no server behind it: bootstrap mode without an api_token, or a
-// bare client in unit tests.
+// terraform run so every version gate shares one call. It is "" without an
+// api_token (bootstrap mode, where YBA may not be running yet) or without a
+// server (a bare client in unit tests).
 func (c *APIClient) AppVersion(ctx context.Context) (string, error) {
 	c.appVersionMu.Lock()
 	defer c.appVersionMu.Unlock()
-	if c.appVersion != "" || c.YugawareClient == nil {
+	if c.appVersion != "" || c.APIKey == "" || c.YugawareClient == nil {
 		return c.appVersion, nil
 	}
 	r, resp, err := c.YugawareClient.SessionManagementAPI.AppVersion(ctx).Execute()

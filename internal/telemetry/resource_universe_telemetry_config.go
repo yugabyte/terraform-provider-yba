@@ -198,10 +198,10 @@ func ResourceUniverseTelemetryConfig() *schema.Resource {
 			"metrics":            metricsSchema(),
 			"master_logs":        masterLogsSchema(),
 			"tserver_logs":       tserverLogsSchema(),
-			"ysql_conn_mgr_logs": serverLogsSchema("YSQL Connection Manager"),
-			"node_agent_logs":    serverLogsSchema("node-agent"),
-			"ynp_logs":           serverLogsSchema("YNP (node provisioning)"),
-			"controller_logs":    serverLogsSchema("YB-Controller"),
+			"ysql_conn_mgr_logs": serverLogsSchema("YSQL Connection Manager", kubernetesLogsNote),
+			"node_agent_logs":    serverLogsSchema("node-agent", vmOnlyLogsNote),
+			"ynp_logs":           serverLogsSchema("YNP (node provisioning)", vmOnlyLogsNote),
+			"controller_logs":    serverLogsSchema("YB-Controller", kubernetesLogsNote),
 			"upgrade_options": {
 				Type:     schema.TypeList,
 				Optional: true,
@@ -678,13 +678,25 @@ func serverLogsElem(extra map[string]*schema.Schema) *schema.Resource {
 	return &schema.Resource{Schema: s}
 }
 
-func serverLogsSchema(display string) *schema.Schema {
+// YBA's Kubernetes rules for the server-log pipelines (ExportType,
+// OtelCollectorUtil.supportsOtelConfigPassthrough,
+// ExportTelemetryConfigParams.verifyParams). The provider does not manage
+// Kubernetes universes, so the docs state these rules and the server enforces
+// them.
+const (
+	vmOnlyLogsNote     = "VM universes only: YBA rejects this block on a Kubernetes universe."
+	kubernetesLogsNote = "On a Kubernetes universe, YBA also requires the universe's " +
+		"YugabyteDB version to be `2026.1.2.0` (stable) or `2.31.0.0` (preview) or later."
+)
+
+func serverLogsSchema(display, platformNote string) *schema.Schema {
 	return &schema.Schema{
 		Type:     schema.TypeList,
 		Optional: true,
 		MaxItems: 1,
 		Description: display + " log export configuration. Omit to disable " +
-			display + " log export. " + versionNote("Requires", serverLogPipelinesMin),
+			display + " log export. " + versionNote("Requires", serverLogPipelinesMin) +
+			" " + platformNote,
 		Elem: serverLogsElem(nil),
 	}
 }
@@ -695,7 +707,8 @@ func masterLogsSchema() *schema.Schema {
 		Optional: true,
 		MaxItems: 1,
 		Description: "yb-master log export configuration. Omit to disable " +
-			"yb-master log export. " + versionNote("Requires", serverLogPipelinesMin),
+			"yb-master log export. " + versionNote("Requires", serverLogPipelinesMin) +
+			" " + kubernetesLogsNote,
 		Elem: serverLogsElem(map[string]*schema.Schema{
 			"min_level": serverLogMinLevelSchema(
 				"yb-master", derefString(masterLogsDefaults.MinLevel)),
@@ -720,6 +733,7 @@ func tserverLogsSchema() *schema.Schema {
 		MaxItems: 1,
 		Description: "yb-tserver log export configuration. Omit to disable " +
 			"yb-tserver log export. " + versionNote("Requires", serverLogPipelinesMin) +
+			" " + kubernetesLogsNote +
 			"\n\n~> **Note:** `min_level` defaults to `WARNING` here (not `INFO`) — " +
 			"yb-tserver INFO logs are very high volume.",
 		Elem: serverLogsElem(map[string]*schema.Schema{

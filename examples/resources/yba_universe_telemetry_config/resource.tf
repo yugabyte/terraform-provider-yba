@@ -82,15 +82,16 @@ resource "yba_universe_telemetry_config" "main" {
     }
   }
 
-  # Server-log pipelines: yb-master and yb-tserver glog export. min_level
-  # bounds the exported severity; master_logs can additionally drop a fraction
-  # of high-volume noise lines.
+  # Server-log pipelines: yb-master and yb-tserver glog export. They send logs
+  # to the same log destination as audit_logs and query_logs. min_level bounds
+  # the exported severity; master_logs can additionally drop a fraction of
+  # high-volume noise lines.
   master_logs {
     min_level               = "INFO"
     noise_sample_drop_ratio = 0.99
 
     exporter {
-      exporter_uuid = yba_otlp_telemetry_provider.prometheus.id
+      exporter_uuid = yba_datadog_telemetry_provider.datadog.id
       additional_tags = {
         log_type = "yb-master"
       }
@@ -107,32 +108,32 @@ resource "yba_universe_telemetry_config" "main" {
     min_level = "WARNING"
 
     exporter {
-      exporter_uuid = yba_otlp_telemetry_provider.prometheus.id
+      exporter_uuid = yba_datadog_telemetry_provider.datadog.id
     }
   }
 
   # The remaining server-log pipelines carry only exporter blocks.
   ysql_conn_mgr_logs {
     exporter {
-      exporter_uuid = yba_otlp_telemetry_provider.prometheus.id
+      exporter_uuid = yba_datadog_telemetry_provider.datadog.id
     }
   }
 
   node_agent_logs {
     exporter {
-      exporter_uuid = yba_otlp_telemetry_provider.prometheus.id
+      exporter_uuid = yba_datadog_telemetry_provider.datadog.id
     }
   }
 
   ynp_logs {
     exporter {
-      exporter_uuid = yba_otlp_telemetry_provider.prometheus.id
+      exporter_uuid = yba_datadog_telemetry_provider.datadog.id
     }
   }
 
   controller_logs {
     exporter {
-      exporter_uuid = yba_otlp_telemetry_provider.prometheus.id
+      exporter_uuid = yba_datadog_telemetry_provider.datadog.id
     }
   }
 
