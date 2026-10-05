@@ -711,7 +711,7 @@ func masterLogsSchema() *schema.Schema {
 			" " + kubernetesLogsNote,
 		Elem: serverLogsElem(map[string]*schema.Schema{
 			"min_level": serverLogMinLevelSchema(
-				"yb-master", derefString(masterLogsDefaults.MinLevel)),
+				"yb-master", derefString(masterLogsDefaults.MinLevel), ""),
 			"noise_sample_drop_ratio": {
 				Type:         schema.TypeFloat,
 				Optional:     true,
@@ -733,17 +733,17 @@ func tserverLogsSchema() *schema.Schema {
 		MaxItems: 1,
 		Description: "yb-tserver log export configuration. Omit to disable " +
 			"yb-tserver log export. " + versionNote("Requires", serverLogPipelinesMin) +
-			" " + kubernetesLogsNote +
-			"\n\n~> **Note:** `min_level` defaults to `WARNING` here (not `INFO`) — " +
-			"yb-tserver INFO logs are very high volume.",
+			" " + kubernetesLogsNote,
 		Elem: serverLogsElem(map[string]*schema.Schema{
 			"min_level": serverLogMinLevelSchema(
-				"yb-tserver", derefString(tserverLogsDefaults.MinLevel)),
+				"yb-tserver", derefString(tserverLogsDefaults.MinLevel),
+				" The default is higher than yb-master's because yb-tserver "+
+					"INFO logs are very high volume."),
 		}),
 	}
 }
 
-func serverLogMinLevelSchema(process, defaultLevel string) *schema.Schema {
+func serverLogMinLevelSchema(process, defaultLevel, note string) *schema.Schema {
 	return &schema.Schema{
 		Type:         schema.TypeString,
 		Optional:     true,
@@ -752,7 +752,7 @@ func serverLogMinLevelSchema(process, defaultLevel string) *schema.Schema {
 		Description: "Minimum " + process + " glog severity to export; lines " +
 			"below this level are dropped. `Default` is sourced from the YBA " +
 			"API's own `default:` (via the generated client) so it tracks the " +
-			"server.",
+			"server." + note,
 	}
 }
 

@@ -31,7 +31,7 @@ Universe Telemetry Config Resource. Attaches audit log, query log, server log (y
 
 ## Example Usage
 
-YBA stores a single telemetry configuration per universe, so manage all three pipelines (`audit_logs`, `query_logs`, `metrics`) from **one** `yba_universe_telemetry_config` resource. Declaring a second resource for the same `universe_uuid` is rejected at plan time, because the two would overwrite each other on every apply.
+YBA stores a single telemetry configuration per universe, so manage every pipeline (`audit_logs`, `query_logs`, `metrics`, and the server-log blocks) from **one** `yba_universe_telemetry_config` resource. Declaring a second resource for the same `universe_uuid` is rejected at plan time, because the two would overwrite each other on every apply.
 
 ```terraform
 resource "yba_universe_telemetry_config" "main" {
@@ -218,10 +218,7 @@ resource "yba_universe_telemetry_config" "main" {
 - `node_agent_logs` (Block List, Max: 1) node-agent log export configuration. Omit to disable node-agent log export. Requires YugabyteDB Anywhere `2026.1.2.0-b84` (stable) or `2.31.0.0-b386` (preview) or later; `terraform plan` fails against an older build. VM universes only: YBA rejects this block on a Kubernetes universe. (see [below for nested schema](#nestedblock--node_agent_logs))
 - `query_logs` (Block List, Max: 1) Query log export configuration. Omit to disable query log export. (see [below for nested schema](#nestedblock--query_logs))
 - `timeouts` (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))
-- `tserver_logs` (Block List, Max: 1) yb-tserver log export configuration. Omit to disable yb-tserver log export. Requires YugabyteDB Anywhere `2026.1.2.0-b84` (stable) or `2.31.0.0-b386` (preview) or later; `terraform plan` fails against an older build. On a Kubernetes universe, YBA also requires the universe's YugabyteDB version to be `2026.1.2.0` (stable) or `2.31.0.0` (preview) or later.
-
-~> **Note:** `min_level` defaults to `WARNING` here (not `INFO`) — yb-tserver INFO logs are very high volume. (see [below for nested schema](#nestedblock--tserver_logs))
-
+- `tserver_logs` (Block List, Max: 1) yb-tserver log export configuration. Omit to disable yb-tserver log export. Requires YugabyteDB Anywhere `2026.1.2.0-b84` (stable) or `2.31.0.0-b386` (preview) or later; `terraform plan` fails against an older build. On a Kubernetes universe, YBA also requires the universe's YugabyteDB version to be `2026.1.2.0` (stable) or `2.31.0.0` (preview) or later. (see [below for nested schema](#nestedblock--tserver_logs))
 - `upgrade_options` (Block List, Max: 1) Optional rolling-restart options applied while reconfiguring the universe.
 
 ~> **Performance Note:** The `sleep_after_*_restart_millis` defaults of 180000 (3 minutes) are applied per node. A 9-node universe therefore spends ~27 minutes just sleeping between restarts on top of the actual restart work. Lower these values for faster reconfigures on healthy clusters, or raise them for clusters under heavy traffic. (see [below for nested schema](#nestedblock--upgrade_options))
@@ -452,7 +449,7 @@ Optional:
 Optional:
 
 - `exporter` (Block List) Exporter (telemetry destination). Repeat this block to send to multiple destinations — each becomes one entry in the API's `exporters` array. (see [below for nested schema](#nestedblock--tserver_logs--exporter))
-- `min_level` (String) Minimum yb-tserver glog severity to export; lines below this level are dropped. `Default` is sourced from the YBA API's own `default:` (via the generated client) so it tracks the server.
+- `min_level` (String) Minimum yb-tserver glog severity to export; lines below this level are dropped. `Default` is sourced from the YBA API's own `default:` (via the generated client) so it tracks the server. The default is higher than yb-master's because yb-tserver INFO logs are very high volume.
 
 <a id="nestedblock--tserver_logs--exporter"></a>
 
