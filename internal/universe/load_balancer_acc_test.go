@@ -370,10 +370,6 @@ func TestAccLong_UniverseLoadBalancerConfig_GCP(t *testing.T) {
 }
 
 func TestAccLong_UniverseLoadBalancerConfig_Azure(t *testing.T) {
-	// PLAT-21900: YBA cannot empty an Azure backend pool, so the detach steps
-	// fail the task and the test cannot tear down. Unskip when the fix ships.
-	t.Skip("Azure LB detach blocked on PLAT-21900")
-
 	rName := acctest.RandomName("lb-azu")
 	base := universeAzureConfigWithNodes(rName, 3)
 	attach := lbAttachConfig("azu", `"westus2"`, "azurerm_lb.test.name", "")
