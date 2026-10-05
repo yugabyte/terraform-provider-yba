@@ -61,3 +61,15 @@ provider "yba" {
   alias = "bootstrap"
   host  = aws_eip.yba.public_ip
 }
+
+# Authenticated provider for post-install settings on the standing YBA (the
+# runtime config keys in yba.tf). Its token comes from yba_customer_resource,
+# so Terraform configures this alias only after that resource exists. During
+# plan the token is unknown and the provider starts in its tokenless bootstrap
+# mode without calling YBA, so one apply bootstraps end to end, the same
+# pattern as the published guide on existing YBA installations.
+provider "yba" {
+  alias     = "admin"
+  host      = aws_eip.yba.public_ip
+  api_token = yba_customer_resource.customer.api_token
+}
