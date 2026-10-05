@@ -7,10 +7,12 @@ ExactlyOneOf, Sensitive, Importer, Description, lifecycle idempotency,
 DispatchAndWait, utils-first). Apply both from their source; do not repeat
 their findings here.
 
-Verify every claim about YBA server behaviour against the YBA Java source
-(`managed/src/main/java` in yugabyte-db, locally at `~/code/yugabyte-db`:
-controllers, `*Task.java`, `*Helper.java`). A doc sentence or code comment
-that states a YBA rule without a traceable source is a finding.
+Verify every claim about YBA server behaviour yourself against the YBA source
+in [yugabyte-db `managed/`](https://github.com/yugabyte/yugabyte-db/tree/master/managed)
+(locally at `~/code/yugabyte-db`): controllers, `*Task.java` and `*Helper.java`
+under `src/main/java`. Check `master`, and the current stable branch when the
+claim depends on the version. A doc sentence or code comment does not need to
+cite its source. Flag a claim only when the source contradicts it.
 
 ## How to review
 
