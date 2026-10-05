@@ -17,6 +17,7 @@ package telemetry
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"testing"
 
@@ -46,13 +47,6 @@ func TestUniverseTelemetryConfigReadFromGetAPI(t *testing.T) {
 				ScrapeConfigTargets:   []clientv2.ScrapeConfigTargetType{"MASTER_EXPORT"},
 				Exporters: []clientv2.UniverseMetricsExporterConfig{
 					{ExporterUuid: "exp-1", MetricsPrefix: utils.GetStringPointer("yb.")},
-				},
-			},
-			MasterLogs: &clientv2.MasterLogsTelemetrySpec{
-				MinLevel:             utils.GetStringPointer("ERROR"),
-				NoiseSampleDropRatio: utils.GetFloat64Pointer(0.5),
-				Exporters: []clientv2.UniverseServerLogsExporterConfig{
-					{ExporterUuid: "exp-1", SendBatchSize: utils.GetInt32Pointer(50)},
 				},
 			},
 		},
@@ -87,20 +81,67 @@ func TestUniverseTelemetryConfigReadFromGetAPI(t *testing.T) {
 	if got := d.Get("metrics.0.exporter.0.metrics_prefix"); got != "yb." {
 		t.Errorf("metrics_prefix = %v", got)
 	}
-	if got := d.Get("master_logs.0.min_level"); got != "ERROR" {
-		t.Errorf("master_logs min_level = %v want ERROR", got)
-	}
-	if got := d.Get("master_logs.0.noise_sample_drop_ratio"); got != 0.5 {
-		t.Errorf("master_logs noise_sample_drop_ratio = %v want 0.5", got)
-	}
-	if got := d.Get("master_logs.0.exporter.0.send_batch_size"); got != 50 {
-		t.Errorf("master_logs exporter send_batch_size = %v want 50", got)
-	}
 	if n := len(d.Get("query_logs").([]interface{})); n != 0 {
 		t.Errorf("query_logs must be empty when unset server-side, got %d", n)
 	}
-	if n := len(d.Get("tserver_logs").([]interface{})); n != 0 {
-		t.Errorf("tserver_logs must be empty when unset server-side, got %d", n)
+}
+
+// Every server-log pipeline must survive config -> request -> YBA -> Read ->
+// request unchanged: a pipeline missing from the builder, its flattener, or
+// Read is a perpetual diff. noise_sample_drop_ratio = 0 ("keep every line")
+// must reach the wire, not fall back to the server default.
+func TestServerLogsRoundTripThroughRead(t *testing.T) {
+	res := ResourceUniverseTelemetryConfig()
+	exporter := []interface{}{map[string]interface{}{
+		"exporter_uuid":   "exp-1",
+		"additional_tags": map[string]interface{}{"env": "prod"},
+	}}
+	raw := map[string]interface{}{"universe_uuid": "uni-1"}
+	for _, p := range telemetryPipelines {
+		if p.min != nil {
+			raw[p.label] = []interface{}{map[string]interface{}{"exporter": exporter}}
+		}
+	}
+	raw["master_logs"] = []interface{}{map[string]interface{}{
+		"min_level":               "ERROR",
+		"noise_sample_drop_ratio": 0.0,
+		"exporter":                exporter,
+	}}
+	sent := buildExportTelemetryConfigSpec(
+		schema.TestResourceDataRaw(t, res.Schema, raw)).TelemetryConfig
+	d := res.TestResourceData()
+	d.SetId("uni-1")
+
+	diags := resourceUniverseTelemetryConfigRead(
+		context.Background(), d, newDetachTestClient(t, &fakeYBA{getConfig: sent}))
+
+	if diags.HasError() {
+		t.Fatalf("read returned diags: %v", diags)
+	}
+	want, _ := json.Marshal(sent)
+	got, _ := json.Marshal(buildExportTelemetryConfigSpec(d).TelemetryConfig)
+	if string(got) != string(want) {
+		t.Errorf("request after Read differs:\n got %s\nwant %s", got, want)
+	}
+	var wire map[string]struct {
+		Exporters []struct {
+			ExporterUUID string `json:"exporter_uuid"`
+		} `json:"exporters"`
+		NoiseSampleDropRatio *float64 `json:"noise_sample_drop_ratio"`
+	}
+	if err := json.Unmarshal(want, &wire); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range telemetryPipelines {
+		if p.min == nil {
+			continue
+		}
+		if e := wire[p.label].Exporters; len(e) != 1 || e[0].ExporterUUID != "exp-1" {
+			t.Errorf("%s request exporters = %+v, want [exp-1]", p.label, e)
+		}
+	}
+	if r := wire["master_logs"].NoiseSampleDropRatio; r == nil || *r != 0 {
+		t.Errorf("master_logs noise_sample_drop_ratio = %v, want explicit 0", r)
 	}
 }
 
