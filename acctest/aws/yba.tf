@@ -192,9 +192,6 @@ resource "yba_customer_resource" "customer" {
 
   lifecycle {
     ignore_changes = [password]
-    # A reinstalled YBA starts with no customers; re-register the superuser
-    # (and republish its API token) whenever the install is replaced.
-    replace_triggered_by = [yba_installer.install.id]
   }
 
   depends_on = [yba_installer.install]
