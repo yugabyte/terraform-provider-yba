@@ -343,7 +343,9 @@ func earSharedNotes(s earSpec) string {
 			"after the universe moves to another configuration, and only deleting the "+
 			"universe clears it. To move universes off a configuration, create the new "+
 			"one, change each universe's `encryption_at_rest.kms_config_uuid`, and keep the "+
-			"old configuration (or remove it from state) until its universes are gone.\n\n"+
+			"old configuration (or remove it from state) until its universes are gone. Give "+
+			"the new configuration `depends_on` on the old one, so that `terraform destroy` "+
+			"removes the universe before the old configuration.\n\n"+
 			"~> **Drift Note:** Read refreshes `in_use` and the non-secret settings. "+
 			"Credentials are never read back, because YugabyteDB Anywhere masks them: a "+
 			"credential changed in the YugabyteDB Anywhere UI is not detected as drift. "+

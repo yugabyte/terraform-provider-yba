@@ -474,7 +474,10 @@ encryption state. Disabling is always the explicit `enabled = false`.
 until the universe is deleted, including after a disable or a master key rotation away from
 it, and YugabyteDB Anywhere refuses to delete it before then. To retire a configuration,
 create its replacement, change `kms_config_uuid` on every universe, and keep the old
-resource (or remove it from state) until the universes are gone.
+resource (or remove it from state) until the universes are gone. Give the replacement
+`depends_on` on the old configuration: a universe that moved to the replacement no longer
+depends on the old one, and without that edge `terraform destroy` deletes the old
+configuration before the universe and fails on its key history.
 
 **Example -- enable at creation, later rotate the universe key:**
 

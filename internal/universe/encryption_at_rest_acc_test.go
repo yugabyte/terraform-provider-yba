@@ -222,16 +222,24 @@ func universeGcpConfigWithEAR(name string, numConfigs int, block string) string 
 		type = string
 	}
 `
+	// b depends on a so that destroy runs universe, b, a: after the master
+	// key rotation the universe references only b, but a keeps the
+	// universe's key history until the universe is gone and YBA refuses to
+	// delete it before then.
 	for i, label := range []string{"a", "b"}[:numConfigs] {
+		dependsOn := ""
+		if label == "b" {
+			dependsOn = "\t\tdepends_on = [yba_gcp_ear_config.a]\n"
+		}
 		configs += fmt.Sprintf(`
 	resource "yba_gcp_ear_config" "%s" {
-		name          = "%s-ear-%d"
+%s		name          = "%s-ear-%d"
 		credentials   = var.GCP_CREDENTIALS
 		location_id   = var.GCP_EAR_LOCATION_ID
 		key_ring_id   = var.GCP_EAR_KEY_RING_ID
 		crypto_key_id = var.GCP_EAR_CRYPTO_KEY_ID
 	}
-`, label, name, i)
+`, label, dependsOn, name, i)
 	}
 	return acctest.YBAProviderBlock("GCP") + cloudProviderGCPConfig(name+"-provider") +
 		configs + universeConfigWithProviderWithNodesAndExtra("gcp", name, 3, block)
