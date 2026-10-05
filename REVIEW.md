@@ -36,9 +36,13 @@ docs. A YBA that goes down, gets reinstalled or is replaced because
 failure this project can ship.
 
 - The first question for any lifecycle change: what do the first plan and
-  apply after the upgrade do to existing state? Any answer but "nothing" is
-  a finding. New behaviour is opt-in through a new argument whose default is
-  the old behaviour, never a changed default.
+  apply after the upgrade do to a setup that Terraform manages entirely?
+  Any answer but "nothing" is a finding. New behaviour is opt-in through a
+  new argument whose default is the old behaviour, never a changed default.
+- An out-of-band edit is outside that question. When a new attribute lets
+  `Read` see a change that Terraform did not make, the first plan shows it
+  as drift and the apply reverts it, as for any other out-of-band edit.
+  That is not a finding.
 - `Read` never gains the power to drop a resource from state on a verdict
   that can be wrong, and never gains a dependency that `terraform plan` did
   not have before. A wrong verdict recreates something live; a new
@@ -133,9 +137,13 @@ failure this project can ship.
 - Code never assumes that a runtime flag holds its default. When a resource
   works only with a flag set, it reads the flag before it writes and fails
   with an error that names the flag.
-- A rule checked on VM universes is also checked on Kubernetes, and a rule
-  checked in one direction (node-to-node) is checked in the other
+- A rule checked in one direction (node-to-node) is checked in the other
   (client-to-node).
+- The provider does not manage Kubernetes universes: it has no Kubernetes
+  cloud provider, and `yba_universe` has no Kubernetes fields. A resource
+  that takes a `universe_uuid` states YBA's Kubernetes rules in its
+  `Description` and lets the server enforce them. Flag a missing Kubernetes
+  rule in the docs, not a missing Kubernetes check in code.
 - A new YBA route or field carries a version callout verified on both
   `master` and the current stable branch. The acceptance fixture runs a
   preview build; a long-tier pass proves nothing about stable.
