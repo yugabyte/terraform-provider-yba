@@ -5,7 +5,7 @@
 # the control-plane job on the YBA VM so it holds only the privileges that job
 # needs:
 #
-#   yba — control plane on the YBA VM. Compute + storage.
+#   yba — control plane on the YBA VM. Compute + storage + Cloud KMS.
 
 # Attached to the YBA VM. YBA uses it to provision universe nodes and write
 # backups, so it needs compute + storage.
@@ -43,6 +43,30 @@ resource "google_storage_bucket_iam_member" "backups_admin" {
 resource "google_project_iam_member" "iap_tunnel" {
   project = var.gcp_project_id
   role    = "roles/iap.tunnelResourceAccessor"
+  member  = "serviceAccount:${google_service_account.yba.email}"
+}
+
+# Cloud KMS for the encryption-at-rest tests (kms.tf). YBA verifies these five
+# permissions with projects.testIamPermissions when a KMS config is created,
+# which only sees project-level bindings, so a key-ring-scoped grant would not
+# pass. A custom role bound on the project keeps it to exactly what YBA asks
+# for. The same SA is attached to the YBA VM, so this also covers the
+# host-identity path once the standing YBA supports it.
+resource "google_project_iam_custom_role" "yba_kms" {
+  role_id = "${replace(var.prefix, "-", "_")}_yba_kms"
+  title   = "YBA acceptance-test Cloud KMS access"
+  permissions = [
+    "cloudkms.keyRings.get",
+    "cloudkms.cryptoKeys.get",
+    "cloudkms.cryptoKeyVersions.useToEncrypt",
+    "cloudkms.cryptoKeyVersions.useToDecrypt",
+    "cloudkms.locations.generateRandomBytes",
+  ]
+}
+
+resource "google_project_iam_member" "yba_kms" {
+  project = var.gcp_project_id
+  role    = google_project_iam_custom_role.yba_kms.id
   member  = "serviceAccount:${google_service_account.yba.email}"
 }
 
