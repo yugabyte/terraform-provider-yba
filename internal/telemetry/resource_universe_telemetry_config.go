@@ -1239,6 +1239,10 @@ func stringMap(in interface{}) map[string]string {
 	return out
 }
 
+// boolValue reads a JSON boolean and nothing else: telemetry configs never
+// carry booleans as strings, and TestHelpersTolerateWeirdInput pins that.
+// (utils.BoolValue also accepts "true", for YBA settings the UI stores as
+// strings.)
 func boolValue(in interface{}) bool {
 	if v, ok := in.(bool); ok {
 		return v

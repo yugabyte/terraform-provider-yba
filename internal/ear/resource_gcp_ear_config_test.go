@@ -16,18 +16,41 @@
 package ear
 
 import (
-	"strings"
 	"testing"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 )
 
-func TestGCPEARConfigSchemaSanity(t *testing.T) {
+func TestGCPEARConfigGuardrails(t *testing.T) {
 	res := ResourceGCPEARConfig()
 	if err := res.InternalValidate(nil, true); err != nil {
 		t.Fatalf("schema failed InternalValidate: %v", err)
 	}
+	if res.Description == "" {
+		t.Error("resource description is required")
+	}
+	if res.Importer == nil {
+		t.Error("yba_gcp_ear_config must be importable")
+	}
+	if _, ok := res.Schema["customer_uuid"]; ok {
+		t.Error("customer_uuid is a noise field and must not be exposed")
+	}
+	for op, timeout := range map[string]*time.Duration{
+		"create": res.Timeouts.Create,
+		"update": res.Timeouts.Update,
+		"delete": res.Timeouts.Delete,
+	} {
+		if timeout == nil || *timeout != earTaskTimeout {
+			t.Errorf("%s timeout must default to earTaskTimeout", op)
+		}
+	}
 	s := res.Schema
+	for name, f := range s {
+		if f.Description == "" {
+			t.Errorf("field %q needs a Description: it renders into the docs", name)
+		}
+	}
 	// YBA rejects edits to every key-location field ("cannot be changed").
 	for _, f := range []string{"name", "project_id", "location_id", "key_ring_id",
 		"crypto_key_id", "protection_level", "kms_endpoint"} {
@@ -96,13 +119,22 @@ func TestGCPBuildAuthModes(t *testing.T) {
 	}
 }
 
+// A build without host-identity support stores the flag next to the key it
+// keeps using; Read must report that instead of a clean host-identity state.
 func TestGCPFlattenRejectsKeyFileNextToHostIdentity(t *testing.T) {
 	d := ResourceGCPEARConfig().TestResourceData()
 	d.SetId(testConfigUUID)
 	err := gcpFlatten(d, map[string]interface{}{
 		gcpKeyUseIAM: true, gcpKeyConfig: map[string]interface{}{"private_key": "***"},
 	})
-	if err == nil || !strings.Contains(err.Error(), "does not support host identity") {
-		t.Fatalf("want the unsupported-build error, got %v", err)
+	if err == nil {
+		t.Fatal("want an error for USE_GCP_IAM stored next to GCP_CONFIG")
+	}
+	// The flag alone, as a supporting build stores it, is the host identity.
+	if err := gcpFlatten(d, map[string]interface{}{gcpKeyUseIAM: "true"}); err != nil {
+		t.Fatalf("flatten: %v", err)
+	}
+	if d.Get("use_gcp_iam") != true {
+		t.Error("use_gcp_iam must be read back from USE_GCP_IAM")
 	}
 }

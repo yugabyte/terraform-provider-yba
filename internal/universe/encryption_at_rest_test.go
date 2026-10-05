@@ -20,6 +20,7 @@ import (
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
 	client "github.com/yugabyte/platform-go-client"
 
 	"github.com/yugabyte/terraform-provider-yba/internal/utils"
@@ -161,6 +162,34 @@ func TestFlattenEncryptionAtRestCarriesTriggerAndMirrorsServer(t *testing.T) {
 	if block["enabled"] != false || block["kms_config_uuid"] != "" ||
 		block["universe_key_rotation_trigger"] != "" {
 		t.Errorf("block for an unconfigured universe = %v", block)
+	}
+}
+
+// A failed update must not persist the planned trigger: Read sources it from
+// d, so the revert is what keeps the rotation pending for the next apply.
+func TestRevertEncryptionAtRestKeepsRotationPending(t *testing.T) {
+	res := &schema.Resource{Schema: earTestSchema()}
+	d := res.Data(&terraform.InstanceState{ID: "u-1", Attributes: map[string]string{
+		"encryption_at_rest.#":                               "1",
+		"encryption_at_rest.0.enabled":                       "true",
+		"encryption_at_rest.0.kms_config_uuid":               "A",
+		"encryption_at_rest.0.universe_key_rotation_trigger": "2026-09",
+	}})
+	// The plan: a new trigger value.
+	if err := d.Set("encryption_at_rest", []interface{}{map[string]interface{}{
+		"enabled": true, "kms_config_uuid": "A", "universe_key_rotation_trigger": "2026-10",
+	}}); err != nil {
+		t.Fatal(err)
+	}
+
+	revertEncryptionAtRest(d)
+	block := flattenEncryptionAtRest(d, &client.EncryptionAtRestConfig{
+		EncryptionAtRestEnabled: utils.GetBoolPointer(true),
+		KmsConfigUUID:           utils.GetStringPointer("A"),
+	})[0].(map[string]interface{})
+	if block["universe_key_rotation_trigger"] != "2026-09" {
+		t.Errorf("trigger = %v: want the prior value so the next plan fires again",
+			block["universe_key_rotation_trigger"])
 	}
 }
 

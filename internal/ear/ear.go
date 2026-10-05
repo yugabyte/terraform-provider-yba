@@ -73,9 +73,9 @@ func parseEARConfig(raw map[string]interface{}) (earConfig, bool) {
 		return earConfig{}, false
 	}
 	cfg := earConfig{
-		UUID:     stringValue(meta["configUUID"]),
-		Name:     stringValue(meta["name"]),
-		Provider: stringValue(meta["provider"]),
+		UUID:     utils.StringValue(meta["configUUID"]),
+		Name:     utils.StringValue(meta["name"]),
+		Provider: utils.StringValue(meta["provider"]),
 		Settings: map[string]interface{}{},
 	}
 	cfg.InUse, _ = meta["in_use"].(bool)
@@ -89,8 +89,8 @@ func parseEARConfig(raw map[string]interface{}) (earConfig, bool) {
 				continue
 			}
 			cfg.Universes = append(cfg.Universes, universeRef{
-				UUID: stringValue(um["uuid"]),
-				Name: stringValue(um["name"]),
+				UUID: utils.StringValue(um["uuid"]),
+				Name: utils.StringValue(um["name"]),
 			})
 		}
 	}
@@ -230,12 +230,8 @@ func resourceEARConfigDelete(
 	}
 	if cfg.InUse {
 		return diag.Errorf(
-			"encryption at rest config %q still holds key history for universe(s) %s. "+
-				"YugabyteDB Anywhere keeps that history after encryption is disabled and after "+
-				"a universe moves to another configuration, and refuses to delete the "+
-				"configuration until the universes themselves are deleted. Remove the resource "+
-				"from state instead if you want to stop managing it",
-			cfg.Name, formatUniverseRefs(cfg.Universes))
+			"encryption at rest config %q (%s) holds key history for universe(s) %s and "+
+				"cannot be deleted", cfg.Name, d.Id(), formatUniverseRefs(cfg.Universes))
 	}
 
 	task, response, err := c.EncryptionAtRestAPI.DeleteKMSConfig(ctx, cUUID, d.Id()).Execute()
@@ -266,26 +262,24 @@ func formatUniverseRefs(refs []universeRef) string {
 // supplies the shared lifecycle (create with UUID recovery, provider-guarded
 // read, credential-only update, history-aware delete, import, timeouts).
 type earSpec struct {
-	resourceType string // Terraform type, e.g. "yba_gcp_ear_config"
-	displayName  string // human name for docs and logs, e.g. "GCP KMS"
-	apiProvider  string // YBA KeyProvider, e.g. GCP
-	description  string // provider-specific lead of the resource docs
-	fields       map[string]*schema.Schema
-	// credentialFields are the arguments YBA lets an edit change. They are
-	// never read back, so a failed update reverts them to their prior state.
+	displayName string // human name for docs and logs, e.g. "GCP KMS"
+	apiProvider string // YBA KeyProvider, e.g. GCP
+	description string // provider-specific lead of the resource docs
+	fields      map[string]*schema.Schema
+	// credentialFields are the arguments YBA lets an edit change: the
+	// credential itself and the switches that select it. A failed update
+	// reverts them to their prior state, because Read cannot restore a
+	// secret from the server (the list masks it).
 	credentialFields []string
 	// buildCreate maps the resource arguments onto YBA's authConfig keys for
 	// the create body. The factory adds the name.
 	buildCreate func(d *schema.ResourceData) (map[string]interface{}, error)
-	// buildEdit maps only the editable arguments onto the edit body; YBA
-	// merges every other key from the stored configuration.
+	// buildEdit maps only the editable arguments onto the edit body. YBA's
+	// EncryptionAtRestController.editKMSConfig copies the non-editable keys
+	// from the stored configuration and replaces it with the merged body.
 	buildEdit func(d *schema.ResourceData) (map[string]interface{}, error)
 	// flatten writes the non-secret settings YBA lists into state.
-	flatten func(d *schema.ResourceData, settings map[string]interface{}) error
-	// createHint, when set, adds context to a failed create (for example a
-	// YBA-version requirement of the arguments in use). It never inspects the
-	// error itself.
-	createHint    func(d *schema.ResourceData) string
+	flatten       func(d *schema.ResourceData, settings map[string]interface{}) error
 	customizeDiff schema.CustomizeDiffFunc
 }
 
@@ -355,10 +349,9 @@ func earSharedNotes(s earSpec) string {
 			"credential changed in the YugabyteDB Anywhere UI is not detected as drift. "+
 			"Re-apply from Terraform to restore the intended value.\n\n"+
 			"~> **Import Note:** Import verifies the provider: importing a configuration "+
-			"that is not a %s configuration fails with the actual provider, so it can be "+
-			"imported with the matching `yba_*_ear_config` resource instead. Credentials "+
-			"cannot be recovered through the API and stay empty after import; the first "+
-			"apply submits them again.",
+			"that is not a %s configuration fails and names the actual provider. "+
+			"Credentials cannot be recovered through the API and stay empty after import; "+
+			"the first apply submits them again.",
 		s.displayName)
 }
 
@@ -378,11 +371,6 @@ func earCreate(s earSpec) schema.CreateContextFunc {
 		configUUID, err := createEARConfig(ctx, apiClient.YugawareClient, apiClient.CustomerID,
 			s.apiProvider, name, settings, d.Timeout(schema.TimeoutCreate))
 		if err != nil {
-			if s.createHint != nil {
-				if hint := s.createHint(d); hint != "" {
-					return diag.FromErr(fmt.Errorf("%s: %w", hint, err))
-				}
-			}
 			return diag.FromErr(err)
 		}
 		d.SetId(configUUID)
@@ -411,8 +399,7 @@ func earRead(s earSpec) schema.ReadContextFunc {
 		}
 		if cfg.Provider != s.apiProvider {
 			return diag.Errorf(
-				"encryption at rest config %s (%q) uses key provider %s, not %s: import it "+
-					"with the yba_*_ear_config resource matching its provider",
+				"encryption at rest config %s (%q) uses key provider %s, not %s",
 				d.Id(), cfg.Name, cfg.Provider, s.apiProvider)
 		}
 		if err := d.Set("name", cfg.Name); err != nil {
@@ -433,12 +420,22 @@ func earRead(s earSpec) schema.ReadContextFunc {
 
 // earUpdate is reached only for credential changes: every other argument is
 // ForceNew. A failed edit reverts the credential fields, which Read cannot
-// restore from the server.
+// restore from the server; the deferred Read then refreshes the rest.
 func earUpdate(s earSpec) schema.UpdateContextFunc {
 	return func(
 		ctx context.Context, d *schema.ResourceData, meta interface{},
-	) diag.Diagnostics {
+	) (diags diag.Diagnostics) {
 		apiClient := meta.(*api.APIClient)
+
+		// Always refresh state before returning. On success, Read errors are
+		// propagated. On failure, they are swallowed so the original error is
+		// preserved.
+		defer func() {
+			readDiags := earRead(s)(ctx, d, meta)
+			if !diags.HasError() {
+				diags = append(diags, readDiags...)
+			}
+		}()
 
 		settings, err := s.buildEdit(d)
 		if err != nil {
@@ -452,36 +449,6 @@ func earUpdate(s earSpec) schema.UpdateContextFunc {
 			utils.RevertFields(d, s.credentialFields...)
 			return diag.FromErr(err)
 		}
-		return earRead(s)(ctx, d, meta)
+		return
 	}
-}
-
-// setIfNonEmpty writes an optional string setting only when it is set: YBA
-// reads a missing key as "not configured", whereas an empty string is stored.
-func setIfNonEmpty(out map[string]interface{}, key string, v interface{}) {
-	if s, ok := v.(string); ok && s != "" {
-		out[key] = s
-	}
-}
-
-func stringValue(in interface{}) string {
-	if in == nil {
-		return ""
-	}
-	if s, ok := in.(string); ok {
-		return s
-	}
-	return fmt.Sprintf("%v", in)
-}
-
-// boolValue reads a boolean setting that clients may have stored as a JSON
-// boolean or as the strings "true"/"false".
-func boolValue(in interface{}) bool {
-	switch v := in.(type) {
-	case bool:
-		return v
-	case string:
-		return strings.EqualFold(v, "true")
-	}
-	return false
 }

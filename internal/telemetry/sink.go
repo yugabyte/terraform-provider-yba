@@ -136,9 +136,7 @@ func sinkSharedNotes(s sinkSpec) string {
 // when it is set: YBA reads a missing key as "use my default", whereas an
 // empty string pins the field.
 func setIfNonEmpty(out map[string]interface{}, key string, v interface{}) {
-	if s, ok := v.(string); ok && s != "" {
-		out[key] = s
-	}
+	utils.SetIfNonEmpty(out, key, v)
 }
 
 // setIfTrue writes an optional bool field only when true: a missing key lets
@@ -316,11 +314,5 @@ func firstMap(in interface{}) map[string]interface{} {
 }
 
 func stringValue(in interface{}) string {
-	if in == nil {
-		return ""
-	}
-	if s, ok := in.(string); ok {
-		return s
-	}
-	return fmt.Sprintf("%v", in)
+	return utils.StringValue(in)
 }

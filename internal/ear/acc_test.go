@@ -56,7 +56,7 @@ func TestAccGCPEARConfig_ServiceAccount(t *testing.T) {
 	rName := acctest.RandomName("gcp-ear")
 	res := "yba_gcp_ear_config.test"
 
-	resource.Test(t, resource.TestCase{
+	resource.ParallelTest(t, resource.TestCase{
 		PreCheck:          func() { testAccPreCheckGCPEAR(t) },
 		ProviderFactories: acctest.ProviderFactories,
 		CheckDestroy:      testAccCheckEARConfigDestroy,
@@ -105,7 +105,7 @@ func TestAccGCPEARConfig_HostIdentity(t *testing.T) {
 	rName := acctest.RandomName("gcp-ear-iam")
 	res := "yba_gcp_ear_config.test"
 
-	resource.Test(t, resource.TestCase{
+	resource.ParallelTest(t, resource.TestCase{
 		PreCheck: func() {
 			testAccPreCheckGCPEAR(t)
 			if os.Getenv(envGCPEARHostIdentity) != "true" {

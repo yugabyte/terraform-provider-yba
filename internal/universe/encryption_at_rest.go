@@ -262,6 +262,16 @@ func planEncryptionAtRest(desired earState, triggerFired bool, live earState) ([
 	return actions, nil
 }
 
+// revertEncryptionAtRest puts the prior block back when an update ends before
+// performEncryptionAtRest has applied it, whether an earlier step failed or
+// one of its own tasks did. The rotation trigger has no server-side
+// counterpart: the deferred Read carries it over from d, so a planned value
+// left in d would reach state and the rotation would never be retried.
+// enabled and kms_config_uuid are refreshed from the universe either way.
+func revertEncryptionAtRest(d *schema.ResourceData) {
+	utils.RevertFields(d, "encryption_at_rest")
+}
+
 // performEncryptionAtRest runs at the tail of resourceUniverseUpdate and
 // dispatches the set_key tasks the block change calls for. Each task takes
 // the universe lock, so it goes through DispatchAndWait for the 409 retry.

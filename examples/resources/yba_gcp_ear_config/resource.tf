@@ -12,8 +12,8 @@ resource "yba_gcp_ear_config" "service_account" {
 # The same key ring reached with the YugabyteDB Anywhere host's own identity
 # (attached service account, workload identity, or GOOGLE_APPLICATION_CREDENTIALS):
 # no key file in Terraform or in state. The key ring lives in another project,
-# so project_id names it explicitly. Needs a YugabyteDB Anywhere build with
-# host-identity support for GCP KMS.
+# so project_id names it explicitly. See the resource description for the
+# YugabyteDB Anywhere version this needs.
 resource "yba_gcp_ear_config" "host_identity" {
   name          = "gcp-kms-central"
   use_gcp_iam   = true
@@ -28,10 +28,10 @@ resource "yba_gcp_ear_config" "host_identity" {
   kms_endpoint     = "kms.example.internal:443"
 }
 
-# Attach a configuration to a universe through its encryption_at_rest block.
-resource "yba_universe" "encrypted" {
-  encryption_at_rest {
-    kms_config_uuid = yba_gcp_ear_config.service_account.uuid
-  }
-  # ... clusters, communication_ports, ...
-}
+# A universe attaches a configuration through its encryption_at_rest block:
+#
+#   encryption_at_rest {
+#     kms_config_uuid = yba_gcp_ear_config.service_account.uuid
+#   }
+#
+# The yba_universe example shows a complete universe with the block.

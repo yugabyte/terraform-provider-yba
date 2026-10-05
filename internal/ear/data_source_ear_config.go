@@ -31,7 +31,7 @@ func DataSourceEARConfig() *schema.Resource {
 		Description: "Looks up an encryption-at-rest configuration by name, whichever key " +
 			"management service backs it. Use it to reference a configuration created in the " +
 			"YugabyteDB Anywhere UI from a universe's `encryption_at_rest` block, or to find " +
-			"the UUID for `terraform import` into the matching `yba_*_ear_config` resource.",
+			"the UUID for `terraform import` into `yba_gcp_ear_config`.",
 
 		ReadContext: dataSourceEARConfigRead,
 

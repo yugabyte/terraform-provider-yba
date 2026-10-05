@@ -23,6 +23,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/structure"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
+
+	"github.com/yugabyte/terraform-provider-yba/internal/utils"
 )
 
 // GCP authConfig keys, named as in YBA's GcpKmsAuthConfigField.
@@ -50,9 +52,13 @@ var gcpSettingAttrs = map[string]string{
 	"project_id":       gcpKeyProjectID,
 }
 
-const gcpHostIdentityRequirement = "`use_gcp_iam` and `project_id` need a YugabyteDB " +
-	"Anywhere build with host-identity support for GCP KMS. Older builds reject " +
-	"`use_gcp_iam` at create time and ignore `project_id`."
+// gcpHostIdentityRequirement is the version gate of USE_GCP_IAM and
+// GCP_PROJECT_ID (yugabyte-db commit 7252ad16745, master, 2026-09-21; not on
+// the 2026.1 branch). It renders into the resource docs.
+const gcpHostIdentityRequirement = "`use_gcp_iam` and `project_id` need YugabyteDB " +
+	"Anywhere 2.31 preview builds from 2026-09-21 or later; no 2026.1 build supports them. " +
+	"An older build rejects a configuration without `credentials` and stores `project_id` " +
+	"without using it."
 
 // ResourceGCPEARConfig defines the GCP KMS encryption-at-rest configuration.
 func ResourceGCPEARConfig() *schema.Resource {
@@ -61,9 +67,8 @@ func ResourceGCPEARConfig() *schema.Resource {
 
 func gcpEARSpec() earSpec {
 	return earSpec{
-		resourceType: "yba_gcp_ear_config",
-		displayName:  "GCP KMS",
-		apiProvider:  providerGCP,
+		displayName: "GCP KMS",
+		apiProvider: providerGCP,
 		description: "Encryption-at-rest configuration backed by a Google Cloud KMS crypto key. " +
 			"YugabyteDB Anywhere wraps each universe's universe key with the crypto key and " +
 			"unwraps it whenever a node needs it. Point the configuration at an existing key " +
@@ -106,7 +111,9 @@ func gcpEARSpec() earSpec {
 				Description: "Authenticate as the YugabyteDB Anywhere host instead of with a " +
 					"key file: the attached service account on Compute Engine, workload " +
 					"identity on GKE, or the key at `GOOGLE_APPLICATION_CREDENTIALS`. Can be " +
-					"changed in place; switching from `credentials` drops the stored key.",
+					"changed in place: YugabyteDB Anywhere drops the stored key when a " +
+					"configuration switches to the host identity, and drops the flag when it " +
+					"switches back to `credentials`.",
 			},
 			"project_id": {
 				Type:     schema.TypeString,
@@ -162,7 +169,6 @@ func gcpEARSpec() earSpec {
 		buildCreate:      gcpBuildCreate,
 		buildEdit:        gcpBuildAuth,
 		flatten:          gcpFlatten,
-		createHint:       gcpCreateHint,
 		customizeDiff:    gcpCustomizeDiff,
 	}
 }
@@ -186,9 +192,9 @@ func gcpBuildCreate(d *schema.ResourceData) (map[string]interface{}, error) {
 		gcpKeyKeyRingID:   d.Get("key_ring_id").(string),
 		gcpKeyCryptoKeyID: d.Get("crypto_key_id").(string),
 	}
-	setIfNonEmpty(settings, gcpKeyProtectionLevel, d.Get("protection_level"))
-	setIfNonEmpty(settings, gcpKeyKMSEndpoint, d.Get("kms_endpoint"))
-	setIfNonEmpty(settings, gcpKeyProjectID, d.Get("project_id"))
+	utils.SetIfNonEmpty(settings, gcpKeyProtectionLevel, d.Get("protection_level"))
+	utils.SetIfNonEmpty(settings, gcpKeyKMSEndpoint, d.Get("kms_endpoint"))
+	utils.SetIfNonEmpty(settings, gcpKeyProjectID, d.Get("project_id"))
 
 	auth, err := gcpBuildAuth(d)
 	if err != nil {
@@ -202,8 +208,10 @@ func gcpBuildCreate(d *schema.ResourceData) (map[string]interface{}, error) {
 
 // gcpBuildAuth maps the authentication arguments onto YBA's keys: USE_GCP_IAM
 // for the host identity, else GCP_CONFIG carrying the key as a JSON object
-// (YBA reads the project ID out of it). It is also the edit body: naming one
-// mode switches YBA to it.
+// (YBA reads the project ID out of it). It is also the edit body. YBA's
+// EncryptionAtRestController (GCP case of the edit merge) switches to the
+// mode the body names: USE_GCP_IAM drops the stored GCP_CONFIG, and
+// GCP_CONFIG without USE_GCP_IAM drops the stored flag.
 func gcpBuildAuth(d *schema.ResourceData) (map[string]interface{}, error) {
 	if d.Get("use_gcp_iam").(bool) {
 		return map[string]interface{}{gcpKeyUseIAM: true}, nil
@@ -220,33 +228,26 @@ func gcpBuildAuth(d *schema.ResourceData) (map[string]interface{}, error) {
 }
 
 // gcpFlatten writes the listed non-secret settings into state. The key file
-// is never read back. A stored key file next to USE_GCP_IAM means the
-// YugabyteDB Anywhere build ignored the host-identity switch and kept using
-// the key: report that rather than showing a clean state.
+// is never read back. A build with host-identity support never stores a key
+// file next to USE_GCP_IAM (create rejects the pair, an edit to the host
+// identity drops the key). An older build does not know the flag: an edit
+// stores it and keeps the key, and keeps authenticating with the key. Report
+// that rather than a clean state that claims the host identity is in use.
 func gcpFlatten(d *schema.ResourceData, settings map[string]interface{}) error {
 	for attr, key := range gcpSettingAttrs {
 		v, ok := settings[key]
 		if !ok {
 			continue
 		}
-		if err := d.Set(attr, stringValue(v)); err != nil {
+		if err := d.Set(attr, utils.StringValue(v)); err != nil {
 			return err
 		}
 	}
-	useIAM := boolValue(settings[gcpKeyUseIAM])
+	useIAM := utils.BoolValue(settings[gcpKeyUseIAM])
 	if _, hasKey := settings[gcpKeyConfig]; useIAM && hasKey {
 		return fmt.Errorf(
-			"encryption at rest config %s has use_gcp_iam set but YugabyteDB Anywhere still "+
-				"holds a service-account key for it: this YugabyteDB Anywhere build does not "+
-				"support host identity for GCP KMS and kept authenticating with the key", d.Id())
+			"encryption at rest config %s: YugabyteDB Anywhere stores USE_GCP_IAM next to a "+
+				"GCP_CONFIG key file", d.Id())
 	}
 	return d.Set("use_gcp_iam", useIAM)
-}
-
-func gcpCreateHint(d *schema.ResourceData) string {
-	if d.Get("use_gcp_iam").(bool) {
-		return "use_gcp_iam needs a YugabyteDB Anywhere build with host-identity support " +
-			"for GCP KMS; the server rejected the request"
-	}
-	return ""
 }

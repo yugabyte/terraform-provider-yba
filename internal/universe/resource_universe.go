@@ -3437,7 +3437,13 @@ func resourceUniverseUpdate(
 	c := meta.(*api.APIClient).YugawareClient
 	cUUID := meta.(*api.APIClient).CustomerID
 
+	// Encryption at rest runs last; until it has, keep its planned block out
+	// of the state the deferred Read writes (see revertEncryptionAtRest).
+	earApplied := false
 	defer func() {
+		if !earApplied {
+			revertEncryptionAtRest(d)
+		}
 		diags = append(resourceUniverseRead(ctx, d, meta), diags...)
 	}()
 
@@ -4841,6 +4847,7 @@ func resourceUniverseUpdate(
 	if earDiags := performEncryptionAtRest(ctx, d, meta); earDiags != nil {
 		return earDiags
 	}
+	earApplied = true
 
 	return
 }
