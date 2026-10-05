@@ -70,7 +70,10 @@ func detachTelemetryProviderFromUniverses(
 			ctx, apiClient, ref.UUID, "Detach - Get Config")
 		if err != nil {
 			if errors.Is(err, utils.ErrUniverseMissing) {
-				// The universe disappeared between the list and this read.
+				// The universe disappeared between the list and this read, or
+				// the YBA predates the v2 route (a 404 either way). Neither has
+				// a v2 config to rewrite; YBA's in-use check on the delete still
+				// catches a reference made through the older per-universe APIs.
 				continue
 			}
 			return detached, err
