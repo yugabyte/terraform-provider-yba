@@ -286,6 +286,25 @@ func CheckValidYBAVersion(ctx context.Context, c *client.APIClient, versions YBA
 	return false, currentVersion, err
 }
 
+// GetGlobalRuntimeConfigBool reads a boolean global runtime config key. YBA
+// answers with the global override, else the default, so an unset key reads
+// as its default.
+func GetGlobalRuntimeConfigBool(
+	ctx context.Context, c *client.APIClient, cUUID, key string) (bool, error) {
+	value, response, err := c.RuntimeConfigurationAPI.GetConfigurationKey(
+		ctx, cUUID, GlobalRuntimeConfigScope, key).Execute()
+	if err != nil {
+		return false, ErrorFromHTTPResponse(response, err, "Validation",
+			"Runtime Config", "Get "+key)
+	}
+	enabled, err := strconv.ParseBool(strings.Trim(strings.TrimSpace(value), `"`))
+	if err != nil {
+		// The value is left out: a runtime config value may be a secret.
+		return false, fmt.Errorf("runtime config %s is not a boolean", key)
+	}
+	return enabled, nil
+}
+
 // IsPreviewVersionAllowed checks if a current version (>= Min version)
 // is equal to the restricted version for the operation.
 // Used in cases where certain preview build errors are not
@@ -594,6 +613,16 @@ func IsHTTPBadRequestNotFound(resp *http.Response) bool {
 	}
 	bodyStr := string(body)
 	return strings.Contains(bodyStr, "Cannot find")
+}
+
+// IsReleaseNotFound reports whether a /ybdb_release response means the release
+// is gone. YBA answers an unknown release UUID with 400 (Release.getOrBadRequest)
+// and never 404; a 404 is an unmatched route on an older YBA.
+func IsReleaseNotFound(resp *http.Response, err error) bool {
+	if resp == nil || resp.StatusCode != http.StatusBadRequest {
+		return false
+	}
+	return strings.Contains(OpenAPIErrorBody(err), "Invalid Release UUID")
 }
 
 // ErrResourceNotFound is a sentinel error returned when a resource cannot be found.

@@ -16,33 +16,23 @@
 package releases
 
 import (
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"fmt"
+
+	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 )
 
-// PackageSchema is used to hold the package path and corresponding architecture
-func PackageSchema() *schema.Schema {
-	return &schema.Schema{
-		Type:        schema.TypeList,
-		ForceNew:    true,
-		Optional:    true,
-		Computed:    true,
-		Description: "Package path and architecture.",
-		Elem: &schema.Resource{
-			Schema: map[string]*schema.Schema{
-				"path": {
-					Type:        schema.TypeString,
-					Computed:    true,
-					Optional:    true,
-					Description: "Path.",
-				},
-				"arch": {
-					Type:        schema.TypeString,
-					Computed:    true,
-					Optional:    true,
-					Description: "Architecture.",
-				},
-			},
-		},
-	}
+const previewAdmonition = "~> **Preview:** This resource manages YugabyteDB (YBDB) " +
+	"database releases through the YugabyteDB Anywhere release management API " +
+	"(`/ybdb_release`), which is marked preview and may change in backward-incompatible " +
+	"ways across YBA releases.\n\n"
 
+func previewWarning(resourceName string) diag.Diagnostic {
+	return diag.Diagnostic{
+		Severity: diag.Warning,
+		Summary: fmt.Sprintf(
+			"%s wraps a preview YBA release management API", resourceName),
+		Detail: "The underlying YugabyteDB Anywhere /ybdb_release API is marked preview " +
+			"and may change in backward-incompatible ways. Pin your provider version and " +
+			"review release notes before upgrading.",
+	}
 }

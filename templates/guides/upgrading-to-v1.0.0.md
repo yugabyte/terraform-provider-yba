@@ -316,6 +316,8 @@ Remove every `yba_releases` block from your HCL and drop the state entry:
 terraform state rm yba_releases.<name>
 ```
 
+A later v1.x release adds the [`yba_ybdb_release`](../resources/ybdb_release) resource. To manage a release with Terraform again, import it into that resource by its release UUID.
+
 ### `yba_installation`
 
 The legacy Replicated-based `yba_installation` resource has been removed. For new YBA installations, use [`yba_installer`](../resources/installer), which deploys YBA using the supported `yba-installer` tool.
