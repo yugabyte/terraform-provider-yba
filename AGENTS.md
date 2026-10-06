@@ -156,7 +156,14 @@ Two classes:
   schema sanity tests for polymorphic blocks (`ForceNew`, `MaxItems=1`,
   `ExactlyOneOf`, every block wired through the type switch).
 - Acceptance (`TestAcc*`) — required for any new resource and for any
-  lifecycle-affecting change. Run with `make acctest`.
+  lifecycle-affecting change. Run with `make acctest`. Leave the long tier
+  (`TestAccLong*`) to the operator: open or update the PR and name the
+  long tests that cover the change. The standing fixtures are shared, so
+  a run you start can collide with one already in progress.
+
+Fix a broken acceptance fixture in `acctest/` or on the fixture host.
+Change provider behaviour only to fix a provider bug, never to work around
+a fixture.
 
 Write tests that protect against the regressions another agent is most
 likely to introduce — not for coverage percentage. **critical: be ruthless
@@ -188,15 +195,16 @@ including it in any response or log line.
 
 ## Self-Learning
 
-When the operator corrects you, add the rule here and commit it with the
-code change. Mark repeated or emphasised corrections **critical** in
-bold. A correction that only a reviewer can judge (no linter or CI check
-can enforce it) goes in `REVIEW.md` instead, as the general rule it
-teaches; **critical: `REVIEW.md` never cites an issue, PR or date.**
-`AGENTS.md` and `REVIEW.md`
-are the only tracked convention files (a local, gitignored `CLAUDE.md` may
-`@AGENTS.md` to load it into Claude Code; durable cross-session memory
-lives in the Meko datapack below).
+When the operator corrects you, record the correction in both places
+before you finish: the general rule here, committed with the code change,
+and a memory in the Meko datapack below. Mark repeated or emphasised
+corrections **critical** in bold. A correction that only a reviewer can
+judge (no linter or CI check can enforce it) goes in `REVIEW.md` instead,
+as the general rule it teaches; **critical: `REVIEW.md` never cites an
+issue, PR or date.** `AGENTS.md` and `REVIEW.md` are the only tracked
+convention files (a local, gitignored `CLAUDE.md` may `@AGENTS.md` to load
+it into Claude Code; durable cross-session memory lives in the Meko
+datapack below).
 
 ## Meko (memory & knowledge)
 

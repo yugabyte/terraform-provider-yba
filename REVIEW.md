@@ -158,6 +158,9 @@ failure this project can ship.
   populate-from-empty and clear-on-empty.
 - A known platform bug is a `t.Skip` with the ticket in a short comment, next
   to the test it blocks.
+- A new `TestAccLong*` that deploys its own universe is a finding when an
+  existing long test's universe can carry the new step. Every universe adds
+  minutes to every long-tier run.
 - Acceptance resource names come from `acctest.RandomName` only; a raw
   `RandString` skips the branch prefix and the 40-character cap.
   `resource.ParallelTest` targets a per-cloud YBA; `resource.Test` targets
