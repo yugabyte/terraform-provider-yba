@@ -149,7 +149,7 @@ func ResourceUniverseTelemetryConfig() *schema.Resource {
 			"YugabyteDB Anywhere: the audit log, query log, server log and metrics " +
 			"pipelines, and the telemetry providers that each pipeline sends data " +
 			"to.\n\n" +
-			experimentalAdmonition + "\n\n" +
+			previewAdmonition + "\n\n" +
 			"YBA runs an OpenTelemetry Collector on the universe nodes to export " +
 			"the data.\n\n" +
 			"~> **Note:** " + versionNote("This resource requires", unifiedTelemetryAPIMin) +
@@ -176,8 +176,10 @@ func ResourceUniverseTelemetryConfig() *schema.Resource {
 			"telemetry providers that one universe uses must have the same access " +
 			"key and secret key. All GCP Cloud Monitoring telemetry providers that " +
 			"one universe uses must have the same credentials.\n\n" +
-			"~> **Note:** On a Kubernetes universe, `node_agent_logs` and " +
-			"`ynp_logs` are not available. Audit log export needs YugabyteDB " +
+			"~> **Note:** To export from a Kubernetes universe, install the " +
+			"OpenTelemetry Operator in its Kubernetes cluster first. On a " +
+			"Kubernetes universe, `node_agent_logs` and `ynp_logs` are not " +
+			"available. Audit log export needs YugabyteDB " +
 			"2025.1.0.0 or later on the universe, and the other pipelines need " +
 			"YugabyteDB 2026.1.2.0 or later. `metrics` must set " +
 			"`scrape_config_targets` to a subset of `MASTER_EXPORT`, " +
@@ -300,7 +302,9 @@ func auditLogsSchema() *schema.Schema {
 								},
 								Description: "Sets `pgaudit.log`: the classes of statements " +
 									"to log. Allowed values: " +
-									codeList(allowedYSQLAuditClasses) + ".",
+									codeList(allowedYSQLAuditClasses) + ". When not set, YBA " +
+									"does not set `pgaudit.log`, whose default, `none`, logs " +
+									"no statements.",
 							},
 							"log_catalog": {
 								Type:     schema.TypeBool,
@@ -326,9 +330,14 @@ func auditLogsSchema() *schema.Schema {
 									false,
 								),
 								Description: "Sets `pgaudit.log_level`: the severity of the " +
-									"audit messages sent to the client. Applies only when " +
-									"`log_client` is `true`. Allowed values: " +
-									codeList(allowedYSQLAuditLogLevels) + ". Defaults to `LOG`.",
+									"audit log entries when `log_client` is `true`. When " +
+									"`log_client` is `false`, pgaudit uses `LOG`. " +
+									"Allowed values: " +
+									codeList(allowedYSQLAuditLogLevels) + ". Defaults to `LOG`. " +
+									"A level below `WARNING` (`DEBUG1` to `DEBUG5`, `INFO` or " +
+									"`NOTICE`) also needs the yb-tserver flag " +
+									"`ysql_log_min_messages` set to that level or a more " +
+									"verbose one.",
 							},
 							"log_parameter": {
 								Type:     schema.TypeBool,
@@ -525,6 +534,7 @@ func queryLogsSchema() *schema.Schema {
 								Default:  queryLogDefaults.LogMinErrorStatement,
 								Description: "Sets `log_min_error_statement`: the lowest " +
 									"error severity that logs the statement that caused it. " +
+									"The only allowed value is `ERROR`. " +
 									defaultNote(queryLogDefaults.LogMinErrorStatement),
 							},
 							"log_error_verbosity": {
@@ -635,7 +645,9 @@ func metricsSchema() *schema.Schema {
 					},
 					Description: "Targets to scrape. Allowed values: " +
 						codeList(allowedScrapeTargets) + ". When not set, YBA scrapes " +
-						"all targets. A Kubernetes universe requires this argument.",
+						"all targets. After you set it, removing the argument keeps the " +
+						"current targets. To scrape all targets again, list them all. " +
+						"A Kubernetes universe requires this argument.",
 				},
 				"exporter": metricsExporterSchema(),
 			},
@@ -1391,7 +1403,7 @@ func resourceUniverseTelemetryConfigCreate(
 	}
 	d.SetId(universeUUID)
 	return append(
-		diag.Diagnostics{experimentalWarning("yba_universe_telemetry_config")},
+		diag.Diagnostics{previewWarning("yba_universe_telemetry_config")},
 		resourceUniverseTelemetryConfigRead(ctx, d, meta)...)
 }
 
@@ -1406,7 +1418,7 @@ func resourceUniverseTelemetryConfigUpdate(
 		return diags
 	}
 	return append(
-		diag.Diagnostics{experimentalWarning("yba_universe_telemetry_config")},
+		diag.Diagnostics{previewWarning("yba_universe_telemetry_config")},
 		resourceUniverseTelemetryConfigRead(ctx, d, meta)...)
 }
 

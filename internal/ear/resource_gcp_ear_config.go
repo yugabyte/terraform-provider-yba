@@ -57,8 +57,8 @@ var gcpSettingAttrs = map[string]string{
 // the 2026.1 branch). It renders into the resource docs, which name stable
 // releases only.
 const gcpHostIdentityRequirement = "`use_gcp_iam` and `project_id` need a YugabyteDB " +
-	"Anywhere release later than 2026.1. YugabyteDB Anywhere 2026.1 and earlier reject a " +
-	"configuration without `credentials`, and store `project_id` but do not use it."
+	"Anywhere release later than 2026.1. YugabyteDB Anywhere 2026.1 and earlier require " +
+	"`credentials`, and ignore `project_id`: they use the project of the service-account key."
 
 // ResourceGCPEARConfig defines the GCP KMS encryption-at-rest configuration.
 func ResourceGCPEARConfig() *schema.Resource {
@@ -165,8 +165,8 @@ func gcpEARSpec() earSpec {
 				Type:     schema.TypeString,
 				Optional: true,
 				ForceNew: true,
-				Description: "Custom Cloud KMS endpoint, for Private Service Connect or a " +
-					"restricted VIP. A change forces replacement.",
+				Description: "Custom Cloud KMS endpoint as `host:port`, for Private Service " +
+					"Connect or a restricted VIP. A change forces replacement.",
 			},
 		},
 		credentialFields: []string{"credentials", "use_gcp_iam"},

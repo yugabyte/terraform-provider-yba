@@ -28,6 +28,13 @@ const previewAdmonition = "~> **Preview:** This resource works only with " +
 	"version of the Perf Advisor API that this resource uses. The API can " +
 	"change in ways that are not backward compatible between YBA releases.\n\n"
 
+// collectorAPIAdmonition follows the summary paragraph of the yba_pa_collector
+// Description. YBA marks its Perf Advisor collector API as internal.
+const collectorAPIAdmonition = "~> **Preview:** YugabyteDB Anywhere marks " +
+	"the Perf Advisor collector API that this data source uses as internal. " +
+	"The API can change in ways that are not backward compatible between YBA " +
+	"releases.\n\n"
+
 // onlineModeKey is the customer runtime config key that turns on Perf Advisor
 // online mode. YBA ships it set to false.
 const onlineModeKey = "`yb.ui.feature_flags.enable_pa_online_mode`"

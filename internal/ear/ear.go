@@ -262,7 +262,7 @@ func formatUniverseRefs(refs []universeRef) string {
 // supplies the shared lifecycle (create with UUID recovery, provider-guarded
 // read, credential-only update, history-aware delete, import, timeouts).
 type earSpec struct {
-	displayName string // human name for docs and logs, e.g. "GCP KMS"
+	displayName string // human name for logs, e.g. "GCP KMS"
 	apiProvider string // YBA KeyProvider, e.g. GCP
 	description string // provider-specific lead of the resource docs
 	fields      map[string]*schema.Schema
@@ -310,7 +310,7 @@ func earResource(s earSpec) *schema.Resource {
 	}
 
 	return &schema.Resource{
-		Description: s.description + "\n\n" + earSharedNotes(s),
+		Description: s.description + "\n\n" + earSharedNotes,
 
 		CreateContext: earCreate(s),
 		ReadContext:   earRead(s),
@@ -333,31 +333,23 @@ func earResource(s earSpec) *schema.Resource {
 	}
 }
 
-// earSharedNotes renders the lifecycle callouts every provider's resource
-// shares; these strings ship verbatim into the user-facing docs.
-func earSharedNotes(s earSpec) string {
-	return fmt.Sprintf(
-		"~> **Note:** Only the credential arguments can change in place. A change to any "+
-			"other argument forces replacement. YugabyteDB Anywhere does not delete a "+
-			"configuration that a universe has used: it keeps the universe's key history, "+
-			"also after encryption is disabled or the universe moves to another "+
-			"configuration, until the universe is deleted. A destroy of such a configuration "+
-			"fails, and the error names the universes. To move universes to a new "+
-			"configuration, create it, change `encryption_at_rest.kms_config_uuid` on each "+
-			"universe, and keep the old configuration (or remove it from state) until its "+
-			"universes are deleted. Give the new configuration `depends_on` on the old one, "+
-			"so that `terraform destroy` deletes the universe before the old configuration.\n\n"+
-			"~> **Drift Note:** Terraform refreshes `in_use` and the non-secret settings. "+
-			"YugabyteDB Anywhere masks credentials, so a credential changed outside "+
-			"Terraform, for example in the YugabyteDB Anywhere UI, does not show as drift. "+
-			"An apply without a change to the credential in the configuration does not send "+
-			"it again.\n\n"+
-			"~> **Import Note:** Import checks the KMS provider: importing a configuration "+
-			"that is not a %s configuration fails, and the error names its KMS provider. "+
-			"YugabyteDB Anywhere never returns credentials, so they are empty after import, "+
-			"and the first apply sends them again.",
-		s.displayName)
-}
+// earSharedNotes holds the lifecycle callouts every provider's resource
+// shares; these strings ship verbatim into the user-facing docs. Import
+// behaviour goes in each resource's template Import section.
+const earSharedNotes = "~> **Note:** Only the credential arguments can change in place. A " +
+	"change to any other argument forces replacement. YugabyteDB Anywhere does not delete a " +
+	"configuration that a universe has used: it keeps the universe's key history, also after " +
+	"encryption is disabled or the universe moves to another configuration, until the " +
+	"universe is deleted. A destroy of such a configuration fails, and the error names the " +
+	"universes. To move universes to a new configuration, create it, change " +
+	"`encryption_at_rest.kms_config_uuid` on each universe, and keep the old configuration " +
+	"(or remove it from state) until its universes are deleted. Give the new configuration " +
+	"`depends_on` on the old one, so that `terraform destroy` deletes the universe before the " +
+	"old configuration.\n\n" +
+	"~> **Note:** Terraform refreshes `in_use` and the non-secret settings. YugabyteDB " +
+	"Anywhere masks credentials, so a credential changed outside Terraform, for example in " +
+	"the YugabyteDB Anywhere UI, does not show as drift. An apply without a change to the " +
+	"credential in the configuration does not send it again."
 
 func earCreate(s earSpec) schema.CreateContextFunc {
 	return func(

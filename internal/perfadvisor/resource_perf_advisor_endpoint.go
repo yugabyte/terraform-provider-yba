@@ -50,8 +50,8 @@ func ResourcePerfAdvisorEndpoint() *schema.Resource {
 			"config key " + onlineModeKey + " to `true` on the global scope or " +
 			"on your customer scope, for example with `yba_runtime_config`. " +
 			"The key is `false` by default. While it is `false`, YBA rejects " +
-			"every endpoint request, so `terraform plan` fails for this " +
-			"resource.\n\n" +
+			"every endpoint request, so Terraform cannot create, read, change " +
+			"or delete an endpoint.\n\n" +
 			"~> **Note:** When a Perf Advisor collector exists, YBA uses it to " +
 			"test both URLs and their credentials before it saves the endpoint. " +
 			"The apply fails when a URL cannot be reached or a credential is " +

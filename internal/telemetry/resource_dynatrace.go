@@ -24,7 +24,6 @@ import (
 func ResourceDynatraceTelemetryProvider() *schema.Resource {
 	return sinkResource(sinkSpec{
 		resourceType: "yba_dynatrace_telemetry_provider",
-		displayName:  "Dynatrace",
 		apiType:      typeDynatrace,
 		description: "Manages a Dynatrace telemetry provider in YugabyteDB Anywhere. " +
 			"Universes send metrics to it through `yba_universe_telemetry_config`.",

@@ -21,20 +21,21 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 )
 
-// experimentalAdmonition is its own Description paragraph. It follows the
-// summary paragraph, which the doc templates publish as the Registry summary.
-const experimentalAdmonition = "~> **Experimental:** Telemetry export is an " +
-	"experimental feature of YugabyteDB Anywhere. A later YBA release can change " +
-	"it in ways that are not backward compatible. Read the release notes before " +
-	"you upgrade YBA or the provider."
+// previewAdmonition is its own Description paragraph. It follows the summary
+// paragraph, which the doc templates publish as the Registry summary.
+const previewAdmonition = "~> **Preview:** YugabyteDB Anywhere marks its " +
+	"telemetry export APIs as preview. A later YBA release can change them in " +
+	"ways that are not backward compatible. Read the release notes before you " +
+	"upgrade YBA or the provider."
 
-func experimentalWarning(resourceName string) diag.Diagnostic {
+func previewWarning(resourceName string) diag.Diagnostic {
 	return diag.Diagnostic{
 		Severity: diag.Warning,
 		Summary: fmt.Sprintf(
-			"%s wraps an experimental YBA telemetry API", resourceName),
-		Detail: "The underlying YugabyteDB Anywhere export-telemetry API is " +
-			"still experimental and may change in backward-incompatible ways. " +
-			"Pin your provider version and review release notes before upgrading.",
+			"%s uses a preview YugabyteDB Anywhere API", resourceName),
+		Detail: "YugabyteDB Anywhere marks its telemetry export APIs as preview. " +
+			"A later YBA release can change them in ways that are not backward " +
+			"compatible. Pin your provider version and read the release notes " +
+			"before you upgrade YBA or the provider.",
 	}
 }

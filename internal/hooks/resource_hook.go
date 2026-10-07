@@ -148,8 +148,9 @@ func ResourceHook() *schema.Resource {
 				Default:  false,
 				Description: "Run the hook with superuser privileges. Requires the " +
 					"global runtime config key `yb.security.custom_hooks.enable_sudo` " +
-					"set to `true`. YBA skips the hook when the key is `false` at the " +
-					"time the trigger fires. Defaults to `false`.",
+					"set to `true`: YBA rejects the hook while the key is `false`, and " +
+					"skips the hook when the key is `false` at the time the trigger " +
+					"fires. Defaults to `false`.",
 			},
 			"runtime_args": {
 				Type:     schema.TypeMap,

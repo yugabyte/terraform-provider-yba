@@ -201,14 +201,16 @@ func ResourceYBAInstaller() *schema.Resource {
 		Description: "Manages the installation of YugabyteDB Anywhere on an existing virtual" +
 			" machine using YBA Installer.\n\n" +
 			"~> **Note:** Destroy runs `yba-ctl clean` on the host. This removes the " +
-			"YugabyteDB Anywhere software and keeps the data directory, " +
-			"`/opt/yugabyte/data`. To delete the data, remove that directory on the host " +
-			"yourself.\n\n" +
+			"YugabyteDB Anywhere software and keeps the data directory (" +
+			"`/opt/yugabyte/data` with the default `installRoot`). To delete the data, " +
+			"remove that directory on the host yourself.\n\n" +
 			"~> **Note:** When `/opt/yugabyte/data` already holds YugabyteDB Anywhere data " +
 			"(for example, on a persistent disk that outlives the VM), create installs the " +
 			"software without data and starts YBA on the existing data. So when you destroy " +
 			"and recreate this resource on the same host, YBA keeps its data. For a fresh " +
-			"installation, delete `/opt/yugabyte/data` on the host before the next apply.\n\n" +
+			"installation, delete `/opt/yugabyte/data` on the host before the next apply. " +
+			"The provider checks only this path, also when `installRoot` in the " +
+			"application settings names another directory.\n\n" +
 			"~> **Warning:** If nothing accepts an SSH connection at `ssh_host_ip` and " +
 			"`ssh_port` for about 30 seconds, destroy treats the host as gone. It removes " +
 			"the resource from state and does not clean up the host. Make sure that the host " +
@@ -397,7 +399,7 @@ func ResourceYBAInstaller() *schema.Resource {
 				// True should trigger yba-ctl reconfigure
 				// if the contents of application_settings_file have been modified
 				Description: "Change this field to `true` to run `yba-ctl reconfigure` on the " +
-					"next apply when no other input changed. While it stays `true`, every " +
+					"next apply, also when no other input changed. While it stays `true`, every " +
 					"update of this resource also runs a reconfiguration. Requires " +
 					"`application_settings` or `application_settings_file`. A change to " +
 					"`application_settings`, `tls_certificate` or `tls_key`, or to the path " +

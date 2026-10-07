@@ -63,10 +63,12 @@ func ResourceUniverseLoadBalancerConfig() *schema.Resource {
 			"~> **Note:** YBA attaches load balancers only to universes on AWS, " +
 			"GCP and Azure providers. It does not support Kubernetes or " +
 			"on-premises universes.\n\n" +
-			"~> **Note:** YBA routes the universe's YSQL and YCQL ports through " +
-			"the load balancer over TCP. On Azure, the load balancer must " +
-			"already have a frontend IP configuration. To change the health " +
-			"checks, set the universe runtime config keys " +
+			"~> **Note:** YBA routes the YSQL and YCQL ports of the universe " +
+			"through the load balancer over TCP, only for the APIs that the " +
+			"universe enables. On AWS, the load balancer must be a Network Load " +
+			"Balancer. On Azure, the load balancer must already have a frontend " +
+			"IP configuration. To change the health checks, set the universe " +
+			"runtime config keys " +
 			"`yb.universe.network_load_balancer.custom_health_check_ports`, " +
 			"`yb.universe.network_load_balancer.custom_health_check_protocol` " +
 			"and `yb.universe.network_load_balancer.custom_health_check_paths`, " +
@@ -117,8 +119,8 @@ func ResourceUniverseLoadBalancerConfig() *schema.Resource {
 							Type:     schema.TypeString,
 							Required: true,
 							Description: "Name of the load balancer in the cloud: the " +
-								"load balancer name on AWS and Azure, the backend service " +
-								"name on GCP.",
+								"load balancer name on AWS and Azure, the name of the " +
+								"regional backend service on GCP.",
 						},
 						"read_replica": {
 							Type:     schema.TypeBool,

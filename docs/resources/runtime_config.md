@@ -8,7 +8,7 @@ description: |-
 
 Sets a runtime configuration key on one scope in YugabyteDB Anywhere. The scope is the global scope, a customer, a provider or a universe.
 
-Use the global scope (`00000000-0000-0000-0000-000000000000`, the default) for keys that apply to all of YBA, such as `yb.telemetry.allow_s3` or `yb.universe.metrics_export_enabled`. Set `scope` to a provider or universe UUID to change a key for that provider or universe only. Destroying the resource removes the key from the scope. The scope then uses the value of a wider scope, or the default of the key.
+Use the global scope (`00000000-0000-0000-0000-000000000000`, the default) for keys that apply to all of YBA, such as `yb.telemetry.allow_s3` or `yb.universe.metrics_export_enabled`. Set `scope` to a customer, provider or universe UUID to change a key on that scope only. YBA sets a key only on the scopes that the key supports: for example, it rejects a global key, such as `yb.telemetry.allow_s3`, on a universe. Destroying the resource removes the key from the scope. The scope then uses the value of a wider scope, or the default of the key.
 
 ~> **Note:** Only a Super Admin user can set or remove a key on the global scope.
 

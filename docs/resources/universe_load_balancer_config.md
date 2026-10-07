@@ -16,7 +16,7 @@ This resource does not create the load balancers. Create them in the universe's 
 
 ~> **Note:** YBA attaches load balancers only to universes on AWS, GCP and Azure providers. It does not support Kubernetes or on-premises universes.
 
-~> **Note:** YBA routes the universe's YSQL and YCQL ports through the load balancer over TCP. On Azure, the load balancer must already have a frontend IP configuration. To change the health checks, set the universe runtime config keys `yb.universe.network_load_balancer.custom_health_check_ports`, `yb.universe.network_load_balancer.custom_health_check_protocol` and `yb.universe.network_load_balancer.custom_health_check_paths`, for example with `yba_runtime_config`. When YBA cannot use a load balancer, the apply fails with the error of the YBA task.
+~> **Note:** YBA routes the YSQL and YCQL ports of the universe through the load balancer over TCP, only for the APIs that the universe enables. On AWS, the load balancer must be a Network Load Balancer. On Azure, the load balancer must already have a frontend IP configuration. To change the health checks, set the universe runtime config keys `yb.universe.network_load_balancer.custom_health_check_ports`, `yb.universe.network_load_balancer.custom_health_check_protocol` and `yb.universe.network_load_balancer.custom_health_check_paths`, for example with `yba_runtime_config`. When YBA cannot use a load balancer, the apply fails with the error of the YBA task.
 
 ## Example Usage
 
@@ -90,7 +90,7 @@ resource "yba_universe_load_balancer_config" "main" {
 
 Required:
 
-- `lb_name` (String) Name of the load balancer in the cloud: the load balancer name on AWS and Azure, the backend service name on GCP.
+- `lb_name` (String) Name of the load balancer in the cloud: the load balancer name on AWS and Azure, the name of the regional backend service on GCP.
 - `region` (String) Code of the region that the load balancer serves, as it appears in the universe placement, for example `us-west-2`.
 
 Optional:

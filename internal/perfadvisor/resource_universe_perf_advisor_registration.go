@@ -58,6 +58,10 @@ func ResourceUniversePerfAdvisorRegistration() *schema.Resource {
 			"endpoint to the collector before it registers the universe, so " +
 			"the apply fails when the endpoint cannot be reached or rejects " +
 			"its credentials.\n\n" +
+			"~> **Note:** YBA checks that it has enough free memory before it " +
+			"registers the universe or moves it to `ADVANCED` mode. The memory " +
+			"it needs grows with the number of TServers in the universe. When " +
+			"YBA does not have enough free memory, the apply fails.\n\n" +
 			"Registration and unregistration run as YBA universe tasks, and " +
 			"this resource waits for them. They do not restart the universe. " +
 			"YBA registers Kubernetes universes in the same way as VM " +

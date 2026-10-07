@@ -116,6 +116,9 @@ resource "yba_universe" "with_certificates" {
 
   cert_rotation {
     server_cert_trigger = "2026-07" # change to re-issue node-to-node server certificates
+    # client_cert_trigger re-issues the client-to-node server certificates. It needs a
+    # self-signed client_root_ca, so this universe, which uses a custom server certificate
+    # for client-to-node encryption, does not set it.
   }
 
   clusters {
@@ -193,12 +196,13 @@ through `root_ca`, `client_root_ca` and the `cert_rotation` triggers, and
 key, and disables encryption.
 
 ~> **Note:** A certificate rotation with the `Rolling` strategy restarts the nodes one at a
-time and pauses for the `node_restart_settings` sleep time after each restart. On a universe
-with many nodes, the rotation can take longer than the 60-minute default `update` timeout. Raise
-`timeouts { update }` when necessary. If the universe's node-to-node certificates have
-expired, set `node_restart_settings.upgrade_option = "Non-Rolling"`. With expired
-certificates, YugabyteDB Anywhere rejects `Non-Restart`, and rejects `Rolling` for every
-rotation except one that re-issues only the client-to-node server certificates.
+time and pauses for the `node_restart_settings` sleep time after each master and each TServer
+restart. A rotation to a new node-to-node root certificate restarts every node three times,
+so even on a small universe it can take longer than the 60-minute default `update` timeout.
+Raise `timeouts { update }` when necessary. If the universe's node-to-node
+certificates have expired, set `node_restart_settings.upgrade_option = "Non-Rolling"`. With
+expired certificates, YugabyteDB Anywhere rejects `Non-Restart`, and rejects `Rolling` for
+every rotation except one that re-issues only the client-to-node server certificates.
 
 ~> **Note:** An encryption-at-rest configuration that a universe has used keeps the
 universe's key history until the universe is deleted, also after encryption is disabled or
@@ -219,7 +223,7 @@ universe is deleted.
 
 - `arch` (String) The architecture of the universe nodes. Allowed values are x86_64 and aarch64.
 - `cert_rotation` (Block List, Max: 1) Triggers that re-issue the server certificates of each node from the current root certificate, which must be a self-signed certificate. YugabyteDB Anywhere issues these server certificates with a 1-year lifetime by default. A change of a trigger to any new non-empty value rotates the certificates on the next apply. A trigger set at universe creation does not rotate, but a trigger added to an existing universe does. Removing a trigger does nothing. Nodes restart according to `node_restart_settings`. To move to another root certificate, change `root_ca` or `client_root_ca` instead, and do not change a trigger in the same apply: that runs a second rotation, with a second restart of every node. (see [below for nested schema](#nestedblock--cert_rotation))
-- `client_root_ca` (String) The UUID of the clientRootCA to be used to generate client certificates and facilitate TLS communication between server and client. When set to a different value than root_ca, separate certificates are used for node-to-node and client-to-node TLS. May be set without root_ca (e.g. when node-to-node encryption is disabled but client-to-node encryption is enabled); in that case YBA auto-generates a root CA for node-to-node if needed and uses the provided value for client-to-node. When not set, root_ca is reused for client-to-node TLS. A change on an existing universe rotates client-to-node encryption to the new certificate. Nodes restart according to `node_restart_settings`.
+- `client_root_ca` (String) The UUID of the clientRootCA to be used to generate client certificates and facilitate TLS communication between server and client. When set to a different value than root_ca, separate certificates are used for node-to-node and client-to-node TLS. May be set without root_ca (e.g. when node-to-node encryption is disabled but client-to-node encryption is enabled); in that case YBA auto-generates a root CA for node-to-node if needed and uses the provided value for client-to-node. When not set, root_ca is reused for client-to-node TLS. A change on an existing universe rotates client-to-node encryption to the new certificate. Nodes restart according to `node_restart_settings`. When the certificate is a Terraform resource, set `lifecycle { create_before_destroy = true }` on it, as for `root_ca`.
 - `communication_ports` (Block List, Max: 1) Communication ports. See the universe edit actions guide for which ports can be changed after creation and which trigger a full move when edited. (see [below for nested schema](#nestedblock--communication_ports))
 - `db_version_upgrade_options` (Block List, Max: 1) Options controlling the DB version upgrade path (UpgradeDBVersion). By default finalize = false pauses the upgrade in PreFinalize state for a monitoring phase; flip to true and re-apply to commit, or set rollback = true to revert to the previous DB version. (see [below for nested schema](#nestedblock--db_version_upgrade_options))
 - `delete_options` (Block List, Max: 1) Options that YugabyteDB Anywhere applies when Terraform destroys the universe. (see [below for nested schema](#nestedblock--delete_options))
@@ -674,3 +678,12 @@ Choose one of the following to resolve this:
     State will continue to hold `REDACTED` for these fields; this is expected and does not affect universe operation.
 
 2. **Patch the state with the real secret value** so Terraform sees it as unchanged. This requires the current password and direct state edits (`terraform state pull` / `terraform state push`, or `terraform state rm` plus re-import after manual seeding); only use it when you intend to keep managing the password through Terraform.
+
+### Rotation triggers are not imported
+
+YugabyteDB Anywhere does not store the `cert_rotation` triggers or
+`encryption_at_rest.universe_key_rotation_trigger`, so they are empty after import. If your
+configuration sets a trigger, the first apply after import reads it as a new value and runs
+that rotation. A `cert_rotation` rotation restarts every node. To import without a rotation,
+leave the triggers out of the configuration, and add a trigger when you want the next
+rotation.

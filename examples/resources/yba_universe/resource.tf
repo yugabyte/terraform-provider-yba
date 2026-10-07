@@ -103,6 +103,9 @@ resource "yba_universe" "with_certificates" {
 
   cert_rotation {
     server_cert_trigger = "2026-07" # change to re-issue node-to-node server certificates
+    # client_cert_trigger re-issues the client-to-node server certificates. It needs a
+    # self-signed client_root_ca, so this universe, which uses a custom server certificate
+    # for client-to-node encryption, does not set it.
   }
 
   clusters {

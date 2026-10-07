@@ -252,7 +252,9 @@ func ResourceUniverse() *schema.Resource {
 					" node-to-node if needed and uses the provided value for client-to-node." +
 					" When not set, root_ca is reused for client-to-node TLS." +
 					" A change on an existing universe rotates client-to-node encryption to" +
-					" the new certificate. Nodes restart according to `node_restart_settings`.",
+					" the new certificate. Nodes restart according to `node_restart_settings`." +
+					" When the certificate is a Terraform resource, set" +
+					" `lifecycle { create_before_destroy = true }` on it, as for `root_ca`.",
 			},
 			"cert_rotation": {
 				Type:     schema.TypeList,

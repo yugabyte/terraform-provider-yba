@@ -51,7 +51,8 @@ func ResourceSelfSignedCertificate() *schema.Resource {
 			"generated mode works with any Terraform version. Terraform cannot detect a " +
 			"change to `private_key` alone, so change it together with `certificate`, which " +
 			"forces replacement. YugabyteDB Anywhere checks at upload that the certificate " +
-			"and the key match.\n\n" +
+			"and the key match, unless the customer runtime configuration " +
+			"`yb.tls.enable_config_validation` is `false`.\n\n" +
 			"~> **Note:** To re-issue the server certificates from the same root certificate, " +
 			"change a `cert_rotation` trigger on the `yba_universe` resource. This resource " +
 			"does not re-issue them.",

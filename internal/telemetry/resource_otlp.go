@@ -29,14 +29,13 @@ import (
 func ResourceOTLPTelemetryProvider() *schema.Resource {
 	return sinkResource(sinkSpec{
 		resourceType: "yba_otlp_telemetry_provider",
-		displayName:  "OTLP",
 		apiType:      typeOTLP,
 		description: "Manages an OpenTelemetry Protocol (OTLP) telemetry provider " +
 			"in YugabyteDB Anywhere. Universes send logs and metrics to it " +
 			"through `yba_universe_telemetry_config`.",
 		notes: "~> **Note:** Requires YugabyteDB Anywhere 2026.1.0.0 or later. YBA " +
-			"creates an OTLP telemetry provider only when the global runtime " +
-			"config `yb.telemetry.allow_otlp` is `true`. The default is `true` " +
+			"creates, reads and deletes an OTLP telemetry provider only when the " +
+			"global runtime config `yb.telemetry.allow_otlp` is `true`. The default is `true` " +
 			"from YugabyteDB Anywhere 2026.1.2.0. To set it, use the " +
 			"`yba_runtime_config` resource.\n\n",
 		fields: map[string]*schema.Schema{

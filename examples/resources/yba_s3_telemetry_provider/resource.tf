@@ -1,5 +1,5 @@
-# YBA creates S3 telemetry providers only when this global runtime config is
-# true. The default is false.
+# YBA creates, reads and deletes S3 telemetry providers only when this global
+# runtime config is true. The default is false.
 resource "yba_runtime_config" "allow_s3" {
   key   = "yb.telemetry.allow_s3"
   value = "true"

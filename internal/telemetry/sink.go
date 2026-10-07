@@ -46,7 +46,6 @@ const (
 // detach-before-delete, import, timeouts).
 type sinkSpec struct {
 	resourceType string // Terraform type, e.g. "yba_datadog_telemetry_provider"
-	displayName  string // human name for docs, e.g. "Datadog"
 	apiType      string // YBA config discriminator, e.g. DATA_DOG
 	description  string // summary paragraph of the resource docs
 	notes        string // optional sink-specific callouts, after the admonition
@@ -79,8 +78,8 @@ func sinkResource(s sinkSpec) *schema.Resource {
 	}
 
 	return &schema.Resource{
-		Description: s.description + "\n\n" + experimentalAdmonition + "\n\n" +
-			s.notes + sinkSharedNotes(s),
+		Description: s.description + "\n\n" + previewAdmonition + "\n\n" +
+			s.notes + sinkSharedNotes(),
 
 		CreateContext: sinkCreate(s),
 		ReadContext:   sinkRead(s),
@@ -102,24 +101,29 @@ func sinkResource(s sinkSpec) *schema.Resource {
 	}
 }
 
-// sinkSharedNotes renders the lifecycle/drift/security callouts every sink
-// resource shares; these strings ship verbatim into the user-facing docs.
-func sinkSharedNotes(s sinkSpec) string {
-	return fmt.Sprintf(
-		"~> **Note:** YBA cannot change a telemetry provider in place, so a "+
-			"change to any argument replaces the resource. Before Terraform "+
-			"deletes a telemetry provider, it removes the telemetry provider "+
-			"from every universe that uses it. Each of those universes goes "+
-			"through a rolling restart. The universes are not deleted.\n\n"+
-			"~> **Drift Note:** Terraform reads back only `name` and `tags`. "+
-			"It does not detect a change to the %s connection arguments made "+
-			"outside Terraform, for example in the YBA UI. To apply the "+
-			"configured values again, replace the resource with "+
-			"`terraform apply -replace`.\n\n"+
-			"~> **Security Note:** Terraform stores the credentials of this "+
-			"telemetry provider in the state file, marked sensitive. Use a "+
-			"secure backend and restrict access to the state file.",
-		s.displayName)
+// telemetryFlagsNote states the global runtime configs that every telemetry
+// provider endpoint (create, get, list, delete) checks.
+const telemetryFlagsNote = "~> **Note:** YBA creates, reads and deletes " +
+	"telemetry providers only when the global runtime config " +
+	"`yb.universe.audit_logging_enabled`, `yb.universe.query_logging_enabled` " +
+	"or `yb.universe.metrics_export_enabled` is `true`. Before YugabyteDB " +
+	"Anywhere 2025.2.0.0, YBA checks only `yb.universe.audit_logging_enabled`, " +
+	"and its default is `false`. From 2025.2.0.0, its default is `true`. To set " +
+	"one, use the `yba_runtime_config` resource."
+
+// sinkSharedNotes renders the runtime config, lifecycle and security callouts
+// every sink resource shares; these strings ship verbatim into the
+// user-facing docs.
+func sinkSharedNotes() string {
+	return telemetryFlagsNote + "\n\n" +
+		"~> **Note:** YBA cannot change a telemetry provider in place, so a " +
+		"change to any argument replaces the resource. Before Terraform " +
+		"deletes a telemetry provider, it removes the telemetry provider " +
+		"from every universe that uses it. Each of those universes goes " +
+		"through a rolling restart. The universes are not deleted.\n\n" +
+		"~> **Security Note:** Terraform stores the credentials of this " +
+		"telemetry provider in the state file, marked sensitive. Use a " +
+		"secure backend and restrict access to the state file."
 }
 
 // setIfNonEmpty writes an optional string field into the config payload only
@@ -170,7 +174,7 @@ func sinkCreate(s sinkSpec) schema.CreateContextFunc {
 		}
 		d.SetId(resp.UUID)
 		return append(
-			diag.Diagnostics{experimentalWarning(s.resourceType)},
+			diag.Diagnostics{previewWarning(s.resourceType)},
 			sinkRead(s)(ctx, d, meta)...)
 	}
 }

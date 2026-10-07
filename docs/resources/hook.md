@@ -142,7 +142,7 @@ resource "yba_hook" "rotate_credentials" {
 - `runtime_args` (Map of String) String arguments for the hook. YBA passes each entry to the script as a `--KEY VALUE` command-line flag, after its own `--parent_task <task>` and `--trigger <trigger>` flags.
 - `timeouts` (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))
 - `universe_uuid` (String) UUID of the universe that the hook applies to. Conflicts with `provider_uuid`. Leave both unset to apply the hook to every universe.
-- `use_sudo` (Boolean) Run the hook with superuser privileges. Requires the global runtime config key `yb.security.custom_hooks.enable_sudo` set to `true`. YBA skips the hook when the key is `false` at the time the trigger fires. Defaults to `false`.
+- `use_sudo` (Boolean) Run the hook with superuser privileges. Requires the global runtime config key `yb.security.custom_hooks.enable_sudo` set to `true`: YBA rejects the hook while the key is `false`, and skips the hook when the key is `false` at the time the trigger fires. Defaults to `false`.
 
 ### Read-Only
 

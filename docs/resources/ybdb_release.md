@@ -1,12 +1,12 @@
 ---
 page_title: "yba_ybdb_release Resource - YugabyteDB Anywhere"
 description: |-
-  YugabyteDB Release Resource. Manages a release of the YugabyteDB (YBDB) database software that YugabyteDB Anywhere stores and uses to deploy universes.
+  Manages a release of the YugabyteDB (YBDB) database software that YugabyteDB Anywhere stores and uses to deploy universes.
 ---
 
 # yba_ybdb_release (Resource)
 
-YugabyteDB Release Resource. Manages a release of the YugabyteDB (YBDB) database software that YugabyteDB Anywhere stores and uses to deploy universes.
+Manages a release of the YugabyteDB (YBDB) database software that YugabyteDB Anywhere stores and uses to deploy universes.
 
 ~> **Preview:** The YugabyteDB Anywhere API that this resource uses is marked preview. A later YBA release can change it in ways that are not backward compatible.
 
@@ -116,10 +116,10 @@ terraform import yba_ybdb_release.ybdb_release <release-uuid>
 
 YugabyteDB Anywhere does not return `local_file` or `sha256`, so both are empty
 after import. YBA also does not return `package_url` after it downloads a
-Kubernetes Helm chart, or the S3 or GCS source of an artifact that its older
-release import added. On the next apply, the provider deletes and adds again each
-imported artifact whose `local_file` or `package_url` it could not read back.
-YBA rejects this while a universe uses the release. To keep these artifacts as
-they are, add `artifact` to `ignore_changes` in a `lifecycle` block. After
-import, the order of the `artifact` blocks follows YugabyteDB Anywhere, not your
-configuration.
+Kubernetes Helm chart. It does not return an S3 or GCS source either; only the
+legacy release import of YBA adds those. On the next apply, the provider
+deletes and adds again each imported artifact whose `local_file` or
+`package_url` it could not read back. YBA rejects this while a universe uses the
+release. To keep these artifacts as they are, add `artifact` to
+`ignore_changes` in a `lifecycle` block. After import, the order of the
+`artifact` blocks follows YugabyteDB Anywhere, not your configuration.

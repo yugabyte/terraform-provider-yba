@@ -25,24 +25,24 @@ import (
 func ResourceS3TelemetryProvider() *schema.Resource {
 	return sinkResource(sinkSpec{
 		resourceType: "yba_s3_telemetry_provider",
-		displayName:  "Amazon S3",
 		apiType:      typeS3,
 		description: "Manages an Amazon S3 telemetry provider in YugabyteDB " +
 			"Anywhere. Universes send logs to an S3 bucket through " +
 			"`yba_universe_telemetry_config`, for example to archive audit logs.",
 		notes: "~> **Note:** Requires YugabyteDB Anywhere 2026.1.0.0 or later. YBA " +
-			"creates an S3 telemetry provider only when the global runtime " +
-			"config `yb.telemetry.allow_s3` is `true`. The default is `false`. " +
+			"creates, reads and deletes an S3 telemetry provider only when the " +
+			"global runtime config `yb.telemetry.allow_s3` is `true`. The default is `false`. " +
 			"To set it, use the `yba_runtime_config` resource. YBA accepts an S3 " +
 			"telemetry provider only in a log pipeline, not in `metrics`. All AWS " +
 			"CloudWatch and S3 telemetry providers that one universe uses must " +
 			"have the same `access_key` and `secret_key`.\n\n",
 		fields: map[string]*schema.Schema{
 			"bucket": {
-				Type:        schema.TypeString,
-				Required:    true,
-				ForceNew:    true,
-				Description: "Name of the S3 bucket.",
+				Type:     schema.TypeString,
+				Required: true,
+				ForceNew: true,
+				Description: "Name of the S3 bucket. When YBA creates the telemetry " +
+					"provider, it writes a test object to the bucket to check access.",
 			},
 			"region": {
 				Type:        schema.TypeString,

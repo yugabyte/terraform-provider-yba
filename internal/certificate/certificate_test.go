@@ -363,7 +363,7 @@ func TestDeleteIsIdempotentForMissingCertificate(t *testing.T) {
 	}
 }
 
-func TestDeleteInUseFailsFastWithActionableError(t *testing.T) {
+func TestDeleteInUseFailsFastNamingUniverses(t *testing.T) {
 	f := &fakeYBA{
 		listBody: fmt.Sprintf(`[{
 			"uuid": %q, "label": "in-use", "certType": "SelfSigned", "inUse": true,
@@ -386,11 +386,8 @@ func TestDeleteInUseFailsFastWithActionableError(t *testing.T) {
 	if !diags.HasError() {
 		t.Fatal("in-use delete must surface an error, not be swallowed")
 	}
-	msg := diags[0].Summary
-	for _, want := range []string{"prod-universe", "create_before_destroy", "new label"} {
-		if !strings.Contains(msg, want) {
-			t.Errorf("in-use error must mention %q, got: %s", want, msg)
-		}
+	if msg := diags[0].Summary; !strings.Contains(msg, "prod-universe") {
+		t.Errorf("in-use error must name the universe, got: %s", msg)
 	}
 	if f.deleteCalled {
 		t.Error("in-use delete must fail fast without dispatching DELETE to YBA")

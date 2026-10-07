@@ -12,15 +12,13 @@ Point the configuration at an existing key ring and crypto key, or let YugabyteD
 
 There are two authentication modes. Set `credentials` to a service-account key, or set `use_gcp_iam = true` to authenticate as the YugabyteDB Anywhere host: the attached service account on Compute Engine, workload identity on GKE, or the key file at `GOOGLE_APPLICATION_CREDENTIALS`. Either identity needs these permissions on the key ring's project: `cloudkms.keyRings.get`, `cloudkms.cryptoKeys.get`, `cloudkms.cryptoKeyVersions.useToEncrypt`, `cloudkms.cryptoKeyVersions.useToDecrypt` and `cloudkms.locations.generateRandomBytes`. YugabyteDB Anywhere checks them when it creates the configuration.
 
-~> **Note:** `use_gcp_iam` and `project_id` need a YugabyteDB Anywhere release later than 2026.1. YugabyteDB Anywhere 2026.1 and earlier reject a configuration without `credentials`, and store `project_id` but do not use it.
+~> **Note:** `use_gcp_iam` and `project_id` need a YugabyteDB Anywhere release later than 2026.1. YugabyteDB Anywhere 2026.1 and earlier require `credentials`, and ignore `project_id`: they use the project of the service-account key.
 
 ~> **Security Note:** `credentials` is stored in the Terraform state file and marked sensitive. Use a secure state backend and restrict access to state files, or use `use_gcp_iam`, which keeps the key out of Terraform.
 
 ~> **Note:** Only the credential arguments can change in place. A change to any other argument forces replacement. YugabyteDB Anywhere does not delete a configuration that a universe has used: it keeps the universe's key history, also after encryption is disabled or the universe moves to another configuration, until the universe is deleted. A destroy of such a configuration fails, and the error names the universes. To move universes to a new configuration, create it, change `encryption_at_rest.kms_config_uuid` on each universe, and keep the old configuration (or remove it from state) until its universes are deleted. Give the new configuration `depends_on` on the old one, so that `terraform destroy` deletes the universe before the old configuration.
 
-~> **Drift Note:** Terraform refreshes `in_use` and the non-secret settings. YugabyteDB Anywhere masks credentials, so a credential changed outside Terraform, for example in the YugabyteDB Anywhere UI, does not show as drift. An apply without a change to the credential in the configuration does not send it again.
-
-~> **Import Note:** Import checks the KMS provider: importing a configuration that is not a GCP KMS configuration fails, and the error names its KMS provider. YugabyteDB Anywhere never returns credentials, so they are empty after import, and the first apply sends them again.
+~> **Note:** Terraform refreshes `in_use` and the non-secret settings. YugabyteDB Anywhere masks credentials, so a credential changed outside Terraform, for example in the YugabyteDB Anywhere UI, does not show as drift. An apply without a change to the credential in the configuration does not send it again.
 
 Use the configuration in a universe through its `encryption_at_rest` block. The
 [Encryption at Rest](../guides/universe-edit-actions.md#encryption-at-rest) section of the
@@ -42,24 +40,24 @@ resource "yba_gcp_ear_config" "service_account" {
   crypto_key_id = "yugabyte-master-key"
 }
 
-# The same kind of key ring, reached with the identity of the YugabyteDB
-# Anywhere host (attached service account, workload identity, or
-# GOOGLE_APPLICATION_CREDENTIALS): no key file in Terraform or in state. The key
-# ring is in another project, so project_id names it. use_gcp_iam and project_id
-# need a YugabyteDB Anywhere release later than 2026.1.
+# Authentication as the YugabyteDB Anywhere host (attached service account,
+# workload identity, or GOOGLE_APPLICATION_CREDENTIALS): no key file in
+# Terraform or in state. The key ring is in another project, so project_id
+# names it. YugabyteDB Anywhere creates the key ring and an HSM crypto key when
+# they do not exist. use_gcp_iam and project_id need a YugabyteDB Anywhere
+# release later than 2026.1.
 resource "yba_gcp_ear_config" "host_identity" {
-  name          = "gcp-kms-central"
-  use_gcp_iam   = true
-  project_id    = "security-kms-project"
-  location_id   = "global"
-  key_ring_id   = "central-ring"
-  crypto_key_id = "yugabyte-master-key"
-
-  # Optional: the protection level of a crypto key that YugabyteDB Anywhere
-  # creates, and a custom Cloud KMS endpoint (Private Service Connect or a
-  # restricted VIP).
+  name             = "gcp-kms-central"
+  use_gcp_iam      = true
+  project_id       = "security-kms-project"
+  location_id      = "global"
+  key_ring_id      = "central-ring"
+  crypto_key_id    = "yugabyte-master-key"
   protection_level = "HSM"
-  kms_endpoint     = "kms.example.internal:443"
+
+  # Optional: a custom Cloud KMS endpoint, for Private Service Connect or a
+  # restricted VIP.
+  kms_endpoint = "kms.example.internal:443"
 }
 
 # A universe uses a configuration through its encryption_at_rest block:
@@ -85,7 +83,7 @@ resource "yba_gcp_ear_config" "host_identity" {
 ### Optional
 
 - `credentials` (String, Sensitive) Service-account key JSON, inline or from `file(...)`. Required unless `use_gcp_iam` is true. The key's `project_id` is the key ring's project unless `project_id` is set. Can change in place: YugabyteDB Anywhere first checks that the new key can unwrap the active universe key of each universe that uses the configuration.
-- `kms_endpoint` (String) Custom Cloud KMS endpoint, for Private Service Connect or a restricted VIP. A change forces replacement.
+- `kms_endpoint` (String) Custom Cloud KMS endpoint as `host:port`, for Private Service Connect or a restricted VIP. A change forces replacement.
 - `project_id` (String) GCP project that owns the key ring. Defaults to the project of the service-account key, or to the host's project with `use_gcp_iam`. Set it when the key ring is in another project. Not supported on YugabyteDB Anywhere 2026.1 or earlier. A change forces replacement.
 - `protection_level` (String) `SOFTWARE` or `HSM`: the protection level of a crypto key that YugabyteDB Anywhere creates, `SOFTWARE` when not set. For an existing key, YugabyteDB Anywhere records the key's actual level, so leave this unset or set it to that level. A change forces replacement.
 - `timeouts` (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))
@@ -116,5 +114,6 @@ UUID for a configuration name:
 terraform import yba_gcp_ear_config.service_account <config-uuid>
 ```
 
-YugabyteDB Anywhere never returns `credentials`, so it stays empty after import. The first
-apply sends the configured key again.
+Import fails for a configuration of another KMS provider, and the error names that provider.
+YugabyteDB Anywhere never returns `credentials`, so it stays empty after import. When the
+configuration sets `credentials`, the first apply sends the key again.

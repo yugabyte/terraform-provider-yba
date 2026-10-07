@@ -8,9 +8,9 @@ description: |-
 
 Manages the installation of YugabyteDB Anywhere on an existing virtual machine using YBA Installer.
 
-~> **Note:** Destroy runs `yba-ctl clean` on the host. This removes the YugabyteDB Anywhere software and keeps the data directory, `/opt/yugabyte/data`. To delete the data, remove that directory on the host yourself.
+~> **Note:** Destroy runs `yba-ctl clean` on the host. This removes the YugabyteDB Anywhere software and keeps the data directory (`/opt/yugabyte/data` with the default `installRoot`). To delete the data, remove that directory on the host yourself.
 
-~> **Note:** When `/opt/yugabyte/data` already holds YugabyteDB Anywhere data (for example, on a persistent disk that outlives the VM), create installs the software without data and starts YBA on the existing data. So when you destroy and recreate this resource on the same host, YBA keeps its data. For a fresh installation, delete `/opt/yugabyte/data` on the host before the next apply.
+~> **Note:** When `/opt/yugabyte/data` already holds YugabyteDB Anywhere data (for example, on a persistent disk that outlives the VM), create installs the software without data and starts YBA on the existing data. So when you destroy and recreate this resource on the same host, YBA keeps its data. For a fresh installation, delete `/opt/yugabyte/data` on the host before the next apply. The provider checks only this path, also when `installRoot` in the application settings names another directory.
 
 ~> **Warning:** If nothing accepts an SSH connection at `ssh_host_ip` and `ssh_port` for about 30 seconds, destroy treats the host as gone. It removes the resource from state and does not clean up the host. Make sure that the host (and any SSH tunnel to it) is reachable before you destroy this resource.
 
@@ -38,13 +38,18 @@ resource "yba_installer" "install" {
   ssh_port    = 22
   ssh_user    = "<ssh-user>"
 
-  ssh_private_key      = var.ssh_private_key
-  yba_license          = var.yba_license_content
+  ssh_private_key = var.ssh_private_key
+  yba_license     = var.yba_license_content
+
+  # The settings must set server_cert_path = "/tmp/server.crt" and
+  # server_key_path = "/tmp/server.key" for YBA to use the certificate below.
   application_settings = local.yba_ctl_yaml
   tls_certificate      = tls_self_signed_cert.yba.cert_pem
   tls_key              = tls_private_key.yba.private_key_pem
 
-  yba_version = "<YugabyteDB Anywhere-version-with-build-number>"
+  yba_version       = "<YugabyteDB Anywhere-version-with-build-number>"
+  host_os           = "linux"
+  host_architecture = "x86_64"
 }
 
 # Alternatively, point each input at a local file.
@@ -54,8 +59,17 @@ resource "yba_installer" "install_from_files" {
   ssh_user                  = "<ssh-user>"
   ssh_private_key_file_path = "<ssh-private-key-filepath>"
   yba_license_file          = "<path-to-yba-license.lic-file>"
-  application_settings_file = "<path-to-application_settings.conf-file>"
+  application_settings_file = "<path-to-yba-ctl.yml>"
+  tls_certificate_file      = "<path-to-server.crt>"
+  tls_key_file              = "<path-to-server.key>"
   yba_version               = "<YugabyteDB Anywhere-version-with-build-number>"
+
+  # The provider does not track the content of the files. After you edit a
+  # file in place, change reconfigure to true to run yba-ctl reconfigure.
+  reconfigure = false
+
+  # Names of YBA Installer preflight checks to skip.
+  skip_preflight_checks = ["disk-availability"]
 }
 
 # ssh_host_ip and ssh_port give the address where the provider opens SSH
@@ -101,6 +115,8 @@ A change to `application_settings`, `tls_certificate` or `tls_key` runs `yba-ctl
 
 A change to `yba_license`, or to the path in `yba_license_file`, adds the new license on the next apply.
 
+The provider does not read the installation back from the host. A change that you make on the host outside Terraform, for example with `yba-ctl`, does not show in the plan.
+
 -> **Note:** The provider copies the TLS certificate and key to **/tmp/server.crt** and **/tmp/server.key** on the YugabyteDB Anywhere host. Before installation, set `server_cert_path` and `server_key_path` to these paths in the application settings.
 
 For host requirements and settings, refer to [Install YBA software using YBA Installer](https://docs.yugabyte.com/stable/yugabyte-platform/install-yugabyte-platform/install-software/installer/).
@@ -120,7 +136,7 @@ For host requirements and settings, refer to [Install YBA software using YBA Ins
 - `application_settings_file` (String) Path to a local YBA Installer settings file (`yba-ctl.yml`) that configures YugabyteDB Anywhere. If you set neither this field nor `application_settings`, YBA Installer uses its default settings. Conflicts with `application_settings`.
 - `host_architecture` (String) Architecture of the host Virtual Machine. Default is x86_64.
 - `host_os` (String) Operating System of the host Virtual Machine. Default is linux.
-- `reconfigure` (Boolean) Change this field to `true` to run `yba-ctl reconfigure` on the next apply when no other input changed. While it stays `true`, every update of this resource also runs a reconfiguration. Requires `application_settings` or `application_settings_file`. A change to `application_settings`, `tls_certificate` or `tls_key`, or to the path in their `_file` fields, starts a reconfiguration without this field.
+- `reconfigure` (Boolean) Change this field to `true` to run `yba-ctl reconfigure` on the next apply, also when no other input changed. While it stays `true`, every update of this resource also runs a reconfiguration. Requires `application_settings` or `application_settings_file`. A change to `application_settings`, `tls_certificate` or `tls_key`, or to the path in their `_file` fields, starts a reconfiguration without this field.
 - `skip_preflight_checks` (List of String) Check names to be skipped during preflight check.
 - `ssh_port` (Number) TCP port for SSH and SCP connections to the host. Default is 22. Set this field when sshd listens on a different port at `ssh_host_ip`: for example, a custom sshd port, a NAT or firewall port mapping, or the local end of an SSH tunnel.
 - `ssh_private_key` (String, Sensitive) Contents of the private key for SSH connections. Use this field instead of `ssh_private_key_file_path` to pass the key without a local file. Set exactly one of `ssh_private_key_file_path` or `ssh_private_key`.

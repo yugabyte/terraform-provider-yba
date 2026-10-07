@@ -272,7 +272,7 @@ func readCertificateResource(
 // list rather than by matching YBA's error body). Certificates still
 // referenced by a universe fail fast with a targeted error built from the
 // typed inUse/universeDetails fields — YBA would reject the delete anyway,
-// with a message that names neither the universes nor the fix.
+// with a message that does not name the universes.
 func resourceCertificateDelete(
 	ctx context.Context, d *schema.ResourceData, meta interface{},
 ) diag.Diagnostics {
@@ -295,12 +295,7 @@ func resourceCertificateDelete(
 		for _, u := range cert.GetUniverseDetails() {
 			names = append(names, u.Name)
 		}
-		return diag.Errorf(
-			"certificate %q is still referenced by universe(s) %s: rotate them to "+
-				"another certificate first, or — if this delete is part of a "+
-				"replacement — set lifecycle { create_before_destroy = true } and a "+
-				"new label on the certificate resource so the replacement is created "+
-				"and the universes rotated before this configuration is deleted",
+		return diag.Errorf("delete certificate %q: in use by universe(s) %s",
 			cert.GetLabel(), strings.Join(names, ", "))
 	}
 

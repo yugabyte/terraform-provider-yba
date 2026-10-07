@@ -25,7 +25,6 @@ import (
 func ResourceGCPCloudMonitoringTelemetryProvider() *schema.Resource {
 	return sinkResource(sinkSpec{
 		resourceType: "yba_gcp_cloud_monitoring_telemetry_provider",
-		displayName:  "GCP Cloud Monitoring",
 		apiType:      typeGCPCloudMonitor,
 		description: "Manages a GCP Cloud Monitoring telemetry provider in " +
 			"YugabyteDB Anywhere. Universes send logs to it, in Google Cloud " +
@@ -44,11 +43,15 @@ func ResourceGCPCloudMonitoringTelemetryProvider() *schema.Resource {
 					"`credentials_json`.",
 			},
 			"credentials_json": {
-				Type:        schema.TypeString,
-				Required:    true,
-				ForceNew:    true,
-				Sensitive:   true,
-				Description: "Contents of a GCP service account key file, as a JSON string.",
+				Type:      schema.TypeString,
+				Required:  true,
+				ForceNew:  true,
+				Sensitive: true,
+				Description: "Contents of a GCP service account key file, as a JSON " +
+					"string. When YBA creates the telemetry provider, it checks that " +
+					"the service account has the permissions " +
+					"`logging.logEntries.create` and `logging.logEntries.route` on " +
+					"the project.",
 			},
 		},
 		buildConfig: func(d *schema.ResourceData) map[string]interface{} {

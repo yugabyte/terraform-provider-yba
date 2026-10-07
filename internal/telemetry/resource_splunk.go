@@ -24,7 +24,6 @@ import (
 func ResourceSplunkTelemetryProvider() *schema.Resource {
 	return sinkResource(sinkSpec{
 		resourceType: "yba_splunk_telemetry_provider",
-		displayName:  "Splunk",
 		apiType:      typeSplunk,
 		description: "Manages a Splunk telemetry provider in YugabyteDB Anywhere. " +
 			"Universes send logs to a Splunk HTTP Event Collector (HEC) through " +

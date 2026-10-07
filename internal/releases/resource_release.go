@@ -39,7 +39,7 @@ const releaseOperationTimeout = 3 * time.Hour
 // ResourceRelease manages a YBDB release through the /ybdb_release API.
 func ResourceRelease() *schema.Resource {
 	return &schema.Resource{
-		Description: "YugabyteDB Release Resource. Manages a release of the YugabyteDB (YBDB) " +
+		Description: "Manages a release of the YugabyteDB (YBDB) " +
 			"database software that YugabyteDB Anywhere stores and uses to deploy universes." +
 			"\n\n" + previewAdmonition +
 			"A release is a YBDB version, such as 2024.2.3.0-b116, not a version of YugabyteDB " +

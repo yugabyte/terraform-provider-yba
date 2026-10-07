@@ -30,9 +30,10 @@ func previewWarning(resourceName string) diag.Diagnostic {
 	return diag.Diagnostic{
 		Severity: diag.Warning,
 		Summary: fmt.Sprintf(
-			"%s wraps a preview YBA release management API", resourceName),
-		Detail: "The underlying YugabyteDB Anywhere /ybdb_release API is marked preview " +
-			"and may change in backward-incompatible ways. Pin your provider version and " +
-			"review release notes before upgrading.",
+			"%s uses a preview YugabyteDB Anywhere API", resourceName),
+		Detail: "The YugabyteDB Anywhere release management API that this resource " +
+			"uses is marked preview. A later YBA release can change it in ways that " +
+			"are not backward compatible. Pin your provider version and read the " +
+			"release notes before you upgrade.",
 	}
 }

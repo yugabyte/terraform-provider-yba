@@ -9,11 +9,11 @@ description: |-
 
 Many YugabyteDB Anywhere (YBA) installations run in a private VPC or a closed
 network. The machine that runs Terraform cannot reach the YBA API port there.
-The provider needs only an HTTPS (or HTTP) address that it can connect to. It
-does not use SSH or tunnels itself. If you can SSH to the YBA VM, an SSH local
-port forward gives the provider that address: the forward opens a port on the
-machine that runs Terraform, and the provider connects to that port as if it
-were YBA.
+To call the YBA API, the provider needs only an HTTPS (or HTTP) address that it
+can connect to. It does not open tunnels itself. If you can SSH to the YBA VM,
+an SSH local port forward gives the provider that address: the forward opens a
+port on the machine that runs Terraform, and the provider connects to that port
+as if it were YBA.
 
 You manage the tunnel yourself, outside Terraform. Start it before you run
 `terraform plan`, `apply` or `destroy`, and keep it open until the run ends. The
@@ -108,8 +108,8 @@ not change it.
 server, with or without a tunnel. It checks neither the certificate chain nor
 the host name. So a connection to `127.0.0.1:9443` succeeds although YBA
 presents a certificate for a different host name. You do not need to change
-anything for the tunnel. This also means that the SSH tunnel, not HTTPS,
-authenticates the YBA VM and encrypts the connection to it.
+anything for the tunnel. This also means that over a tunnel, SSH authenticates
+the YBA VM through its host key. TLS does not.
 
 ## Install YBA through the same tunnel
 
