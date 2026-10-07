@@ -28,7 +28,10 @@ import (
 	"github.com/yugabyte/terraform-provider-yba/internal/utils"
 )
 
-const registrationTimeout = 30 * time.Minute
+const (
+	registrationTimeout     = 30 * time.Minute
+	registrationReadTimeout = 5 * time.Minute
+)
 
 // ResourceUniversePerfAdvisorRegistration registers one universe with a Perf
 // Advisor collector, in one of the three collection modes.
@@ -79,7 +82,7 @@ func ResourceUniversePerfAdvisorRegistration() *schema.Resource {
 
 		Timeouts: &schema.ResourceTimeout{
 			Create: schema.DefaultTimeout(registrationTimeout),
-			Read:   schema.DefaultTimeout(5 * time.Minute),
+			Read:   schema.DefaultTimeout(registrationReadTimeout),
 			Update: schema.DefaultTimeout(registrationTimeout),
 			Delete: schema.DefaultTimeout(registrationTimeout),
 		},
@@ -172,12 +175,30 @@ func resourceRegistrationRead(
 ) diag.Diagnostics {
 	c := meta.(*api.APIClient)
 
+	uni, response, err := c.YugawareClient.UniverseManagementAPI.
+		GetUniverse(ctx, c.CustomerID, d.Id()).Execute()
+	if err != nil {
+		if utils.IsUniverseMissing(response, err) {
+			d.SetId("")
+			return nil
+		}
+		return diag.FromErr(utils.ErrorFromHTTPResponse(
+			response, err, "Universe Perf Advisor Registration", "Read", "Get Universe"))
+	}
+	// YBA keeps the collector UUID on the universe while it is registered and
+	// clears it on unregister.
+	collectorUUID := uni.UniverseDetails.GetPaCollectorUuid()
+	if collectorUUID == "" {
+		d.SetId("")
+		return nil
+	}
+
 	status, response, err := c.YugawareClient.PACollectorAPI.
 		CheckRegistered(ctx, c.CustomerID, d.Id()).Execute()
 	if err != nil {
-		if response != nil && response.StatusCode == 404 {
-			// YBA answers 404 when the universe is not registered at all, which
-			// is the shape "someone unregistered it out-of-band" takes.
+		if utils.IsHTTPNotFound(response) {
+			// The collector does not know the universe. The next apply
+			// registers it again.
 			d.SetId("")
 			return nil
 		}
@@ -186,6 +207,9 @@ func resourceRegistrationRead(
 	}
 
 	if err := d.Set("universe_uuid", d.Id()); err != nil {
+		return diag.FromErr(err)
+	}
+	if err := d.Set("pa_collector_uuid", collectorUUID); err != nil {
 		return diag.FromErr(err)
 	}
 	if err := d.Set("mode", status.GetMode()); err != nil {
@@ -207,6 +231,10 @@ func resourceRegistrationDelete(
 	task, response, err := c.YugawareClient.PACollectorAPI.
 		UnregisterUniverse(ctx, c.CustomerID, d.Id()).Execute()
 	if err != nil {
+		if utils.IsUniverseMissing(response, err) {
+			d.SetId("")
+			return nil
+		}
 		return diag.FromErr(utils.ErrorFromHTTPResponse(
 			response, err, "Universe Perf Advisor Registration", "Delete", "Unregister"))
 	}

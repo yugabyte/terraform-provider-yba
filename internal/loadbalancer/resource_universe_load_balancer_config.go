@@ -44,9 +44,7 @@ func ResourceUniverseLoadBalancerConfig() *schema.Resource {
 			"Anywhere universe on AWS, GCP or Azure. YBA then adds and removes " +
 			"the universe's nodes in the load balancers as universe operations " +
 			"change the nodes.\n\n" +
-			"~> **Preview:** YugabyteDB Anywhere marks the API that this " +
-			"resource uses as preview. The API can change in ways that are not " +
-			"backward compatible between YBA releases.\n\n" +
+			previewAdmonition +
 			"This resource does not create the load balancers. Create them in " +
 			"the universe's cloud account first, for example with the cloud's " +
 			"own Terraform provider. Attaching and detaching load balancers " +
@@ -182,7 +180,9 @@ func resourceUniverseLoadBalancerConfigCreate(
 	}
 
 	d.SetId(uniUUID)
-	return nil
+	return append(
+		diag.Diagnostics{previewWarning("yba_universe_load_balancer_config")},
+		resourceUniverseLoadBalancerConfigRead(ctx, d, meta)...)
 }
 
 // buildDesiredClusters clears all live LB state then overlays the
@@ -406,9 +406,15 @@ func resourceUniverseLoadBalancerConfigUpdate(
 		return diag.FromErr(err)
 	}
 
-	return dispatchLoadBalancerConfig(ctx, apiClient, uniUUID, clusters,
+	if diags := dispatchLoadBalancerConfig(ctx, apiClient, uniUUID, clusters,
 		uni.UniverseDetails.GetNodeDetailsSet(),
-		d.Timeout(schema.TimeoutUpdate), "Update")
+		d.Timeout(schema.TimeoutUpdate), "Update"); diags != nil {
+		return diags
+	}
+
+	return append(
+		diag.Diagnostics{previewWarning("yba_universe_load_balancer_config")},
+		resourceUniverseLoadBalancerConfigRead(ctx, d, meta)...)
 }
 
 // Delete disables LB management (enableLB=false, lbName/lbFQDN cleared) so YBA
