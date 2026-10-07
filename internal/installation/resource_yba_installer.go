@@ -216,18 +216,17 @@ func ResourceYBAInstaller() *schema.Resource {
 			"the resource from state and does not clean up the host. Make sure that the host " +
 			"(and any SSH tunnel to it) is reachable before you destroy this resource.\n\n" +
 			"~> **Security Note:** The values of `ssh_private_key`, `yba_license`, " +
-			"`application_settings`, `tls_certificate` and `tls_key` are stored in the " +
-			"Terraform state file (marked as sensitive). Use an encrypted backend and " +
-			"restrict access to your state files.",
+			"`application_settings` and `tls_key` are stored in the Terraform state file " +
+			"(marked as sensitive). Use an encrypted backend and restrict access to your " +
+			"state files.",
 
 		CreateContext: resourceYBAInstallerCreate,
 		ReadContext:   resourceYBAInstallerRead,
 		UpdateContext: resourceYBAInstallerUpdate,
 		DeleteContext: resourceYBAInstallerDelete,
 
-		Importer: &schema.ResourceImporter{
-			StateContext: schema.ImportStatePassthroughContext,
-		},
+		// No Importer: Read does not read the host, so an imported state holds
+		// only the ID and the next plan replaces the installation.
 
 		Timeouts: &schema.ResourceTimeout{
 			Create: schema.DefaultTimeout(10 * time.Minute),
@@ -320,10 +319,10 @@ func ResourceYBAInstaller() *schema.Resource {
 					"`tls_certificate`.",
 			},
 			"tls_certificate": {
-				Type:      schema.TypeString,
-				Optional:  true,
-				Sensitive: true,
-				// change should trigger yba-ctl reconfigure
+				Type:     schema.TypeString,
+				Optional: true,
+				// Not Sensitive: a certificate is public, so the plan shows a
+				// wrong one. A change triggers yba-ctl reconfigure.
 				ConflictsWith: []string{"tls_certificate_file"},
 				Description: "Contents of the TLS certificate for HTTPS. The provider " +
 					"copies it to `/tmp/server.crt` on the host, so set `server_cert_path` " +
@@ -477,16 +476,9 @@ func resourceYBAInstallerDiff() schema.CustomizeDiffFunc {
 			}
 			return nil
 		},
-		customdiff.IfValue("reconfigure",
-			func(ctx context.Context, value, meta interface{}) bool {
-				return value.(bool)
-			},
-			func(ctx context.Context, d *schema.ResourceDiff, meta interface{}) error {
-				if !installerInputProvided(d, applicationSettingsSpec) {
-					return errEmptyApplicationSettings
-				}
-				return nil
-			}),
+		func(ctx context.Context, d *schema.ResourceDiff, meta interface{}) error {
+			return validateApplicationSettingsProvided(d)
+		},
 		// yba-ctl upgrade refuses a target version lower than the
 		// installed one, but only at runtime on the host - by then the
 		// failed apply has already burned time staging the bundle.
@@ -499,6 +491,34 @@ func resourceYBAInstallerDiff() schema.CustomizeDiffFunc {
 			return validateNoYBAVersionDowngrade(old.(string), new.(string))
 		},
 	)
+}
+
+// validateApplicationSettingsProvided fails the plan when neither settings
+// attribute is set but an input needs them: reconfigure = true, a TLS input
+// on create (YBA would ignore the uploaded files), or a change to a TLS input
+// or to the settings on update (Update fails on the same condition). An
+// unchanged TLS input on an existing installation passes. Unknown settings
+// pass; the apply checks them.
+func validateApplicationSettingsProvided(d *schema.ResourceDiff) error {
+	if !d.NewValueKnown(applicationSettingsSpec.contentAttr) ||
+		!d.NewValueKnown(applicationSettingsSpec.fileAttr) ||
+		installerInputProvided(d, applicationSettingsSpec) {
+		return nil
+	}
+	if d.Get("reconfigure").(bool) {
+		return errEmptyApplicationSettings
+	}
+	for _, spec := range []installerFileSpec{tlsCertificateSpec, tlsKeySpec} {
+		if d.Id() == "" && installerInputProvided(d, spec) ||
+			d.Id() != "" && installerInputHasChange(d, spec) {
+			return fmt.Errorf("%s / %s requires application_settings or "+
+				"application_settings_file", spec.contentAttr, spec.fileAttr)
+		}
+	}
+	if d.Id() != "" && installerInputHasChange(d, applicationSettingsSpec) {
+		return errEmptyApplicationSettings
+	}
+	return nil
 }
 
 // validateNoYBAVersionDowngrade rejects a yba_version change to a lower

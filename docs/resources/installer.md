@@ -14,7 +14,7 @@ Manages the installation of YugabyteDB Anywhere on an existing virtual machine u
 
 ~> **Warning:** If nothing accepts an SSH connection at `ssh_host_ip` and `ssh_port` for about 30 seconds, destroy treats the host as gone. It removes the resource from state and does not clean up the host. Make sure that the host (and any SSH tunnel to it) is reachable before you destroy this resource.
 
-~> **Security Note:** The values of `ssh_private_key`, `yba_license`, `application_settings`, `tls_certificate` and `tls_key` are stored in the Terraform state file (marked as sensitive). Use an encrypted backend and restrict access to your state files.
+~> **Security Note:** The values of `ssh_private_key`, `yba_license`, `application_settings` and `tls_key` are stored in the Terraform state file (marked as sensitive). Use an encrypted backend and restrict access to your state files.
 
 -> **Note:** The YugabyteDB Anywhere host needs **curl** and outbound HTTPS access to `downloads.yugabyte.com`. During *terraform apply*, the host downloads the YBA Installer package from there.
 
@@ -93,7 +93,7 @@ resource "yba_installer" "install_non_default_port" {
 
 ### Inline content or file paths
 
-You can give each input as a string (inline content) or as the path to a local file. For each input, set one form, not both. The inline fields are marked sensitive.
+You can give each input as a string (inline content) or as the path to a local file. For each input, set one form, not both. The inline fields, except `tls_certificate`, are marked sensitive.
 
 | Inline content         | File path                   |
 | ---------------------- | --------------------------- |
@@ -117,7 +117,7 @@ A change to `yba_license`, or to the path in `yba_license_file`, adds the new li
 
 The provider does not read the installation back from the host. A change that you make on the host outside Terraform, for example with `yba-ctl`, does not show in the plan.
 
--> **Note:** The provider copies the TLS certificate and key to **/tmp/server.crt** and **/tmp/server.key** on the YugabyteDB Anywhere host. Before installation, set `server_cert_path` and `server_key_path` to these paths in the application settings.
+-> **Note:** The provider copies the TLS certificate and key to **/tmp/server.crt** and **/tmp/server.key** on the YugabyteDB Anywhere host. Before installation, set `server_cert_path` and `server_key_path` to these paths in the application settings. When you set the TLS certificate or key, also set `application_settings` or `application_settings_file`, or the plan fails.
 
 For host requirements and settings, refer to [Install YBA software using YBA Installer](https://docs.yugabyte.com/stable/yugabyte-platform/install-yugabyte-platform/install-software/installer/).
 
@@ -142,7 +142,7 @@ For host requirements and settings, refer to [Install YBA software using YBA Ins
 - `ssh_private_key` (String, Sensitive) Contents of the private key for SSH connections. Use this field instead of `ssh_private_key_file_path` to pass the key without a local file. Set exactly one of `ssh_private_key_file_path` or `ssh_private_key`.
 - `ssh_private_key_file_path` (String) Path to a local file that contains the private key for SSH connections. Set exactly one of `ssh_private_key_file_path` or `ssh_private_key`.
 - `timeouts` (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))
-- `tls_certificate` (String, Sensitive) Contents of the TLS certificate for HTTPS. The provider copies it to `/tmp/server.crt` on the host, so set `server_cert_path` to that path in the application settings. Conflicts with `tls_certificate_file`.
+- `tls_certificate` (String) Contents of the TLS certificate for HTTPS. The provider copies it to `/tmp/server.crt` on the host, so set `server_cert_path` to that path in the application settings. Conflicts with `tls_certificate_file`.
 - `tls_certificate_file` (String) Path to a local TLS certificate file for HTTPS. The provider copies it to `/tmp/server.crt` on the host, so set `server_cert_path` to that path in the application settings. Conflicts with `tls_certificate`.
 - `tls_key` (String, Sensitive) Contents of the TLS key for HTTPS. The provider copies it to `/tmp/server.key` on the host, so set `server_key_path` to that path in the application settings. Conflicts with `tls_key_file`.
 - `tls_key_file` (String) Path to a local TLS key file for HTTPS. The provider copies it to `/tmp/server.key` on the host, so set `server_key_path` to that path in the application settings. Conflicts with `tls_key`.
@@ -162,3 +162,7 @@ Optional:
 - `create` (String)
 - `delete` (String)
 - `update` (String)
+
+## Import
+
+This resource cannot be imported, because the provider does not read the installation back from the host.

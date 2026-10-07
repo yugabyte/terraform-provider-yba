@@ -45,6 +45,8 @@ YugabyteDB Anywhere marks the APIs of telemetry export, `yba_ybdb_release`, and 
 - `yba_installer`: destroy runs `yba-ctl clean` and keeps `/opt/yugabyte/data`. v1.0.0 also deleted `/opt/yugabyte`.
 - `yba_installer`: when the host does not answer SSH for about 30 seconds, destroy removes the resource from state and does not clean up the host.
 - `yba_installer`: after you upgrade from v1.0.0, the first plan shows an in-place update with no changed attributes for each `yba_installer`. This update only marks the new sensitive arguments in the state. It does not connect to the host.
+- `yba_installer`: the resource can no longer be imported. The provider does not read the installation back from the host, so after an import the next plan replaced the installation.
+- `yba_installer`: a TLS certificate or key without `application_settings` or `application_settings_file` now fails at plan time. Before, YugabyteDB Anywhere ignored the files on create, and a later change failed at apply time.
 
 ### Bug fixes
 
