@@ -65,13 +65,17 @@ var sinkConstructors = map[string]func() *schema.Resource{
 // sinkSensitiveFields lists the credential fields per sink that must be marked
 // Sensitive (their values land in state).
 var sinkSensitiveFields = map[string][]string{
-	"yba_datadog_telemetry_provider":              {"api_key"},
-	"yba_otlp_telemetry_provider":                 {"basic_auth_password", "bearer_token"},
-	"yba_aws_cloudwatch_telemetry_provider":       {"access_key", "secret_key"},
+	"yba_datadog_telemetry_provider": {"api_key"},
+	"yba_otlp_telemetry_provider": {
+		"basic_auth_password",
+		"bearer_token",
+		"headers",
+	},
+	"yba_aws_cloudwatch_telemetry_provider":       {"secret_key"},
 	"yba_gcp_cloud_monitoring_telemetry_provider": {"credentials_json"},
 	"yba_splunk_telemetry_provider":               {"token"},
 	"yba_dynatrace_telemetry_provider":            {"api_token"},
-	"yba_s3_telemetry_provider":                   {"access_key", "secret_key"},
+	"yba_s3_telemetry_provider":                   {"secret_key"},
 }
 
 // Shared guardrails for every sink resource: everything is ForceNew (YBA has

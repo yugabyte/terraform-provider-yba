@@ -83,7 +83,7 @@ resource "yba_otlp_telemetry_provider" "bearer" {
 - `basic_auth_username` (String) User name for `BasicAuth`. Required when `auth_type = "BasicAuth"`, and ignored otherwise.
 - `bearer_token` (String, Sensitive) Token for `BearerToken` authentication. Required when `auth_type = "BearerToken"`, and ignored otherwise.
 - `compression` (String) Compression of the exported data: `gzip`, `none`, `snappy` or `zstd`. Defaults to `gzip`.
-- `headers` (Map of String) Additional headers to send with each export request.
+- `headers` (Map of String, Sensitive) Additional headers to send with each export request. YBA treats every header value as a credential, for example an API key.
 - `logs_endpoint` (String) Full URL for log export, used instead of `endpoint` for logs. Requires `protocol = "HTTP"`.
 - `metrics_endpoint` (String) Full URL for metric export, used instead of `endpoint` for metrics. Requires `protocol = "HTTP"`.
 - `protocol` (String) Transport protocol: `gRPC` or `HTTP`. Defaults to `gRPC`.

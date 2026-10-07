@@ -55,7 +55,6 @@ func ResourceAWSCloudWatchTelemetryProvider() *schema.Resource {
 				Type:        schema.TypeString,
 				Required:    true,
 				ForceNew:    true,
-				Sensitive:   true,
 				Description: "AWS access key ID with permission to write to CloudWatch Logs.",
 			},
 			"secret_key": {

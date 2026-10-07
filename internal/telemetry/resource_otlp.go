@@ -110,11 +110,13 @@ func ResourceOTLPTelemetryProvider() *schema.Resource {
 					"`auth_type = \"BearerToken\"`, and ignored otherwise.",
 			},
 			"headers": {
-				Type:        schema.TypeMap,
-				Optional:    true,
-				ForceNew:    true,
-				Description: "Additional headers to send with each export request.",
-				Elem:        &schema.Schema{Type: schema.TypeString},
+				Type:      schema.TypeMap,
+				Optional:  true,
+				ForceNew:  true,
+				Sensitive: true,
+				Description: "Additional headers to send with each export request. YBA " +
+					"treats every header value as a credential, for example an API key.",
+				Elem: &schema.Schema{Type: schema.TypeString},
 			},
 			"logs_endpoint": {
 				Type:     schema.TypeString,

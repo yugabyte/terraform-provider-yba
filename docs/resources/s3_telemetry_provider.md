@@ -79,7 +79,7 @@ resource "yba_s3_telemetry_provider" "minio" {
 
 ### Required
 
-- `access_key` (String, Sensitive) AWS access key ID with permission to write to the bucket.
+- `access_key` (String) AWS access key ID with permission to write to the bucket.
 - `bucket` (String) Name of the S3 bucket. When YBA creates the telemetry provider, it writes a test object to the bucket to check access.
 - `name` (String) Name of the telemetry provider. YBA requires a unique name.
 - `region` (String) AWS region of the bucket.

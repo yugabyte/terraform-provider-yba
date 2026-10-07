@@ -47,7 +47,7 @@ resource "yba_aws_cloudwatch_telemetry_provider" "cw" {
 
 ### Required
 
-- `access_key` (String, Sensitive) AWS access key ID with permission to write to CloudWatch Logs.
+- `access_key` (String) AWS access key ID with permission to write to CloudWatch Logs.
 - `log_group` (String) CloudWatch Logs log group.
 - `log_stream` (String) CloudWatch Logs log stream.
 - `name` (String) Name of the telemetry provider. YBA requires a unique name.
