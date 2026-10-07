@@ -13,8 +13,8 @@ This release adds resources for encryption in transit and certificate rotation, 
 - `yba_universe_load_balancer_config` - attach existing AWS, GCP, or Azure load balancers to a universe. YugabyteDB Anywhere keeps the universe nodes in the load balancers.
 - `yba_hook` - a custom hook: a Bash or Python script that YugabyteDB Anywhere runs on universe nodes when a trigger fires.
 - `yba_runtime_config` - a runtime configuration key on the global, customer, provider, or universe scope.
-- `yba_perf_advisor_endpoint` - an external Perf Advisor that receives universe data in `ONLINE` mode.
-- `yba_universe_perf_advisor_registration` - register a universe with a Perf Advisor collector.
+- `yba_perf_advisor_endpoint` - an external Perf Advisor that receives universe data in `ONLINE` mode. Preview: works only with YugabyteDB Anywhere preview releases.
+- `yba_universe_perf_advisor_registration` - register a universe with a Perf Advisor collector. Preview: works only with YugabyteDB Anywhere preview releases.
 
 ### New data sources
 
@@ -43,6 +43,7 @@ This release adds resources for encryption in transit and certificate rotation, 
 
 - `yba_installer`: destroy runs `yba-ctl clean` and keeps `/opt/yugabyte/data`. v1.0.0 also deleted `/opt/yugabyte`.
 - `yba_installer`: when the host does not answer SSH for about 30 seconds, destroy removes the resource from state and does not clean up the host.
+- `yba_installer`: after you upgrade from v1.0.0, the first plan shows an in-place update with no changed attributes for each `yba_installer`. This update only marks the new sensitive arguments in the state. It does not connect to the host.
 
 ### Bug fixes
 

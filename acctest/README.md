@@ -116,6 +116,23 @@ out of the repo). Obtain it out of band and drop it there before `apply-gcp`;
 This file is only needed to deploy YBA — CI never uses it, since the suite runs
 against the already-installed standing YBA.
 
+### Cleaning up after aborted runs
+
+A test that is killed mid-run (Ctrl-C, a `go test` timeout, a cancelled job)
+never reaches its destroy step, so what it created stays on the stand. A leaked
+universe keeps its VMs and public IPs and can push the next run over a cloud
+quota. To remove these leftovers, run:
+
+```bash
+acctest/clean-stand.sh            # print what would be deleted
+acctest/clean-stand.sh --delete   # print it again, confirm, then delete it
+```
+
+The script finds objects by their test name (see
+[Resource naming](#resource-naming)), on all three fixture YBAs and in the
+clouds. It does not check their age. Run it only when no acceptance run is in
+progress on any branch, or it also deletes that run's resources.
+
 ## CI
 
 CI reads the env from the `ACCTEST_ENV` GitHub Actions secret (written to
@@ -137,6 +154,7 @@ make -C acctest push-github-secrets
 | `aws/`               | AWS fixture: VPC, IAM (key user + instance role), a YBA VM + install, a backups bucket. |
 | `resources/`         | Shared install assets (`yba-ctl.yml`, VM startup scripts).    |
 | `auth.sh`            | Logs in to GCP, Azure and AWS for byoc-dev.                   |
+| `clean-stand.sh`     | Lists, then on `--delete` removes, what aborted test runs left behind. |
 | `GNUmakefile`        | The fixture and env targets.                                  |
 
 ## Resource naming

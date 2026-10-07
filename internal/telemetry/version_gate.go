@@ -33,17 +33,17 @@ import (
 // build the target YBA reports. Each value is the first build on its line
 // that contains the yugabyte-db commit making the API public:
 //
-//   - unifiedTelemetryAPIMin: the v2 export-telemetry-configs API exists at
-//     all (d84b20c52c, 2026-03-17, and its 2026.1 backport). Below it the
-//     server answers 404 and the provider would misread that as a deleted
-//     resource.
+//   - unifiedTelemetryAPIMin: the v2 export-telemetry-configs API can read a
+//     config back (62661ac17b1, 2026-06-03; backported to 2026.1 as
+//     4f287c5902a). The write API (d84b20c52c) shipped earlier, but below
+//     this build the GET answers 404 and the provider cannot read the config.
 //   - serverLogPipelinesMin: the six server-log pipelines are public
 //     (f56b4bf608, 2026-08-24; backported to 2026.1 as 14027f1cc0). Below it
 //     the server rejects the spec with an unrecognized-field error.
 var (
 	unifiedTelemetryAPIMin = utils.YBAMinimumVersion{
-		Stable:  "2026.1.0.0-b61",
-		Preview: "2.29.0.0-b622",
+		Stable:  "2026.1.2.0-b35",
+		Preview: "2.31.0.0-b132",
 	}
 	serverLogPipelinesMin = utils.YBAMinimumVersion{
 		Stable:  "2026.1.2.0-b84",

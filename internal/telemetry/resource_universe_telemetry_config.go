@@ -153,9 +153,7 @@ func ResourceUniverseTelemetryConfig() *schema.Resource {
 			"YBA runs an OpenTelemetry Collector on the universe nodes to export " +
 			"the data.\n\n" +
 			"~> **Note:** " + versionNote("This resource requires", unifiedTelemetryAPIMin) +
-			" " + versionNote("The server-log pipelines (`master_logs`, `tserver_logs`, "+
-			"`ysql_conn_mgr_logs`, `node_agent_logs`, `ynp_logs` and `controller_logs`) "+
-			"require", serverLogPipelinesMin) + "\n\n" +
+			"\n\n" +
 			"~> **Note:** Each create and each update restarts the yb-master and " +
 			"yb-tserver processes on every node of the universe. By default, YBA " +
 			"restarts one server at a time and waits 3 minutes after each restart, " +
@@ -776,7 +774,7 @@ func serverLogsSchema(display, platformNote string) *schema.Schema {
 		Optional: true,
 		MaxItems: 1,
 		Description: display + " log export. Omit the block to turn it off. " +
-			versionNote("Requires", serverLogPipelinesMin) + " " + platformNote,
+			platformNote,
 		Elem: serverLogsElem(nil),
 	}
 }
@@ -787,7 +785,7 @@ func masterLogsSchema() *schema.Schema {
 		Optional: true,
 		MaxItems: 1,
 		Description: "yb-master log export. Omit the block to turn it off. " +
-			versionNote("Requires", serverLogPipelinesMin) + " " + kubernetesLogsNote,
+			kubernetesLogsNote,
 		Elem: serverLogsElem(map[string]*schema.Schema{
 			"min_level": serverLogMinLevelSchema(
 				"yb-master", derefString(masterLogsDefaults.MinLevel), ""),
@@ -810,7 +808,7 @@ func tserverLogsSchema() *schema.Schema {
 		Optional: true,
 		MaxItems: 1,
 		Description: "yb-tserver log export. Omit the block to turn it off. " +
-			versionNote("Requires", serverLogPipelinesMin) + " " + kubernetesLogsNote,
+			kubernetesLogsNote,
 		Elem: serverLogsElem(map[string]*schema.Schema{
 			"min_level": serverLogMinLevelSchema(
 				"yb-tserver", derefString(tserverLogsDefaults.MinLevel),
@@ -1551,13 +1549,16 @@ func resourceUniverseTelemetryConfigRead(
 
 // getExportTelemetryConfig fetches the v2 telemetry config, mapping a gone
 // universe to utils.ErrUniverseMissing and other errors to a formatted error.
+// YBA reports a gone universe on this route as a 400 ("Cannot find universe"),
+// so a 404 means the YBA lacks the route. It surfaces as an error rather than
+// dropping a live config from state.
 func getExportTelemetryConfig(
 	ctx context.Context, apiClient *api.APIClient, universeUUID, operation string,
 ) (*clientv2.TelemetryConfig, error) {
 	config, response, err := apiClient.YugawareClientV2.UniverseAPI.
 		GetExportTelemetryConfig(ctx, apiClient.CustomerID, universeUUID).Execute()
 	if err != nil {
-		if utils.IsUniverseMissing(response, err) {
+		if !utils.IsHTTPNotFound(response) && utils.IsUniverseMissing(response, err) {
 			return nil, utils.ErrUniverseMissing
 		}
 		return nil, utils.ErrorFromHTTPResponse(response, err,

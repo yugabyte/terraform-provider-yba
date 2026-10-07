@@ -12,7 +12,7 @@ Manages the telemetry export configuration of a universe in YugabyteDB Anywhere:
 
 YBA runs an OpenTelemetry Collector on the universe nodes to export the data.
 
-~> **Note:** This resource requires YugabyteDB Anywhere 2026.1.0.0 or later. `terraform plan` fails on an older YBA. The server-log pipelines (`master_logs`, `tserver_logs`, `ysql_conn_mgr_logs`, `node_agent_logs`, `ynp_logs` and `controller_logs`) require YugabyteDB Anywhere 2026.1.2.0 or later. `terraform plan` fails on an older YBA.
+~> **Note:** This resource requires YugabyteDB Anywhere 2026.1.2.0 or later. `terraform plan` fails on an older YBA.
 
 ~> **Note:** Each create and each update restarts the yb-master and yb-tserver processes on every node of the universe. By default, YBA restarts one server at a time and waits 3 minutes after each restart, so a universe with 3 masters and 9 tservers waits 36 minutes in total. Use `upgrade_options` to change the wait or to restart all nodes at once. Destroy turns off every pipeline on the universe, which also restarts it. If the universe has no telemetry configuration at that time, destroy only removes the resource from the state.
 
@@ -221,16 +221,16 @@ resource "yba_universe_telemetry_config" "main" {
 ### Optional
 
 - `audit_logs` (Block List, Max: 1) Audit logging and audit log export. Omit the block to turn off audit logging and its export. (see [below for nested schema](#nestedblock--audit_logs))
-- `controller_logs` (Block List, Max: 1) YB-Controller log export. Omit the block to turn it off. Requires YugabyteDB Anywhere 2026.1.2.0 or later. `terraform plan` fails on an older YBA. On a Kubernetes universe, YBA also requires YugabyteDB 2026.1.2.0 or later on the universe. (see [below for nested schema](#nestedblock--controller_logs))
-- `master_logs` (Block List, Max: 1) yb-master log export. Omit the block to turn it off. Requires YugabyteDB Anywhere 2026.1.2.0 or later. `terraform plan` fails on an older YBA. On a Kubernetes universe, YBA also requires YugabyteDB 2026.1.2.0 or later on the universe. (see [below for nested schema](#nestedblock--master_logs))
+- `controller_logs` (Block List, Max: 1) YB-Controller log export. Omit the block to turn it off. On a Kubernetes universe, YBA also requires YugabyteDB 2026.1.2.0 or later on the universe. (see [below for nested schema](#nestedblock--controller_logs))
+- `master_logs` (Block List, Max: 1) yb-master log export. Omit the block to turn it off. On a Kubernetes universe, YBA also requires YugabyteDB 2026.1.2.0 or later on the universe. (see [below for nested schema](#nestedblock--master_logs))
 - `metrics` (Block List, Max: 1) Metric export. Omit the block to turn off metric export. (see [below for nested schema](#nestedblock--metrics))
-- `node_agent_logs` (Block List, Max: 1) Node agent log export. Omit the block to turn it off. Requires YugabyteDB Anywhere 2026.1.2.0 or later. `terraform plan` fails on an older YBA. Not available on a Kubernetes universe. (see [below for nested schema](#nestedblock--node_agent_logs))
+- `node_agent_logs` (Block List, Max: 1) Node agent log export. Omit the block to turn it off. Not available on a Kubernetes universe. (see [below for nested schema](#nestedblock--node_agent_logs))
 - `query_logs` (Block List, Max: 1) Query logging and query log export. Omit the block to turn off query logging and its export. (see [below for nested schema](#nestedblock--query_logs))
 - `timeouts` (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))
-- `tserver_logs` (Block List, Max: 1) yb-tserver log export. Omit the block to turn it off. Requires YugabyteDB Anywhere 2026.1.2.0 or later. `terraform plan` fails on an older YBA. On a Kubernetes universe, YBA also requires YugabyteDB 2026.1.2.0 or later on the universe. (see [below for nested schema](#nestedblock--tserver_logs))
+- `tserver_logs` (Block List, Max: 1) yb-tserver log export. Omit the block to turn it off. On a Kubernetes universe, YBA also requires YugabyteDB 2026.1.2.0 or later on the universe. (see [below for nested schema](#nestedblock--tserver_logs))
 - `upgrade_options` (Block List, Max: 1) Options for the restart that applies each change. YBA uses them only with a change to a pipeline, and rejects an apply that changes only `upgrade_options`. Lower the wait times to apply a change faster on a universe with a light load, and raise them for a universe under heavy load. (see [below for nested schema](#nestedblock--upgrade_options))
-- `ynp_logs` (Block List, Max: 1) YNP (node provisioning) log export. Omit the block to turn it off. Requires YugabyteDB Anywhere 2026.1.2.0 or later. `terraform plan` fails on an older YBA. Not available on a Kubernetes universe. (see [below for nested schema](#nestedblock--ynp_logs))
-- `ysql_conn_mgr_logs` (Block List, Max: 1) YSQL Connection Manager log export. Omit the block to turn it off. Requires YugabyteDB Anywhere 2026.1.2.0 or later. `terraform plan` fails on an older YBA. On a Kubernetes universe, YBA also requires YugabyteDB 2026.1.2.0 or later on the universe. (see [below for nested schema](#nestedblock--ysql_conn_mgr_logs))
+- `ynp_logs` (Block List, Max: 1) YNP (node provisioning) log export. Omit the block to turn it off. Not available on a Kubernetes universe. (see [below for nested schema](#nestedblock--ynp_logs))
+- `ysql_conn_mgr_logs` (Block List, Max: 1) YSQL Connection Manager log export. Omit the block to turn it off. On a Kubernetes universe, YBA also requires YugabyteDB 2026.1.2.0 or later on the universe. (see [below for nested schema](#nestedblock--ysql_conn_mgr_logs))
 
 ### Read-Only
 

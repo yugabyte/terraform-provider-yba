@@ -23,9 +23,10 @@ import (
 
 // previewAdmonition follows the summary paragraph of each resource Description:
 // the docs templates publish the first paragraph as the Registry summary.
-const previewAdmonition = "~> **Preview:** YugabyteDB Anywhere marks the Perf " +
-	"Advisor API that this resource uses as preview. The API can change in ways " +
-	"that are not backward compatible between YBA releases.\n\n"
+const previewAdmonition = "~> **Preview:** This resource works only with " +
+	"YugabyteDB Anywhere preview releases. No stable YBA release has the " +
+	"version of the Perf Advisor API that this resource uses. The API can " +
+	"change in ways that are not backward compatible between YBA releases.\n\n"
 
 // onlineModeKey is the customer runtime config key that turns on Perf Advisor
 // online mode. YBA ships it set to false.
@@ -35,9 +36,10 @@ func previewWarning(resourceName string) diag.Diagnostic {
 	return diag.Diagnostic{
 		Severity: diag.Warning,
 		Summary: fmt.Sprintf(
-			"%s wraps a preview YBA Perf Advisor API", resourceName),
-		Detail: "The underlying YugabyteDB Anywhere Perf Advisor endpoint API " +
-			"is marked preview and may change in backward-incompatible ways. " +
-			"Pin your provider version and review release notes before upgrading.",
+			"%s works only with YugabyteDB Anywhere preview releases", resourceName),
+		Detail: "No stable YugabyteDB Anywhere release has the version of the " +
+			"Perf Advisor API that this resource uses. The API can change in ways " +
+			"that are not backward compatible between YBA releases. Pin your " +
+			"provider version and read the release notes before you upgrade.",
 	}
 }
