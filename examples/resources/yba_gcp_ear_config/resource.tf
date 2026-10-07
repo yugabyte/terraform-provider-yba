@@ -13,8 +13,8 @@ resource "yba_gcp_ear_config" "service_account" {
 # workload identity, or GOOGLE_APPLICATION_CREDENTIALS): no key file in
 # Terraform or in state. The key ring is in another project, so project_id
 # names it. YugabyteDB Anywhere creates the key ring and an HSM crypto key when
-# they do not exist. use_gcp_iam and project_id work only with YugabyteDB
-# Anywhere preview releases.
+# they do not exist. use_gcp_iam and project_id use a preview YugabyteDB
+# Anywhere API.
 resource "yba_gcp_ear_config" "host_identity" {
   name             = "gcp-kms-central"
   use_gcp_iam      = true

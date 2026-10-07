@@ -8,11 +8,11 @@ description: |-
 
 Manages a YugabyteDB Anywhere encryption-at-rest configuration that uses a Google Cloud KMS crypto key as the master key. YugabyteDB Anywhere uses the crypto key to wrap and unwrap the universe keys of each universe that uses the configuration.
 
+~> **Preview:** The YugabyteDB Anywhere API behind `use_gcp_iam` and `project_id` is in preview. A later YBA release can change it in ways that are not backward compatible.
+
 Point the configuration at an existing key ring and crypto key, or let YugabyteDB Anywhere create them. To create them, the identity needs `cloudkms.keyRings.create` and `cloudkms.cryptoKeys.create`. An existing crypto key must have the purpose `ENCRYPT_DECRYPT`, manual rotation (no rotation period), and an enabled primary version.
 
 There are two authentication modes. Set `credentials` to a service-account key, or set `use_gcp_iam = true` to authenticate as the YugabyteDB Anywhere host: the attached service account on Compute Engine, workload identity on GKE, or the key file at `GOOGLE_APPLICATION_CREDENTIALS`. Either identity needs these permissions on the key ring's project: `cloudkms.keyRings.get`, `cloudkms.cryptoKeys.get`, `cloudkms.cryptoKeyVersions.useToEncrypt`, `cloudkms.cryptoKeyVersions.useToDecrypt` and `cloudkms.locations.generateRandomBytes`. YugabyteDB Anywhere checks them when it creates the configuration.
-
-~> **Note:** `use_gcp_iam` and `project_id` work only with YugabyteDB Anywhere preview releases. No stable release supports them, and `terraform plan` fails when you set either of them on a stable release.
 
 ~> **Security Note:** `credentials` is stored in the Terraform state file and marked sensitive. Use a secure state backend and restrict access to state files, or use `use_gcp_iam`, which keeps the key out of Terraform.
 
@@ -44,8 +44,8 @@ resource "yba_gcp_ear_config" "service_account" {
 # workload identity, or GOOGLE_APPLICATION_CREDENTIALS): no key file in
 # Terraform or in state. The key ring is in another project, so project_id
 # names it. YugabyteDB Anywhere creates the key ring and an HSM crypto key when
-# they do not exist. use_gcp_iam and project_id work only with YugabyteDB
-# Anywhere preview releases.
+# they do not exist. use_gcp_iam and project_id use a preview YugabyteDB
+# Anywhere API.
 resource "yba_gcp_ear_config" "host_identity" {
   name             = "gcp-kms-central"
   use_gcp_iam      = true
@@ -84,10 +84,10 @@ resource "yba_gcp_ear_config" "host_identity" {
 
 - `credentials` (String, Sensitive) Service-account key JSON, inline or from `file(...)`. Required unless `use_gcp_iam` is true. The key's `project_id` is the key ring's project unless `project_id` is set. Can change in place: YugabyteDB Anywhere first checks that the new key can unwrap the active universe key of each universe that uses the configuration.
 - `kms_endpoint` (String) Custom Cloud KMS endpoint as `host:port`, for Private Service Connect or a restricted VIP. A change forces replacement.
-- `project_id` (String) GCP project that owns the key ring. Defaults to the project of the service-account key, or to the host's project with `use_gcp_iam`. Set it when the key ring is in another project. Works only with YugabyteDB Anywhere preview releases. A change forces replacement.
+- `project_id` (String) GCP project that owns the key ring. Defaults to the project of the service-account key, or to the host's project with `use_gcp_iam`. Set it when the key ring is in another project. Uses a preview YugabyteDB Anywhere API. A change forces replacement.
 - `protection_level` (String) `SOFTWARE` or `HSM`: the protection level of a crypto key that YugabyteDB Anywhere creates, `SOFTWARE` when not set. For an existing key, YugabyteDB Anywhere records the key's actual level, so leave this unset or set it to that level. A change forces replacement.
 - `timeouts` (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))
-- `use_gcp_iam` (Boolean) Authenticate as the YugabyteDB Anywhere host instead of with a key file: the attached service account on Compute Engine, workload identity on GKE, or the key file at `GOOGLE_APPLICATION_CREDENTIALS`. Works only with YugabyteDB Anywhere preview releases. Can change in place; YugabyteDB Anywhere deletes the stored key when the configuration changes to the host identity.
+- `use_gcp_iam` (Boolean) Authenticate as the YugabyteDB Anywhere host instead of with a key file: the attached service account on Compute Engine, workload identity on GKE, or the key file at `GOOGLE_APPLICATION_CREDENTIALS`. Uses a preview YugabyteDB Anywhere API. Can change in place; YugabyteDB Anywhere deletes the stored key when the configuration changes to the host identity.
 
 ### Read-Only
 

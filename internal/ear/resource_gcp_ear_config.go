@@ -21,6 +21,7 @@ import (
 	"fmt"
 
 	"github.com/hashicorp/terraform-plugin-log/tflog"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/structure"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
@@ -59,13 +60,16 @@ var gcpSettingAttrs = map[string]string{
 // the commit, so Stable stays empty and gcpRequireHostIdentity fails every
 // stable build. An older build keeps the stored key on an edit to USE_GCP_IAM,
 // which gcpFlatten then rejects on every Read, and ignores GCP_PROJECT_ID.
+// When a stable release ships the commit, set Stable and replace
+// gcpHostIdentityPreview in the docs with that release.
 var gcpHostIdentityMin = utils.YBAMinimumVersion{Preview: "2.31.0.0-b473"}
 
-// gcpHostIdentityRequirement renders into the resource docs, which name stable
-// releases only.
-const gcpHostIdentityRequirement = "`use_gcp_iam` and `project_id` work only with " +
-	"YugabyteDB Anywhere preview releases. No stable release supports them, and " +
-	"`terraform plan` fails when you set either of them on a stable release."
+// gcpHostIdentityPreview is the preview admonition of use_gcp_iam and
+// project_id, and the detail of the warning that Create and Update return
+// while the configuration uses them.
+const gcpHostIdentityPreview = "The YugabyteDB Anywhere API behind `use_gcp_iam` and " +
+	"`project_id` is in preview. A later YBA release can change it in ways that are not " +
+	"backward compatible."
 
 // ResourceGCPEARConfig defines the GCP KMS encryption-at-rest configuration.
 func ResourceGCPEARConfig() *schema.Resource {
@@ -80,6 +84,7 @@ func gcpEARSpec() earSpec {
 			"uses a Google Cloud KMS crypto key as the master key. YugabyteDB Anywhere uses " +
 			"the crypto key to wrap and unwrap the universe keys of each universe that uses " +
 			"the configuration.\n\n" +
+			"~> **Preview:** " + gcpHostIdentityPreview + "\n\n" +
 			"Point the configuration at an existing key ring and crypto key, or let " +
 			"YugabyteDB Anywhere create them. To create them, the identity needs " +
 			"`cloudkms.keyRings.create` and `cloudkms.cryptoKeys.create`. An existing crypto " +
@@ -94,7 +99,6 @@ func gcpEARSpec() earSpec {
 			"`cloudkms.cryptoKeyVersions.useToDecrypt` and " +
 			"`cloudkms.locations.generateRandomBytes`. YugabyteDB Anywhere checks them when " +
 			"it creates the configuration.\n\n" +
-			"~> **Note:** " + gcpHostIdentityRequirement + "\n\n" +
 			"~> **Security Note:** `credentials` is stored in the Terraform state file and " +
 			"marked sensitive. Use a secure state backend and restrict access to state " +
 			"files, or use `use_gcp_iam`, which keeps the key out of Terraform.",
@@ -120,7 +124,7 @@ func gcpEARSpec() earSpec {
 				Description: "Authenticate as the YugabyteDB Anywhere host instead of with a " +
 					"key file: the attached service account on Compute Engine, workload " +
 					"identity on GKE, or the key file at `GOOGLE_APPLICATION_CREDENTIALS`. " +
-					"Works only with YugabyteDB Anywhere preview releases. Can change in " +
+					"Uses a preview YugabyteDB Anywhere API. Can change in " +
 					"place; YugabyteDB Anywhere deletes the stored key when the configuration " +
 					"changes to the host identity.",
 			},
@@ -130,8 +134,8 @@ func gcpEARSpec() earSpec {
 				ForceNew: true,
 				Description: "GCP project that owns the key ring. Defaults to the project of " +
 					"the service-account key, or to the host's project with `use_gcp_iam`. Set " +
-					"it when the key ring is in another project. Works only with YugabyteDB " +
-					"Anywhere preview releases. A change forces replacement.",
+					"it when the key ring is in another project. Uses a preview YugabyteDB " +
+					"Anywhere API. A change forces replacement.",
 			},
 			"location_id": {
 				Type:     schema.TypeString,
@@ -181,6 +185,7 @@ func gcpEARSpec() earSpec {
 		buildEdit:        gcpBuildAuth,
 		flatten:          gcpFlatten,
 		customizeDiff:    gcpCustomizeDiff,
+		warnings:         gcpPreviewWarnings,
 	}
 }
 
@@ -212,6 +217,20 @@ func gcpCustomizeDiff(ctx context.Context, d *schema.ResourceDiff, meta interfac
 	return nil
 }
 
+// gcpPreviewWarnings warns on Create and Update while the configuration uses
+// the preview host identity API.
+func gcpPreviewWarnings(d *schema.ResourceData) diag.Diagnostics {
+	if !d.Get("use_gcp_iam").(bool) && d.Get("project_id").(string) == "" {
+		return nil
+	}
+	return diag.Diagnostics{{
+		Severity: diag.Warning,
+		Summary:  "yba_gcp_ear_config uses a preview YugabyteDB Anywhere API",
+		Detail: gcpHostIdentityPreview + " Pin your provider version and read the " +
+			"release notes before you upgrade.",
+	}}
+}
+
 // gcpRequireHostIdentity fails the plan when the target YBA lacks the field.
 // A version outside YBA's scheme passes with a warning; the server stays the
 // backstop.
@@ -225,8 +244,8 @@ func gcpRequireHostIdentity(ctx context.Context, meta interface{}, field string)
 		return err
 	}
 	if utils.IsVersionStable(version) && !utils.IsExperimentalPatchVersion(version) {
-		return fmt.Errorf("%s requires a YugabyteDB Anywhere preview release; "+
-			"the target YBA reports %s", field, version)
+		return fmt.Errorf("%s is not supported by the target YBA (version=%s)",
+			field, version)
 	}
 	ok, applied, err := utils.MeetsMinimum(version, gcpHostIdentityMin)
 	switch {

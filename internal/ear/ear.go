@@ -281,6 +281,9 @@ type earSpec struct {
 	// flatten writes the non-secret settings YBA lists into state.
 	flatten       func(d *schema.ResourceData, settings map[string]interface{}) error
 	customizeDiff schema.CustomizeDiffFunc
+	// warnings, when set, returns the diagnostics that a successful Create or
+	// Update adds, such as a preview warning for the arguments in use.
+	warnings func(d *schema.ResourceData) diag.Diagnostics
 }
 
 func earResource(s earSpec) *schema.Resource {
@@ -370,8 +373,15 @@ func earCreate(s earSpec) schema.CreateContextFunc {
 			return diag.FromErr(err)
 		}
 		d.SetId(configUUID)
-		return earRead(s)(ctx, d, meta)
+		return append(s.successWarnings(d), earRead(s)(ctx, d, meta)...)
 	}
+}
+
+func (s earSpec) successWarnings(d *schema.ResourceData) diag.Diagnostics {
+	if s.warnings == nil {
+		return nil
+	}
+	return s.warnings(d)
 }
 
 // earRead refreshes the shared fields and the provider's non-secret settings,
@@ -445,6 +455,6 @@ func earUpdate(s earSpec) schema.UpdateContextFunc {
 			utils.RevertFields(d, s.credentialFields...)
 			return diag.FromErr(err)
 		}
-		return
+		return s.successWarnings(d)
 	}
 }

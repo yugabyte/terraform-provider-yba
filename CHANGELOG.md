@@ -6,7 +6,7 @@ This release adds resources for encryption in transit and certificate rotation, 
 
 - `yba_self_signed_certificate` - a self-signed root certificate for encryption in transit. YugabyteDB Anywhere generates the certificate, or you give your own certificate and private key.
 - `yba_custom_server_certificate` - a root certificate from your organization's CA, with a server certificate and key, for client-to-node encryption.
-- `yba_gcp_ear_config` - an encryption at rest configuration that uses a Google Cloud KMS key.
+- `yba_gcp_ear_config` - an encryption at rest configuration that uses a Google Cloud KMS key. The `use_gcp_iam` and `project_id` arguments use a preview YugabyteDB Anywhere API.
 - `yba_ybdb_release` - a YugabyteDB release. Upload release packages from the machine that runs Terraform, or give package or Helm chart URLs.
 - `yba_datadog_telemetry_provider`, `yba_otlp_telemetry_provider`, `yba_aws_cloudwatch_telemetry_provider`, `yba_gcp_cloud_monitoring_telemetry_provider`, `yba_splunk_telemetry_provider`, `yba_dynatrace_telemetry_provider`, `yba_s3_telemetry_provider` - a destination for universe logs or metrics.
 - `yba_universe_telemetry_config` - the audit logs, query logs, server logs, and metrics that a universe exports, and the telemetry providers that receive them.
