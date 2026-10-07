@@ -17,6 +17,7 @@ package telemetry
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"testing"
 
@@ -85,6 +86,65 @@ func TestUniverseTelemetryConfigReadFromGetAPI(t *testing.T) {
 	}
 }
 
+// Every server-log pipeline must survive config -> request -> YBA -> Read ->
+// request unchanged: a pipeline missing from the builder, its flattener, or
+// Read is a perpetual diff. noise_sample_drop_ratio = 0 ("keep every line")
+// must reach the wire, not fall back to the server default.
+func TestServerLogsRoundTripThroughRead(t *testing.T) {
+	res := ResourceUniverseTelemetryConfig()
+	exporter := []interface{}{map[string]interface{}{
+		"exporter_uuid":   "exp-1",
+		"additional_tags": map[string]interface{}{"env": "prod"},
+	}}
+	raw := map[string]interface{}{"universe_uuid": "uni-1"}
+	for _, p := range telemetryPipelines {
+		if p.min != nil {
+			raw[p.label] = []interface{}{map[string]interface{}{"exporter": exporter}}
+		}
+	}
+	raw["master_logs"] = []interface{}{map[string]interface{}{
+		"min_level":               "ERROR",
+		"noise_sample_drop_ratio": 0.0,
+		"exporter":                exporter,
+	}}
+	sent := buildExportTelemetryConfigSpec(
+		schema.TestResourceDataRaw(t, res.Schema, raw)).TelemetryConfig
+	d := res.TestResourceData()
+	d.SetId("uni-1")
+
+	diags := resourceUniverseTelemetryConfigRead(
+		context.Background(), d, newDetachTestClient(t, &fakeYBA{getConfig: sent}))
+
+	if diags.HasError() {
+		t.Fatalf("read returned diags: %v", diags)
+	}
+	want, _ := json.Marshal(sent)
+	got, _ := json.Marshal(buildExportTelemetryConfigSpec(d).TelemetryConfig)
+	if string(got) != string(want) {
+		t.Errorf("request after Read differs:\n got %s\nwant %s", got, want)
+	}
+	var wire map[string]struct {
+		Exporters []struct {
+			ExporterUUID string `json:"exporter_uuid"`
+		} `json:"exporters"`
+		NoiseSampleDropRatio *float64 `json:"noise_sample_drop_ratio"`
+	}
+	if err := json.Unmarshal(want, &wire); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range telemetryPipelines {
+		if p.min == nil {
+			continue
+		}
+		if e := wire[p.label].Exporters; len(e) != 1 || e[0].ExporterUUID != "exp-1" {
+			t.Errorf("%s request exporters = %+v, want [exp-1]", p.label, e)
+		}
+	}
+	if r := wire["master_logs"].NoiseSampleDropRatio; r == nil || *r != 0 {
+		t.Errorf("master_logs noise_sample_drop_ratio = %v, want explicit 0", r)
+	}
+}
+
 func TestUniverseTelemetryConfigReadEmpty(t *testing.T) {
 	f := &fakeYBA{getConfig: &clientv2.TelemetryConfig{}}
 	apiClient := newDetachTestClient(t, f)
@@ -100,9 +160,9 @@ func TestUniverseTelemetryConfigReadEmpty(t *testing.T) {
 	if d.Id() != "uni-1" {
 		t.Errorf("id must be preserved on empty config, got %q", d.Id())
 	}
-	for _, block := range []string{"audit_logs", "query_logs", "metrics"} {
-		if n := len(d.Get(block).([]interface{})); n != 0 {
-			t.Errorf("%s must be empty for an empty config, got %d", block, n)
+	for _, p := range telemetryPipelines {
+		if n := len(d.Get(p.label).([]interface{})); n != 0 {
+			t.Errorf("%s must be empty for an empty config, got %d", p.label, n)
 		}
 	}
 }

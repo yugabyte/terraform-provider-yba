@@ -16,7 +16,9 @@
 package telemetry
 
 import (
+	"encoding/json"
 	"sort"
+	"strings"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
@@ -291,7 +293,7 @@ func TestFlattenRoundTripNoPhantomDiff(t *testing.T) {
 	}
 }
 
-// No blocks -> all three sections nil (disables everything), not empty structs
+// No blocks -> every section nil (disables everything), not empty structs
 // that trip YBA's "export active but no exporter" check.
 func TestEmptySectionsDisabled(t *testing.T) {
 	res := ResourceUniverseTelemetryConfig()
@@ -301,9 +303,7 @@ func TestEmptySectionsDisabled(t *testing.T) {
 	if spec.TelemetryConfig == nil {
 		t.Fatal("telemetry_config must always be set (empty disables exporters)")
 	}
-	if spec.TelemetryConfig.AuditLogs != nil ||
-		spec.TelemetryConfig.QueryLogs != nil ||
-		spec.TelemetryConfig.Metrics != nil {
+	if !telemetryConfigIsEmpty(spec.TelemetryConfig) {
 		t.Errorf("all sections must be nil when unconfigured: %+v", spec.TelemetryConfig)
 	}
 }
@@ -365,5 +365,31 @@ func TestEnabledDerivedFromBlockPresence(t *testing.T) {
 	}
 	if err := d.Set("query_logs", flatQuery); err != nil {
 		t.Fatalf("set flattened query_logs: %v", err)
+	}
+}
+
+// YBA's bean validation rejects an audit request without
+// log_parameter_max_size. The regenerated client made it an omitempty pointer,
+// so a zero-dropping pointer helper would drop the schema default 0 from the
+// wire.
+func TestAuditLogParameterMaxSizeZeroIsSent(t *testing.T) {
+	res := ResourceUniverseTelemetryConfig()
+	d := schema.TestResourceDataRaw(t, res.Schema, map[string]interface{}{
+		"universe_uuid": "uni-1",
+		"audit_logs": []interface{}{map[string]interface{}{
+			"ysql_audit_config": []interface{}{map[string]interface{}{
+				"classes": []interface{}{"READ"},
+			}},
+			"exporter": []interface{}{map[string]interface{}{"exporter_uuid": "exp-1"}},
+		}},
+	})
+
+	body, err := json.Marshal(buildExportTelemetryConfigSpec(d).TelemetryConfig.AuditLogs)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(body), `"log_parameter_max_size":0`) {
+		t.Errorf("audit request %s lacks log_parameter_max_size 0", body)
 	}
 }

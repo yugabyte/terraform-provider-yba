@@ -198,10 +198,9 @@ func TestAccRelease(t *testing.T) {
 func fixtureRelease() (string, string, error) {
 	c := acctest.APIClient
 	ctx := context.Background()
-	appVersion, response, err := c.YugawareClient.SessionManagementAPI.AppVersion(ctx).Execute()
+	appVersion, err := c.AppVersion(ctx)
 	if err != nil {
-		return "", "", utils.ErrorFromHTTPResponse(response, err, utils.TestEntity,
-			"YBA", "Get App Version")
+		return "", "", err
 	}
 	releases, response, err := c.YugawareClient.NewReleaseManagementAPI.ListNewReleases(
 		ctx, c.CustomerID).Execute()
@@ -210,11 +209,11 @@ func fixtureRelease() (string, string, error) {
 			"Releases", "List")
 	}
 	for _, r := range releases {
-		if r.Version == appVersion["version"] {
+		if r.Version == appVersion {
 			return r.ReleaseUuid, r.Version, nil
 		}
 	}
-	return "", "", fmt.Errorf("no release for YBA version %s", appVersion["version"])
+	return "", "", fmt.Errorf("no release for YBA version %s", appVersion)
 }
 
 func testAccCheckReleaseExists(n string, wantArtifacts int) resource.TestCheckFunc {

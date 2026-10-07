@@ -215,9 +215,16 @@ resource "yba_universe_telemetry_config" "test" {
       additional_tags = { env = "acc" }
     }
   }
+
+  master_logs {
+    min_level = "WARNING"
+    exporter {
+      exporter_uuid = %s
+    }
+  }
 %s
 }
-`, uniRef, provARef, provBRef, provARef, fastUpgradeOptions)
+`, uniRef, provARef, provBRef, provARef, provARef, fastUpgradeOptions)
 }
 
 func gcpProviderAndUniverse(name string) string {
@@ -349,6 +356,8 @@ func TestAccLong_UniverseTelemetryConfig_GCP(t *testing.T) {
 					resource.TestCheckResourceAttr(resourceName, "audit_logs.#", "1"),
 					resource.TestCheckResourceAttr(
 						resourceName, "audit_logs.0.exporter.0.additional_tags.env", "acc"),
+					resource.TestCheckResourceAttr(
+						resourceName, "master_logs.0.min_level", "WARNING"),
 				),
 			},
 			{

@@ -298,3 +298,35 @@ func TestAuditAndQueryLogEnums(t *testing.T) {
 		})
 	}
 }
+
+// Every telemetryPipelines entry must exist in the schema, and vice versa every
+// pipeline block must be registered there — the guardrails and the claim
+// fingerprint only see pipelines listed in that slice.
+func TestTelemetryPipelinesMatchSchema(t *testing.T) {
+	res := ResourceUniverseTelemetryConfig()
+	registered := map[string]bool{}
+	for _, p := range telemetryPipelines {
+		registered[p.label] = true
+		s, ok := res.Schema[p.label]
+		if !ok {
+			t.Errorf("telemetryPipelines entry %q has no schema block", p.label)
+			continue
+		}
+		elem, ok := s.Elem.(*schema.Resource)
+		if !ok || elem.Schema["exporter"] == nil {
+			t.Errorf("pipeline %q must carry an exporter block", p.label)
+		}
+	}
+	for name, s := range res.Schema {
+		if name == "universe_uuid" || name == "upgrade_options" {
+			continue
+		}
+		if s.MaxItems != 1 {
+			t.Errorf("pipeline %q must set MaxItems=1", name)
+		}
+		if !registered[name] {
+			t.Errorf("schema block %q is missing from telemetryPipelines — the "+
+				"duplicate-exporter guardrail and claim fingerprint skip it", name)
+		}
+	}
+}

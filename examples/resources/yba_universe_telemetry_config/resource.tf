@@ -82,6 +82,61 @@ resource "yba_universe_telemetry_config" "main" {
     }
   }
 
+  # Server-log pipelines: yb-master and yb-tserver glog export. They send logs
+  # to the same log destination as audit_logs and query_logs. min_level bounds
+  # the exported severity; master_logs can additionally drop a fraction of
+  # high-volume noise lines.
+  master_logs {
+    min_level               = "INFO"
+    noise_sample_drop_ratio = 0.99
+
+    exporter {
+      exporter_uuid = yba_datadog_telemetry_provider.datadog.id
+      additional_tags = {
+        log_type = "yb-master"
+      }
+      send_batch_max_size                 = 1000
+      send_batch_size                     = 100
+      send_batch_timeout_seconds          = 10
+      memory_limit_mib                    = 2048
+      memory_limit_check_interval_seconds = 10
+    }
+  }
+
+  tserver_logs {
+    # Defaults to WARNING (not INFO) — yb-tserver INFO logs are very high volume.
+    min_level = "WARNING"
+
+    exporter {
+      exporter_uuid = yba_datadog_telemetry_provider.datadog.id
+    }
+  }
+
+  # The remaining server-log pipelines carry only exporter blocks.
+  ysql_conn_mgr_logs {
+    exporter {
+      exporter_uuid = yba_datadog_telemetry_provider.datadog.id
+    }
+  }
+
+  node_agent_logs {
+    exporter {
+      exporter_uuid = yba_datadog_telemetry_provider.datadog.id
+    }
+  }
+
+  ynp_logs {
+    exporter {
+      exporter_uuid = yba_datadog_telemetry_provider.datadog.id
+    }
+  }
+
+  controller_logs {
+    exporter {
+      exporter_uuid = yba_datadog_telemetry_provider.datadog.id
+    }
+  }
+
   upgrade_options {
     rolling_upgrade = false
   }

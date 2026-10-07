@@ -1,0 +1,63 @@
+// Licensed to YugabyteDB, Inc. under one or more contributor license
+// agreements. See the NOTICE file distributed with this work for
+// additional information regarding copyright ownership. Yugabyte
+// licenses this file to you under the Mozilla License, Version 2.0
+// (the "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+// http://mozilla.org/MPL/2.0/.
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+
+package api
+
+import (
+	"context"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+
+	client "github.com/yugabyte/platform-go-client"
+)
+
+func appVersionClient(t *testing.T, handler http.HandlerFunc) (*APIClient, *int) {
+	t.Helper()
+	hits := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits++
+		handler(w, r)
+	}))
+	t.Cleanup(srv.Close)
+	cfg := client.NewConfiguration()
+	cfg.Host = strings.TrimPrefix(srv.URL, "http://")
+	cfg.Scheme = "http"
+	return &APIClient{YugawareClient: client.NewAPIClient(cfg), APIKey: "token"}, &hits
+}
+
+func TestAppVersionFetchesOnceAndCaches(t *testing.T) {
+	c, hits := appVersionClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/app_version" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"version":"2.31.0.0-b395"}`))
+	})
+	for i := 0; i < 2; i++ {
+		got, err := c.AppVersion(context.Background())
+		if err != nil {
+			t.Fatalf("call %d: %v", i+1, err)
+		}
+		if got != "2.31.0.0-b395" {
+			t.Fatalf("call %d: version = %q", i+1, got)
+		}
+	}
+	if *hits != 1 {
+		t.Errorf("app_version fetched %d times, want 1", *hits)
+	}
+}
