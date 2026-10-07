@@ -49,9 +49,12 @@ failure this project can ship.
   that can be wrong, and never gains a dependency that `terraform plan` did
   not have before. A wrong verdict recreates something live; a new
   dependency stops pipelines that only had it at apply time.
-- `ForceNew`, `Computed`, defaults and `DiffSuppressFunc` on an existing
-  attribute are contract. Changing them replaces or rewrites customer
-  resources on the next apply.
+- `ForceNew`, `Computed`, `Sensitive`, defaults, validation and
+  `DiffSuppressFunc` on an existing attribute are contract, also on an
+  attribute that only a pre-release shipped. Changing them replaces or
+  rewrites customer resources on the next apply. A `Sensitive` change
+  plans an update with no changed attributes, and on a resource without
+  Update that apply fails every time.
 - A doc note, a `~> **Warning:**` or an upgrade guide does not make a change
   safe. If the change is only safe for an operator who read something first,
   it is not safe.

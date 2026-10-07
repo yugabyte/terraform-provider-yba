@@ -92,8 +92,8 @@ than leaving the build red.
 
 - `Create` calls `d.SetId` only after the YBA task reaches a terminal
   success state.
-- `Read` is idempotent against out-of-band deletes: detect via
-  `utils.IsHTTPNotFound` (or a typed sentinel — see Error & Task Handling),
+- `Read` is idempotent against out-of-band deletes: detect the gone
+  resource (see Error & Task Handling for when a 404 counts),
   `d.SetId("")`, return `nil`.
 - `Delete` is idempotent for already-gone resources **and surfaces every
   other failure**. `tflog.Warn(...) + return nil` on non-404 errors is
@@ -109,11 +109,19 @@ than leaving the build red.
 
 - Route every HTTP error through `utils.ErrorFromHTTPResponse`. Do not
   roll your own status helper.
-- Detect out-of-band deletes / missing resources with
-  `utils.IsHTTPNotFound`. For "missing resource" conditions YBA returns
-  through non-404 shapes (400/500 with body markers), prefer typed
-  detection (a sentinel error + `errors.Is`) over substring-matching
-  YBA's error body in resource code.
+- **critical: a 404 means "gone" only on a route that every supported
+  YBA has.** YBA's router answers a route that its build lacks with a
+  404 too (`HTTP Client Error: 404(Not Found)`), and both
+  `utils.IsHTTPNotFound` and `utils.IsUniverseMissing` read every 404 as
+  gone. A wrong "gone" drops a live resource from state. On a route newer
+  than the oldest supported YBA, or a preview route, clear state only on
+  a non-404 verdict (`!utils.IsHTTPNotFound(resp) &&
+  utils.IsUniverseMissing(resp, err)`, since YBA reports a gone universe
+  as a 400 `Cannot find universe`), or confirm through a route that every
+  YBA has (the v1 universe GET, a list) first.
+- For "missing resource" conditions YBA returns through non-404 shapes
+  (400/500 with body markers), prefer typed detection (a sentinel error +
+  `errors.Is`) over substring-matching YBA's error body in resource code.
 - Every universe-mutating call goes through `utils.DispatchAndWait`
   (dispatch + 409 retry + `WaitForTask`) or
   `utils.RetryOnUniverseTaskConflict` (dispatch + 409 retry only).
