@@ -16,7 +16,7 @@ YBA stores a single telemetry configuration per universe, so manage every pipeli
 
 ### Multiple exporters per pipeline
 
-To fan a pipeline out to multiple telemetry destinations, repeat its `exporter` block **within that same resource** — each block becomes one entry in the API's `exporters` array. The `metrics` pipeline in the example above does exactly this, shipping to both Prometheus and Datadog from the single resource:
+To fan a pipeline out to multiple telemetry destinations, repeat its `exporter` block **within that same resource**. The `metrics` pipeline in the example above does exactly this, shipping to both Prometheus and Datadog from the single resource:
 
 ```terraform
 resource "yba_universe_telemetry_config" "main" {

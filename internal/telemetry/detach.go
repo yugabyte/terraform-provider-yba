@@ -50,6 +50,10 @@ type universeRef struct {
 // metrics, and the server-log pipelines) and reads the primary cluster's
 // config — the same scope as YBA's isProviderInUse delete gate. The v1
 // UserIntent no longer carries the telemetry sections.
+//
+// Universes are independent, so they detach in parallel: each detach is a
+// rolling restart. The detached list keeps the universe-list order and
+// includes every universe that finished, even when others failed.
 func detachTelemetryProviderFromUniverses(
 	ctx context.Context, apiClient *api.APIClient, providerUUID string,
 	timeout time.Duration,
@@ -61,86 +65,105 @@ func detachTelemetryProviderFromUniverses(
 			utils.ResourceEntity, "Universe", "List")
 	}
 
-	var detached []universeRef
+	refs := make([]universeRef, len(universes))
 	for i := range universes {
-		u := universes[i]
-		ref := universeRef{UUID: u.GetUniverseUUID(), Name: u.GetName()}
-
-		config, err := getExportTelemetryConfig(
-			ctx, apiClient, ref.UUID, "Detach - Get Config")
-		if err != nil {
-			if errors.Is(err, utils.ErrUniverseMissing) {
-				// The universe disappeared between the list and this read, or
-				// the YBA predates the v2 route (a 404 either way). Neither has
-				// a v2 config to rewrite; YBA's in-use check on the delete still
-				// catches a reference made through the older per-universe APIs.
-				continue
-			}
-			return detached, err
-		}
-
-		filtered, changed := filterTelemetryConfig(config, providerUUID)
-		if !changed {
-			continue
-		}
-		tflog.Info(ctx, fmt.Sprintf(
-			"Detaching telemetry provider %s from universe %s (%s)",
-			providerUUID, ref.Name, ref.UUID))
-
-		// Rolling upgrade with YBA's default sleeps — the telemetry provider
-		// resources have no upgrade_options block, so we don't hard-code a sleep.
-		spec := clientv2.ExportTelemetryConfigSpec{
-			TelemetryConfig: &filtered,
-			UpgradeOptions: &clientv2.ExportTelemetryUpgradeOptions{
-				RollingUpgrade: utils.GetBoolPointer(true),
-			},
-		}
-
-		// Retry on a YBA 409 (a ConfigureExportTelemetryConfig task left in
-		// flight by a prior interrupted apply) instead of failing the destroy;
-		// such tasks finish in minutes, and the helper polls until the timeout
-		// budget is spent.
-		var (
-			taskUUID string
-			lastResp *http.Response
-		)
-		_, retryErr := utils.RetryOnUniverseTaskConflict(
-			ctx,
-			fmt.Sprintf("Detach telemetry provider %s from %s",
-				providerUUID, ref.Name),
-			timeout,
-			func() (*http.Response, error) {
-				task, resp, err := apiClient.YugawareClientV2.UniverseAPI.
-					ConfigureExportTelemetryConfig(
-						ctx, apiClient.CustomerID, ref.UUID).
-					ExportTelemetryConfigSpec(spec).Execute()
-				lastResp = resp
-				if err != nil {
-					return resp, err
-				}
-				if task != nil && task.TaskUuid != nil {
-					taskUUID = *task.TaskUuid
-				}
-				return resp, nil
-			},
-		)
-		if retryErr != nil {
-			return detached, utils.ErrorFromHTTPResponse(lastResp, retryErr,
-				utils.ResourceEntity,
-				fmt.Sprintf("Universe Telemetry Config (%s)", ref.Name),
-				"Detach")
-		}
-		if taskUUID != "" {
-			if err := utils.WaitForTask(ctx, taskUUID, apiClient.CustomerID,
-				apiClient.YugawareClient, timeout); err != nil {
-				return detached, fmt.Errorf(
-					"wait for detach task on universe %s (%s): %w",
-					ref.Name, ref.UUID, err)
-			}
-		}
-		detached = append(detached, ref)
+		refs[i] = universeRef{UUID: universes[i].GetUniverseUUID(), Name: universes[i].GetName()}
 	}
-	return detached, nil
+	done := make([]bool, len(refs))
+	err = utils.RunParallel(len(refs), utils.UniverseParallelism, func(i int) error {
+		ok, detachErr := detachFromUniverse(ctx, apiClient, refs[i], providerUUID, timeout)
+		done[i] = ok
+		return detachErr
+	})
+	var detached []universeRef
+	for i, ok := range done {
+		if ok {
+			detached = append(detached, refs[i])
+		}
+	}
+	return detached, err
+}
+
+// detachFromUniverse removes providerUUID from one universe's telemetry config
+// and waits for the upgrade task. It reports whether the universe referenced
+// the provider and was rewritten.
+func detachFromUniverse(
+	ctx context.Context, apiClient *api.APIClient, ref universeRef, providerUUID string,
+	timeout time.Duration,
+) (bool, error) {
+	config, err := getExportTelemetryConfig(
+		ctx, apiClient, ref.UUID, "Detach - Get Config")
+	if err != nil {
+		if errors.Is(err, utils.ErrUniverseMissing) {
+			// The universe disappeared between the list and this read, or
+			// the YBA predates the v2 route (a 404 either way). Neither has
+			// a v2 config to rewrite; YBA's in-use check on the delete still
+			// catches a reference made through the older per-universe APIs.
+			return false, nil
+		}
+		return false, err
+	}
+
+	filtered, changed := filterTelemetryConfig(config, providerUUID)
+	if !changed {
+		return false, nil
+	}
+	tflog.Info(ctx, fmt.Sprintf(
+		"Detaching telemetry provider %s from universe %s (%s)",
+		providerUUID, ref.Name, ref.UUID))
+
+	// Rolling upgrade with YBA's default sleeps — the telemetry provider
+	// resources have no upgrade_options block, so we don't hard-code a sleep.
+	spec := clientv2.ExportTelemetryConfigSpec{
+		TelemetryConfig: &filtered,
+		UpgradeOptions: &clientv2.ExportTelemetryUpgradeOptions{
+			RollingUpgrade: utils.GetBoolPointer(true),
+		},
+	}
+
+	// Retry on a YBA 409 (a ConfigureExportTelemetryConfig task left in
+	// flight by a prior interrupted apply) instead of failing the destroy;
+	// such tasks finish in minutes, and the helper polls until the timeout
+	// budget is spent.
+	var (
+		taskUUID string
+		lastResp *http.Response
+	)
+	_, retryErr := utils.RetryOnUniverseTaskConflict(
+		ctx,
+		fmt.Sprintf("Detach telemetry provider %s from %s",
+			providerUUID, ref.Name),
+		timeout,
+		func() (*http.Response, error) {
+			task, resp, err := apiClient.YugawareClientV2.UniverseAPI.
+				ConfigureExportTelemetryConfig(
+					ctx, apiClient.CustomerID, ref.UUID).
+				ExportTelemetryConfigSpec(spec).Execute()
+			lastResp = resp
+			if err != nil {
+				return resp, err
+			}
+			if task != nil && task.TaskUuid != nil {
+				taskUUID = *task.TaskUuid
+			}
+			return resp, nil
+		},
+	)
+	if retryErr != nil {
+		return false, utils.ErrorFromHTTPResponse(lastResp, retryErr,
+			utils.ResourceEntity,
+			fmt.Sprintf("Universe Telemetry Config (%s)", ref.Name),
+			"Detach")
+	}
+	if taskUUID != "" {
+		if err := utils.WaitForTask(ctx, taskUUID, apiClient.CustomerID,
+			apiClient.YugawareClient, timeout); err != nil {
+			return false, fmt.Errorf(
+				"wait for detach task on universe %s (%s): %w",
+				ref.Name, ref.UUID, err)
+		}
+	}
+	return true, nil
 }
 
 // filterExporters returns in minus the entries whose UUID (per the accessor)

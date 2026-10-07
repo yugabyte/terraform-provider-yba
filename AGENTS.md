@@ -74,8 +74,9 @@ than leaving the build red.
   `Description`; `WriteOnly` arguments never reach state, so a plain
   `~> **Note:**` explaining the write-only behaviour is enough.
 - `Importer` is required unless YBA truly cannot import.
-- `Description` is required on every field and the resource itself —
-  these strings render directly into user-facing docs.
+- `Description` is required on every field, nested block fields
+  included, and on the resource itself — these strings render directly
+  into user-facing docs.
 - Every resource gets a working example at
   `examples/resources/yba_<name>/resource.tf`.
 - **critical: every new resource (and data source) also gets a doc
@@ -136,6 +137,9 @@ than leaving the build red.
   every minimum (`utils.IsExperimentalPatchVersion` short-circuits
   `MeetsMinimum`): their base and cherry-picks are not derivable from
   the version string, and only Yugabyte-run tooling targets them.
+  The `Description` states only the stable minimum, as a release
+  (`2026.1.2.0`). The preview minimum and every `-bN` build are internal:
+  they gate in code and stay out of the docs.
   Reference: `internal/telemetry/version_gate.go`.
 
 ## Use `internal/utils` First
@@ -145,8 +149,9 @@ Check before adding: pointer helpers (`GetBoolPointer`, `GetStringPointer`,
 `GetInt32Pointer`), list/map plumbing (`MapFromSingletonList`,
 `StringSlice`, `StringMap`), HTTP error helpers (`ErrorFromHTTPResponse`,
 `IsHTTPNotFound`, `IsUniverseTaskConflict`), task helpers (`WaitForTask`,
-`DispatchAndWait`, `RetryOnUniverseTaskConflict`), and update-time state
-revert (`RevertFields`). If something is genuinely missing, add it to
+`DispatchAndWait`, `RetryOnUniverseTaskConflict`, and `RunParallel` for
+independent per-universe work), and update-time state revert
+(`RevertFields`). If something is genuinely missing, add it to
 `utils` with tests rather than inlining.
 
 ## Generated Client

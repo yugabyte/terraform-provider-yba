@@ -2,11 +2,11 @@
 page_title: "yba_universe_telemetry_config Resource - YugabyteDB Anywhere"
 description: |-
   ~> Experimental: This resource wraps a YugabyteDB Anywhere telemetry export API that is still experimental and may change in backward-incompatible ways across YBA releases. Pin your provider version and review release notes before upgrading.
-  Universe Telemetry Config Resource. Attaches audit log, query log, server log (yb-master, yb-tserver, YSQL Connection Manager, node-agent, node provisioning, YB-Controller), and metrics export pipelines to a YBA universe via the unified export-telemetry-configs API. Each exporter references a telemetry provider resource (yba_datadog_telemetry_provider, yba_otlp_telemetry_provider, ... — or any pre-existing telemetry provider UUID) and triggers a rolling/non-rolling restart of the universe to install or update the OpenTelemetry collector.
-  ~> Note: This resource requires YugabyteDB Anywhere 2026.1.0.0-b61 (stable) or 2.29.0.0-b622 (preview) or later; terraform plan fails against an older build.
-  ~> Note: The server-log pipelines (master_logs, tserver_logs, ysql_conn_mgr_logs, node_agent_logs, ynp_logs, controller_logs) require YugabyteDB Anywhere 2026.1.2.0-b84 (stable) or 2.31.0.0-b386 (preview) or later; terraform plan fails against an older build.
+  Universe Telemetry Config Resource. Attaches audit log, query log, server log (yb-master, yb-tserver, YSQL Connection Manager, node-agent, node provisioning, YB-Controller), and metrics export pipelines to a YBA universe. Each exporter references a telemetry provider resource (yba_datadog_telemetry_provider, yba_otlp_telemetry_provider, ... — or any pre-existing telemetry provider UUID) and triggers a rolling/non-rolling restart of the universe to install or update the OpenTelemetry collector.
+  ~> Note: This resource requires YugabyteDB Anywhere 2026.1.0.0 or later; terraform plan fails against an older YBA.
+  ~> Note: The server-log pipelines (master_logs, tserver_logs, ysql_conn_mgr_logs, node_agent_logs, ynp_logs, controller_logs) require YugabyteDB Anywhere 2026.1.2.0 or later; terraform plan fails against an older YBA.
   ~> Note: OTLP-based exporters require the global runtime config yb.telemetry.allow_otlp to be set to true. Manage that with the yba_runtime_config resource.
-  ~> Note: Import an existing universe-level configuration with the universe UUID as the resource ID (terraform import yba_universe_telemetry_config.example <universe-uuid>); state is populated from the unified export-telemetry-configs GET API.
+  ~> Note: Import an existing universe-level configuration with the universe UUID as the resource ID (terraform import yba_universe_telemetry_config.example <universe-uuid>).
   ~> One resource per universe: YBA stores a single telemetry configuration per universe and this resource owns it wholesale — Terraform is the source of truth. On apply it replaces whatever the universe currently has (including anything configured out-of-band in the YBA UI), so manage every pipeline (audit_logs, query_logs, metrics, and the server-log blocks) from a single yba_universe_telemetry_config block. Declaring two resources for the same universe_uuid is rejected at plan time (they would otherwise overwrite each other on every apply). On destroy the resource disables every exporter on the universe, but only if a configuration still exists server-side — an already-empty universe is left untouched.
   ~> Dependency Note: When exporter_uuid is wired through a reference like yba_datadog_telemetry_provider.x.id, Terraform's dependency graph automatically orders create / replace / destroy of the provider before this resource — there is no need to add an explicit depends_on. The provider's own destroy step also proactively detaches itself from every referencing universe before deletion, so a plan that destroys-and-recreates a provider in the same apply is safe.
 ---
@@ -15,15 +15,15 @@ description: |-
 
 ~> **Experimental:** This resource wraps a YugabyteDB Anywhere telemetry export API that is still experimental and may change in backward-incompatible ways across YBA releases. Pin your provider version and review release notes before upgrading.
 
-Universe Telemetry Config Resource. Attaches audit log, query log, server log (yb-master, yb-tserver, YSQL Connection Manager, node-agent, node provisioning, YB-Controller), and metrics export pipelines to a YBA universe via the unified `export-telemetry-configs` API. Each exporter references a telemetry provider resource (`yba_datadog_telemetry_provider`, `yba_otlp_telemetry_provider`, ... — or any pre-existing telemetry provider UUID) and triggers a rolling/non-rolling restart of the universe to install or update the OpenTelemetry collector.
+Universe Telemetry Config Resource. Attaches audit log, query log, server log (yb-master, yb-tserver, YSQL Connection Manager, node-agent, node provisioning, YB-Controller), and metrics export pipelines to a YBA universe. Each exporter references a telemetry provider resource (`yba_datadog_telemetry_provider`, `yba_otlp_telemetry_provider`, ... — or any pre-existing telemetry provider UUID) and triggers a rolling/non-rolling restart of the universe to install or update the OpenTelemetry collector.
 
-~> **Note:** This resource requires YugabyteDB Anywhere `2026.1.0.0-b61` (stable) or `2.29.0.0-b622` (preview) or later; `terraform plan` fails against an older build.
+~> **Note:** This resource requires YugabyteDB Anywhere `2026.1.0.0` or later; `terraform plan` fails against an older YBA.
 
-~> **Note:** The server-log pipelines (`master_logs`, `tserver_logs`, `ysql_conn_mgr_logs`, `node_agent_logs`, `ynp_logs`, `controller_logs`) require YugabyteDB Anywhere `2026.1.2.0-b84` (stable) or `2.31.0.0-b386` (preview) or later; `terraform plan` fails against an older build.
+~> **Note:** The server-log pipelines (`master_logs`, `tserver_logs`, `ysql_conn_mgr_logs`, `node_agent_logs`, `ynp_logs`, `controller_logs`) require YugabyteDB Anywhere `2026.1.2.0` or later; `terraform plan` fails against an older YBA.
 
 ~> **Note:** OTLP-based exporters require the global runtime config `yb.telemetry.allow_otlp` to be set to `true`. Manage that with the `yba_runtime_config` resource.
 
-~> **Note:** Import an existing universe-level configuration with the universe UUID as the resource ID (`terraform import yba_universe_telemetry_config.example <universe-uuid>`); state is populated from the unified `export-telemetry-configs` GET API.
+~> **Note:** Import an existing universe-level configuration with the universe UUID as the resource ID (`terraform import yba_universe_telemetry_config.example <universe-uuid>`).
 
 ~> **One resource per universe:** YBA stores a single telemetry configuration per universe and this resource owns it wholesale — Terraform is the source of truth. On apply it **replaces** whatever the universe currently has (including anything configured out-of-band in the YBA UI), so manage every pipeline (`audit_logs`, `query_logs`, `metrics`, and the server-log blocks) from a **single** `yba_universe_telemetry_config` block. Declaring two resources for the same `universe_uuid` is rejected at plan time (they would otherwise overwrite each other on every apply). On destroy the resource disables every exporter on the universe, but only if a configuration still exists server-side — an already-empty universe is left untouched.
 
@@ -181,7 +181,7 @@ resource "yba_universe_telemetry_config" "main" {
 
 ### Multiple exporters per pipeline
 
-To fan a pipeline out to multiple telemetry destinations, repeat its `exporter` block **within that same resource** — each block becomes one entry in the API's `exporters` array. The `metrics` pipeline in the example above does exactly this, shipping to both Prometheus and Datadog from the single resource:
+To fan a pipeline out to multiple telemetry destinations, repeat its `exporter` block **within that same resource**. The `metrics` pipeline in the example above does exactly this, shipping to both Prometheus and Datadog from the single resource:
 
 ```terraform
 resource "yba_universe_telemetry_config" "main" {
@@ -212,19 +212,19 @@ resource "yba_universe_telemetry_config" "main" {
 ### Optional
 
 - `audit_logs` (Block List, Max: 1) Audit log export configuration. Omit to disable audit log export. (see [below for nested schema](#nestedblock--audit_logs))
-- `controller_logs` (Block List, Max: 1) YB-Controller log export configuration. Omit to disable YB-Controller log export. Requires YugabyteDB Anywhere `2026.1.2.0-b84` (stable) or `2.31.0.0-b386` (preview) or later; `terraform plan` fails against an older build. On a Kubernetes universe, YBA also requires the universe's YugabyteDB version to be `2026.1.2.0` (stable) or `2.31.0.0` (preview) or later. (see [below for nested schema](#nestedblock--controller_logs))
-- `master_logs` (Block List, Max: 1) yb-master log export configuration. Omit to disable yb-master log export. Requires YugabyteDB Anywhere `2026.1.2.0-b84` (stable) or `2.31.0.0-b386` (preview) or later; `terraform plan` fails against an older build. On a Kubernetes universe, YBA also requires the universe's YugabyteDB version to be `2026.1.2.0` (stable) or `2.31.0.0` (preview) or later. (see [below for nested schema](#nestedblock--master_logs))
+- `controller_logs` (Block List, Max: 1) YB-Controller log export configuration. Omit to disable YB-Controller log export. Requires YugabyteDB Anywhere `2026.1.2.0` or later; `terraform plan` fails against an older YBA. On a Kubernetes universe, YBA also requires the universe's YugabyteDB version to be `2026.1.2.0` or later. (see [below for nested schema](#nestedblock--controller_logs))
+- `master_logs` (Block List, Max: 1) yb-master log export configuration. Omit to disable yb-master log export. Requires YugabyteDB Anywhere `2026.1.2.0` or later; `terraform plan` fails against an older YBA. On a Kubernetes universe, YBA also requires the universe's YugabyteDB version to be `2026.1.2.0` or later. (see [below for nested schema](#nestedblock--master_logs))
 - `metrics` (Block List, Max: 1) Metric export configuration. Omit to disable metric export. (see [below for nested schema](#nestedblock--metrics))
-- `node_agent_logs` (Block List, Max: 1) node-agent log export configuration. Omit to disable node-agent log export. Requires YugabyteDB Anywhere `2026.1.2.0-b84` (stable) or `2.31.0.0-b386` (preview) or later; `terraform plan` fails against an older build. VM universes only: YBA rejects this block on a Kubernetes universe. (see [below for nested schema](#nestedblock--node_agent_logs))
+- `node_agent_logs` (Block List, Max: 1) node-agent log export configuration. Omit to disable node-agent log export. Requires YugabyteDB Anywhere `2026.1.2.0` or later; `terraform plan` fails against an older YBA. VM universes only: YBA rejects this block on a Kubernetes universe. (see [below for nested schema](#nestedblock--node_agent_logs))
 - `query_logs` (Block List, Max: 1) Query log export configuration. Omit to disable query log export. (see [below for nested schema](#nestedblock--query_logs))
 - `timeouts` (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))
-- `tserver_logs` (Block List, Max: 1) yb-tserver log export configuration. Omit to disable yb-tserver log export. Requires YugabyteDB Anywhere `2026.1.2.0-b84` (stable) or `2.31.0.0-b386` (preview) or later; `terraform plan` fails against an older build. On a Kubernetes universe, YBA also requires the universe's YugabyteDB version to be `2026.1.2.0` (stable) or `2.31.0.0` (preview) or later. (see [below for nested schema](#nestedblock--tserver_logs))
+- `tserver_logs` (Block List, Max: 1) yb-tserver log export configuration. Omit to disable yb-tserver log export. Requires YugabyteDB Anywhere `2026.1.2.0` or later; `terraform plan` fails against an older YBA. On a Kubernetes universe, YBA also requires the universe's YugabyteDB version to be `2026.1.2.0` or later. (see [below for nested schema](#nestedblock--tserver_logs))
 - `upgrade_options` (Block List, Max: 1) Optional rolling-restart options applied while reconfiguring the universe.
 
 ~> **Performance Note:** The `sleep_after_*_restart_millis` defaults of 180000 (3 minutes) are applied per node. A 9-node universe therefore spends ~27 minutes just sleeping between restarts on top of the actual restart work. Lower these values for faster reconfigures on healthy clusters, or raise them for clusters under heavy traffic. (see [below for nested schema](#nestedblock--upgrade_options))
 
-- `ynp_logs` (Block List, Max: 1) YNP (node provisioning) log export configuration. Omit to disable YNP (node provisioning) log export. Requires YugabyteDB Anywhere `2026.1.2.0-b84` (stable) or `2.31.0.0-b386` (preview) or later; `terraform plan` fails against an older build. VM universes only: YBA rejects this block on a Kubernetes universe. (see [below for nested schema](#nestedblock--ynp_logs))
-- `ysql_conn_mgr_logs` (Block List, Max: 1) YSQL Connection Manager log export configuration. Omit to disable YSQL Connection Manager log export. Requires YugabyteDB Anywhere `2026.1.2.0-b84` (stable) or `2.31.0.0-b386` (preview) or later; `terraform plan` fails against an older build. On a Kubernetes universe, YBA also requires the universe's YugabyteDB version to be `2026.1.2.0` (stable) or `2.31.0.0` (preview) or later. (see [below for nested schema](#nestedblock--ysql_conn_mgr_logs))
+- `ynp_logs` (Block List, Max: 1) YNP (node provisioning) log export configuration. Omit to disable YNP (node provisioning) log export. Requires YugabyteDB Anywhere `2026.1.2.0` or later; `terraform plan` fails against an older YBA. VM universes only: YBA rejects this block on a Kubernetes universe. (see [below for nested schema](#nestedblock--ynp_logs))
+- `ysql_conn_mgr_logs` (Block List, Max: 1) YSQL Connection Manager log export configuration. Omit to disable YSQL Connection Manager log export. Requires YugabyteDB Anywhere `2026.1.2.0` or later; `terraform plan` fails against an older YBA. On a Kubernetes universe, YBA also requires the universe's YugabyteDB version to be `2026.1.2.0` or later. (see [below for nested schema](#nestedblock--ysql_conn_mgr_logs))
 
 ### Read-Only
 
@@ -236,7 +236,7 @@ resource "yba_universe_telemetry_config" "main" {
 
 Optional:
 
-- `exporter` (Block List) Exporter (telemetry destination) for audit logs. Repeat this block to fan out to multiple destinations — each block becomes one entry in the API's `exporters` array. (see [below for nested schema](#nestedblock--audit_logs--exporter))
+- `exporter` (Block List) Exporter (telemetry destination) for audit logs. Repeat this block to send to more than one destination. (see [below for nested schema](#nestedblock--audit_logs--exporter))
 - `ycql_audit_config` (Block List, Max: 1) YCQL audit logging configuration. Declaring this block enables YCQL audit logging — YBA derives `enabled` from the block's presence, so there is no `enabled` field; omit the block to disable. `log_level`'s `Default` is a **provider default** (the YBA API requires the field but defines no default). (see [below for nested schema](#nestedblock--audit_logs--ycql_audit_config))
 - `ysql_audit_config` (Block List, Max: 1) YSQL audit (pgaudit) logging configuration. Declaring this block enables YSQL audit logging on the universe — YBA derives `enabled` from the block's presence, so there is no `enabled` field; omit the block to disable. The YBA API marks every field below `required` with no server default, so the `Default` values are **provider defaults** chosen to mirror the YBA UI. (see [below for nested schema](#nestedblock--audit_logs--ysql_audit_config))
 
@@ -258,13 +258,13 @@ Optional:
 
 Optional:
 
-- `excluded_categories` (Set of String)
-- `excluded_keyspaces` (Set of String)
-- `excluded_users` (Set of String)
-- `included_categories` (Set of String)
-- `included_keyspaces` (Set of String)
-- `included_users` (Set of String)
-- `log_level` (String)
+- `excluded_categories` (Set of String) Sets `ycql_audit_excluded_categories`: the statement categories not to audit.
+- `excluded_keyspaces` (Set of String) Sets `ycql_audit_excluded_keyspaces`: the keyspaces not to audit.
+- `excluded_users` (Set of String) Sets `ycql_audit_excluded_users`: the users not to audit.
+- `included_categories` (Set of String) Sets `ycql_audit_included_categories`: the statement categories to audit.
+- `included_keyspaces` (Set of String) Sets `ycql_audit_included_keyspaces`: the keyspaces to audit.
+- `included_users` (Set of String) Sets `ycql_audit_included_users`: the users to audit.
+- `log_level` (String) Sets `ycql_audit_log_level`: the severity of audit records, which selects the yb-tserver log file they go to.
 
 <a id="nestedblock--audit_logs--ysql_audit_config"></a>
 
@@ -273,15 +273,15 @@ Optional:
 Optional:
 
 - `classes` (Set of String) YSQL audit log classes (e.g. READ, WRITE, DDL, ROLE).
-- `log_catalog` (Boolean)
-- `log_client` (Boolean)
-- `log_level` (String)
-- `log_parameter` (Boolean)
-- `log_parameter_max_size` (Number)
-- `log_relation` (Boolean)
-- `log_rows` (Boolean)
-- `log_statement` (Boolean)
-- `log_statement_once` (Boolean)
+- `log_catalog` (Boolean) Sets `pgaudit.log_catalog`: also log statements whose relations are all in `pg_catalog`. Set to false to drop the catalog lookups that tools make.
+- `log_client` (Boolean) Sets `pgaudit.log_client`: also send audit messages to the client, such as ysqlsh.
+- `log_level` (String) Sets `pgaudit.log_level`: the severity of the audit messages sent to the client. Applies only when `log_client` is true.
+- `log_parameter` (Boolean) Sets `pgaudit.log_parameter`: include the statement parameters in the audit log.
+- `log_parameter_max_size` (Number) Sets `pgaudit.log_parameter_max_size`: the largest parameter, in bytes, to log when `log_parameter` is true. A longer parameter is replaced with `<long param suppressed>`. 0 logs every parameter.
+- `log_relation` (Boolean) Sets `pgaudit.log_relation`: write a separate entry for each relation that a SELECT or DML statement references.
+- `log_rows` (Boolean) Sets `pgaudit.log_rows`: include the number of rows that the statement retrieved or changed.
+- `log_statement` (Boolean) Sets `pgaudit.log_statement`: include the statement text and parameters.
+- `log_statement_once` (Boolean) Sets `pgaudit.log_statement_once`: include the statement text and parameters only in the first entry for a statement or sub-statement.
 
 <a id="nestedblock--controller_logs"></a>
 
@@ -289,7 +289,7 @@ Optional:
 
 Optional:
 
-- `exporter` (Block List) Exporter (telemetry destination). Repeat this block to send to multiple destinations — each becomes one entry in the API's `exporters` array. (see [below for nested schema](#nestedblock--controller_logs--exporter))
+- `exporter` (Block List) Exporter (telemetry destination). Repeat this block to send to more than one destination. (see [below for nested schema](#nestedblock--controller_logs--exporter))
 
 <a id="nestedblock--controller_logs--exporter"></a>
 
@@ -302,11 +302,11 @@ Required:
 Optional:
 
 - `additional_tags` (Map of String) Additional string tags appended to each log record.
-- `memory_limit_check_interval_seconds` (Number)
-- `memory_limit_mib` (Number)
-- `send_batch_max_size` (Number)
-- `send_batch_size` (Number)
-- `send_batch_timeout_seconds` (Number)
+- `memory_limit_check_interval_seconds` (Number) Seconds between memory-use checks by the memory limiter.
+- `memory_limit_mib` (Number) Memory limit, in MiB, of the collector's memory limiter for this exporter. When memory use comes close to the limit, the collector refuses new data.
+- `send_batch_max_size` (Number) Largest batch, in records, that the collector sends to this exporter. The collector splits a larger batch.
+- `send_batch_size` (Number) Number of records after which the collector sends a batch to this exporter, before `send_batch_timeout_seconds` passes.
+- `send_batch_timeout_seconds` (Number) Seconds after which the collector sends a batch, whatever its size.
 
 <a id="nestedblock--master_logs"></a>
 
@@ -314,7 +314,7 @@ Optional:
 
 Optional:
 
-- `exporter` (Block List) Exporter (telemetry destination). Repeat this block to send to multiple destinations — each becomes one entry in the API's `exporters` array. (see [below for nested schema](#nestedblock--master_logs--exporter))
+- `exporter` (Block List) Exporter (telemetry destination). Repeat this block to send to more than one destination. (see [below for nested schema](#nestedblock--master_logs--exporter))
 - `min_level` (String) Minimum yb-master glog severity to export; lines below this level are dropped. `Default` is sourced from the YBA API's own `default:` (via the generated client) so it tracks the server.
 - `noise_sample_drop_ratio` (Number) Fraction (0.0-1.0) of high-volume, low-value noise log lines to drop. Set to 0.0 to keep every line. `Default` is sourced from the YBA API's own `default:` (via the generated client) so it tracks the server.
 
@@ -329,11 +329,11 @@ Required:
 Optional:
 
 - `additional_tags` (Map of String) Additional string tags appended to each log record.
-- `memory_limit_check_interval_seconds` (Number)
-- `memory_limit_mib` (Number)
-- `send_batch_max_size` (Number)
-- `send_batch_size` (Number)
-- `send_batch_timeout_seconds` (Number)
+- `memory_limit_check_interval_seconds` (Number) Seconds between memory-use checks by the memory limiter.
+- `memory_limit_mib` (Number) Memory limit, in MiB, of the collector's memory limiter for this exporter. When memory use comes close to the limit, the collector refuses new data.
+- `send_batch_max_size` (Number) Largest batch, in records, that the collector sends to this exporter. The collector splits a larger batch.
+- `send_batch_size` (Number) Number of records after which the collector sends a batch to this exporter, before `send_batch_timeout_seconds` passes.
+- `send_batch_timeout_seconds` (Number) Seconds after which the collector sends a batch, whatever its size.
 
 <a id="nestedblock--metrics"></a>
 
@@ -341,11 +341,11 @@ Optional:
 
 Optional:
 
-- `collection_level` (String)
-- `exporter` (Block List) Metric exporter (telemetry destination). Repeat this block to send metrics to multiple destinations — each becomes one entry in the API's `exporters` array. (see [below for nested schema](#nestedblock--metrics--exporter))
+- `collection_level` (String) Which metrics to collect: `ALL`, `NORMAL`, `TABLE_OFF` (no table-level metrics), `MINIMAL`, or `OFF`.
+- `exporter` (Block List) Metric exporter (telemetry destination). Repeat this block to send metrics to more than one destination. (see [below for nested schema](#nestedblock--metrics--exporter))
 - `scrape_config_targets` (Set of String) Scrape target types to include. Omit to let YBA include all supported targets.
-- `scrape_interval_seconds` (Number)
-- `scrape_timeout_seconds` (Number)
+- `scrape_interval_seconds` (Number) Seconds between scrapes of each scrape target.
+- `scrape_timeout_seconds` (Number) Timeout of each scrape, in seconds.
 
 <a id="nestedblock--metrics--exporter"></a>
 
@@ -358,12 +358,12 @@ Required:
 Optional:
 
 - `additional_tags` (Map of String) Additional string tags appended to each metric.
-- `memory_limit_check_interval_seconds` (Number)
-- `memory_limit_mib` (Number)
+- `memory_limit_check_interval_seconds` (Number) Seconds between memory-use checks by the memory limiter.
+- `memory_limit_mib` (Number) Memory limit, in MiB, of the collector's memory limiter for this exporter. When memory use comes close to the limit, the collector refuses new data.
 - `metrics_prefix` (String) Optional prefix prepended to every metric name.
-- `send_batch_max_size` (Number)
-- `send_batch_size` (Number)
-- `send_batch_timeout_seconds` (Number)
+- `send_batch_max_size` (Number) Largest batch, in records, that the collector sends to this exporter. The collector splits a larger batch.
+- `send_batch_size` (Number) Number of records after which the collector sends a batch to this exporter, before `send_batch_timeout_seconds` passes.
+- `send_batch_timeout_seconds` (Number) Seconds after which the collector sends a batch, whatever its size.
 
 <a id="nestedblock--node_agent_logs"></a>
 
@@ -371,7 +371,7 @@ Optional:
 
 Optional:
 
-- `exporter` (Block List) Exporter (telemetry destination). Repeat this block to send to multiple destinations — each becomes one entry in the API's `exporters` array. (see [below for nested schema](#nestedblock--node_agent_logs--exporter))
+- `exporter` (Block List) Exporter (telemetry destination). Repeat this block to send to more than one destination. (see [below for nested schema](#nestedblock--node_agent_logs--exporter))
 
 <a id="nestedblock--node_agent_logs--exporter"></a>
 
@@ -384,11 +384,11 @@ Required:
 Optional:
 
 - `additional_tags` (Map of String) Additional string tags appended to each log record.
-- `memory_limit_check_interval_seconds` (Number)
-- `memory_limit_mib` (Number)
-- `send_batch_max_size` (Number)
-- `send_batch_size` (Number)
-- `send_batch_timeout_seconds` (Number)
+- `memory_limit_check_interval_seconds` (Number) Seconds between memory-use checks by the memory limiter.
+- `memory_limit_mib` (Number) Memory limit, in MiB, of the collector's memory limiter for this exporter. When memory use comes close to the limit, the collector refuses new data.
+- `send_batch_max_size` (Number) Largest batch, in records, that the collector sends to this exporter. The collector splits a larger batch.
+- `send_batch_size` (Number) Number of records after which the collector sends a batch to this exporter, before `send_batch_timeout_seconds` passes.
+- `send_batch_timeout_seconds` (Number) Seconds after which the collector sends a batch, whatever its size.
 
 <a id="nestedblock--query_logs"></a>
 
@@ -396,7 +396,7 @@ Optional:
 
 Optional:
 
-- `exporter` (Block List) Exporter (telemetry destination). Repeat this block to send to multiple destinations — each becomes one entry in the API's `exporters` array. (see [below for nested schema](#nestedblock--query_logs--exporter))
+- `exporter` (Block List) Exporter (telemetry destination). Repeat this block to send to more than one destination. (see [below for nested schema](#nestedblock--query_logs--exporter))
 - `ysql_query_log_config` (Block List, Max: 1) YSQL query logging configuration. Declaring this block enables YSQL query logging — YBA derives `enabled` from the block's presence, so there is no `enabled` field; omit the block to disable. `Default` values are sourced from the YBA API's own `default:` (via the generated client) so they track the server. (see [below for nested schema](#nestedblock--query_logs--ysql_query_log_config))
 
 <a id="nestedblock--query_logs--exporter"></a>
@@ -410,11 +410,11 @@ Required:
 Optional:
 
 - `additional_tags` (Map of String) Additional string tags appended to each record.
-- `memory_limit_check_interval_seconds` (Number)
-- `memory_limit_mib` (Number)
-- `send_batch_max_size` (Number)
-- `send_batch_size` (Number)
-- `send_batch_timeout_seconds` (Number)
+- `memory_limit_check_interval_seconds` (Number) Seconds between memory-use checks by the memory limiter.
+- `memory_limit_mib` (Number) Memory limit, in MiB, of the collector's memory limiter for this exporter. When memory use comes close to the limit, the collector refuses new data.
+- `send_batch_max_size` (Number) Largest batch, in records, that the collector sends to this exporter. The collector splits a larger batch.
+- `send_batch_size` (Number) Number of records after which the collector sends a batch to this exporter, before `send_batch_timeout_seconds` passes.
+- `send_batch_timeout_seconds` (Number) Seconds after which the collector sends a batch, whatever its size.
 
 <a id="nestedblock--query_logs--ysql_query_log_config"></a>
 
@@ -422,14 +422,14 @@ Optional:
 
 Optional:
 
-- `debug_print_plan` (Boolean)
-- `log_connections` (Boolean)
-- `log_disconnections` (Boolean)
-- `log_duration` (Boolean)
-- `log_error_verbosity` (String)
-- `log_min_duration_statement` (Number)
-- `log_min_error_statement` (String)
-- `log_statement` (String)
+- `debug_print_plan` (Boolean) Sets `debug_print_plan`: log the execution plan of every query.
+- `log_connections` (Boolean) Sets `log_connections`: log each connection attempt and each completed client authentication.
+- `log_disconnections` (Boolean) Sets `log_disconnections`: log each session end, with the session duration.
+- `log_duration` (Boolean) Sets `log_duration`: log the duration of every completed statement.
+- `log_error_verbosity` (String) Sets `log_error_verbosity`: how much detail each logged message carries.
+- `log_min_duration_statement` (Number) Sets `log_min_duration_statement`: log each statement that runs for at least this many milliseconds. -1 turns this off; 0 logs every statement.
+- `log_min_error_statement` (String) Sets `log_min_error_statement`: the lowest error severity that logs the statement that caused it.
+- `log_statement` (String) Sets `log_statement`: which SQL statements to log. `MOD` logs DDL and data-changing statements.
 
 <a id="nestedblock--timeouts"></a>
 
@@ -448,7 +448,7 @@ Optional:
 
 Optional:
 
-- `exporter` (Block List) Exporter (telemetry destination). Repeat this block to send to multiple destinations — each becomes one entry in the API's `exporters` array. (see [below for nested schema](#nestedblock--tserver_logs--exporter))
+- `exporter` (Block List) Exporter (telemetry destination). Repeat this block to send to more than one destination. (see [below for nested schema](#nestedblock--tserver_logs--exporter))
 - `min_level` (String) Minimum yb-tserver glog severity to export; lines below this level are dropped. `Default` is sourced from the YBA API's own `default:` (via the generated client) so it tracks the server. The default is higher than yb-master's because yb-tserver INFO logs are very high volume.
 
 <a id="nestedblock--tserver_logs--exporter"></a>
@@ -462,11 +462,11 @@ Required:
 Optional:
 
 - `additional_tags` (Map of String) Additional string tags appended to each log record.
-- `memory_limit_check_interval_seconds` (Number)
-- `memory_limit_mib` (Number)
-- `send_batch_max_size` (Number)
-- `send_batch_size` (Number)
-- `send_batch_timeout_seconds` (Number)
+- `memory_limit_check_interval_seconds` (Number) Seconds between memory-use checks by the memory limiter.
+- `memory_limit_mib` (Number) Memory limit, in MiB, of the collector's memory limiter for this exporter. When memory use comes close to the limit, the collector refuses new data.
+- `send_batch_max_size` (Number) Largest batch, in records, that the collector sends to this exporter. The collector splits a larger batch.
+- `send_batch_size` (Number) Number of records after which the collector sends a batch to this exporter, before `send_batch_timeout_seconds` passes.
+- `send_batch_timeout_seconds` (Number) Seconds after which the collector sends a batch, whatever its size.
 
 <a id="nestedblock--upgrade_options"></a>
 
@@ -484,7 +484,7 @@ Optional:
 
 Optional:
 
-- `exporter` (Block List) Exporter (telemetry destination). Repeat this block to send to multiple destinations — each becomes one entry in the API's `exporters` array. (see [below for nested schema](#nestedblock--ynp_logs--exporter))
+- `exporter` (Block List) Exporter (telemetry destination). Repeat this block to send to more than one destination. (see [below for nested schema](#nestedblock--ynp_logs--exporter))
 
 <a id="nestedblock--ynp_logs--exporter"></a>
 
@@ -497,11 +497,11 @@ Required:
 Optional:
 
 - `additional_tags` (Map of String) Additional string tags appended to each log record.
-- `memory_limit_check_interval_seconds` (Number)
-- `memory_limit_mib` (Number)
-- `send_batch_max_size` (Number)
-- `send_batch_size` (Number)
-- `send_batch_timeout_seconds` (Number)
+- `memory_limit_check_interval_seconds` (Number) Seconds between memory-use checks by the memory limiter.
+- `memory_limit_mib` (Number) Memory limit, in MiB, of the collector's memory limiter for this exporter. When memory use comes close to the limit, the collector refuses new data.
+- `send_batch_max_size` (Number) Largest batch, in records, that the collector sends to this exporter. The collector splits a larger batch.
+- `send_batch_size` (Number) Number of records after which the collector sends a batch to this exporter, before `send_batch_timeout_seconds` passes.
+- `send_batch_timeout_seconds` (Number) Seconds after which the collector sends a batch, whatever its size.
 
 <a id="nestedblock--ysql_conn_mgr_logs"></a>
 
@@ -509,7 +509,7 @@ Optional:
 
 Optional:
 
-- `exporter` (Block List) Exporter (telemetry destination). Repeat this block to send to multiple destinations — each becomes one entry in the API's `exporters` array. (see [below for nested schema](#nestedblock--ysql_conn_mgr_logs--exporter))
+- `exporter` (Block List) Exporter (telemetry destination). Repeat this block to send to more than one destination. (see [below for nested schema](#nestedblock--ysql_conn_mgr_logs--exporter))
 
 <a id="nestedblock--ysql_conn_mgr_logs--exporter"></a>
 
@@ -522,8 +522,8 @@ Required:
 Optional:
 
 - `additional_tags` (Map of String) Additional string tags appended to each log record.
-- `memory_limit_check_interval_seconds` (Number)
-- `memory_limit_mib` (Number)
-- `send_batch_max_size` (Number)
-- `send_batch_size` (Number)
-- `send_batch_timeout_seconds` (Number)
+- `memory_limit_check_interval_seconds` (Number) Seconds between memory-use checks by the memory limiter.
+- `memory_limit_mib` (Number) Memory limit, in MiB, of the collector's memory limiter for this exporter. When memory use comes close to the limit, the collector refuses new data.
+- `send_batch_max_size` (Number) Largest batch, in records, that the collector sends to this exporter. The collector splits a larger batch.
+- `send_batch_size` (Number) Number of records after which the collector sends a batch to this exporter, before `send_batch_timeout_seconds` passes.
+- `send_batch_timeout_seconds` (Number) Seconds after which the collector sends a batch, whatever its size.
