@@ -30,7 +30,6 @@ import (
 	"github.com/yugabyte/terraform-provider-yba/internal/utils"
 )
 
-// YBA telemetry provider config type discriminators.
 const (
 	typeDataDog         = "DATA_DOG"
 	typeOTLP            = "OTLP"
@@ -41,17 +40,13 @@ const (
 	typeS3              = "S3"
 )
 
-// sinkSpec is what varies between the per-sink telemetry provider resources;
-// sinkResource supplies the shared lifecycle (create, type-guarded read,
-// detach-before-delete, import, timeouts).
 type sinkSpec struct {
-	resourceType string // Terraform type, e.g. "yba_datadog_telemetry_provider"
-	apiType      string // YBA config discriminator, e.g. DATA_DOG
-	description  string // summary paragraph of the resource docs
-	notes        string // optional sink-specific callouts, after the admonition
+	resourceType string // e.g. yba_datadog_telemetry_provider
+	apiType      string // config["type"], e.g. DATA_DOG
+	description  string
+	notes        string
 	fields       map[string]*schema.Schema
-	// buildConfig maps the flat resource fields onto YBA's camelCase config
-	// keys. The factory adds the "type" discriminator itself.
+	// Returns YBA's camelCase config; sinkCreate adds "type".
 	buildConfig   func(d *schema.ResourceData) map[string]interface{}
 	customizeDiff schema.CustomizeDiffFunc
 }
@@ -70,7 +65,8 @@ func sinkResource(s sinkSpec) *schema.Resource {
 			ForceNew: true,
 			Description: "Tags that YBA adds as attributes to every record that a " +
 				"universe exports to this telemetry provider.",
-			Elem: &schema.Schema{Type: schema.TypeString},
+			Elem:             &schema.Schema{Type: schema.TypeString},
+			DiffSuppressFunc: suppressMaskedTag,
 		},
 	}
 	for k, v := range s.fields {
@@ -101,8 +97,6 @@ func sinkResource(s sinkSpec) *schema.Resource {
 	}
 }
 
-// telemetryFlagsNote states the global runtime configs that every telemetry
-// provider endpoint (create, get, list, delete) checks.
 const telemetryFlagsNote = "~> **Note:** YBA creates, reads and deletes " +
 	"telemetry providers only when the global runtime config " +
 	"`yb.universe.audit_logging_enabled`, `yb.universe.query_logging_enabled` " +
@@ -111,9 +105,6 @@ const telemetryFlagsNote = "~> **Note:** YBA creates, reads and deletes " +
 	"and its default is `false`. From 2025.2.0.0, its default is `true`. To set " +
 	"one, use the `yba_runtime_config` resource."
 
-// sinkSharedNotes renders the runtime config, lifecycle and security callouts
-// every sink resource shares; these strings ship verbatim into the
-// user-facing docs.
 func sinkSharedNotes() string {
 	return telemetryFlagsNote + "\n\n" +
 		"~> **Note:** YBA cannot change a telemetry provider in place, so a " +
@@ -129,15 +120,12 @@ func sinkSharedNotes() string {
 		"secure backend and restrict access to the state file."
 }
 
-// setIfNonEmpty writes an optional string field into the config payload only
-// when it is set: YBA reads a missing key as "use my default", whereas an
-// empty string pins the field.
+// Omits "": YBA reads a missing key as its default, and "" pins the field.
 func setIfNonEmpty(out map[string]interface{}, key string, v interface{}) {
 	utils.SetIfNonEmpty(out, key, v)
 }
 
-// setIfTrue writes an optional bool field only when true: a missing key lets
-// YBA apply (and later change) its own default, an explicit false pins it.
+// Omits false: a missing key keeps YBA's default, which can change; false pins it.
 func setIfTrue(out map[string]interface{}, key string, v interface{}) {
 	if b, ok := v.(bool); ok && b {
 		out[key] = b
@@ -182,10 +170,8 @@ func sinkCreate(s sinkSpec) schema.CreateContextFunc {
 	}
 }
 
-// sinkRead refreshes name/tags and guards the sink type: a provider whose YBA
-// type differs from this resource's sink (an import into the wrong resource)
-// is an error, not silent drift. Config fields are not reconciled — YBA masks
-// credentials and every field is ForceNew.
+// Reads back only name and tags: YBA masks credentials, and every field is
+// ForceNew. A type mismatch (import into the wrong sink resource) errors.
 func sinkRead(s sinkSpec) schema.ReadContextFunc {
 	return func(
 		ctx context.Context, d *schema.ResourceData, meta interface{},
@@ -212,18 +198,56 @@ func sinkRead(s sinkSpec) schema.ReadContextFunc {
 		if err := d.Set("name", provider.Name); err != nil {
 			return diag.FromErr(err)
 		}
-		if err := d.Set("tags", provider.Tags); err != nil {
+		tags := unmaskTags(d.Get("tags").(map[string]interface{}), provider.Tags)
+		if err := d.Set("tags", tags); err != nil {
 			return diag.FromErr(err)
 		}
 		return nil
 	}
 }
 
-// resourceTelemetryProviderDelete detaches the provider from every referencing
-// universe before deleting it, since YBA rejects deleting an in-use provider. On
-// a re-attach race (delete still rejected) it re-detaches and retries once,
-// instead of substring-matching YBA's "in use" error. Shared by every sink: the
-// delete flow is type-agnostic.
+// YBA masks values of credential-like tag keys (api_owner). Keeps the state
+// value, else ForceNew tags replace the provider on every apply.
+func unmaskTags(state map[string]interface{}, reported map[string]string) map[string]string {
+	tags := make(map[string]string, len(reported))
+	for k, v := range reported {
+		if s, ok := state[k].(string); ok && isYBAMaskOf(k, v, s) {
+			v = s
+		}
+		tags[k] = v
+	}
+	return tags
+}
+
+// Import (or an older provider) leaves masked values in state. Known gap: a
+// later change to a value with the same mask stays hidden.
+func suppressMaskedTag(k, oldValue, newValue string, _ *schema.ResourceData) bool {
+	if strings.HasSuffix(k, ".%") || newValue == "" || oldValue == newValue {
+		return false
+	}
+	return isYBAMaskOf(strings.TrimPrefix(k, "tags."), oldValue, newValue)
+}
+
+// Mirrors YBA's CommonUtils.getMaskedValue.
+func isYBAMaskOf(key, masked, value string) bool {
+	v := []rune(value)
+	if strings.Contains(strings.ToUpper(key), "PASSWORD") || len(v) < 5 {
+		return masked == "********"
+	}
+	m := []rune(masked)
+	if len(m) != len(v) {
+		return false
+	}
+	for i := range m {
+		if m[i] != v[i] && (m[i] != '*' || i < 2 || i >= len(v)-2) {
+			return false
+		}
+	}
+	return true
+}
+
+// Detaches first: YBA rejects deleting an in-use provider. A rejected delete
+// re-detaches and retries once, instead of matching YBA's "in use" text.
 func resourceTelemetryProviderDelete(
 	ctx context.Context, d *schema.ResourceData, meta interface{},
 ) diag.Diagnostics {
@@ -253,8 +277,6 @@ func resourceTelemetryProviderDelete(
 		return nil
 	}
 
-	// Delete rejected. Re-list: if nothing references the provider, this isn't
-	// the in-use race — surface the original error verbatim.
 	retryDetached, retryErr := detachTelemetryProviderFromUniverses(
 		ctx, apiClient, providerUUID, timeout)
 	if retryErr != nil {
@@ -265,7 +287,7 @@ func resourceTelemetryProviderDelete(
 			providerUUID, deleteErr, len(retryDetached),
 			formatUniverseRefs(retryDetached), retryErr))
 	}
-	if len(retryDetached) == 0 {
+	if len(retryDetached) == 0 { // nothing re-attached: not the in-use race
 		return diag.FromErr(deleteErr)
 	}
 	tflog.Warn(ctx, fmt.Sprintf(
@@ -298,7 +320,7 @@ func formatUniverseRefs(refs []universeRef) string {
 	return strings.Join(parts, ", ")
 }
 
-// Nil-tolerant guard over utils.MapFromSingletonList, which panics on bad input.
+// utils.MapFromSingletonList panics on an empty or non-map list.
 func firstMap(in interface{}) map[string]interface{} {
 	list, ok := in.([]interface{})
 	if !ok || len(list) == 0 {

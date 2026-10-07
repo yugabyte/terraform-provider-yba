@@ -104,6 +104,10 @@ than leaving the build red.
   certificate — repointing universes is a user decision), fail with an
   error that names the referencing resources instead. Either way, do not
   substring-match YBA's error body in the resource layer.
+- When YBA returns a value in another form than the configuration (masked,
+  re-encoded), reconcile it in code: keep the state value in `Read`, or
+  add a `DiffSuppressFunc`. A doc escape (`ignore_changes`) is only for a
+  value that the provider cannot read back or reconcile at all.
 
 ## Error & Task Handling
 
@@ -190,6 +194,10 @@ Two classes:
   long tests that cover the change. The standing fixtures are shared, so
   a run you start can collide with one already in progress.
 
+Reproduce a bug before you fix it: run a test that fails on the current
+code (an acceptance test against the fixture when the bug depends on YBA
+behaviour), then write the fix and run the test again.
+
 Fix a broken acceptance fixture in `acctest/` or on the fixture host.
 Change provider behaviour only to fix a provider bug, never to work around
 a fixture.
@@ -201,6 +209,21 @@ difficult bit of logic (a decision table, a merge rule, a fallback path, a
 guard). Delete straight plumbing tests (field-to-key mapping, setters,
 error-string echoes) and anything brittle (mocked library classes, exact
 message prefixes). One test per rule; fold related assertions together.
+
+The most valuable test runs a real scenario across components: the value
+goes to YBA, YBA stores and returns it, `Read` writes state, and Terraform
+plans again. Unit tests against a fake YBA that echoes values unchanged
+cannot catch a bug in that cycle. So write acceptance configs with
+realistic, adversarial values, not minimal ones. The SDK plans after every
+step and fails on any diff, so a value that YBA masks, normalizes or
+re-encodes on read fails there. For each user-controlled string or map,
+find YBA's transform rules in the yugabyte-db source and put a value that
+triggers each rule into the config. Examples: a map key that YBA masks as a
+credential (`api_owner`, `team_key`), a value shorter than five characters,
+PEM or JSON that YBA re-encodes, mixed case, and a reordered list. Cover
+import with an `ImportStatePersist` step and then a `PlanOnly` step.
+`ImportStateVerify` compares state only, so it cannot show that the next
+plan replaces the resource.
 
 ## Git
 

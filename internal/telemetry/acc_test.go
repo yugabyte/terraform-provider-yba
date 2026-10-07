@@ -69,12 +69,46 @@ resource "yba_otlp_telemetry_provider" %q {
 `, label, name)
 }
 
+// otlpTags are tags whose keys YBA masks on GET: api_owner keeps its first and
+// last two characters, and team_key is too short and reads back as ********.
+// env is not masked.
+const otlpTags = `
+  tags = {
+    env       = "acctest"
+    api_owner = "platform"
+    team_key  = "db"
+  }
+`
+
 func otlpProviderConfig(name string) string {
-	return otlpProviderHCL("test", name) + `
+	return fmt.Sprintf(`
+resource "yba_otlp_telemetry_provider" "test" {
+  name = %q
+
+  endpoint = "http://otel-collector.acctest:4317"
+%s}
+
 data "yba_telemetry_provider" "lookup" {
   name = yba_otlp_telemetry_provider.test.name
 }
-`
+`, name, otlpTags)
+}
+
+// otlpImportedConfig adds a second address for the same telemetry provider, as
+// the Import section documents it: Read cannot read back the arguments in
+// ignore_changes, but it can reconcile tags.
+func otlpImportedConfig(name string) string {
+	return otlpProviderConfig(name) + fmt.Sprintf(`
+resource "yba_otlp_telemetry_provider" "imported" {
+  name = %q
+
+  endpoint = "http://otel-collector.acctest:4317"
+%s
+  lifecycle {
+    ignore_changes = [endpoint, auth_type, protocol, compression, timeout_seconds]
+  }
+}
+`, name, otlpTags)
 }
 
 func TestAccTelemetryProvider_OTLP(t *testing.T) {
@@ -94,6 +128,8 @@ func TestAccTelemetryProvider_OTLP(t *testing.T) {
 				Check: resource.ComposeTestCheckFunc(
 					testAccCheckTelemetryProviderExists(resourceName),
 					resource.TestCheckResourceAttr(resourceName, "name", name),
+					resource.TestCheckResourceAttr(resourceName, "tags.api_owner", "platform"),
+					resource.TestCheckResourceAttr(resourceName, "tags.team_key", "db"),
 					resource.TestCheckResourceAttrPair(
 						"data.yba_telemetry_provider.lookup", "id", resourceName, "id"),
 					resource.TestCheckResourceAttr(
@@ -101,18 +137,39 @@ func TestAccTelemetryProvider_OTLP(t *testing.T) {
 				),
 			},
 			{
-				// Config fields aren't refreshed on Read (YBA masks secrets), so
-				// import verifies only id/name/tags.
-				ResourceName:      resourceName,
-				ImportState:       true,
-				ImportStateVerify: true,
+				// Import the same telemetry provider into a second address and
+				// keep the state, so the next step can plan against it. Config
+				// fields aren't refreshed on Read (YBA masks secrets), so import
+				// verifies only id/name/tags, and a masked tag reads back masked.
+				Config:             otlpImportedConfig(name),
+				ResourceName:       "yba_otlp_telemetry_provider.imported",
+				ImportState:        true,
+				ImportStateIdFunc:  testAccTelemetryProviderID(resourceName),
+				ImportStatePersist: true,
+				ImportStateVerify:  true,
 				ImportStateVerifyIgnore: []string{
 					"endpoint", "auth_type", "protocol", "compression",
-					"timeout_seconds",
+					"timeout_seconds", "tags.api_owner", "tags.team_key",
 				},
+			},
+			{
+				// The imported telemetry provider plans clean, masked tags
+				// included.
+				Config:   otlpImportedConfig(name),
+				PlanOnly: true,
 			},
 		},
 	})
+}
+
+func testAccTelemetryProviderID(n string) resource.ImportStateIdFunc {
+	return func(s *terraform.State) (string, error) {
+		rs, ok := s.RootModule().Resources[n]
+		if !ok {
+			return "", fmt.Errorf("telemetry provider %q not found in state", n)
+		}
+		return rs.Primary.ID, nil
+	}
 }
 
 func testAccCheckTelemetryProviderExists(n string) resource.TestCheckFunc {

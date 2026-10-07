@@ -50,11 +50,14 @@ failure this project can ship.
   not have before. A wrong verdict recreates something live; a new
   dependency stops pipelines that only had it at apply time.
 - `ForceNew`, `Computed`, `Sensitive`, defaults, validation and
-  `DiffSuppressFunc` on an existing attribute are contract, also on an
-  attribute that only a pre-release shipped. Changing them replaces or
-  rewrites customer resources on the next apply. A `Sensitive` change
-  plans an update with no changed attributes, and on a resource without
-  Update that apply fails every time.
+  `DiffSuppressFunc` on an attribute that a stable release shipped are
+  contract. Changing them replaces or rewrites customer resources on the
+  next apply. A `Sensitive` change plans an update with no changed
+  attributes, and on a resource without Update that apply fails every time.
+- An attribute that only a pre-release shipped is not contract yet. Before
+  the stable release, a bug fix may change these settings, because shipping
+  the stable release with the bug is worse. State that the pre-release
+  wrote must still plan and apply without error.
 - A doc note, a `~> **Warning:**` or an upgrade guide does not make a change
   safe. If the change is only safe for an operator who read something first,
   it is not safe.
