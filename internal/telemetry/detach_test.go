@@ -316,6 +316,51 @@ func TestProviderDeleteSurfacesUnrelatedError(t *testing.T) {
 	}
 }
 
+// TestConfigRouteMissing: a YBA without the v2 telemetry config GET answers it
+// with its router's 404. A provider delete has no v2 config to rewrite, so it
+// skips the detach and deletes. The config resource's Read must not take the
+// 404 for a gone universe: it errors and keeps the config in state.
+func TestConfigRouteMissing(t *testing.T) {
+	newFake := func() *fakeYBA {
+		return &fakeYBA{
+			universes: []client.UniverseResp{plainUniverse("uni-A")},
+			getStatus: http.StatusNotFound,
+			getBody: `{"success":false,"error":"HTTP Client Error: 404(Not Found), ` +
+				`details: For request 'GET /api/v2/customers/cust/universes/uni-A/` +
+				`export-telemetry-configs'"}`,
+		}
+	}
+
+	t.Run("provider delete skips the detach", func(t *testing.T) {
+		f := newFake()
+		d := ResourceDatadogTelemetryProvider().TestResourceData()
+		d.SetId("P")
+
+		diags := resourceTelemetryProviderDelete(
+			context.Background(), d, newDetachTestClient(t, f))
+		if diags.HasError() {
+			t.Fatalf("delete returned diags: %v", diags)
+		}
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		if f.deleteCalls != 1 || len(f.configuredUnis) != 0 {
+			t.Errorf("deleteCalls=%d configuredUnis=%v, want 1 and none",
+				f.deleteCalls, f.configuredUnis)
+		}
+	})
+
+	t.Run("config read keeps the config", func(t *testing.T) {
+		d := ResourceUniverseTelemetryConfig().TestResourceData()
+		d.SetId("uni-A")
+
+		diags := resourceUniverseTelemetryConfigRead(
+			context.Background(), d, newDetachTestClient(t, newFake()))
+		if !diags.HasError() || d.Id() != "uni-A" {
+			t.Errorf("read: diags=%v id=%q, want an error and the id kept", diags, d.Id())
+		}
+	})
+}
+
 // TestProviderDeleteRecoversFromReattachRace: an external actor re-attaches P in
 // the gap, so the first DELETE 400s; the flow must re-detach and retry once.
 func TestProviderDeleteRecoversFromReattachRace(t *testing.T) {
