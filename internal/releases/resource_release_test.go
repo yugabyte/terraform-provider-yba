@@ -44,21 +44,19 @@ func newTestAPIClient(t *testing.T, handler http.Handler) *api.APIClient {
 	cfg := client.NewConfiguration()
 	cfg.Host = host
 	cfg.Scheme = "http"
-	return &api.APIClient{
+	c := &api.APIClient{
 		YugawareClient: client.NewAPIClient(cfg),
 		VanillaClient:  &api.VanillaClient{Client: srv.Client(), Host: host},
 		APIKey:         "test-token",
 		CustomerID:     "cust-1",
 	}
+	c.SetAppVersion("2024.2.0.0-b5")
+	return c
 }
 
 func newReleaseMux(t *testing.T) *http.ServeMux {
 	t.Helper()
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /api/v1/app_version", func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"version":"2024.2.0.0-b5"}`))
-	})
 	mux.HandleFunc("GET /api/v1/customers/cust-1/runtime_config/"+
 		utils.GlobalRuntimeConfigScope+"/key/"+releasesRedesignKey,
 		func(w http.ResponseWriter, _ *http.Request) {

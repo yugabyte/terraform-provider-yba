@@ -248,7 +248,7 @@ func resourceReleaseCreate(
 	apiKey := meta.(*api.APIClient).APIKey
 	cUUID := meta.(*api.APIClient).CustomerID
 
-	if err := releaseAPICheck(ctx, c, cUUID); err != nil {
+	if err := releaseAPICheck(ctx, meta.(*api.APIClient)); err != nil {
 		return diag.FromErr(err)
 	}
 
@@ -450,7 +450,7 @@ func resourceReleaseUpdate(
 		}
 	}()
 
-	if err := releaseAPICheck(ctx, c, cUUID); err != nil {
+	if err := releaseAPICheck(ctx, meta.(*api.APIClient)); err != nil {
 		return diag.FromErr(err)
 	}
 

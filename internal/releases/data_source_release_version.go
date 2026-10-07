@@ -92,7 +92,7 @@ func dataSourceReleaseVersionRead(
 	versions := make([]string, 0)
 	if deploymentType := d.Get("deployment_type").(string); deploymentType != "" {
 		// Legacy list's arch filter throws on Kubernetes artifacts.
-		if err := releaseAPICheck(ctx, c, cUUID); err != nil {
+		if err := releaseAPICheck(ctx, meta.(*api.APIClient)); err != nil {
 			return diag.FromErr(err)
 		}
 		r, response, err := c.NewReleaseManagementAPI.ListNewReleases(ctx, cUUID).

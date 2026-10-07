@@ -197,12 +197,16 @@ func toReleaseUpdateArtifacts(specs []artifactSpec) []api.ReleaseUpdateArtifact 
 	return artifacts
 }
 
-func releaseAPICheck(ctx context.Context, c *client.APIClient, cUUID string) error {
+func releaseAPICheck(ctx context.Context, c *api.APIClient) error {
 	minVersions := utils.YBAMinimumVersion{
 		Stable:  utils.YBANewReleaseAPIMinStableVersion,
 		Preview: utils.YBANewReleaseAPIMinPreviewVersion,
 	}
-	allowed, version, err := utils.CheckValidYBAVersion(ctx, c, minVersions)
+	version, err := c.AppVersion(ctx)
+	if err != nil {
+		return err
+	}
+	allowed, _, err := utils.MeetsMinimum(version, minVersions)
 	if err != nil {
 		return err
 	}
@@ -216,7 +220,8 @@ func releaseAPICheck(ctx context.Context, c *client.APIClient, cUUID string) err
 	}
 	// With the flag off, /ybdb_release still accepts writes, but universes read
 	// releases from the legacy store and cannot see them.
-	enabled, err := utils.GetGlobalRuntimeConfigBool(ctx, c, cUUID, releasesRedesignKey)
+	enabled, err := utils.GetGlobalRuntimeConfigBool(
+		ctx, c.YugawareClient, c.CustomerID, releasesRedesignKey)
 	if err != nil {
 		return err
 	}
