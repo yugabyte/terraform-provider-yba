@@ -121,6 +121,9 @@ func sinkSharedNotes() string {
 		"deletes a telemetry provider, it removes the telemetry provider " +
 		"from every universe that uses it. Each of those universes goes " +
 		"through a rolling restart. The universes are not deleted.\n\n" +
+		"~> **Note:** Terraform reads back only `name` and `tags`. YBA cannot " +
+		"edit a telemetry provider after it creates one, so the other arguments " +
+		"change only when Terraform replaces the telemetry provider.\n\n" +
 		"~> **Security Note:** Terraform stores the credentials of this " +
 		"telemetry provider in the state file, marked sensitive. Use a " +
 		"secure backend and restrict access to the state file."

@@ -16,6 +16,8 @@ Manages an AWS CloudWatch telemetry provider in YugabyteDB Anywhere. Universes s
 
 ~> **Note:** YBA cannot change a telemetry provider in place, so a change to any argument replaces the resource. Before Terraform deletes a telemetry provider, it removes the telemetry provider from every universe that uses it. Each of those universes goes through a rolling restart. The universes are not deleted.
 
+~> **Note:** Terraform reads back only `name` and `tags`. YBA cannot edit a telemetry provider after it creates one, so the other arguments change only when Terraform replaces the telemetry provider.
+
 ~> **Security Note:** Terraform stores the credentials of this telemetry provider in the state file, marked sensitive. Use a secure backend and restrict access to the state file.
 
 ## Example Usage
@@ -47,7 +49,7 @@ resource "yba_aws_cloudwatch_telemetry_provider" "cw" {
 
 ### Required
 
-- `access_key` (String) AWS access key ID with permission to write to CloudWatch Logs.
+- `access_key` (String, Sensitive) AWS access key ID with permission to write to CloudWatch Logs.
 - `log_group` (String) CloudWatch Logs log group.
 - `log_stream` (String) CloudWatch Logs log stream.
 - `name` (String) Name of the telemetry provider. YBA requires a unique name.

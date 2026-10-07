@@ -58,7 +58,8 @@ var gcpSettingAttrs = map[string]string{
 // gcpHostIdentityMin is the first build with USE_GCP_IAM and GCP_PROJECT_ID:
 // yugabyte-db commit 7252ad16745, first in 2.31.0.0-b473. No stable branch has
 // the commit, so Stable stays empty and gcpRequireHostIdentity fails every
-// stable build. An older build keeps the stored key on an edit to USE_GCP_IAM,
+// stable build except an experimental patch build, which passes every gate
+// (utils.IsExperimentalPatchVersion). An older build keeps the stored key on an edit to USE_GCP_IAM,
 // which gcpFlatten then rejects on every Read, and ignores GCP_PROJECT_ID.
 // When a stable release ships the commit, set Stable and replace
 // gcpHostIdentityPreview in the docs with that release.
@@ -232,8 +233,8 @@ func gcpPreviewWarnings(d *schema.ResourceData) diag.Diagnostics {
 }
 
 // gcpRequireHostIdentity fails the plan when the target YBA lacks the field.
-// A version outside YBA's scheme passes with a warning; the server stays the
-// backstop.
+// A version outside YBA's scheme passes and is only logged (tflog.Warn, seen
+// with TF_LOG set); the server stays the backstop.
 func gcpRequireHostIdentity(ctx context.Context, meta interface{}, field string) error {
 	c, ok := meta.(*api.APIClient)
 	if !ok || c == nil {

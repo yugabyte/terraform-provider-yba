@@ -175,6 +175,8 @@ func resourceRegistrationRead(
 ) diag.Diagnostics {
 	c := meta.(*api.APIClient)
 
+	// The v1 universe GET exists on every supported YBA, so a 404 here cannot
+	// be an unknown route.
 	uni, response, err := c.YugawareClient.UniverseManagementAPI.
 		GetUniverse(ctx, c.CustomerID, d.Id()).Execute()
 	if err != nil {
@@ -186,7 +188,9 @@ func resourceRegistrationRead(
 			response, err, "Universe Perf Advisor Registration", "Read", "Get Universe"))
 	}
 	// YBA keeps the collector UUID on the universe while it is registered and
-	// clears it on unregister.
+	// clears it on unregister. This is the "not registered" signal; a
+	// CheckRegistered 404 below surfaces as an error, because on a preview
+	// route it can also mean that this YBA build lacks the route.
 	collectorUUID := uni.UniverseDetails.GetPaCollectorUuid()
 	if collectorUUID == "" {
 		d.SetId("")
@@ -196,12 +200,6 @@ func resourceRegistrationRead(
 	status, response, err := c.YugawareClient.PACollectorAPI.
 		CheckRegistered(ctx, c.CustomerID, d.Id()).Execute()
 	if err != nil {
-		if utils.IsHTTPNotFound(response) {
-			// The collector does not know the universe. The next apply
-			// registers it again.
-			d.SetId("")
-			return nil
-		}
 		return diag.FromErr(utils.ErrorFromHTTPResponse(
 			response, err, "Universe Perf Advisor Registration", "Read", "Check"))
 	}
@@ -231,7 +229,9 @@ func resourceRegistrationDelete(
 	task, response, err := c.YugawareClient.PACollectorAPI.
 		UnregisterUniverse(ctx, c.CustomerID, d.Id()).Execute()
 	if err != nil {
-		if utils.IsUniverseMissing(response, err) {
+		// A gone universe answers 400 "Cannot find universe". A 404 can mean
+		// that this YBA build lacks the route, so it is not read as gone.
+		if !utils.IsHTTPNotFound(response) && utils.IsUniverseMissing(response, err) {
 			d.SetId("")
 			return nil
 		}

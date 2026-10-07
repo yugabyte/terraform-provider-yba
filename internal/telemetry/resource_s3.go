@@ -54,6 +54,7 @@ func ResourceS3TelemetryProvider() *schema.Resource {
 				Type:        schema.TypeString,
 				Required:    true,
 				ForceNew:    true,
+				Sensitive:   true,
 				Description: "AWS access key ID with permission to write to the bucket.",
 			},
 			"secret_key": {

@@ -110,12 +110,13 @@ func ResourceOTLPTelemetryProvider() *schema.Resource {
 					"`auth_type = \"BearerToken\"`, and ignored otherwise.",
 			},
 			"headers": {
-				Type:      schema.TypeMap,
-				Optional:  true,
-				ForceNew:  true,
-				Sensitive: true,
-				Description: "Additional headers to send with each export request. YBA " +
-					"treats every header value as a credential, for example an API key.",
+				Type:     schema.TypeMap,
+				Optional: true,
+				ForceNew: true,
+				Description: "Additional headers to send with each export request. " +
+					"Terraform shows the header values in plan output. For credentials, " +
+					"use `bearer_token` or `basic_auth_password` when the endpoint " +
+					"accepts them.",
 				Elem: &schema.Schema{Type: schema.TypeString},
 			},
 			"logs_endpoint": {

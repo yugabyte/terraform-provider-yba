@@ -216,9 +216,9 @@ func ResourceYBAInstaller() *schema.Resource {
 			"the resource from state and does not clean up the host. Make sure that the host " +
 			"(and any SSH tunnel to it) is reachable before you destroy this resource.\n\n" +
 			"~> **Security Note:** The values of `ssh_private_key`, `yba_license`, " +
-			"`application_settings` and `tls_key` are stored in the Terraform state file " +
-			"(marked as sensitive). Use an encrypted backend and restrict access to your " +
-			"state files.",
+			"`application_settings`, `tls_certificate` and `tls_key` are stored in the " +
+			"Terraform state file (marked as sensitive). Use an encrypted backend and " +
+			"restrict access to your state files.",
 
 		CreateContext: resourceYBAInstallerCreate,
 		ReadContext:   resourceYBAInstallerRead,
@@ -319,10 +319,10 @@ func ResourceYBAInstaller() *schema.Resource {
 					"`tls_certificate`.",
 			},
 			"tls_certificate": {
-				Type:     schema.TypeString,
-				Optional: true,
-				// Not Sensitive: a certificate is public, so the plan shows a
-				// wrong one. A change triggers yba-ctl reconfigure.
+				Type:      schema.TypeString,
+				Optional:  true,
+				Sensitive: true,
+				// change should trigger yba-ctl reconfigure
 				ConflictsWith: []string{"tls_certificate_file"},
 				Description: "Contents of the TLS certificate for HTTPS. The provider " +
 					"copies it to `/tmp/server.crt` on the host, so set `server_cert_path` " +

@@ -532,8 +532,6 @@ func queryLogsSchema() *schema.Schema {
 								Type:     schema.TypeString,
 								Optional: true,
 								Default:  queryLogDefaults.LogMinErrorStatement,
-								ValidateFunc: validation.StringInSlice(
-									[]string{"ERROR"}, false),
 								Description: "Sets `log_min_error_statement`: the lowest " +
 									"error severity that logs the statement that caused it. " +
 									"The only allowed value is `ERROR`. " +

@@ -16,6 +16,8 @@ Manages an OpenTelemetry Protocol (OTLP) telemetry provider in YugabyteDB Anywhe
 
 ~> **Note:** YBA cannot change a telemetry provider in place, so a change to any argument replaces the resource. Before Terraform deletes a telemetry provider, it removes the telemetry provider from every universe that uses it. Each of those universes goes through a rolling restart. The universes are not deleted.
 
+~> **Note:** Terraform reads back only `name` and `tags`. YBA cannot edit a telemetry provider after it creates one, so the other arguments change only when Terraform replaces the telemetry provider.
+
 ~> **Security Note:** Terraform stores the credentials of this telemetry provider in the state file, marked sensitive. Use a secure backend and restrict access to the state file.
 
 ## Example Usage
@@ -83,7 +85,7 @@ resource "yba_otlp_telemetry_provider" "bearer" {
 - `basic_auth_username` (String) User name for `BasicAuth`. Required when `auth_type = "BasicAuth"`, and ignored otherwise.
 - `bearer_token` (String, Sensitive) Token for `BearerToken` authentication. Required when `auth_type = "BearerToken"`, and ignored otherwise.
 - `compression` (String) Compression of the exported data: `gzip`, `none`, `snappy` or `zstd`. Defaults to `gzip`.
-- `headers` (Map of String, Sensitive) Additional headers to send with each export request. YBA treats every header value as a credential, for example an API key.
+- `headers` (Map of String) Additional headers to send with each export request. Terraform shows the header values in plan output. For credentials, use `bearer_token` or `basic_auth_password` when the endpoint accepts them.
 - `logs_endpoint` (String) Full URL for log export, used instead of `endpoint` for logs. Requires `protocol = "HTTP"`.
 - `metrics_endpoint` (String) Full URL for metric export, used instead of `endpoint` for metrics. Requires `protocol = "HTTP"`.
 - `protocol` (String) Transport protocol: `gRPC` or `HTTP`. Defaults to `gRPC`.
