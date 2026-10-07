@@ -207,7 +207,6 @@ func TestUniverseTelemetryConfigReadUniverseGone(t *testing.T) {
 		status int
 		body   string
 	}{
-		{"404", http.StatusNotFound, `{"error":"not found"}`},
 		{"400 cannot find universe", http.StatusBadRequest,
 			`{"error":"Cannot find universe uni-1"}`},
 		{"400 does not exist", http.StatusBadRequest,

@@ -1549,13 +1549,16 @@ func resourceUniverseTelemetryConfigRead(
 
 // getExportTelemetryConfig fetches the v2 telemetry config, mapping a gone
 // universe to utils.ErrUniverseMissing and other errors to a formatted error.
+// YBA reports a gone universe on this route as a 400 ("Cannot find universe"),
+// so a 404 means the YBA lacks the route. It surfaces as an error rather than
+// dropping a live config from state.
 func getExportTelemetryConfig(
 	ctx context.Context, apiClient *api.APIClient, universeUUID, operation string,
 ) (*clientv2.TelemetryConfig, error) {
 	config, response, err := apiClient.YugawareClientV2.UniverseAPI.
 		GetExportTelemetryConfig(ctx, apiClient.CustomerID, universeUUID).Execute()
 	if err != nil {
-		if utils.IsUniverseMissing(response, err) {
+		if !utils.IsHTTPNotFound(response) && utils.IsUniverseMissing(response, err) {
 			return nil, utils.ErrUniverseMissing
 		}
 		return nil, utils.ErrorFromHTTPResponse(response, err,

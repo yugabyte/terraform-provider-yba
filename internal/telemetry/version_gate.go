@@ -36,8 +36,7 @@ import (
 //   - unifiedTelemetryAPIMin: the v2 export-telemetry-configs API can read a
 //     config back (62661ac17b1, 2026-06-03; backported to 2026.1 as
 //     4f287c5902a). The write API (d84b20c52c) shipped earlier, but below
-//     this build the GET answers 404, and the provider misreads that as a
-//     deleted universe and drops the resource from state after create.
+//     this build the GET answers 404 and the provider cannot read the config.
 //   - serverLogPipelinesMin: the six server-log pipelines are public
 //     (f56b4bf608, 2026-08-24; backported to 2026.1 as 14027f1cc0). Below it
 //     the server rejects the spec with an unrecognized-field error.
