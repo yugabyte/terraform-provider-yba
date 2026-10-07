@@ -308,7 +308,7 @@ terraform plan
 
 ### `yba_releases`
 
-The `yba_releases` resource has been removed. YBDB release management is no longer exposed through Terraform; manage releases through the YBA UI or API directly. The `yba_release_version` data source (used to look up available release versions for universes) is unchanged.
+The `yba_releases` resource has been removed. In v1.0.0, manage YBDB releases through the YBA UI or API. The `yba_release_version` data source (used to look up available release versions for universes) is unchanged.
 
 Remove every `yba_releases` block from your HCL and drop the state entry:
 
@@ -316,7 +316,7 @@ Remove every `yba_releases` block from your HCL and drop the state entry:
 terraform state rm yba_releases.<name>
 ```
 
-A later v1.x release adds the [`yba_ybdb_release`](../resources/ybdb_release) resource. To manage a release with Terraform again, import it into that resource by its release UUID.
+Provider v1.1.0 adds the [`yba_ybdb_release`](../resources/ybdb_release) resource. To manage a release with Terraform again, import it into that resource by its release UUID. Read the Import section of that page first, because the first apply after import can delete and add artifacts again.
 
 ### `yba_installation`
 

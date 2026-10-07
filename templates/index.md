@@ -14,14 +14,19 @@ The YugabyteDB Anywhere Provider currently supports the following YugabyteDB Any
 
 - Data Sources:
   - Backup Information (yba_backup_info)
+  - Encryption in Transit Certificate Configuration (yba_certificate)
+  - Encryption at Rest Configuration (yba_ear_config)
   - Preflight checks for Nodes used in on-premises Providers (yba_onprem_preflight)
   - Filters for Nodes in on-premises Providers (yba_onprem_nodes)
+  - Perf Advisor Collector (yba_pa_collector)
   - Filters for Providers (yba_provider_filter)
   - Provider Image Bundles (yba_provider_image_bundles)
   - Cloud Provider Access Key Information (yba_provider_key)
   - Provider Region Information (yba_provider_regions)
   - Available YBDB Release Versions (yba_release_version)
+  - Runtime Configuration (yba_runtime_config)
   - Storage Configuration Information (yba_storage_configs)
+  - Telemetry Provider (yba_telemetry_provider)
   - Filters for Universes (yba_universe_filter)
   - Universe Schema (namespaces and tables) (yba_universe_schema)
 
@@ -32,16 +37,32 @@ The YugabyteDB Anywhere Provider currently supports the following YugabyteDB Any
   - Azure Cloud Provider (yba_azure_provider)
   - GCP Cloud Provider (yba_gcp_provider)
   - Customer (yba_customer_resource)
+  - Custom Hooks (yba_hook)
+  - Encryption at Rest Configuration - Google Cloud KMS (yba_gcp_ear_config)
+  - Encryption in Transit Certificate - Custom Server Certificate (yba_custom_server_certificate)
+  - Encryption in Transit Certificate - Self-Signed (yba_self_signed_certificate)
   - YugabyteDB Anywhere Installation via YBA Installer (yba_installer)
   - On-Premises Node Instance (yba_onprem_node_instance)
   - On-Premises Provider (yba_onprem_provider)
+  - Perf Advisor Endpoint (yba_perf_advisor_endpoint)
   - Restores (yba_restore)
+  - Runtime Configuration (yba_runtime_config)
   - YBDB Software Releases (yba_ybdb_release)
   - Storage Configuration - AWS S3 (yba_s3_storage_config)
   - Storage Configuration - Azure Blob (yba_azure_storage_config)
   - Storage Configuration - GCS (yba_gcs_storage_config)
   - Storage Configuration - NFS (yba_nfs_storage_config)
+  - Telemetry Provider - AWS CloudWatch (yba_aws_cloudwatch_telemetry_provider)
+  - Telemetry Provider - Datadog (yba_datadog_telemetry_provider)
+  - Telemetry Provider - Dynatrace (yba_dynatrace_telemetry_provider)
+  - Telemetry Provider - GCP Cloud Monitoring (yba_gcp_cloud_monitoring_telemetry_provider)
+  - Telemetry Provider - OTLP (yba_otlp_telemetry_provider)
+  - Telemetry Provider - Amazon S3 (yba_s3_telemetry_provider)
+  - Telemetry Provider - Splunk (yba_splunk_telemetry_provider)
   - Universe (yba_universe)
+  - Universe Load Balancer Configuration (yba_universe_load_balancer_config)
+  - Universe Perf Advisor Registration (yba_universe_perf_advisor_registration)
+  - Universe Telemetry Configuration (yba_universe_telemetry_config)
 
 - Deprecated Resources (supported through the v1.x line; planned for removal in v2.0.0):
   - Backup Schedules - Deprecated (yba_backups)
@@ -52,7 +73,7 @@ Configure the provider with appropriate credentials before you use it.
 
 -> **Note:** The YugabyteDB Anywhere Terraform Provider is currently in Early Access and testing is in progress.
 
-~> **Note:** The YugabyteDB Anywhere Terraform provider requires YugabyteDB Anywhere stable version 2024.2.0.0 or later, or preview version 2.23.1.0 or later.
+~> **Note:** The YugabyteDB Anywhere Terraform provider requires YugabyteDB Anywhere 2024.2.0.0 or later.
 
 ~> **Note:** Kubernetes universes are currently not supported.
 
@@ -149,7 +170,7 @@ terraform plan
 
 Resources managed by this provider can also be modified directly through the YugabyteDB Anywhere UI or API. When that happens, the live state in YBA drifts from the configuration in your Terraform files. Terraform treats its own configuration as the source of truth, so a subsequent `terraform apply` will revert those out-of-band changes unless drift is reconciled first.
 
-Drift is unavoidable for operations this provider does not expose - for example, TLS certificate rotation, YSQL / YCQL password rotation, and KMS / encryption-at-rest configuration changes. Perform these through the YBA UI / API and reconcile the corresponding `.tf` fields (or `lifecycle.ignore_changes` block) afterwards.
+Drift is unavoidable for operations that this provider does not expose, for example YSQL and YCQL password rotation, or encryption at rest configurations for a key management service other than Google Cloud KMS. Perform these operations through the YBA UI or API, and then update the corresponding `.tf` fields (or a `lifecycle.ignore_changes` block).
 
 ~> **Warning:** When you mix UI, API, or CLI changes with Terraform-managed resources, do **not** use `terraform apply -auto-approve`. The `-auto-approve` flag suppresses the confirmation prompt that would otherwise show the reverting changes, allowing accidental overwrites of out-of-band edits.
 

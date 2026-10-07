@@ -31,15 +31,23 @@ func ResourceOTLPTelemetryProvider() *schema.Resource {
 		resourceType: "yba_otlp_telemetry_provider",
 		displayName:  "OTLP",
 		apiType:      typeOTLP,
-		description: "OTLP Telemetry Provider resource. Defines a reusable " +
-			"OpenTelemetry Protocol destination that universes can use to " +
-			"export audit logs, query logs, and metrics.",
+		description: "Manages an OpenTelemetry Protocol (OTLP) telemetry provider " +
+			"in YugabyteDB Anywhere. Universes send logs and metrics to it " +
+			"through `yba_universe_telemetry_config`.",
+		notes: "~> **Note:** Requires YugabyteDB Anywhere 2026.1.0.0 or later. YBA " +
+			"creates an OTLP telemetry provider only when the global runtime " +
+			"config `yb.telemetry.allow_otlp` is `true`. The default is `true` " +
+			"from YugabyteDB Anywhere 2026.1.2.0. To set it, use the " +
+			"`yba_runtime_config` resource.\n\n",
 		fields: map[string]*schema.Schema{
 			"endpoint": {
-				Type:        schema.TypeString,
-				Required:    true,
-				ForceNew:    true,
-				Description: "OTLP endpoint URL.",
+				Type:     schema.TypeString,
+				Required: true,
+				ForceNew: true,
+				Description: "URL of the OTLP endpoint. With `protocol = \"HTTP\"`, " +
+					"this is a base URL: logs go to `<endpoint>/v1/logs` and " +
+					"metrics to `<endpoint>/v1/metrics`. To give a full URL " +
+					"instead, set `logs_endpoint` or `metrics_endpoint`.",
 			},
 			"auth_type": {
 				Type:     schema.TypeString,
@@ -49,7 +57,8 @@ func ResourceOTLPTelemetryProvider() *schema.Resource {
 				ValidateFunc: validation.StringInSlice([]string{
 					"NoAuth", "BasicAuth", "BearerToken",
 				}, false),
-				Description: "Authentication type. One of NoAuth, BasicAuth, BearerToken.",
+				Description: "Authentication type: `NoAuth`, `BasicAuth` or `BearerToken`. " +
+					"Defaults to `NoAuth`.",
 			},
 			"protocol": {
 				Type:         schema.TypeString,
@@ -57,7 +66,7 @@ func ResourceOTLPTelemetryProvider() *schema.Resource {
 				ForceNew:     true,
 				Default:      "gRPC",
 				ValidateFunc: validation.StringInSlice([]string{"gRPC", "HTTP"}, false),
-				Description:  "Transport protocol. One of gRPC, HTTP.",
+				Description:  "Transport protocol: `gRPC` or `HTTP`. Defaults to `gRPC`.",
 			},
 			"compression": {
 				Type:     schema.TypeString,
@@ -67,8 +76,8 @@ func ResourceOTLPTelemetryProvider() *schema.Resource {
 				ValidateFunc: validation.StringInSlice([]string{
 					"gzip", "none", "snappy", "zstd",
 				}, false),
-				Description: "Compression for the OTLP exporter. One of " +
-					"gzip, none, snappy, zstd.",
+				Description: "Compression of the exported data: `gzip`, `none`, " +
+					"`snappy` or `zstd`. Defaults to `gzip`.",
 			},
 			"timeout_seconds": {
 				Type:         schema.TypeInt,
@@ -76,48 +85,51 @@ func ResourceOTLPTelemetryProvider() *schema.Resource {
 				ForceNew:     true,
 				Default:      5,
 				ValidateFunc: validation.IntAtLeast(1),
-				Description:  "Timeout in seconds for the OTLP exporter. Must be positive.",
+				Description:  "Timeout of each export request, in seconds. Defaults to `5`.",
 			},
 			"basic_auth_username": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				ForceNew:    true,
-				Description: "BasicAuth username (only used when auth_type=BasicAuth).",
+				Type:     schema.TypeString,
+				Optional: true,
+				ForceNew: true,
+				Description: "User name for `BasicAuth`. Required when " +
+					"`auth_type = \"BasicAuth\"`, and ignored otherwise.",
 			},
 			"basic_auth_password": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				ForceNew:    true,
-				Sensitive:   true,
-				Description: "BasicAuth password (only used when auth_type=BasicAuth).",
+				Type:      schema.TypeString,
+				Optional:  true,
+				ForceNew:  true,
+				Sensitive: true,
+				Description: "Password for `BasicAuth`. Required when " +
+					"`auth_type = \"BasicAuth\"`, and ignored otherwise.",
 			},
 			"bearer_token": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				ForceNew:    true,
-				Sensitive:   true,
-				Description: "Bearer token (only used when auth_type=BearerToken).",
+				Type:      schema.TypeString,
+				Optional:  true,
+				ForceNew:  true,
+				Sensitive: true,
+				Description: "Token for `BearerToken` authentication. Required when " +
+					"`auth_type = \"BearerToken\"`, and ignored otherwise.",
 			},
 			"headers": {
 				Type:        schema.TypeMap,
 				Optional:    true,
 				ForceNew:    true,
-				Description: "Additional headers to send on every OTLP request.",
+				Description: "Additional headers to send with each export request.",
 				Elem:        &schema.Schema{Type: schema.TypeString},
 			},
 			"logs_endpoint": {
 				Type:     schema.TypeString,
 				Optional: true,
 				ForceNew: true,
-				Description: "Override endpoint for log export (HTTP protocol only). " +
-					"When set, the value of `endpoint` is ignored for logs.",
+				Description: "Full URL for log export, used instead of `endpoint` " +
+					"for logs. Requires `protocol = \"HTTP\"`.",
 			},
 			"metrics_endpoint": {
 				Type:     schema.TypeString,
 				Optional: true,
 				ForceNew: true,
-				Description: "Override endpoint for metric export (HTTP protocol " +
-					"only). When set, the value of `endpoint` is ignored for metrics.",
+				Description: "Full URL for metric export, used instead of " +
+					"`endpoint` for metrics. Requires `protocol = \"HTTP\"`.",
 			},
 		},
 		buildConfig:   buildOTLPConfig,

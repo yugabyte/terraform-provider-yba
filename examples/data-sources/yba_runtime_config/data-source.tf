@@ -1,17 +1,16 @@
-# Read a runtime config key from the global scope. The value is always a string.
+# Read a key from the global scope, which is the default.
 data "yba_runtime_config" "allow_s3" {
   key = "yb.telemetry.allow_s3"
 }
 
-# Because value is a string, convert it to the type you need with the matching
-# Terraform function: tobool(...) for booleans, tonumber(...) for numbers, or
-# jsondecode(...) for lists/objects.
+# The value is a string. Convert it with tobool, tonumber or jsondecode to use
+# it as another type.
 output "s3_telemetry_allowed" {
   value = tobool(data.yba_runtime_config.allow_s3.value)
 }
 
-# Read a key from a non-global scope by passing its scope UUID.
-data "yba_runtime_config" "universe_metrics" {
-  scope = "00000000-0000-0000-0000-000000000000"
-  key   = "yb.universe.metrics_export_enabled"
+# Read a key from the scope of one universe.
+data "yba_runtime_config" "under_replicated_check" {
+  scope = yba_universe.main.id
+  key   = "yb.checks.under_replicated_tablets.enabled"
 }

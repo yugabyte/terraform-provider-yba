@@ -14,15 +14,31 @@ description: |-
 
 The details for configuration are available in the [YugabyteDB Anywhere Create YugabyteDB universe deployments](https://docs.yugabyte.com/stable/yugabyte-platform/create-deployments/) and [YugabyteDB Anywhere Manage YugabyteDB universe deployments](https://docs.yugabyte.com/stable/yugabyte-platform/manage-deployments/).
 
-~> **Disclaimer:** Please note that adding read replica clusters after universe creation currently not supported.
+~> **Note:** Adding a read replica cluster after universe creation is not supported.
 
 ~> **Warning:** Read replica (ASYNC cluster) support is not fully documented in this provider. Configuration options for ASYNC clusters may be incomplete or subject to change. Use read replicas with caution and refer to the YugabyteDB Anywhere UI or API documentation for the full set of supported options.
 
-The full set of in-place edit operations -- triggers, behavior, and ordering rules -- is
-documented in the [Universe Edit Actions](../guides/universe-edit-actions.md) guide. That
-includes encryption at rest: the `encryption_at_rest` block enables it, rotates the master
-key or the universe key, and disables it (see
-[Encryption at Rest](../guides/universe-edit-actions.md#encryption-at-rest)).
+The [Universe Edit Actions](../guides/universe-edit-actions.md) guide describes every
+in-place edit operation: what triggers it, how it behaves, and in which order operations run.
+This includes [certificate rotation](../guides/universe-edit-actions.md#certificate-rotation)
+through `root_ca`, `client_root_ca` and the `cert_rotation` triggers, and
+[encryption at rest](../guides/universe-edit-actions.md#encryption-at-rest) through the
+`encryption_at_rest` block, which enables encryption, rotates the master key or the universe
+key, and disables encryption.
+
+~> **Note:** A certificate rotation with the `Rolling` strategy restarts the nodes one at a
+time and pauses for the `node_restart_settings` sleep time after each restart. On a universe
+with many nodes, the rotation can take longer than the 60-minute default `update` timeout. Raise
+`timeouts { update }` when necessary. If the universe's node-to-node certificates have
+expired, set `node_restart_settings.upgrade_option = "Non-Rolling"`. With expired
+certificates, YugabyteDB Anywhere rejects `Non-Restart`, and rejects `Rolling` for every
+rotation except one that re-issues only the client-to-node server certificates.
+
+~> **Note:** An encryption-at-rest configuration that a universe has used keeps the
+universe's key history until the universe is deleted, also after encryption is disabled or
+the universe moves to another configuration. YugabyteDB Anywhere needs this history to
+restore backups taken with earlier keys, and does not delete the configuration before the
+universe is deleted.
 
 ~> **Note:** `clusters[*].user_intent.access_key_code` is listed in the Optional schema group, but it is required when the cluster targets a cloud provider (`aws`, `gcp`, `azu`). It is only optional for on-prem providers whose nodes have the YBA node agent installed. The provider rejects a plan that omits it for a cloud provider at plan time.
 
@@ -94,12 +110,12 @@ terraform import yba_universe.universe_name <universe-uuid>
 
 ### Sensitive fields are not imported
 
-`terraform import` reads universe state from the YugabyteDB Anywhere API, which does not return plaintext secrets. For the following `clusters.user_intent` fields, the API returns the literal string `REDACTED`, and that sentinel is what lands in your state file after import:
+`terraform import` reads universe state from the YugabyteDB Anywhere API, which does not return plaintext secrets. For the following `clusters.user_intent` fields, the API returns the literal string `REDACTED`, and Terraform stores that value in your state file after import:
 
 - `ysql_password`
 - `ycql_password`
 
-On the next plan Terraform sees a diff from `REDACTED` to the value in your configuration, and the universe update guard rejects the apply (you cannot change passwords after universe creation).
+On the next plan Terraform sees a diff from `REDACTED` to the value in your configuration, and the provider rejects the apply (you cannot change passwords after universe creation).
 
 Choose one of the following to resolve this:
 

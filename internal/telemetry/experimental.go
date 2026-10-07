@@ -21,10 +21,12 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 )
 
-const experimentalAdmonition = "~> **Experimental:** This resource wraps a " +
-	"YugabyteDB Anywhere telemetry export API that is still experimental and " +
-	"may change in backward-incompatible ways across YBA releases. Pin your " +
-	"provider version and review release notes before upgrading.\n\n"
+// experimentalAdmonition is its own Description paragraph. It follows the
+// summary paragraph, which the doc templates publish as the Registry summary.
+const experimentalAdmonition = "~> **Experimental:** Telemetry export is an " +
+	"experimental feature of YugabyteDB Anywhere. A later YBA release can change " +
+	"it in ways that are not backward compatible. Read the release notes before " +
+	"you upgrade YBA or the provider."
 
 func experimentalWarning(resourceName string) diag.Diagnostic {
 	return diag.Diagnostic{

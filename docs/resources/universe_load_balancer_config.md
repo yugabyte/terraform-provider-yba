@@ -1,29 +1,30 @@
 ---
 page_title: "yba_universe_load_balancer_config Resource - YugabyteDB Anywhere"
 description: |-
-  Universe Load Balancer Config. Attaches externally-created cloud load balancers (AWS, GCP, or Azure) to a YugabyteDB Anywhere universe and lets YBA manage their node membership through universe operations. The load balancers must already exist in the universe's cloud account; this resource does not create them.
-  ~> Note: The underlying YBA endpoint (update_lb_config) is a preview API that could change.
-  ~> Note: YBA expects the load balancer to use TCP listeners, and on Azure a frontend IP configuration must already exist. Health-check behaviour is tuned via the yb.universe.network_load_balancer.custom_health_check_* universe runtime config keys (see the yba_runtime_config resource); misconfigured load balancers surface as attach task failures.
+  Attaches existing cloud load balancers to a YugabyteDB Anywhere universe on AWS, GCP or Azure. YBA then adds and removes the universe's nodes in the load balancers as universe operations change the nodes.
 ---
 
 # yba_universe_load_balancer_config (Resource)
 
-Universe Load Balancer Config. Attaches externally-created cloud load balancers (AWS, GCP, or Azure) to a YugabyteDB Anywhere universe and lets YBA manage their node membership through universe operations. The load balancers must already exist in the universe's cloud account; this resource does not create them.
+Attaches existing cloud load balancers to a YugabyteDB Anywhere universe on AWS, GCP or Azure. YBA then adds and removes the universe's nodes in the load balancers as universe operations change the nodes.
 
-~> **Note:** The underlying YBA endpoint (`update_lb_config`) is a preview API that could change.
+~> **Preview:** YugabyteDB Anywhere marks the API that this resource uses as preview. The API can change in ways that are not backward compatible between YBA releases.
 
-~> **Note:** YBA expects the load balancer to use TCP listeners, and on Azure a frontend IP configuration must already exist. Health-check behaviour is tuned via the `yb.universe.network_load_balancer.custom_health_check_*` universe runtime config keys (see the `yba_runtime_config` resource); misconfigured load balancers surface as attach task failures.
+This resource does not create the load balancers. Create them in the universe's cloud account first, for example with the cloud's own Terraform provider. Attaching and detaching load balancers does not restart the universe. Destroying the resource detaches the universe's nodes from the load balancers and turns off load balancing for the universe. It does not delete the load balancers.
+
+~> **Note:** Use one `yba_universe_load_balancer_config` resource per universe, and put every load balancer of the primary cluster and the read replica in it. The resource ID is the universe UUID. Each apply replaces the whole load balancer configuration of the universe, so a second resource for the same `universe_uuid` detaches the load balancers of the first.
+
+~> **Note:** YBA attaches load balancers only to universes on AWS, GCP and Azure providers. It does not support Kubernetes or on-premises universes.
+
+~> **Note:** YBA routes the universe's YSQL and YCQL ports through the load balancer over TCP. On Azure, the load balancer must already have a frontend IP configuration. To change the health checks, set the universe runtime config keys `yb.universe.network_load_balancer.custom_health_check_ports`, `yb.universe.network_load_balancer.custom_health_check_protocol` and `yb.universe.network_load_balancer.custom_health_check_paths`, for example with `yba_runtime_config`. When YBA cannot use a load balancer, the apply fails with the error of the YBA task.
 
 ## Example Usage
 
-Each apply sends the universe's **complete** desired load balancer state, so manage every attachment (primary cluster, read replica, all regions) from **one** `yba_universe_load_balancer_config` resource per universe. A second resource for the same `universe_uuid` would detach the other's load balancers on every apply.
-
 ```terraform
-# Attach externally-created load balancers to a universe. The load balancers
-# (AWS/Azure: load balancer name, GCP: backend service name) must already
-# exist in the universe's cloud account — for example created with the same
-# Terraform configuration through the cloud's own provider.
-
+# YBA attaches load balancers that already exist in the universe's cloud
+# account: on AWS and Azure by load balancer name, on GCP by backend service
+# name. This example creates one with the AWS provider and uses the names of
+# others that exist already.
 resource "aws_lb" "primary" {
   name               = "yb-primary-nlb"
   load_balancer_type = "network"
@@ -31,31 +32,31 @@ resource "aws_lb" "primary" {
   subnets            = var.subnet_ids
 }
 
+# One resource holds every load balancer of the universe.
 resource "yba_universe_load_balancer_config" "main" {
   universe_uuid = yba_universe.main.id
 
-  # Region-wide load balancer: applied to every AZ of us-west-2 in the
-  # primary cluster.
+  # One load balancer for every availability zone of us-west-2 in the primary
+  # cluster.
   load_balancer {
     region  = "us-west-2"
     lb_name = aws_lb.primary.name
   }
 
-  # Zone-local load balancing: az_overrides points individual AZs at their
-  # own load balancer instead of the region default.
+  # A load balancer for most zones of us-east-1, and a separate one for
+  # us-east-1c.
   load_balancer {
     region  = "us-east-1"
-    lb_name = aws_lb.east.name
+    lb_name = "yb-east-nlb"
     az_overrides = {
-      "us-east-1c" = aws_lb.east_zonal.name
+      "us-east-1c" = "yb-east-1c-nlb"
     }
   }
 
-  # Read replica traffic through its own load balancer (the universe's
-  # ASYNC cluster; YBA supports at most one read replica per universe).
+  # The load balancer of the read replica cluster.
   load_balancer {
     region       = "us-west-2"
-    lb_name      = aws_lb.read_replica.name
+    lb_name      = "yb-read-replica-nlb"
     read_replica = true
   }
 
@@ -72,8 +73,8 @@ resource "yba_universe_load_balancer_config" "main" {
 
 ### Required
 
-- `load_balancer` (Block Set, Min: 1) Per-region load balancer mapping for the universe's primary cluster. Each block applies its load balancer to every availability zone of the region unless overridden via `az_overrides`. (see [below for nested schema](#nestedblock--load_balancer))
-- `universe_uuid` (String) UUID of the universe to attach load balancers to. The resource ID is this UUID (one config per universe); import with the universe UUID.
+- `load_balancer` (Block Set, Min: 1) Load balancer for one region of one cluster. The block applies `lb_name` to every availability zone of the region, except the zones in `az_overrides`. Add one block per region of each cluster. (see [below for nested schema](#nestedblock--load_balancer))
+- `universe_uuid` (String) UUID of the universe. The resource ID is this UUID. Changing it replaces the resource.
 
 ### Optional
 
@@ -89,13 +90,13 @@ resource "yba_universe_load_balancer_config" "main" {
 
 Required:
 
-- `lb_name` (String) Cloud-side load balancer identifier: the load balancer name on AWS and Azure, the backend service name on GCP.
-- `region` (String) Region code (as it appears in the universe placement, e.g. `us-west-2`) this load balancer serves.
+- `lb_name` (String) Name of the load balancer in the cloud: the load balancer name on AWS and Azure, the backend service name on GCP.
+- `region` (String) Code of the region that the load balancer serves, as it appears in the universe placement, for example `us-west-2`.
 
 Optional:
 
-- `az_overrides` (Map of String) Map of availability zone name to load balancer name for zones that should use a different load balancer than the region default (e.g. one load balancer per AZ for zone-local application traffic).
-- `read_replica` (Boolean) Attach this load balancer to the universe's read replica cluster instead of the primary cluster. YBA supports at most one read replica per universe. Defaults to `false` (primary).
+- `az_overrides` (Map of String) Map of availability zone name to load balancer name, for zones that use a different load balancer than `lb_name`. Set `lb_name` to the load balancer that most zones of the region use, and list only the other zones here.
+- `read_replica` (Boolean) Attach the load balancer to the read replica cluster instead of the primary cluster. A universe has at most one read replica cluster. Defaults to `false`.
 
 <a id="nestedblock--timeouts"></a>
 
@@ -109,8 +110,8 @@ Optional:
 
 ## Import
 
-Universe load balancer configs can be imported using the `universe uuid` (the resource ID):
+Universe load balancer configs can be imported using the universe UUID:
 
 ```sh
-terraform import yba_universe_load_balancer_config.example <universe-uuid>
+terraform import yba_universe_load_balancer_config.main <universe-uuid>
 ```

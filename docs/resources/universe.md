@@ -1,12 +1,12 @@
 ---
 page_title: "yba_universe Resource - YugabyteDB Anywhere"
 description: |-
-  Universe Resource.
+  Manages a YugabyteDB universe in YugabyteDB Anywhere: its primary and read replica clusters, software version, encryption and other settings.
 ---
 
 # yba_universe (Resource)
 
-Universe Resource.
+Manages a YugabyteDB universe in YugabyteDB Anywhere: its primary and read replica clusters, software version, encryption and other settings.
 
 ## Example Usage
 
@@ -104,17 +104,18 @@ resource "yba_universe" "dedicated_masters_inherit" {
   communication_ports {}
 }
 
-# Universe with managed encryption-in-transit certificates: a self-signed root
-# for node-to-node TLS and an org-issued custom server certificate for
-# client-to-node TLS. Changing either CA reference rotates the universe to the
-# new certificate; bumping a cert_rotation trigger re-issues the server
-# certificates from the unchanged (SelfSigned) root.
+# Universe with encryption-in-transit certificates that Terraform manages: a
+# self-signed root certificate for node-to-node encryption, and a custom server
+# certificate from your organization's CA for client-to-node encryption. A change
+# of root_ca or client_root_ca rotates the universe to the new certificate. A
+# change of a cert_rotation trigger re-issues the server certificates from the
+# current self-signed root certificate.
 resource "yba_universe" "with_certificates" {
-  root_ca        = yba_self_signed_certificate.minted.uuid
+  root_ca        = yba_self_signed_certificate.generated.uuid
   client_root_ca = yba_custom_server_certificate.c2n.uuid
 
   cert_rotation {
-    server_cert_trigger = "2026-07" # bump to refresh node-to-node server certs
+    server_cert_trigger = "2026-07" # change to re-issue node-to-node server certificates
   }
 
   clusters {
@@ -144,21 +145,21 @@ resource "yba_universe" "with_certificates" {
 
 # Universe encrypted at rest from its first write. The encryption_at_rest block
 # names the encryption-at-rest configuration whose master key wraps the universe
-# keys; changing it later rotates the master key, bumping the trigger rotates
-# the universe key, and enabled = false turns encryption off.
+# keys. A later change of kms_config_uuid rotates the master key, a change of
+# the trigger rotates the universe key, and enabled = false disables encryption.
 resource "yba_universe" "encrypted_at_rest" {
   encryption_at_rest {
     enabled                       = true
-    kms_config_uuid               = yba_gcp_ear_config.kms.uuid
-    universe_key_rotation_trigger = "2026-Q3" # bump to rotate the universe key
+    kms_config_uuid               = yba_gcp_ear_config.service_account.uuid
+    universe_key_rotation_trigger = "2026-Q3" # change to rotate the universe key
   }
 
   clusters {
     cluster_type = "PRIMARY"
     user_intent {
       universe_name      = "<universe-name>"
-      provider           = yba_gcp_provider.gcp.id
-      region_list        = yba_gcp_provider.gcp.regions[*].uuid
+      provider           = yba_aws_provider.aws.id
+      region_list        = yba_aws_provider.aws.regions[*].uuid
       num_nodes          = 3
       replication_factor = 3
       instance_type      = "<instance-type>"
@@ -179,15 +180,31 @@ resource "yba_universe" "encrypted_at_rest" {
 
 The details for configuration are available in the [YugabyteDB Anywhere Create YugabyteDB universe deployments](https://docs.yugabyte.com/stable/yugabyte-platform/create-deployments/) and [YugabyteDB Anywhere Manage YugabyteDB universe deployments](https://docs.yugabyte.com/stable/yugabyte-platform/manage-deployments/).
 
-~> **Disclaimer:** Please note that adding read replica clusters after universe creation currently not supported.
+~> **Note:** Adding a read replica cluster after universe creation is not supported.
 
 ~> **Warning:** Read replica (ASYNC cluster) support is not fully documented in this provider. Configuration options for ASYNC clusters may be incomplete or subject to change. Use read replicas with caution and refer to the YugabyteDB Anywhere UI or API documentation for the full set of supported options.
 
-The full set of in-place edit operations -- triggers, behavior, and ordering rules -- is
-documented in the [Universe Edit Actions](../guides/universe-edit-actions.md) guide. That
-includes encryption at rest: the `encryption_at_rest` block enables it, rotates the master
-key or the universe key, and disables it (see
-[Encryption at Rest](../guides/universe-edit-actions.md#encryption-at-rest)).
+The [Universe Edit Actions](../guides/universe-edit-actions.md) guide describes every
+in-place edit operation: what triggers it, how it behaves, and in which order operations run.
+This includes [certificate rotation](../guides/universe-edit-actions.md#certificate-rotation)
+through `root_ca`, `client_root_ca` and the `cert_rotation` triggers, and
+[encryption at rest](../guides/universe-edit-actions.md#encryption-at-rest) through the
+`encryption_at_rest` block, which enables encryption, rotates the master key or the universe
+key, and disables encryption.
+
+~> **Note:** A certificate rotation with the `Rolling` strategy restarts the nodes one at a
+time and pauses for the `node_restart_settings` sleep time after each restart. On a universe
+with many nodes, the rotation can take longer than the 60-minute default `update` timeout. Raise
+`timeouts { update }` when necessary. If the universe's node-to-node certificates have
+expired, set `node_restart_settings.upgrade_option = "Non-Rolling"`. With expired
+certificates, YugabyteDB Anywhere rejects `Non-Restart`, and rejects `Rolling` for every
+rotation except one that re-issues only the client-to-node server certificates.
+
+~> **Note:** An encryption-at-rest configuration that a universe has used keeps the
+universe's key history until the universe is deleted, also after encryption is disabled or
+the universe moves to another configuration. YugabyteDB Anywhere needs this history to
+restore backups taken with earlier keys, and does not delete the configuration before the
+universe is deleted.
 
 ~> **Note:** `clusters[*].user_intent.access_key_code` is listed in the Optional schema group, but it is required when the cluster targets a cloud provider (`aws`, `gcp`, `azu`). It is only optional for on-prem providers whose nodes have the YBA node agent installed. The provider rejects a plan that omits it for a cloud provider at plan time.
 
@@ -196,33 +213,27 @@ key or the universe key, and disables it (see
 
 ### Required
 
-- `clusters` (Block List, Min: 1) (see [below for nested schema](#nestedblock--clusters))
+- `clusters` (Block List, Min: 1) Clusters of the universe: one `PRIMARY` cluster, and optionally one `ASYNC` (read replica) cluster. (see [below for nested schema](#nestedblock--clusters))
 
 ### Optional
 
 - `arch` (String) The architecture of the universe nodes. Allowed values are x86_64 and aarch64.
-- `cert_rotation` (Block List, Max: 1) Triggers for same-CA server-certificate rotation: regenerating the per-node server certificates from the unchanged (SelfSigned) root certificate, which YBA issues with a 1-year lifetime by default. Changing a trigger to any new non-empty value fires the rotation on the next apply; the values are otherwise opaque bookkeeping (a date reads well in diffs, or wire in `time_rotating` for automated renewal). Setting a trigger at universe creation records it without rotating; adding a trigger to an already-managed universe fires a rotation on the next apply (first-time set counts as a change). Removing one never fires. Restart behaviour follows `node_restart_settings` (Non-Restart performs a hot certificate reload; among other eligibility gates the universe must first have completed a Rolling certificate rotation — see the universe-edit-actions guide). To change the certificate itself, edit `root_ca`/`client_root_ca` instead — and avoid bumping a trigger in the same apply as a CA change, which already re-issues the server certificates: the trigger adds a second full restart.
-
-~> **Note:** Rolling rotations restart nodes one at a time and honor the `node_restart_settings` sleeps, which compound on multi-node universes — raise the resource's `timeouts { update }` (60 minutes by default) when a rotation can outlast it. If the universe's node-to-node certificates have expired, use Non-Rolling: YBA rejects expired-cert rotations under Rolling (except a client-certificate-only rotation) and Non-Restart. (see [below for nested schema](#nestedblock--cert_rotation))
-
-- `client_root_ca` (String) The UUID of the clientRootCA to be used to generate client certificates and facilitate TLS communication between server and client. When set to a different value than root_ca, separate certificates are used for node-to-node and client-to-node TLS. May be set without root_ca (e.g. when node-to-node encryption is disabled but client-to-node encryption is enabled); in that case YBA auto-generates a root CA for node-to-node if needed and uses the provided value for client-to-node. When not set, root_ca is reused for client-to-node TLS. Changing the value on an existing universe performs a certificate rotation: YBA runs the lightweight server-certificate rotation when the new configuration's root CA content is identical to the current one (e.g. a re-issued `yba_custom_server_certificate`), and a full root certificate rotation otherwise.
+- `cert_rotation` (Block List, Max: 1) Triggers that re-issue the server certificates of each node from the current root certificate, which must be a self-signed certificate. YugabyteDB Anywhere issues these server certificates with a 1-year lifetime by default. A change of a trigger to any new non-empty value rotates the certificates on the next apply. A trigger set at universe creation does not rotate, but a trigger added to an existing universe does. Removing a trigger does nothing. Nodes restart according to `node_restart_settings`. To move to another root certificate, change `root_ca` or `client_root_ca` instead, and do not change a trigger in the same apply: that runs a second rotation, with a second restart of every node. (see [below for nested schema](#nestedblock--cert_rotation))
+- `client_root_ca` (String) The UUID of the clientRootCA to be used to generate client certificates and facilitate TLS communication between server and client. When set to a different value than root_ca, separate certificates are used for node-to-node and client-to-node TLS. May be set without root_ca (e.g. when node-to-node encryption is disabled but client-to-node encryption is enabled); in that case YBA auto-generates a root CA for node-to-node if needed and uses the provided value for client-to-node. When not set, root_ca is reused for client-to-node TLS. A change on an existing universe rotates client-to-node encryption to the new certificate. Nodes restart according to `node_restart_settings`.
 - `communication_ports` (Block List, Max: 1) Communication ports. See the universe edit actions guide for which ports can be changed after creation and which trigger a full move when edited. (see [below for nested schema](#nestedblock--communication_ports))
 - `db_version_upgrade_options` (Block List, Max: 1) Options controlling the DB version upgrade path (UpgradeDBVersion). By default finalize = false pauses the upgrade in PreFinalize state for a monitoring phase; flip to true and re-apply to commit, or set rollback = true to revert to the previous DB version. (see [below for nested schema](#nestedblock--db_version_upgrade_options))
-- `delete_options` (Block List, Max: 1) (see [below for nested schema](#nestedblock--delete_options))
-- `encryption_at_rest` (Block List, Max: 1) Encryption at rest for the universe's data, keyed through an encryption-at-rest configuration (`yba_gcp_ear_config`, or one found with `yba_ear_config`). Set at creation to encrypt from the first write, or add to an existing universe to enable it in place. Changing `kms_config_uuid` on an enabled universe rotates the master key: YugabyteDB Anywhere re-wraps every universe key with the new configuration in one task, without restarting nodes. Changing `universe_key_rotation_trigger` rotates the universe key itself under the current master key. The block is read from the universe when omitted, so removing it changes nothing; set `enabled = false` to turn encryption off.
-
-~> **Note:** A configuration that a universe has used keeps that universe's key history until the universe is deleted, and cannot be deleted before then, even after encryption is disabled or the universe moves to another configuration. YugabyteDB Anywhere needs the history to restore backups taken under earlier keys. (see [below for nested schema](#nestedblock--encryption_at_rest))
-
+- `delete_options` (Block List, Max: 1) Options that YugabyteDB Anywhere applies when Terraform destroys the universe. (see [below for nested schema](#nestedblock--delete_options))
+- `encryption_at_rest` (Block List, Max: 1) Encryption at rest for the universe, with the master key from an encryption-at-rest configuration (`yba_gcp_ear_config`, or one that `yba_ear_config` finds). Set the block at creation to encrypt from the first write, or add it to an existing universe to enable encryption in place. When the block is omitted, Terraform reads it from the universe, so removing the block changes nothing; set `enabled = false` to disable encryption. None of these changes restart nodes. (see [below for nested schema](#nestedblock--encryption_at_rest))
 - `full_move` (Block List, Max: 1) Block controlling whether and how full-move-triggering edits are permitted. A full move provisions new nodes with the new configuration, migrates data from the old nodes, and decommissions the old nodes; it requires temporary 2x node capacity during migration and takes significantly longer than in-place operations. (see [below for nested schema](#nestedblock--full_move))
 - `node_restart_settings` (Block List, Max: 1) Controls how node restarts are performed during upgrade operations (DB version, GFlags, Systemd, Finalize, Rollback, certificate rotation). When omitted, YugabyteDB Anywhere platform defaults apply: Rolling strategy with 180000 ms (3 minutes) sleep after each master and TServer restart. (see [below for nested schema](#nestedblock--node_restart_settings))
-- `root_ca` (String) The UUID of the rootCA used for node-to-node TLS encryption. When not set, YBA creates and assigns a root CA automatically. Changing the value on an existing universe performs a root certificate rotation (a multi-phase operation with rolling node restarts; see `cert_rotation` and `node_restart_settings`). When the referenced certificate is a Terraform resource, set `lifecycle { create_before_destroy = true }` on it so the replacement exists before the old configuration is deleted.
+- `root_ca` (String) The UUID of the rootCA used for node-to-node TLS encryption. When not set, YBA creates and assigns a root CA automatically. A change on an existing universe rotates node-to-node encryption to the new certificate, and also client-to-node encryption when one root certificate serves both and `client_root_ca` is not set. Nodes restart according to `node_restart_settings`. When the certificate is a Terraform resource, set `lifecycle { create_before_destroy = true }` on it, so that the new certificate exists before Terraform deletes the old one.
 - `timeouts` (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))
 
 ### Read-Only
 
 - `db_version_upgrade_state` (String) Current DB version upgrade state reported by YugabyteDB Anywhere. Possible values: Ready, Upgrading, UpgradeFailed, PreFinalize, Finalizing, FinalizeFailed, RollingBack, RollbackFailed.
 - `id` (String) The ID of this resource.
-- `node_details_set` (List of Object) (see [below for nested schema](#nestedatt--node_details_set))
+- `node_details_set` (List of Object) Nodes of the universe, with their placement, addresses and state. (see [below for nested schema](#nestedatt--node_details_set))
 
 <a id="nestedblock--clusters"></a>
 
@@ -423,8 +434,8 @@ Read-Only:
 
 Optional:
 
-- `client_cert_trigger` (String) Fires `selfSignedClientCertRotate`: fresh client-to-node server certificates signed by the unchanged `client_root_ca` (which must be a SelfSigned configuration). On universes where one root certificate serves both channels, node-to-node server certificates are rotated in the same task.
-- `server_cert_trigger` (String) Fires `selfSignedServerCertRotate`: fresh node-to-node server certificates signed by the unchanged `root_ca` (which must be a SelfSigned configuration). On universes where one root certificate serves both channels, client-to-node server certificates are rotated in the same task.
+- `client_cert_trigger` (String) Change it to re-issue the client-to-node server certificates from the current `client_root_ca`, which must be a self-signed certificate. Requires `enable_client_to_node_encrypt`. When one root certificate serves node-to-node and client-to-node encryption, the same task also re-issues the node-to-node server certificates.
+- `server_cert_trigger` (String) Change it to re-issue the node-to-node server certificates from the current `root_ca`, which must be a self-signed certificate. Requires `enable_node_to_node_encrypt`. When one root certificate serves node-to-node and client-to-node encryption, the same task also re-issues the client-to-node server certificates.
 
 <a id="nestedblock--communication_ports"></a>
 
@@ -470,12 +481,12 @@ Optional:
 
 Required:
 
-- `enabled` (Boolean) Whether encryption at rest is enabled. `true` enables it at creation or in place; `false` disables it in place through a YugabyteDB Anywhere task, and data written afterwards is stored in clear.
+- `enabled` (Boolean) Whether encryption at rest is on. `true` enables it, at creation or in place. `false` disables it in place, and data written after that is not encrypted.
 
 Optional:
 
-- `kms_config_uuid` (String) UUID of the encryption-at-rest configuration whose master key wraps the universe keys. Required when `enabled` is true. Changing it on an enabled universe rotates the master key. After disabling, YugabyteDB Anywhere keeps reporting the last configuration here.
-- `universe_key_rotation_trigger` (String) Opaque trigger for universe key rotation: changing it to any new non-empty value generates a fresh universe key under the current master key on the next apply (setting it for the first time counts). Removing it never fires. A date reads well in diffs; pair it with `time_rotating` for automated rotation. It applies to an enabled universe only, and when it changes in the same apply that enables encryption the enable itself already generates a fresh key. When it changes together with `kms_config_uuid`, the master key rotation runs first.
+- `kms_config_uuid` (String) UUID of the encryption-at-rest configuration whose master key wraps the universe keys. Required when `enabled` is true. A change on an enabled universe rotates the master key. After a disable, YugabyteDB Anywhere still reports the last configuration here.
+- `universe_key_rotation_trigger` (String) Change this value to rotate the universe key: on the next apply, YugabyteDB Anywhere generates a new universe key under the current master key. Any new non-empty value rotates the key, also the first value set on an existing universe; removing the value does nothing. Requires `enabled = true`. A value set at creation, or in the apply that enables encryption, does not run a separate rotation: the enable already generates a new key. Use a date, or a `time_rotating` value to rotate on a schedule.
 
 <a id="nestedblock--full_move"></a>
 
@@ -637,12 +648,12 @@ terraform import yba_universe.universe_name <universe-uuid>
 
 ### Sensitive fields are not imported
 
-`terraform import` reads universe state from the YugabyteDB Anywhere API, which does not return plaintext secrets. For the following `clusters.user_intent` fields, the API returns the literal string `REDACTED`, and that sentinel is what lands in your state file after import:
+`terraform import` reads universe state from the YugabyteDB Anywhere API, which does not return plaintext secrets. For the following `clusters.user_intent` fields, the API returns the literal string `REDACTED`, and Terraform stores that value in your state file after import:
 
 - `ysql_password`
 - `ycql_password`
 
-On the next plan Terraform sees a diff from `REDACTED` to the value in your configuration, and the universe update guard rejects the apply (you cannot change passwords after universe creation).
+On the next plan Terraform sees a diff from `REDACTED` to the value in your configuration, and the provider rejects the apply (you cannot change passwords after universe creation).
 
 Choose one of the following to resolve this:
 

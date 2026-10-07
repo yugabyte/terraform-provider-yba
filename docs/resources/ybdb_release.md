@@ -1,28 +1,30 @@
 ---
 page_title: "yba_ybdb_release Resource - YugabyteDB Anywhere"
 description: |-
-  ~> Preview: This resource manages YugabyteDB (YBDB) database releases through the YugabyteDB Anywhere release management API (/ybdb_release), which is marked preview and may change in backward-incompatible ways across YBA releases.
+  YugabyteDB Release Resource. Manages a release of the YugabyteDB (YBDB) database software that YugabyteDB Anywhere stores and uses to deploy universes.
 ---
 
 # yba_ybdb_release (Resource)
 
-~> **Preview:** This resource manages YugabyteDB (YBDB) database releases through the YugabyteDB Anywhere release management API (`/ybdb_release`), which is marked preview and may change in backward-incompatible ways across YBA releases.
+YugabyteDB Release Resource. Manages a release of the YugabyteDB (YBDB) database software that YugabyteDB Anywhere stores and uses to deploy universes.
 
-YugabyteDB Release Resource. Manages a release of the YugabyteDB (YBDB) database software that YugabyteDB Anywhere stores and deploys to universes. A release is a YBDB version, such as 2024.2.3.0-b1, not a version of YugabyteDB Anywhere itself; the `yba_release_version` data source looks up these YBDB versions. The resource uploads release tarballs from the machine running Terraform and registers per-architecture artifacts (x86_64, aarch64, Kubernetes). The resource owns the release's complete artifact set: removing an `artifact` block deletes that artifact from the release. Requires YugabyteDB Anywhere version 2024.2.0.0-b1 (stable) or 2.23.1.0-b27 (preview) and above, with the global runtime config `yb.releases.use_redesign` set to `true` (the default).
+~> **Preview:** The YugabyteDB Anywhere API that this resource uses is marked preview. A later YBA release can change it in ways that are not backward compatible.
 
-~> **Note:** Some supported YugabyteDB Anywhere versions cannot change an artifact's source in place, so when `local_file` or `package_url` changes, the provider deletes the artifact and adds it again. While a universe uses the release, YugabyteDB Anywhere blocks deleting or replacing an artifact and changing `state`, and the apply fails with an error that names the universes. Adding an artifact and changing `release_tag`, `release_notes` or `release_date_msecs` work on a release in use.
+A release is a YBDB version, such as 2024.2.3.0-b116, not a version of YugabyteDB Anywhere. Use the `yba_release_version` data source to look up these YBDB versions. Each `artifact` block adds one package to the release: a LINUX package for x86_64 or aarch64, or a KUBERNETES Helm chart. The provider uploads the package from the machine that runs Terraform, or gives YBA a URL to download it from. The resource manages all the artifacts of the release: when you remove an `artifact` block, the provider deletes that artifact from the release. Requires the global runtime config `yb.releases.use_redesign` to be `true`, which is the default.
 
-~> **Note:** `local_file` tarballs are uploaded to the YugabyteDB Anywhere node over HTTP(S) and stored there. Deleting the release deletes the files of its current artifacts. A file uploaded by an apply that fails before the release is registered, and the file of an artifact that an update replaces or removes, stay on the node.
+~> **Note:** Some YugabyteDB Anywhere versions cannot change the source of an artifact in place. So when `local_file` or `package_url` changes, the provider deletes the artifact and adds it again. While a universe uses the release, YugabyteDB Anywhere does not let you delete or replace an artifact or change `state`. The apply then fails with an error that names the universes. You can add an artifact and change `release_tag`, `release_notes` or `release_date_msecs` while a universe uses the release.
 
-Select releases by architecture with the `yba_release_version` data source's
-`deployment_type` filter, for example to pick the latest release that ships an
-aarch64 artifact.
+~> **Note:** The provider uploads each `local_file` tarball to the YugabyteDB Anywhere host over HTTP(S), and YBA stores the file there. When you delete the release, YBA deletes the files of its current artifacts. Two kinds of file stay on the host: a file that an apply uploads before it fails to create the release, and the file of an artifact that an update replaces or removes.
+
+To pick a release by architecture, use the `deployment_type` filter of the
+`yba_release_version` data source. For example, the filter can return the newest
+release that has an aarch64 artifact.
 
 ## Example Usage
 
 ```terraform
 resource "yba_ybdb_release" "ybdb_release" {
-  version            = "2024.2.3.0-b1"
+  version            = "2024.2.3.0-b116"
   release_type       = "LTS"
   release_tag        = "example"
   release_notes      = "Example YBDB release managed by Terraform."
@@ -34,7 +36,7 @@ resource "yba_ybdb_release" "ybdb_release" {
   artifact {
     platform     = "LINUX"
     architecture = "x86_64"
-    local_file   = "/opt/releases/yugabyte-2024.2.3.0-b1-linux-x86_64.tar.gz"
+    local_file   = "/opt/releases/yugabyte-2024.2.3.0-b116-linux-x86_64.tar.gz"
   }
 
   # aarch64 tarball uploaded to YugabyteDB Anywhere from the machine
@@ -42,14 +44,14 @@ resource "yba_ybdb_release" "ybdb_release" {
   artifact {
     platform     = "LINUX"
     architecture = "aarch64"
-    local_file   = "/opt/releases/yugabyte-2024.2.3.0-b1-el8-aarch64.tar.gz"
+    local_file   = "/opt/releases/yugabyte-2024.2.3.0-b116-el8-aarch64.tar.gz"
   }
 
-  # Kubernetes helm chart downloaded by YugabyteDB Anywhere from a URL.
+  # Kubernetes Helm chart that YugabyteDB Anywhere downloads from a URL.
   # KUBERNETES artifacts do not set an architecture.
   artifact {
     platform    = "KUBERNETES"
-    package_url = "https://downloads.yugabyte.com/releases/2024.2.3.0/yugabyte-2024.2.3.0-b1-helm.tar.gz"
+    package_url = "https://downloads.yugabyte.com/releases/2024.2.3.0/yugabyte-2024.2.3.0-b116-helm.tar.gz"
   }
 }
 ```
@@ -59,16 +61,16 @@ resource "yba_ybdb_release" "ybdb_release" {
 
 ### Required
 
-- `artifact` (Block List, Min: 1) Artifacts of the release, at most one per (platform, architecture) pair. The resource manages the complete set: removing a block deletes that artifact from the release, and changing a block's `local_file` or `package_url` deletes the artifact and adds it again. Blocks are matched to YugabyteDB Anywhere artifacts by platform and architecture, so reordering blocks only produces a cosmetic diff. (see [below for nested schema](#nestedblock--artifact))
-- `version` (String) YBDB version of the release (e.g. 2024.2.3.0-b1), not a YugabyteDB Anywhere version. YugabyteDB Anywhere allows a single release per version. It rejects a version newer than the YugabyteDB Anywhere installation unless the global runtime config `yb.allow_db_version_more_than_yba_version` or `yb.skip_version_checks` is `true`. The API cannot change a release's version, so changing this field forces recreation of the release.
+- `artifact` (Block List, Min: 1) Artifacts of the release, at most one for each platform and architecture. The resource manages all the artifacts: when you remove a block, the provider deletes that artifact from the release. When the `local_file` or `package_url` of a block changes, the provider deletes the artifact and adds it again. The provider matches blocks to artifacts by platform and architecture. If you only change the order of the blocks, the plan shows a change, but the apply does not change the release. (see [below for nested schema](#nestedblock--artifact))
+- `version` (String) YBDB version of the release, for example 2024.2.3.0-b116. This is not a YugabyteDB Anywhere version. YugabyteDB Anywhere allows one release for each version. It rejects a version newer than its own version unless the global runtime config `yb.allow_db_version_more_than_yba_version` or `yb.skip_version_checks` is `true`. YBA cannot change the version of a release, so a change to this field replaces the release.
 
 ### Optional
 
-- `release_date_msecs` (Number) Release date in milliseconds since epoch. When unset, it is inferred from the metadata of the first `local_file` artifact. YugabyteDB Anywhere stores updates to this field with second precision.
+- `release_date_msecs` (Number) Release date in milliseconds since the Unix epoch. When unset, the provider reads the date from the metadata of the first `local_file` artifact. When you change this field, YugabyteDB Anywhere stores the new date with second precision.
 - `release_notes` (String) Release notes.
 - `release_tag` (String) Tag of the release.
-- `release_type` (String) Type of the release. Allowed values: LTS, STS, PREVIEW. When unset, it is inferred from the metadata of the first `local_file` artifact; it must be set explicitly when every artifact uses `package_url`. The update API cannot change a release's type, so changing this field forces recreation of the release.
-- `state` (String) State of the release. Allowed values: ACTIVE, DISABLED. A release is INCOMPLETE until it has a LINUX artifact, then ACTIVE. YugabyteDB Anywhere rejects state changes on an INCOMPLETE release and on a release that a universe uses, so on an existing Kubernetes-only release add the LINUX artifact in one apply and set this field in the next. May also read as INCOMPLETE or DELETED.
+- `release_type` (String) Type of the release. Allowed values: LTS, STS, PREVIEW. When unset, the provider reads the type from the metadata of the first `local_file` artifact. Set this field when every artifact uses `package_url`. YBA cannot change the type of a release, so a change to this field replaces the release.
+- `state` (String) State of the release. Allowed values: ACTIVE, DISABLED. You cannot select a DISABLED release when you create a universe. A release is INCOMPLETE until it has a LINUX artifact, and then it becomes ACTIVE. YugabyteDB Anywhere does not change the state of an INCOMPLETE release or of a release that a universe uses. To set this field on an existing Kubernetes-only release, add the LINUX artifact in one apply and set this field in the next apply. The value can also read as INCOMPLETE or DELETED.
 - `timeouts` (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))
 
 ### Read-Only
@@ -85,14 +87,14 @@ Required:
 
 Optional:
 
-- `architecture` (String) CPU architecture of the artifact. Allowed values: x86_64, aarch64. Required when platform is LINUX; must not be set when platform is KUBERNETES.
-- `local_file` (String) Path to a release tarball (.tar.gz) on the machine running Terraform, uploaded to the YugabyteDB Anywhere node over HTTP(S). Exactly one of local_file or package_url must be set. The provider does not track the file's content or detect a file replaced outside Terraform: change the path (e.g. the file name) to upload the file again.
-- `package_url` (String) HTTP(S) URL that YugabyteDB Anywhere downloads the release package from on demand. Exactly one of local_file or package_url must be set.
+- `architecture` (String) CPU architecture of the artifact. Allowed values: x86_64, aarch64. Required when `platform` is LINUX. Do not set it when `platform` is KUBERNETES.
+- `local_file` (String) Path to a release tarball (.tar.gz) on the machine that runs Terraform. The provider uploads it to the YugabyteDB Anywhere host over HTTP(S). The version, platform and architecture in the tarball must match the release and this block. Set exactly one of `local_file` or `package_url`. The provider does not track the content of the file, so it does not detect a new file at the same path. To upload a file again, change the path (for example, the file name).
+- `package_url` (String) HTTP(S) URL of the release package. YugabyteDB Anywhere downloads the package from this URL when it needs it, so the URL must stay available. Set exactly one of `local_file` or `package_url`.
 
 Read-Only:
 
-- `package_file_id` (String) UUID of the artifact's file in YugabyteDB Anywhere: the uploaded local_file, or the Kubernetes chart YugabyteDB Anywhere downloaded from package_url.
-- `sha256` (String) SHA256 checksum of the uploaded tarball, computed by YugabyteDB Anywhere at upload time. Empty for package_url artifacts, Kubernetes charts and after import.
+- `package_file_id` (String) UUID of the file of the artifact in YugabyteDB Anywhere: the uploaded `local_file`, or the Kubernetes Helm chart that YBA downloaded from `package_url`.
+- `sha256` (String) SHA-256 checksum of the uploaded tarball. YugabyteDB Anywhere computes it when the provider uploads the file. Empty for `package_url` artifacts, Kubernetes charts and imported artifacts.
 
 <a id="nestedblock--timeouts"></a>
 
@@ -106,17 +108,18 @@ Optional:
 
 ## Import
 
-Releases can be imported using the release UUID:
+Import a release by its release UUID:
 
 ```sh
 terraform import yba_ybdb_release.ybdb_release <release-uuid>
 ```
 
-The API does not return `local_file` or `sha256`, so both stay empty after import.
-The API also hides `package_url` once YugabyteDB Anywhere has downloaded a
-Kubernetes chart, and it does not return the S3 or GCS source of an artifact
-registered through the legacy release import. On the next apply, the provider
-deletes and adds again each imported artifact whose `local_file` or `package_url`
-it could not read back. YugabyteDB Anywhere rejects this while a universe uses the
-release. The artifact block order after import follows YugabyteDB Anywhere, not the
+YugabyteDB Anywhere does not return `local_file` or `sha256`, so both are empty
+after import. YBA also does not return `package_url` after it downloads a
+Kubernetes Helm chart, or the S3 or GCS source of an artifact that its older
+release import added. On the next apply, the provider deletes and adds again each
+imported artifact whose `local_file` or `package_url` it could not read back.
+YBA rejects this while a universe uses the release. To keep these artifacts as
+they are, add `artifact` to `ignore_changes` in a `lifecycle` block. After
+import, the order of the `artifact` blocks follows YugabyteDB Anywhere, not your
 configuration.

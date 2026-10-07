@@ -38,17 +38,31 @@ const registrationTimeout = 30 * time.Minute
 // the ones Terraform created (a BYOC setup adopts an existing fleet).
 func ResourceUniversePerfAdvisorRegistration() *schema.Resource {
 	return &schema.Resource{
-		Description: previewAdmonition +
-			"Registers a universe with a Perf Advisor collector.\n\n" +
-			"Modes: `BASIC` collects and stores locally; `ADVANCED` also " +
-			"remote-writes metrics into YBA's Prometheus; `ONLINE` forwards " +
-			"everything to the `perf_advisor_endpoint_uuid` destination and " +
-			"keeps nothing locally.\n\n" +
-			"~> **Note:** Registration runs as a YBA task and this resource " +
-			"waits for it. In `ONLINE` mode the endpoint is pushed to the " +
-			"collector first, so a destination YBA cannot reach fails the " +
-			"apply. Destroying the resource unregisters the universe; the " +
-			"universe itself is never touched.",
+		Description: "Registers a YugabyteDB Anywhere universe with a Perf " +
+			"Advisor collector, which collects the universe's data for Perf " +
+			"Advisor.\n\n" +
+			previewAdmonition +
+			"The `mode` sets where the data goes:\n\n" +
+			"- `BASIC` (the default): YBA stores the data locally.\n" +
+			"- `ADVANCED`: YBA stores the data locally and also writes the " +
+			"metrics into its own Prometheus.\n" +
+			"- `ONLINE`: YBA sends all the data to the Perf Advisor endpoint " +
+			"in `perf_advisor_endpoint_uuid` and keeps no copy.\n\n" +
+			"~> **Note:** A universe has one registration, and the resource ID " +
+			"is the universe UUID. Use one resource per universe. Two " +
+			"resources for the same `universe_uuid` overwrite each other on " +
+			"every apply.\n\n" +
+			"~> **Note:** `ONLINE` mode requires the runtime config key " +
+			onlineModeKey + " set to `true` on the global scope or on your " +
+			"customer scope. The key is `false` by default. YBA sends the " +
+			"endpoint to the collector before it registers the universe, so " +
+			"the apply fails when the endpoint cannot be reached or rejects " +
+			"its credentials.\n\n" +
+			"Registration and unregistration run as YBA universe tasks, and " +
+			"this resource waits for them. They do not restart the universe. " +
+			"YBA registers Kubernetes universes in the same way as VM " +
+			"universes. Destroying the resource unregisters the universe from " +
+			"the collector and leaves the universe running.",
 
 		CreateContext: resourceRegistrationCreate,
 		ReadContext:   resourceRegistrationRead,
@@ -68,16 +82,19 @@ func ResourceUniversePerfAdvisorRegistration() *schema.Resource {
 
 		Schema: map[string]*schema.Schema{
 			"universe_uuid": {
-				Type:        schema.TypeString,
-				Required:    true,
-				ForceNew:    true,
-				Description: "UUID of the universe to register.",
+				Type:     schema.TypeString,
+				Required: true,
+				ForceNew: true,
+				Description: "UUID of the universe to register. Changing it " +
+					"replaces the resource.",
 			},
 			"pa_collector_uuid": {
-				Type:        schema.TypeString,
-				Required:    true,
-				ForceNew:    true,
-				Description: "UUID of the Perf Advisor collector to register with.",
+				Type:     schema.TypeString,
+				Required: true,
+				ForceNew: true,
+				Description: "UUID of the Perf Advisor collector, for example from " +
+					"the `yba_pa_collector` data source. Changing it replaces the " +
+					"resource.",
 			},
 			"mode": {
 				Type:     schema.TypeString,
@@ -86,13 +103,16 @@ func ResourceUniversePerfAdvisorRegistration() *schema.Resource {
 				ValidateFunc: validation.StringInSlice([]string{
 					"BASIC", "ADVANCED", "ONLINE",
 				}, false),
-				Description: "Collection mode. One of BASIC, ADVANCED, ONLINE.",
+				Description: "Collection mode. Allowed values: `BASIC`, " +
+					"`ADVANCED`, `ONLINE`. Defaults to `BASIC`. A change registers " +
+					"the universe again in the new mode.",
 			},
 			"perf_advisor_endpoint_uuid": {
 				Type:     schema.TypeString,
 				Optional: true,
-				Description: "Destination for ONLINE mode. Required for " +
-					"ONLINE and rejected for any other mode.",
+				Description: "UUID of the `yba_perf_advisor_endpoint` that " +
+					"receives the data in `ONLINE` mode. Required for `ONLINE`. " +
+					"Leave it unset for the other modes.",
 			},
 		},
 	}

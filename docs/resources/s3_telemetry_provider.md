@@ -1,32 +1,34 @@
 ---
 page_title: "yba_s3_telemetry_provider Resource - YugabyteDB Anywhere"
 description: |-
-  ~> Experimental: This resource wraps a YugabyteDB Anywhere telemetry export API that is still experimental and may change in backward-incompatible ways across YBA releases. Pin your provider version and review release notes before upgrading.
-  Amazon S3 Telemetry Provider resource. Defines a reusable S3 destination that universes can use to export audit logs and query logs — useful for long-term archival.
-  ~> Note: YBA does not allow editing a telemetry provider in place. Any change to a field forces Terraform to destroy and recreate the resource. YBA also refuses to delete a provider that is still referenced by a universe's telemetry config, so the destroy step first enumerates every universe whose audit / query / metrics exporter list references this provider and rewrites that list with the provider removed (via a rolling-upgrade task on each universe). Once every detach task reaches a terminal state, the provider itself is deleted. The universes themselves are never destroyed — only their OpenTelemetry collector configuration is updated.
-  ~> Drift Note: Read refreshes only name and tags. The Amazon S3 connection fields are not reconciled against the server, because YBA masks credentials in its responses and every field is ForceNew anyway. A field edited out-of-band in the YBA UI is therefore not detected as drift — re-apply from Terraform to restore the intended configuration.
-  ~> Import Note: Import verifies the provider's type: importing a provider that is not a Amazon S3 destination fails with the actual type, so it can be imported with the matching yba_*_telemetry_provider resource instead.
-  ~> Security Note: Credentials such as API keys, tokens, and secret access keys are stored in the Terraform state file (marked sensitive). Use a secure backend and restrict access to your state files.
+  Manages an Amazon S3 telemetry provider in YugabyteDB Anywhere. Universes send logs to an S3 bucket through yba_universe_telemetry_config, for example to archive audit logs.
 ---
 
 # yba_s3_telemetry_provider (Resource)
 
-~> **Experimental:** This resource wraps a YugabyteDB Anywhere telemetry export API that is still experimental and may change in backward-incompatible ways across YBA releases. Pin your provider version and review release notes before upgrading.
+Manages an Amazon S3 telemetry provider in YugabyteDB Anywhere. Universes send logs to an S3 bucket through `yba_universe_telemetry_config`, for example to archive audit logs.
 
-Amazon S3 Telemetry Provider resource. Defines a reusable S3 destination that universes can use to export audit logs and query logs — useful for long-term archival.
+~> **Experimental:** Telemetry export is an experimental feature of YugabyteDB Anywhere. A later YBA release can change it in ways that are not backward compatible. Read the release notes before you upgrade YBA or the provider.
 
-~> **Note:** YBA does not allow editing a telemetry provider in place. Any change to a field forces Terraform to destroy and recreate the resource. YBA also refuses to delete a provider that is still referenced by a universe's telemetry config, so the destroy step first enumerates every universe whose audit / query / metrics exporter list references this provider and rewrites that list with the provider removed (via a rolling-upgrade task on each universe). Once every detach task reaches a terminal state, the provider itself is deleted. The universes themselves are never destroyed — only their OpenTelemetry collector configuration is updated.
+~> **Note:** Requires YugabyteDB Anywhere 2026.1.0.0 or later. YBA creates an S3 telemetry provider only when the global runtime config `yb.telemetry.allow_s3` is `true`. The default is `false`. To set it, use the `yba_runtime_config` resource. YBA accepts an S3 telemetry provider only in a log pipeline, not in `metrics`. All AWS CloudWatch and S3 telemetry providers that one universe uses must have the same `access_key` and `secret_key`.
 
-~> **Drift Note:** Read refreshes only `name` and `tags`. The Amazon S3 connection fields are **not** reconciled against the server, because YBA masks credentials in its responses and every field is `ForceNew` anyway. A field edited out-of-band in the YBA UI is therefore not detected as drift — re-apply from Terraform to restore the intended configuration.
+~> **Note:** YBA cannot change a telemetry provider in place, so a change to any argument replaces the resource. Before Terraform deletes a telemetry provider, it removes the telemetry provider from every universe that uses it. Each of those universes goes through a rolling restart. The universes are not deleted.
 
-~> **Import Note:** Import verifies the provider's type: importing a provider that is not a Amazon S3 destination fails with the actual type, so it can be imported with the matching `yba_*_telemetry_provider` resource instead.
+~> **Drift Note:** Terraform reads back only `name` and `tags`. It does not detect a change to the Amazon S3 connection arguments made outside Terraform, for example in the YBA UI. To apply the configured values again, replace the resource with `terraform apply -replace`.
 
-~> **Security Note:** Credentials such as API keys, tokens, and secret access keys are stored in the Terraform state file (marked sensitive). Use a secure backend and restrict access to your state files.
+~> **Security Note:** Terraform stores the credentials of this telemetry provider in the state file, marked sensitive. Use a secure backend and restrict access to the state file.
 
 ## Example Usage
 
 ```terraform
-# S3 archival destination (long-term audit/query log storage).
+# YBA creates S3 telemetry providers only when this global runtime config is
+# true. The default is false.
+resource "yba_runtime_config" "allow_s3" {
+  key   = "yb.telemetry.allow_s3"
+  value = "true"
+}
+
+# S3 destination to archive audit logs and query logs.
 resource "yba_s3_telemetry_provider" "audit_archive" {
   name = "audit-archive"
 
@@ -37,19 +39,21 @@ resource "yba_s3_telemetry_provider" "audit_archive" {
   directory_prefix = "yb-logs"
   file_prefix      = "audit-"
 
-  # Optional: assume a role for the bucket writes.
+  # Optional: assume an IAM role to write to the bucket.
   role_arn = "arn:aws:iam::111111111111:role/yba-s3-archive"
 
   include_universe_and_node_in_prefix = true
 
-  # Optional tags, upserted as attributes onto every exported record.
+  # Optional tags. YBA adds them as attributes to every exported record.
   tags = {
     env = "prod"
   }
+
+  depends_on = [yba_runtime_config.allow_s3]
 }
 
-# S3-compatible store (e.g. MinIO) with path-style addressing and an
-# hourly directory layout.
+# S3-compatible store, such as MinIO, with path-style addressing and one
+# directory per hour.
 resource "yba_s3_telemetry_provider" "minio" {
   name = "minio-archive"
 
@@ -58,13 +62,15 @@ resource "yba_s3_telemetry_provider" "minio" {
   access_key = var.minio_access_key
   secret_key = var.minio_secret_key
 
-  endpoint         = "http://minio.internal:9000"
+  endpoint         = "http://minio.example.com:9000"
   disable_ssl      = true
   force_path_style = true
   partition        = "hour"
 
-  # Serialization format: OTLP_JSON (YBA default) or SUMO_IC (logs only).
+  # Object format: OTLP_JSON (the YBA default) or SUMO_IC.
   marshaler = "OTLP_JSON"
+
+  depends_on = [yba_runtime_config.allow_s3]
 }
 ```
 
@@ -73,24 +79,24 @@ resource "yba_s3_telemetry_provider" "minio" {
 
 ### Required
 
-- `access_key` (String, Sensitive) AWS access key with bucket write permissions.
-- `bucket` (String) S3 bucket name.
-- `name` (String) Name of the telemetry provider configuration.
+- `access_key` (String, Sensitive) AWS access key ID with permission to write to the bucket.
+- `bucket` (String) Name of the S3 bucket.
+- `name` (String) Name of the telemetry provider. YBA requires a unique name.
 - `region` (String) AWS region of the bucket.
-- `secret_key` (String, Sensitive) AWS secret key for the access key.
+- `secret_key` (String, Sensitive) AWS secret access key of `access_key`.
 
 ### Optional
 
-- `directory_prefix` (String) S3 prefix (root directory inside the bucket) to write objects under.
-- `disable_ssl` (Boolean) Disable SSL when talking to the S3 endpoint.
-- `endpoint` (String) Optional override endpoint URL (e.g. for VPC endpoints or S3-compatible stores).
-- `file_prefix` (String) Optional file-name prefix prepended to every object.
-- `force_path_style` (Boolean) Force path-style addressing instead of the default virtual-hosted style.
-- `include_universe_and_node_in_prefix` (Boolean) Append `<universe-uuid>/<node-name>` to the directory prefix when writing objects.
-- `marshaler` (String) Optional marshaler used to serialize records (defaults to YBA's choice).
-- `partition` (String) Time granularity of the S3 object directory layout. One of `hour` or `minute` (YBA default: `minute`).
-- `role_arn` (String) Optional IAM role ARN to assume.
-- `tags` (Map of String) Optional string tags associated with the configuration.
+- `directory_prefix` (String) Root directory in the bucket for the objects. YBA uses `yb-logs/` when this is not set.
+- `disable_ssl` (Boolean) Connect to the S3 endpoint without TLS. Defaults to `false`.
+- `endpoint` (String) S3 endpoint URL to use instead of the default, for example a VPC endpoint or an S3-compatible store.
+- `file_prefix` (String) Prefix of each object name. YBA uses `yb-otel-` when this is not set.
+- `force_path_style` (Boolean) Use path-style addressing instead of virtual-hosted-style addressing. Defaults to `false`.
+- `include_universe_and_node_in_prefix` (Boolean) Add `<universe-uuid>/<node-name>` to the directory of each object. Defaults to `false`.
+- `marshaler` (String) Format of the objects: `OTLP_JSON` or `SUMO_IC`. YBA uses `OTLP_JSON` when this is not set.
+- `partition` (String) Time unit of the directory layout in the bucket: `hour` or `minute`. YBA uses `minute` when this is not set.
+- `role_arn` (String) ARN of an IAM role to assume to write the objects.
+- `tags` (Map of String) Tags that YBA adds as attributes to every record that a universe exports to this telemetry provider.
 - `timeouts` (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))
 
 ### Read-Only
@@ -107,38 +113,69 @@ Optional:
 - `delete` (String)
 - `read` (String)
 
-## Replacing an in-use provider
+## Replacing a telemetry provider in use
 
-YBA does not support editing a telemetry provider — any change to a
-field forces Terraform to destroy-and-recreate the resource. YBA also
-rejects delete requests for a provider that is still referenced by a
-universe's telemetry configuration:
+YBA cannot change a telemetry provider in place. A change to any argument
+destroys the telemetry provider and creates a new one. YBA does not delete a
+telemetry provider that a universe uses, so before Terraform deletes the
+telemetry provider, it removes the telemetry provider from the telemetry
+configuration of each universe that uses it.
 
-```
-Cannot delete Telemetry Provider '...', as it is in use.
-```
+When you destroy or replace a telemetry provider that universes use, expect the
+following:
 
-The destroy step handles this proactively: before issuing the YBA delete
-it enumerates every universe whose telemetry config references the
-provider and rewrites each universe's config with the provider filtered
-out of the audit/query/metrics exporter lists (through the unified
-`/api/v2/customers/{c}/universes/{u}/export-telemetry-configs` endpoint).
-It waits for every resulting rolling-upgrade task to reach a terminal
-state, and only then issues the YBA delete. The detach step is therefore
-the canonical "detach, then mutate" workflow — destroy-and-recreate
-plans, plain `terraform destroy`, and any `yba_universe_telemetry_config`
-update planned in the same `terraform apply` (which is then applied with
-the new provider UUID) all go through it.
+- Each of those universes goes through a rolling restart. Several universes can
+  restart at the same time. The universes are not deleted, and their other
+  telemetry providers do not change.
+- A pipeline whose only exporter was this telemetry provider is turned off.
+- When a `yba_universe_telemetry_config` resource refers to the telemetry
+  provider, Terraform then updates that resource to use the new telemetry
+  provider. The update turns the pipeline on again and restarts the universe a
+  second time.
 
-The universes themselves are never destroyed — only their OpenTelemetry
-collector configuration is updated.
+The delete timeout covers the restarts of all these universes. It defaults to
+2 hours. For large universes, set a longer `timeouts.delete`.
 
 ## Import
 
-Telemetry providers can be imported using their UUID. Import verifies
-the provider's type: importing a provider of a different sink type fails
-with a message naming the matching resource.
+Import a telemetry provider with its UUID:
 
 ```sh
 terraform import yba_s3_telemetry_provider.audit_archive <telemetry-provider-uuid>
 ```
+
+The import fails when the telemetry provider is not an Amazon S3 telemetry
+provider. The error names its type. Import it with the resource for that type
+instead.
+
+Import reads only `name` and `tags`. The other arguments are not in the state
+after import, so the next plan replaces the telemetry provider, and each
+universe that uses it restarts. To keep the imported telemetry provider, add the
+other arguments to `ignore_changes`:
+
+```terraform
+resource "yba_s3_telemetry_provider" "audit_archive" {
+  # ...
+
+  lifecycle {
+    ignore_changes = [
+      bucket,
+      region,
+      access_key,
+      secret_key,
+      directory_prefix,
+      file_prefix,
+      endpoint,
+      role_arn,
+      partition,
+      marshaler,
+      disable_ssl,
+      force_path_style,
+      include_universe_and_node_in_prefix,
+    ]
+  }
+}
+```
+
+Remove the `lifecycle` block when you want Terraform to manage these arguments
+again. The next apply then replaces the telemetry provider.

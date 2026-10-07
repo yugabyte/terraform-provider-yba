@@ -1,20 +1,20 @@
 ---
 page_title: "yba_certificate Data Source - YugabyteDB Anywhere"
 description: |-
-  Looks up an encryption-in-transit certificate configuration by label. Useful for referencing certificates created outside Terraform — for example the self-signed root certificate YugabyteDB Anywhere generates automatically when a universe is created with encryption enabled and no certificate set.
+  Looks up a YugabyteDB Anywhere encryption-in-transit certificate configuration by label. Use it to reference a certificate created outside Terraform, for example the root certificate that YugabyteDB Anywhere generates when it creates a universe with encryption in transit and no certificate set.
 ---
 
 # yba_certificate (Data Source)
 
-Looks up an encryption-in-transit certificate configuration by label. Useful for referencing certificates created outside Terraform — for example the self-signed root certificate YugabyteDB Anywhere generates automatically when a universe is created with encryption enabled and no certificate set.
+Looks up a YugabyteDB Anywhere encryption-in-transit certificate configuration by label. Use it to reference a certificate created outside Terraform, for example the root certificate that YugabyteDB Anywhere generates when it creates a universe with encryption in transit and no certificate set.
 
 ## Example Usage
 
 ```terraform
-# Look up a certificate configuration by label — for example the self-signed
-# root certificate YugabyteDB Anywhere generated automatically for a universe
-# created with encryption enabled and no certificate set (labeled after the
-# universe's node prefix).
+# Look up a certificate configuration by label. This example finds the root
+# certificate that YugabyteDB Anywhere generated for a universe created with
+# encryption in transit and no certificate set. YugabyteDB Anywhere labels that
+# certificate with the universe's node prefix.
 data "yba_certificate" "auto_generated" {
   label = "yb-prod-universe"
 }
@@ -37,9 +37,9 @@ output "auto_generated_cert_expiry" {
 
 ### Read-Only
 
-- `cert_type` (String) Type of the certificate configuration: SelfSigned, CustomServerCert, CustomCertHostPath, HashicorpVault or K8SCertManager.
-- `expiry_date` (String) Expiry date of the certificate (RFC 3339).
+- `cert_type` (String) Type of the certificate configuration: `SelfSigned`, `CustomServerCert`, `CustomCertHostPath`, `HashicorpVault` or `K8SCertManager`.
+- `expiry_date` (String) End of the root certificate's validity period, in RFC 3339 format.
 - `id` (String) The ID of this resource.
-- `in_use` (Boolean) True while at least one universe references this certificate.
-- `start_date` (String) Creation date of the certificate (RFC 3339).
+- `in_use` (Boolean) Whether a universe uses this certificate.
+- `start_date` (String) Start of the root certificate's validity period, in RFC 3339 format.
 - `uuid` (String) UUID of the certificate configuration.

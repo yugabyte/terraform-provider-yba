@@ -21,12 +21,15 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 )
 
-const previewAdmonition = "~> **Preview:** This resource wraps a YugabyteDB " +
-	"Anywhere Perf Advisor API marked preview, which may change in " +
-	"backward-incompatible ways across YBA releases. It also requires Perf " +
-	"Advisor online mode to be enabled for the customer " +
-	"(`yb.ui.feature_flags.enable_pa_online_mode`), which is off by default; " +
-	"every call below is refused while it is off.\n\n"
+// previewAdmonition follows the summary paragraph of each resource Description:
+// the docs templates publish the first paragraph as the Registry summary.
+const previewAdmonition = "~> **Preview:** YugabyteDB Anywhere marks the Perf " +
+	"Advisor API that this resource uses as preview. The API can change in ways " +
+	"that are not backward compatible between YBA releases.\n\n"
+
+// onlineModeKey is the customer runtime config key that turns on Perf Advisor
+// online mode. YBA ships it set to false.
+const onlineModeKey = "`yb.ui.feature_flags.enable_pa_online_mode`"
 
 func previewWarning(resourceName string) diag.Diagnostic {
 	return diag.Diagnostic{

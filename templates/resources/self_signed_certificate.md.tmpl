@@ -8,14 +8,12 @@ description: |-
 
 {{ .Description | trimspace }}
 
-Reference the certificate from a universe via `root_ca` (node-to-node TLS) and/or
-`client_root_ca` (client-to-node TLS). Rotation semantics — including the same-CA
-server-certificate refresh driven by the universe's `cert_rotation` triggers — are documented
-in the [Universe Edit Actions](../guides/universe-edit-actions.md#certificate-rotation) guide.
-
--> **Note:** Creation of the minted (label-only) mode uses a YugabyteDB Anywhere endpoint that
-is internal API surface (available since YBA 2.20.0.0, below this provider's minimum supported
-version). The bring-your-own mode uses the public certificate upload API only.
+Use the certificate in a universe through `root_ca` (node-to-node encryption),
+`client_root_ca` (client-to-node encryption), or both. The
+[Certificate Rotation](../guides/universe-edit-actions.md#certificate-rotation) section of the
+Universe Edit Actions guide describes how a universe rotates to a new certificate, and how the
+universe's `cert_rotation` triggers re-issue the server certificates from the same root
+certificate.
 
 ## Example Usage
 
@@ -25,10 +23,11 @@ version). The bring-your-own mode uses the public certificate upload API only.
 
 ## Import
 
-Self-signed certificate configurations can be imported using the certificate UUID:
+Import a self-signed certificate configuration with its UUID:
 
 ```sh
-terraform import yba_self_signed_certificate.example <certificate-uuid>
+terraform import yba_self_signed_certificate.generated <certificate-uuid>
 ```
 
-`private_key` cannot be recovered through the API and stays empty after import.
+YugabyteDB Anywhere never returns `private_key`, so it stays empty after import. This does
+not cause a plan change: Terraform does not store write-only arguments.

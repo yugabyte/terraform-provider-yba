@@ -3,8 +3,8 @@ provider "yba" {
   host  = "<host-ip-address>"
 }
 
-# Pass values that are already strings inside Terraform directly to the
-# resource - no temporary files are required on the local filesystem.
+# Pass values that are already strings in Terraform directly to the
+# resource. No local files are necessary.
 resource "yba_installer" "install" {
   provider    = yba.unauthenticated
   ssh_host_ip = "<ip-of-yba-node-for-ssh-commands>"
@@ -20,8 +20,7 @@ resource "yba_installer" "install" {
   yba_version = "<YugabyteDB Anywhere-version-with-build-number>"
 }
 
-# Alternatively, point each attribute at a local file. The file-based
-# attributes remain supported for backward compatibility.
+# Alternatively, point each input at a local file.
 resource "yba_installer" "install_from_files" {
   provider                  = yba.unauthenticated
   ssh_host_ip               = "<ip-of-yba-node-for-ssh-commands>"
@@ -32,11 +31,11 @@ resource "yba_installer" "install_from_files" {
   yba_version               = "<YugabyteDB Anywhere-version-with-build-number>"
 }
 
-# ssh_host_ip and ssh_port are simply the address the installer dials - any
-# reachable sshd works. Set ssh_port when that address uses a non-default
-# port: an sshd listening on 2222, a NAT/firewall mapping, or the local end
-# of a tunnel (e.g. `ssh -L 2222:<yba-node>:22 <jump-host>` with
-# ssh_host_ip = "127.0.0.1").
+# ssh_host_ip and ssh_port give the address where the provider opens SSH
+# connections. Set ssh_port when sshd listens on a port other than 22: a
+# custom sshd port, a NAT or firewall port mapping, or the local end of an
+# SSH tunnel. For example, with `ssh -L 2222:<yba-node>:22 <jump-host>`, set
+# ssh_host_ip = "127.0.0.1" and ssh_port = 2222.
 resource "yba_installer" "install_non_default_port" {
   provider    = yba.unauthenticated
   ssh_host_ip = "<address-where-sshd-is-reachable>"

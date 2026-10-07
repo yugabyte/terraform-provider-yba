@@ -26,40 +26,42 @@ func ResourceSplunkTelemetryProvider() *schema.Resource {
 		resourceType: "yba_splunk_telemetry_provider",
 		displayName:  "Splunk",
 		apiType:      typeSplunk,
-		description: "Splunk Telemetry Provider resource. Defines a reusable " +
-			"Splunk HTTP Event Collector destination that universes can use to " +
-			"export audit logs and query logs.",
+		description: "Manages a Splunk telemetry provider in YugabyteDB Anywhere. " +
+			"Universes send logs to a Splunk HTTP Event Collector (HEC) through " +
+			"`yba_universe_telemetry_config`.",
+		notes: "~> **Note:** YBA accepts a Splunk telemetry provider only in a log " +
+			"pipeline, not in `metrics`.\n\n",
 		fields: map[string]*schema.Schema{
 			"endpoint": {
 				Type:        schema.TypeString,
 				Required:    true,
 				ForceNew:    true,
-				Description: "Splunk HEC endpoint URL.",
+				Description: "URL of the Splunk HEC endpoint.",
 			},
 			"token": {
 				Type:        schema.TypeString,
 				Required:    true,
 				ForceNew:    true,
 				Sensitive:   true,
-				Description: "Splunk HEC access token.",
+				Description: "Splunk HEC token.",
 			},
 			"source": {
 				Type:        schema.TypeString,
 				Optional:    true,
 				ForceNew:    true,
-				Description: "Optional Splunk source field.",
+				Description: "Splunk `source` value of the events.",
 			},
 			"source_type": {
 				Type:        schema.TypeString,
 				Optional:    true,
 				ForceNew:    true,
-				Description: "Optional Splunk source type field.",
+				Description: "Splunk `sourcetype` value of the events.",
 			},
 			"index": {
 				Type:        schema.TypeString,
 				Optional:    true,
 				ForceNew:    true,
-				Description: "Optional Splunk index name.",
+				Description: "Splunk index that receives the events.",
 			},
 		},
 		buildConfig: func(d *schema.ResourceData) map[string]interface{} {

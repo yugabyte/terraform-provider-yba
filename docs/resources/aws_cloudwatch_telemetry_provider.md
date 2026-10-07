@@ -1,32 +1,27 @@
 ---
 page_title: "yba_aws_cloudwatch_telemetry_provider Resource - YugabyteDB Anywhere"
 description: |-
-  ~> Experimental: This resource wraps a YugabyteDB Anywhere telemetry export API that is still experimental and may change in backward-incompatible ways across YBA releases. Pin your provider version and review release notes before upgrading.
-  AWS CloudWatch Telemetry Provider resource. Defines a reusable CloudWatch Logs destination that universes can use to export audit logs and query logs.
-  ~> Note: YBA does not allow editing a telemetry provider in place. Any change to a field forces Terraform to destroy and recreate the resource. YBA also refuses to delete a provider that is still referenced by a universe's telemetry config, so the destroy step first enumerates every universe whose audit / query / metrics exporter list references this provider and rewrites that list with the provider removed (via a rolling-upgrade task on each universe). Once every detach task reaches a terminal state, the provider itself is deleted. The universes themselves are never destroyed — only their OpenTelemetry collector configuration is updated.
-  ~> Drift Note: Read refreshes only name and tags. The AWS CloudWatch connection fields are not reconciled against the server, because YBA masks credentials in its responses and every field is ForceNew anyway. A field edited out-of-band in the YBA UI is therefore not detected as drift — re-apply from Terraform to restore the intended configuration.
-  ~> Import Note: Import verifies the provider's type: importing a provider that is not a AWS CloudWatch destination fails with the actual type, so it can be imported with the matching yba_*_telemetry_provider resource instead.
-  ~> Security Note: Credentials such as API keys, tokens, and secret access keys are stored in the Terraform state file (marked sensitive). Use a secure backend and restrict access to your state files.
+  Manages an AWS CloudWatch telemetry provider in YugabyteDB Anywhere. Universes send logs to it, in CloudWatch Logs, through yba_universe_telemetry_config.
 ---
 
 # yba_aws_cloudwatch_telemetry_provider (Resource)
 
-~> **Experimental:** This resource wraps a YugabyteDB Anywhere telemetry export API that is still experimental and may change in backward-incompatible ways across YBA releases. Pin your provider version and review release notes before upgrading.
+Manages an AWS CloudWatch telemetry provider in YugabyteDB Anywhere. Universes send logs to it, in CloudWatch Logs, through `yba_universe_telemetry_config`.
 
-AWS CloudWatch Telemetry Provider resource. Defines a reusable CloudWatch Logs destination that universes can use to export audit logs and query logs.
+~> **Experimental:** Telemetry export is an experimental feature of YugabyteDB Anywhere. A later YBA release can change it in ways that are not backward compatible. Read the release notes before you upgrade YBA or the provider.
 
-~> **Note:** YBA does not allow editing a telemetry provider in place. Any change to a field forces Terraform to destroy and recreate the resource. YBA also refuses to delete a provider that is still referenced by a universe's telemetry config, so the destroy step first enumerates every universe whose audit / query / metrics exporter list references this provider and rewrites that list with the provider removed (via a rolling-upgrade task on each universe). Once every detach task reaches a terminal state, the provider itself is deleted. The universes themselves are never destroyed — only their OpenTelemetry collector configuration is updated.
+~> **Note:** YBA accepts an AWS CloudWatch telemetry provider only in a log pipeline, not in `metrics`. All AWS CloudWatch and S3 telemetry providers that one universe uses must have the same `access_key` and `secret_key`.
 
-~> **Drift Note:** Read refreshes only `name` and `tags`. The AWS CloudWatch connection fields are **not** reconciled against the server, because YBA masks credentials in its responses and every field is `ForceNew` anyway. A field edited out-of-band in the YBA UI is therefore not detected as drift — re-apply from Terraform to restore the intended configuration.
+~> **Note:** YBA cannot change a telemetry provider in place, so a change to any argument replaces the resource. Before Terraform deletes a telemetry provider, it removes the telemetry provider from every universe that uses it. Each of those universes goes through a rolling restart. The universes are not deleted.
 
-~> **Import Note:** Import verifies the provider's type: importing a provider that is not a AWS CloudWatch destination fails with the actual type, so it can be imported with the matching `yba_*_telemetry_provider` resource instead.
+~> **Drift Note:** Terraform reads back only `name` and `tags`. It does not detect a change to the AWS CloudWatch connection arguments made outside Terraform, for example in the YBA UI. To apply the configured values again, replace the resource with `terraform apply -replace`.
 
-~> **Security Note:** Credentials such as API keys, tokens, and secret access keys are stored in the Terraform state file (marked sensitive). Use a secure backend and restrict access to your state files.
+~> **Security Note:** Terraform stores the credentials of this telemetry provider in the state file, marked sensitive. Use a secure backend and restrict access to the state file.
 
 ## Example Usage
 
 ```terraform
-# AWS CloudWatch Logs destination for audit/query logs.
+# AWS CloudWatch Logs destination for logs.
 resource "yba_aws_cloudwatch_telemetry_provider" "cw" {
   name = "cloudwatch"
 
@@ -36,11 +31,11 @@ resource "yba_aws_cloudwatch_telemetry_provider" "cw" {
   access_key = var.aws_access_key
   secret_key = var.aws_secret_key
 
-  # Optional: assume a role and use a VPC endpoint.
+  # Optional: assume an IAM role, and use a VPC endpoint.
   role_arn = "arn:aws:iam::111111111111:role/yba-cloudwatch"
   endpoint = "https://logs.us-west-2.amazonaws.com"
 
-  # Optional tags, upserted as attributes onto every exported record.
+  # Optional tags. YBA adds them as attributes to every exported record.
   tags = {
     env = "prod"
   }
@@ -52,18 +47,18 @@ resource "yba_aws_cloudwatch_telemetry_provider" "cw" {
 
 ### Required
 
-- `access_key` (String, Sensitive) AWS access key with CloudWatch permissions.
-- `log_group` (String) CloudWatch log group.
-- `log_stream` (String) CloudWatch log stream.
-- `name` (String) Name of the telemetry provider configuration.
-- `region` (String) AWS region.
-- `secret_key` (String, Sensitive) AWS secret key for the access key.
+- `access_key` (String, Sensitive) AWS access key ID with permission to write to CloudWatch Logs.
+- `log_group` (String) CloudWatch Logs log group.
+- `log_stream` (String) CloudWatch Logs log stream.
+- `name` (String) Name of the telemetry provider. YBA requires a unique name.
+- `region` (String) AWS region of the log group.
+- `secret_key` (String, Sensitive) AWS secret access key of `access_key`.
 
 ### Optional
 
-- `endpoint` (String) Optional override endpoint URL (e.g. for VPC endpoints).
-- `role_arn` (String) Optional IAM role ARN to assume.
-- `tags` (Map of String) Optional string tags associated with the configuration.
+- `endpoint` (String) CloudWatch Logs endpoint URL to use instead of the default, for example a VPC endpoint.
+- `role_arn` (String) ARN of an IAM role to assume to write the logs.
+- `tags` (Map of String) Tags that YBA adds as attributes to every record that a universe exports to this telemetry provider.
 - `timeouts` (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))
 
 ### Read-Only
@@ -80,38 +75,63 @@ Optional:
 - `delete` (String)
 - `read` (String)
 
-## Replacing an in-use provider
+## Replacing a telemetry provider in use
 
-YBA does not support editing a telemetry provider — any change to a
-field forces Terraform to destroy-and-recreate the resource. YBA also
-rejects delete requests for a provider that is still referenced by a
-universe's telemetry configuration:
+YBA cannot change a telemetry provider in place. A change to any argument
+destroys the telemetry provider and creates a new one. YBA does not delete a
+telemetry provider that a universe uses, so before Terraform deletes the
+telemetry provider, it removes the telemetry provider from the telemetry
+configuration of each universe that uses it.
 
-```
-Cannot delete Telemetry Provider '...', as it is in use.
-```
+When you destroy or replace a telemetry provider that universes use, expect the
+following:
 
-The destroy step handles this proactively: before issuing the YBA delete
-it enumerates every universe whose telemetry config references the
-provider and rewrites each universe's config with the provider filtered
-out of the audit/query/metrics exporter lists (through the unified
-`/api/v2/customers/{c}/universes/{u}/export-telemetry-configs` endpoint).
-It waits for every resulting rolling-upgrade task to reach a terminal
-state, and only then issues the YBA delete. The detach step is therefore
-the canonical "detach, then mutate" workflow — destroy-and-recreate
-plans, plain `terraform destroy`, and any `yba_universe_telemetry_config`
-update planned in the same `terraform apply` (which is then applied with
-the new provider UUID) all go through it.
+- Each of those universes goes through a rolling restart. Several universes can
+  restart at the same time. The universes are not deleted, and their other
+  telemetry providers do not change.
+- A pipeline whose only exporter was this telemetry provider is turned off.
+- When a `yba_universe_telemetry_config` resource refers to the telemetry
+  provider, Terraform then updates that resource to use the new telemetry
+  provider. The update turns the pipeline on again and restarts the universe a
+  second time.
 
-The universes themselves are never destroyed — only their OpenTelemetry
-collector configuration is updated.
+The delete timeout covers the restarts of all these universes. It defaults to
+2 hours. For large universes, set a longer `timeouts.delete`.
 
 ## Import
 
-Telemetry providers can be imported using their UUID. Import verifies
-the provider's type: importing a provider of a different sink type fails
-with a message naming the matching resource.
+Import a telemetry provider with its UUID:
 
 ```sh
 terraform import yba_aws_cloudwatch_telemetry_provider.cw <telemetry-provider-uuid>
 ```
+
+The import fails when the telemetry provider is not an AWS CloudWatch telemetry
+provider. The error names its type. Import it with the resource for that type
+instead.
+
+Import reads only `name` and `tags`. The other arguments are not in the state
+after import, so the next plan replaces the telemetry provider, and each
+universe that uses it restarts. To keep the imported telemetry provider, add the
+other arguments to `ignore_changes`:
+
+```terraform
+resource "yba_aws_cloudwatch_telemetry_provider" "cw" {
+  # ...
+
+  lifecycle {
+    ignore_changes = [
+      log_group,
+      log_stream,
+      region,
+      access_key,
+      secret_key,
+      role_arn,
+      endpoint,
+    ]
+  }
+}
+```
+
+Remove the `lifecycle` block when you want Terraform to manage these arguments
+again. The next apply then replaces the telemetry provider.

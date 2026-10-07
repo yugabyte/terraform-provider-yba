@@ -1,12 +1,12 @@
 ---
 page_title: "yba_ear_config Data Source - YugabyteDB Anywhere"
 description: |-
-  Looks up an encryption-at-rest configuration by name, whichever key management service backs it. Use it to reference a configuration created in the YugabyteDB Anywhere UI from a universe's encryption_at_rest block, or to find the UUID for terraform import into yba_gcp_ear_config.
+  Looks up a YugabyteDB Anywhere encryption-at-rest configuration by name, for any KMS provider. Use it to reference a configuration created in the YugabyteDB Anywhere UI from a universe's encryption_at_rest block, or to find the UUID to import into yba_gcp_ear_config.
 ---
 
 # yba_ear_config (Data Source)
 
-Looks up an encryption-at-rest configuration by name, whichever key management service backs it. Use it to reference a configuration created in the YugabyteDB Anywhere UI from a universe's `encryption_at_rest` block, or to find the UUID for `terraform import` into `yba_gcp_ear_config`.
+Looks up a YugabyteDB Anywhere encryption-at-rest configuration by name, for any KMS provider. Use it to reference a configuration created in the YugabyteDB Anywhere UI from a universe's `encryption_at_rest` block, or to find the UUID to import into `yba_gcp_ear_config`.
 
 ## Example Usage
 
@@ -17,7 +17,7 @@ data "yba_ear_config" "ui_created" {
   name = "gcp-kms-prod"
 }
 
-# A universe attaches it through its encryption_at_rest block:
+# A universe uses it through its encryption_at_rest block:
 #
 #   encryption_at_rest {
 #     enabled         = true
@@ -26,13 +26,12 @@ data "yba_ear_config" "ui_created" {
 #
 # The yba_universe example shows a complete universe with the block.
 
-output "ear_config_provider" {
+output "ear_config_kms_provider" {
   value = data.yba_ear_config.ui_created.key_provider
 }
 
-# The UUID also drives an import into yba_gcp_ear_config, to start managing
-# the configuration in Terraform:
-#   terraform import yba_gcp_ear_config.prod <uuid>
+# To manage the configuration in Terraform, import it with this UUID:
+#   terraform import yba_gcp_ear_config.service_account <uuid>
 output "ear_config_uuid" {
   value = data.yba_ear_config.ui_created.uuid
 }
@@ -48,8 +47,8 @@ output "ear_config_uuid" {
 ### Read-Only
 
 - `id` (String) The ID of this resource.
-- `in_use` (Boolean) True while any universe holds key history for this configuration.
-- `key_provider` (String) Key management service behind the configuration: `GCP`, `AWS`, `AZU`, `HASHICORP`, `CIPHERTRUST`, `OCI` or `SMARTKEY`.
+- `in_use` (Boolean) Whether a universe holds key history for this configuration.
+- `key_provider` (String) KMS provider of the configuration: `GCP`, `AWS`, `AZU`, `HASHICORP`, `CIPHERTRUST`, `OCI` or `SMARTKEY`.
 - `universes` (List of Object) Universes that hold key history for this configuration, including ones that later disabled encryption or moved to another configuration. (see [below for nested schema](#nestedatt--universes))
 - `uuid` (String) UUID of the configuration.
 

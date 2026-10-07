@@ -54,11 +54,11 @@ var gcpSettingAttrs = map[string]string{
 
 // gcpHostIdentityRequirement is the version gate of USE_GCP_IAM and
 // GCP_PROJECT_ID (yugabyte-db commit 7252ad16745, master, 2026-09-21; not on
-// the 2026.1 branch). It renders into the resource docs.
-const gcpHostIdentityRequirement = "`use_gcp_iam` and `project_id` need YugabyteDB " +
-	"Anywhere 2.31 preview builds from 2026-09-21 or later; no 2026.1 build supports them. " +
-	"An older build rejects a configuration without `credentials` and stores `project_id` " +
-	"without using it."
+// the 2026.1 branch). It renders into the resource docs, which name stable
+// releases only.
+const gcpHostIdentityRequirement = "`use_gcp_iam` and `project_id` need a YugabyteDB " +
+	"Anywhere release later than 2026.1. YugabyteDB Anywhere 2026.1 and earlier reject a " +
+	"configuration without `credentials`, and store `project_id` but do not use it."
 
 // ResourceGCPEARConfig defines the GCP KMS encryption-at-rest configuration.
 func ResourceGCPEARConfig() *schema.Resource {
@@ -69,26 +69,28 @@ func gcpEARSpec() earSpec {
 	return earSpec{
 		displayName: "GCP KMS",
 		apiProvider: providerGCP,
-		description: "Encryption-at-rest configuration backed by a Google Cloud KMS crypto key. " +
-			"YugabyteDB Anywhere wraps each universe's universe key with the crypto key and " +
-			"unwraps it whenever a node needs it. Point the configuration at an existing key " +
-			"ring and crypto key, or let YugabyteDB Anywhere create them when the identity " +
-			"holds `cloudkms.keyRings.create` and `cloudkms.cryptoKeys.create`. An existing " +
-			"crypto key must have purpose `ENCRYPT_DECRYPT`, manual rotation (no rotation " +
+		description: "Manages a YugabyteDB Anywhere encryption-at-rest configuration that " +
+			"uses a Google Cloud KMS crypto key as the master key. YugabyteDB Anywhere uses " +
+			"the crypto key to wrap and unwrap the universe keys of each universe that uses " +
+			"the configuration.\n\n" +
+			"Point the configuration at an existing key ring and crypto key, or let " +
+			"YugabyteDB Anywhere create them. To create them, the identity needs " +
+			"`cloudkms.keyRings.create` and `cloudkms.cryptoKeys.create`. An existing crypto " +
+			"key must have the purpose `ENCRYPT_DECRYPT`, manual rotation (no rotation " +
 			"period), and an enabled primary version.\n\n" +
-			"Two authentication modes are supported. Set `credentials` to a service-account " +
-			"key, or set `use_gcp_iam = true` to authenticate as the YugabyteDB Anywhere host: " +
-			"the attached service account on Compute Engine, workload identity on GKE, or the " +
-			"key at `GOOGLE_APPLICATION_CREDENTIALS`. Either identity needs " +
-			"`cloudkms.keyRings.get`, `cloudkms.cryptoKeys.get`, " +
+			"There are two authentication modes. Set `credentials` to a service-account key, " +
+			"or set `use_gcp_iam = true` to authenticate as the YugabyteDB Anywhere host: the " +
+			"attached service account on Compute Engine, workload identity on GKE, or the key " +
+			"file at `GOOGLE_APPLICATION_CREDENTIALS`. Either identity needs these permissions " +
+			"on the key ring's project: `cloudkms.keyRings.get`, `cloudkms.cryptoKeys.get`, " +
 			"`cloudkms.cryptoKeyVersions.useToEncrypt`, " +
 			"`cloudkms.cryptoKeyVersions.useToDecrypt` and " +
-			"`cloudkms.locations.generateRandomBytes` on the key ring's project; YugabyteDB " +
-			"Anywhere checks them at create time.\n\n" +
+			"`cloudkms.locations.generateRandomBytes`. YugabyteDB Anywhere checks them when " +
+			"it creates the configuration.\n\n" +
 			"~> **Note:** " + gcpHostIdentityRequirement + "\n\n" +
-			"~> **Security Note:** `credentials` is stored in the Terraform state file " +
-			"(marked sensitive). Use a secure backend and restrict access to your state " +
-			"files, or use `use_gcp_iam` so that no key leaves the host.",
+			"~> **Security Note:** `credentials` is stored in the Terraform state file and " +
+			"marked sensitive. Use a secure state backend and restrict access to state " +
+			"files, or use `use_gcp_iam`, which keeps the key out of Terraform.",
 		fields: map[string]*schema.Schema{
 			"credentials": {
 				Type:             schema.TypeString,
@@ -97,11 +99,11 @@ func gcpEARSpec() earSpec {
 				ConflictsWith:    []string{"use_gcp_iam"},
 				ValidateFunc:     validation.StringIsJSON,
 				DiffSuppressFunc: structure.SuppressJsonDiff,
-				Description: "Service-account key JSON, inline or via `file(...)`. Required " +
-					"unless `use_gcp_iam` is true. The key's `project_id` names the key ring's " +
-					"project unless `project_id` is set. Can be changed in place: YugabyteDB " +
-					"Anywhere checks that the new key can still unwrap every universe key " +
-					"before storing it.",
+				Description: "Service-account key JSON, inline or from `file(...)`. Required " +
+					"unless `use_gcp_iam` is true. The key's `project_id` is the key ring's " +
+					"project unless `project_id` is set. Can change in place: YugabyteDB " +
+					"Anywhere first checks that the new key can unwrap the active universe key " +
+					"of each universe that uses the configuration.",
 			},
 			"use_gcp_iam": {
 				Type:          schema.TypeBool,
@@ -110,41 +112,43 @@ func gcpEARSpec() earSpec {
 				ConflictsWith: []string{"credentials"},
 				Description: "Authenticate as the YugabyteDB Anywhere host instead of with a " +
 					"key file: the attached service account on Compute Engine, workload " +
-					"identity on GKE, or the key at `GOOGLE_APPLICATION_CREDENTIALS`. Can be " +
-					"changed in place: YugabyteDB Anywhere drops the stored key when a " +
-					"configuration switches to the host identity, and drops the flag when it " +
-					"switches back to `credentials`.",
+					"identity on GKE, or the key file at `GOOGLE_APPLICATION_CREDENTIALS`. " +
+					"Not supported on YugabyteDB Anywhere 2026.1 or earlier. Can change in " +
+					"place; YugabyteDB Anywhere deletes the stored key when the configuration " +
+					"changes to the host identity.",
 			},
 			"project_id": {
 				Type:     schema.TypeString,
 				Optional: true,
 				ForceNew: true,
-				Description: "GCP project that owns the key ring. Defaults to the " +
-					"service-account key's project, or to the host's project with " +
-					"`use_gcp_iam`. Set it when the key ring lives in another project. Fixed " +
-					"after creation.",
+				Description: "GCP project that owns the key ring. Defaults to the project of " +
+					"the service-account key, or to the host's project with `use_gcp_iam`. Set " +
+					"it when the key ring is in another project. Not supported on YugabyteDB " +
+					"Anywhere 2026.1 or earlier. A change forces replacement.",
 			},
 			"location_id": {
 				Type:     schema.TypeString,
 				Required: true,
 				ForceNew: true,
 				Description: "Cloud KMS location of the key ring, for example `global`, " +
-					"`us-east1` or `europe`. Fixed after creation.",
+					"`us-east1` or `europe`. A change forces replacement.",
 			},
 			"key_ring_id": {
 				Type:     schema.TypeString,
 				Required: true,
 				ForceNew: true,
-				Description: "Key ring ID (the last segment of its resource name). Created " +
-					"when missing and the identity may create key rings. Fixed after creation.",
+				Description: "ID of the key ring, which is the last part of its resource " +
+					"name. YugabyteDB Anywhere creates the key ring when it does not exist and " +
+					"the identity can create key rings. A change forces replacement.",
 			},
 			"crypto_key_id": {
 				Type:     schema.TypeString,
 				Required: true,
 				ForceNew: true,
-				Description: "Crypto key ID inside the key ring. This is the master key. " +
-					"Created as a symmetric key when missing and the identity may create " +
-					"crypto keys. Fixed after creation.",
+				Description: "ID of the crypto key in the key ring. This key is the master " +
+					"key. YugabyteDB Anywhere creates it as a symmetric key when it does not " +
+					"exist and the identity can create crypto keys. A change forces " +
+					"replacement.",
 			},
 			"protection_level": {
 				Type:         schema.TypeString,
@@ -152,17 +156,17 @@ func gcpEARSpec() earSpec {
 				Computed:     true,
 				ForceNew:     true,
 				ValidateFunc: validation.StringInSlice(gcpProtectionLevels, false),
-				Description: "`SOFTWARE` or `HSM`. Used when YugabyteDB Anywhere creates the " +
-					"crypto key (`SOFTWARE` when omitted). For an existing key YugabyteDB " +
-					"Anywhere records the key's actual level, so leave this unset or set it " +
-					"to the level the key has. Fixed after creation.",
+				Description: "`SOFTWARE` or `HSM`: the protection level of a crypto key that " +
+					"YugabyteDB Anywhere creates, `SOFTWARE` when not set. For an existing " +
+					"key, YugabyteDB Anywhere records the key's actual level, so leave this " +
+					"unset or set it to that level. A change forces replacement.",
 			},
 			"kms_endpoint": {
 				Type:     schema.TypeString,
 				Optional: true,
 				ForceNew: true,
 				Description: "Custom Cloud KMS endpoint, for Private Service Connect or a " +
-					"restricted VIP. Fixed after creation.",
+					"restricted VIP. A change forces replacement.",
 			},
 		},
 		credentialFields: []string{"credentials", "use_gcp_iam"},

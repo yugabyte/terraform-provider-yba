@@ -40,18 +40,38 @@ const loadBalancerTaskTimeout = 1 * time.Hour
 // YBA universe (one resource per universe; the resource ID is the universe UUID).
 func ResourceUniverseLoadBalancerConfig() *schema.Resource {
 	return &schema.Resource{
-		Description: "Universe Load Balancer Config. Attaches externally-created cloud load " +
-			"balancers (AWS, GCP, or Azure) to a YugabyteDB Anywhere universe and lets YBA " +
-			"manage their node membership through universe operations. The load balancers " +
-			"must already exist in the universe's cloud account; this resource does not " +
-			"create them.\n\n" +
-			"~> **Note:** The underlying YBA endpoint (`update_lb_config`) is a preview API " +
-			"that could change.\n\n" +
-			"~> **Note:** YBA expects the load balancer to use TCP listeners, and on Azure a " +
-			"frontend IP configuration must already exist. Health-check behaviour is tuned " +
-			"via the `yb.universe.network_load_balancer.custom_health_check_*` universe " +
-			"runtime config keys (see the `yba_runtime_config` resource); misconfigured " +
-			"load balancers surface as attach task failures.",
+		Description: "Attaches existing cloud load balancers to a YugabyteDB " +
+			"Anywhere universe on AWS, GCP or Azure. YBA then adds and removes " +
+			"the universe's nodes in the load balancers as universe operations " +
+			"change the nodes.\n\n" +
+			"~> **Preview:** YugabyteDB Anywhere marks the API that this " +
+			"resource uses as preview. The API can change in ways that are not " +
+			"backward compatible between YBA releases.\n\n" +
+			"This resource does not create the load balancers. Create them in " +
+			"the universe's cloud account first, for example with the cloud's " +
+			"own Terraform provider. Attaching and detaching load balancers " +
+			"does not restart the universe. Destroying the resource detaches " +
+			"the universe's nodes from the load balancers and turns off load " +
+			"balancing for the universe. It does not delete the load " +
+			"balancers.\n\n" +
+			"~> **Note:** Use one `yba_universe_load_balancer_config` resource " +
+			"per universe, and put every load balancer of the primary cluster " +
+			"and the read replica in it. The resource ID is the universe UUID. " +
+			"Each apply replaces the whole load balancer configuration of the " +
+			"universe, so a second resource for the same `universe_uuid` " +
+			"detaches the load balancers of the first.\n\n" +
+			"~> **Note:** YBA attaches load balancers only to universes on AWS, " +
+			"GCP and Azure providers. It does not support Kubernetes or " +
+			"on-premises universes.\n\n" +
+			"~> **Note:** YBA routes the universe's YSQL and YCQL ports through " +
+			"the load balancer over TCP. On Azure, the load balancer must " +
+			"already have a frontend IP configuration. To change the health " +
+			"checks, set the universe runtime config keys " +
+			"`yb.universe.network_load_balancer.custom_health_check_ports`, " +
+			"`yb.universe.network_load_balancer.custom_health_check_protocol` " +
+			"and `yb.universe.network_load_balancer.custom_health_check_paths`, " +
+			"for example with `yba_runtime_config`. When YBA cannot use a load " +
+			"balancer, the apply fails with the error of the YBA task.",
 
 		CreateContext: resourceUniverseLoadBalancerConfigCreate,
 		ReadContext:   resourceUniverseLoadBalancerConfigRead,
@@ -73,47 +93,49 @@ func ResourceUniverseLoadBalancerConfig() *schema.Resource {
 				Type:     schema.TypeString,
 				Required: true,
 				ForceNew: true,
-				Description: "UUID of the universe to attach load balancers to. The resource " +
-					"ID is this UUID (one config per universe); import with the universe UUID.",
+				Description: "UUID of the universe. The resource ID is this " +
+					"UUID. Changing it replaces the resource.",
 			},
 			"load_balancer": {
 				Type:     schema.TypeSet,
 				Required: true,
 				MinItems: 1,
-				Description: "Per-region load balancer mapping for the universe's primary " +
-					"cluster. Each block applies its load balancer to every availability " +
-					"zone of the region unless overridden via `az_overrides`.",
+				Description: "Load balancer for one region of one cluster. The " +
+					"block applies `lb_name` to every availability zone of the region, " +
+					"except the zones in `az_overrides`. Add one block per region of " +
+					"each cluster.",
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
 						"region": {
 							Type:     schema.TypeString,
 							Required: true,
-							Description: "Region code (as it appears in the universe " +
-								"placement, e.g. `us-west-2`) this load balancer serves.",
+							Description: "Code of the region that the load balancer " +
+								"serves, as it appears in the universe placement, for " +
+								"example `us-west-2`.",
 						},
 						"lb_name": {
 							Type:     schema.TypeString,
 							Required: true,
-							Description: "Cloud-side load balancer identifier: the load " +
-								"balancer name on AWS and Azure, the backend service name " +
-								"on GCP.",
+							Description: "Name of the load balancer in the cloud: the " +
+								"load balancer name on AWS and Azure, the backend service " +
+								"name on GCP.",
 						},
 						"read_replica": {
 							Type:     schema.TypeBool,
 							Optional: true,
-							Description: "Attach this load balancer to the universe's read " +
-								"replica cluster instead of the primary cluster. YBA supports " +
-								"at most one read replica per universe. Defaults to `false` " +
-								"(primary).",
+							Description: "Attach the load balancer to the read replica " +
+								"cluster instead of the primary cluster. A universe has at " +
+								"most one read replica cluster. Defaults to `false`.",
 						},
 						"az_overrides": {
 							Type:     schema.TypeMap,
 							Optional: true,
 							Elem:     &schema.Schema{Type: schema.TypeString},
-							Description: "Map of availability zone name to load balancer " +
-								"name for zones that should use a different load balancer " +
-								"than the region default (e.g. one load balancer per AZ for " +
-								"zone-local application traffic).",
+							Description: "Map of availability zone name to load " +
+								"balancer name, for zones that use a different load " +
+								"balancer than `lb_name`. Set `lb_name` to the load " +
+								"balancer that most zones of the region use, and list only " +
+								"the other zones here.",
 						},
 					},
 				},

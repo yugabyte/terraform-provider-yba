@@ -28,10 +28,10 @@ import (
 // DataSourceCertificate defines the certificate lookup data source.
 func DataSourceCertificate() *schema.Resource {
 	return &schema.Resource{
-		Description: "Looks up an encryption-in-transit certificate configuration by label. " +
-			"Useful for referencing certificates created outside Terraform — for example " +
-			"the self-signed root certificate YugabyteDB Anywhere generates automatically " +
-			"when a universe is created with encryption enabled and no certificate set.",
+		Description: "Looks up a YugabyteDB Anywhere encryption-in-transit certificate " +
+			"configuration by label. Use it to reference a certificate created outside " +
+			"Terraform, for example the root certificate that YugabyteDB Anywhere generates " +
+			"when it creates a universe with encryption in transit and no certificate set.",
 
 		ReadContext: dataSourceCertificateRead,
 
@@ -49,23 +49,26 @@ func DataSourceCertificate() *schema.Resource {
 			"cert_type": {
 				Type:     schema.TypeString,
 				Computed: true,
-				Description: "Type of the certificate configuration: SelfSigned, " +
-					"CustomServerCert, CustomCertHostPath, HashicorpVault or K8SCertManager.",
+				Description: "Type of the certificate configuration: `SelfSigned`, " +
+					"`CustomServerCert`, `CustomCertHostPath`, `HashicorpVault` or " +
+					"`K8SCertManager`.",
 			},
 			"start_date": {
-				Type:        schema.TypeString,
-				Computed:    true,
-				Description: "Creation date of the certificate (RFC 3339).",
+				Type:     schema.TypeString,
+				Computed: true,
+				Description: "Start of the root certificate's validity period, in RFC 3339 " +
+					"format.",
 			},
 			"expiry_date": {
-				Type:        schema.TypeString,
-				Computed:    true,
-				Description: "Expiry date of the certificate (RFC 3339).",
+				Type:     schema.TypeString,
+				Computed: true,
+				Description: "End of the root certificate's validity period, in RFC 3339 " +
+					"format.",
 			},
 			"in_use": {
 				Type:        schema.TypeBool,
 				Computed:    true,
-				Description: "True while at least one universe references this certificate.",
+				Description: "Whether a universe uses this certificate.",
 			},
 		},
 	}

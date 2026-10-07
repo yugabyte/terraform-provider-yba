@@ -32,30 +32,37 @@ import (
 // tobool/tonumber/jsondecode.
 func DataSourceRuntimeConfig() *schema.Resource {
 	return &schema.Resource{
-		Description: "Reads the value of a single YugabyteDB Anywhere runtime " +
-			"configuration key on a given scope. The value is always returned as a " +
-			"string, exactly as YBA stores it; convert it with `tobool`, " +
-			"`tonumber`, or `jsondecode` to consume it as another type.\n\n" +
-			"~> **Note:** Reading most runtime config keys requires a Super Admin user.",
+		Description: "Reads the value of one runtime configuration key on one " +
+			"scope in YugabyteDB Anywhere.\n\n" +
+			"The value is a string, as YBA stores it. Convert it with " +
+			"`tobool`, `tonumber` or `jsondecode` to use it as another type. " +
+			"When the scope has no value for the key, the data source returns " +
+			"the value of a wider scope, or the default of the key. YBA masks " +
+			"the value of a secret key, such as " +
+			"`yb.security.ldap.ldap_service_account_password`. The plan fails " +
+			"when YBA does not know the key.",
 
 		ReadContext: dataSourceRuntimeConfigRead,
 
 		Schema: map[string]*schema.Schema{
 			"scope": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				Default:     globalRuntimeScope,
-				Description: "Scope UUID to read the key from. Defaults to the YBA global scope.",
+				Type:     schema.TypeString,
+				Optional: true,
+				Default:  globalRuntimeScope,
+				Description: "UUID of the scope to read: the global scope " +
+					"`00000000-0000-0000-0000-000000000000` (the default), or a " +
+					"customer, provider or universe UUID.",
 			},
 			"key": {
-				Type:        schema.TypeString,
-				Required:    true,
-				Description: "Runtime configuration key to read (e.g. `yb.telemetry.allow_s3`).",
+				Type:     schema.TypeString,
+				Required: true,
+				Description: "Runtime configuration key to read, for example " +
+					"`yb.telemetry.allow_s3`.",
 			},
 			"value": {
 				Type:        schema.TypeString,
 				Computed:    true,
-				Description: "Current value of the key as reported by YBA, as a plain string.",
+				Description: "Value of the key on the scope, as a string.",
 			},
 		},
 	}

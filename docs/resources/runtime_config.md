@@ -1,43 +1,50 @@
 ---
 page_title: "yba_runtime_config Resource - YugabyteDB Anywhere"
 description: |-
-  YBA Runtime Config Resource. Sets a runtime configuration key on a specific scope. Use the global scope (00000000-0000-0000-0000-000000000000) for feature flags such as yb.telemetry.allow_s3 or yb.universe.metrics_export_enabled. Deleting the resource resets the key to its default by calling the YBA delete-key API.
-  ~> Note: Most runtime config keys require a Super Admin user.
-  ~> Note: Some keys are write-only on the YBA side; the read flow will reflect the most recent value YBA reports for the scope.
+  Sets a runtime configuration key on one scope in YugabyteDB Anywhere. The scope is the global scope, a customer, a provider or a universe.
 ---
 
 # yba_runtime_config (Resource)
 
-YBA Runtime Config Resource. Sets a runtime configuration key on a specific scope. Use the global scope (`00000000-0000-0000-0000-000000000000`) for feature flags such as `yb.telemetry.allow_s3` or `yb.universe.metrics_export_enabled`. Deleting the resource resets the key to its default by calling the YBA delete-key API.
+Sets a runtime configuration key on one scope in YugabyteDB Anywhere. The scope is the global scope, a customer, a provider or a universe.
 
-~> **Note:** Most runtime config keys require a Super Admin user.
+Use the global scope (`00000000-0000-0000-0000-000000000000`, the default) for keys that apply to all of YBA, such as `yb.telemetry.allow_s3` or `yb.universe.metrics_export_enabled`. Set `scope` to a provider or universe UUID to change a key for that provider or universe only. Destroying the resource removes the key from the scope. The scope then uses the value of a wider scope, or the default of the key.
 
-~> **Note:** Some keys are write-only on the YBA side; the read flow will reflect the most recent value YBA reports for the scope.
+~> **Note:** Only a Super Admin user can set or remove a key on the global scope.
+
+~> **Note:** YBA masks the value of a secret key, such as `yb.security.ldap.ldap_service_account_password`, when it reads the key. For such a key, Terraform shows a change on every plan. The `value` attribute is not marked sensitive, so Terraform also shows the value in plan output.
 
 ## Example Usage
 
 ```terraform
-# Allow the S3 telemetry exporter globally. Required before an S3-typed
-# telemetry provider can be used in YBA.
+# Allow the S3 exporter for telemetry providers. The global scope is the
+# default.
 resource "yba_runtime_config" "allow_s3" {
   key   = "yb.telemetry.allow_s3"
   value = "true"
 }
 
-# Enable per-universe metrics export (required to use the metrics block on
-# yba_universe_telemetry_config).
+# Turn on metrics export, so that you can create telemetry providers and
+# export universe metrics to them.
 resource "yba_runtime_config" "metrics_export_enabled" {
   key   = "yb.universe.metrics_export_enabled"
   value = "true"
 }
 
-# Every value is sent and read back as a plain string regardless of the key's
-# YBA data type, so booleans, numbers, durations, and lists are all written as
-# strings. YBA validates the string against the key's type and stores it
-# verbatim, so the value round-trips with no drift.
+# Every value is a string, whatever the type of the key. Write booleans,
+# numbers, durations and lists as strings. YBA checks the value against the
+# type of the key and stores it as written.
 resource "yba_runtime_config" "task_gc_interval" {
-  key   = "yb.taskGC.gc_check_interval" # a Duration-typed key
+  key   = "yb.taskGC.gc_check_interval" # a duration key
   value = "3 hours"
+}
+
+# A key on the scope of one universe: the protocol of the load balancer
+# health checks for that universe.
+resource "yba_runtime_config" "lb_health_check_protocol" {
+  scope = yba_universe.main.id
+  key   = "yb.universe.network_load_balancer.custom_health_check_protocol"
+  value = "TCP"
 }
 ```
 
@@ -46,12 +53,12 @@ resource "yba_runtime_config" "task_gc_interval" {
 
 ### Required
 
-- `key` (String) Runtime configuration key (e.g. `yb.telemetry.allow_s3`).
-- `value` (String) Value of the runtime configuration key. Sent as plain text to YBA.
+- `key` (String) Runtime configuration key, for example `yb.telemetry.allow_s3`. Changing it replaces the resource.
+- `value` (String) Value of the key, as a string. Write booleans, numbers, durations and lists as strings, for example `"true"` or `"3 hours"`. YBA checks the value against the type of the key and stores it as written.
 
 ### Optional
 
-- `scope` (String) Scope UUID for the runtime config. Defaults to the YBA global scope.
+- `scope` (String) UUID of the scope: the global scope `00000000-0000-0000-0000-000000000000` (the default), or a customer, provider or universe UUID. Changing it replaces the resource.
 - `timeouts` (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))
 
 ### Read-Only
@@ -71,7 +78,8 @@ Optional:
 
 ## Import
 
-Runtime config keys can be imported using `<scope-uuid>/<key>`:
+Runtime config keys can be imported using `<scope-uuid>/<key>`, or `<key>` alone
+for the global scope:
 
 ```sh
 terraform import yba_runtime_config.allow_s3 00000000-0000-0000-0000-000000000000/yb.telemetry.allow_s3

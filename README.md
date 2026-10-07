@@ -1,14 +1,18 @@
 # Terraform Provider YugabyteDB Anywhere
 
-This Terraform provider manages the following resources for YugabyteDB Anywhere:
+This Terraform provider manages YugabyteDB Anywhere (YBA) and the universes it runs:
 
-* Cloud Providers - AWS, GCP, Azure
-* On Prem Provider
-* Universes
-* Backup Storage Configurations
-* Backup Schedules
-* Restores
-* Customers
+* YBA installation, the first customer, and users
+* Cloud providers: AWS, GCP, Azure, and on-premises
+* YugabyteDB releases
+* Universes, their load balancer configuration, and custom hooks
+* Encryption in transit (certificates) and encryption at rest (key management service configurations)
+* Backup storage configurations, backups, backup schedules, and restores
+* Export of universe logs and metrics to telemetry providers such as Datadog, Splunk, Dynatrace, AWS CloudWatch, GCP Cloud Monitoring, Amazon S3, and OTLP endpoints
+* Perf Advisor registration
+* Runtime configuration keys
+
+The [provider documentation](https://registry.terraform.io/providers/yugabyte/yba/latest/docs) on the Terraform Registry describes each resource and data source, with guides for common workflows.
 
 In addition, there are modules included for installing and managing YugabyteDB Anywhere instances/clusters in the following clouds:
 
@@ -18,7 +22,7 @@ In addition, there are modules included for installing and managing YugabyteDB A
 
 ## Prerequisites
 
-This provider requires YugabyteDB Anywhere stable version `>=2024.2.0.0-b1` or preview version `>=2.23.1.0-b1`.
+This provider requires YugabyteDB Anywhere 2024.2.0.0 or later.
 The acceptance tests run against a standing YugabyteDB Anywhere deployed with the YBA installer (`yba_installer`). See [`acctest/README.md`](acctest/README.md) for how to run them.
 
 ## Installation
@@ -39,18 +43,6 @@ terraform {
 }
 ```
 
-## Resource files
-
-Examples of configuration setting files can be found in the directory [resources](https://github.com/yugabyte/terraform-provider-yba/tree/main/acctest/resources)
-
-* [YBA installer configuration file](https://github.com/yugabyte/terraform-provider-yba/tree/main/acctest/resources/yba-ctl.yml)
-
 ## Examples
 
-There are example configurations located within the `examples` directory in [yba-terraform-workflow-example](https://github.com/yugabyte/yba-terraform-workflow-example.git) for using the provider and modules.
-These bring up actual resources in the internal Yugabyte development environment.
-More information can be found in the `README` located in the `examples` directory.
-In the directory of the example you wish to run (i.e. `examples/docker/gcp`):
-
-* `terraform init` installs the required providers
-* `terraform apply` generates a plan, which, when approved, will create the desired resources
+The [`examples`](examples) directory has a configuration for every resource and data source. The [guides](docs/guides) walk through complete workflows, such as creating a cloud provider and a universe, scheduling backups, and restoring them.

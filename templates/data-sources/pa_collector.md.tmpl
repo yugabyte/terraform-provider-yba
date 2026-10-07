@@ -10,15 +10,6 @@ description: |-
 
 ## Example Usage
 
-{{ tffile "examples/resources/yba_runtime_config/resource.tf" }}
+{{ tffile "examples/data-sources/yba_pa_collector/data-source.tf" }}
 
 {{ .SchemaMarkdown | trimspace }}
-
-## Import
-
-Runtime config keys can be imported using `<scope-uuid>/<key>`, or `<key>` alone
-for the global scope:
-
-```sh
-terraform import yba_runtime_config.allow_s3 00000000-0000-0000-0000-000000000000/yb.telemetry.allow_s3
-```

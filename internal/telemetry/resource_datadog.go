@@ -26,15 +26,15 @@ func ResourceDatadogTelemetryProvider() *schema.Resource {
 		resourceType: "yba_datadog_telemetry_provider",
 		displayName:  "Datadog",
 		apiType:      typeDataDog,
-		description: "Datadog Telemetry Provider resource. Defines a reusable " +
-			"Datadog export destination that universes can use to export audit " +
-			"logs, query logs, and metrics.",
+		description: "Manages a Datadog telemetry provider in YugabyteDB Anywhere. " +
+			"Universes send logs and metrics to it through " +
+			"`yba_universe_telemetry_config`.",
 		fields: map[string]*schema.Schema{
 			"site": {
 				Type:        schema.TypeString,
 				Required:    true,
 				ForceNew:    true,
-				Description: "Datadog site (e.g. datadoghq.com, datadoghq.eu).",
+				Description: "Datadog site, such as `datadoghq.com` or `datadoghq.eu`.",
 			},
 			"api_key": {
 				Type:        schema.TypeString,

@@ -1,0 +1,28 @@
+---
+page_title: "{{.Name}} {{.Type}} - {{.RenderedProviderName}}"
+description: |-
+{{ index (split (trimspace .Description) "\n\n") 0 | plainmarkdown | trimspace | prefixlines "  " }}
+---
+
+# {{.Name}} ({{.Type}})
+
+{{ .Description | trimspace }}
+
+## Example Usage
+
+{{ tffile "examples/resources/yba_perf_advisor_endpoint/resource.tf" }}
+
+{{ .SchemaMarkdown | trimspace }}
+
+## Import
+
+Perf Advisor endpoints can be imported using the endpoint UUID:
+
+```sh
+terraform import yba_perf_advisor_endpoint.standalone <endpoint-uuid>
+```
+
+YugabyteDB Anywhere does not return the passwords, so import leaves both
+`password` fields empty. When the configuration sets a password, the first plan
+after import shows an in-place update. That apply sends the configured passwords
+and changes nothing else.

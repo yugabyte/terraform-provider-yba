@@ -91,17 +91,18 @@ resource "yba_universe" "dedicated_masters_inherit" {
   communication_ports {}
 }
 
-# Universe with managed encryption-in-transit certificates: a self-signed root
-# for node-to-node TLS and an org-issued custom server certificate for
-# client-to-node TLS. Changing either CA reference rotates the universe to the
-# new certificate; bumping a cert_rotation trigger re-issues the server
-# certificates from the unchanged (SelfSigned) root.
+# Universe with encryption-in-transit certificates that Terraform manages: a
+# self-signed root certificate for node-to-node encryption, and a custom server
+# certificate from your organization's CA for client-to-node encryption. A change
+# of root_ca or client_root_ca rotates the universe to the new certificate. A
+# change of a cert_rotation trigger re-issues the server certificates from the
+# current self-signed root certificate.
 resource "yba_universe" "with_certificates" {
-  root_ca        = yba_self_signed_certificate.minted.uuid
+  root_ca        = yba_self_signed_certificate.generated.uuid
   client_root_ca = yba_custom_server_certificate.c2n.uuid
 
   cert_rotation {
-    server_cert_trigger = "2026-07" # bump to refresh node-to-node server certs
+    server_cert_trigger = "2026-07" # change to re-issue node-to-node server certificates
   }
 
   clusters {
@@ -131,21 +132,21 @@ resource "yba_universe" "with_certificates" {
 
 # Universe encrypted at rest from its first write. The encryption_at_rest block
 # names the encryption-at-rest configuration whose master key wraps the universe
-# keys; changing it later rotates the master key, bumping the trigger rotates
-# the universe key, and enabled = false turns encryption off.
+# keys. A later change of kms_config_uuid rotates the master key, a change of
+# the trigger rotates the universe key, and enabled = false disables encryption.
 resource "yba_universe" "encrypted_at_rest" {
   encryption_at_rest {
     enabled                       = true
-    kms_config_uuid               = yba_gcp_ear_config.kms.uuid
-    universe_key_rotation_trigger = "2026-Q3" # bump to rotate the universe key
+    kms_config_uuid               = yba_gcp_ear_config.service_account.uuid
+    universe_key_rotation_trigger = "2026-Q3" # change to rotate the universe key
   }
 
   clusters {
     cluster_type = "PRIMARY"
     user_intent {
       universe_name      = "<universe-name>"
-      provider           = yba_gcp_provider.gcp.id
-      region_list        = yba_gcp_provider.gcp.regions[*].uuid
+      provider           = yba_aws_provider.aws.id
+      region_list        = yba_aws_provider.aws.regions[*].uuid
       num_nodes          = 3
       replication_factor = 3
       instance_type      = "<instance-type>"

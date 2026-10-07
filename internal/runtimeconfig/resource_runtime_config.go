@@ -46,15 +46,23 @@ const globalRuntimeScope = "00000000-0000-0000-0000-000000000000"
 // runtime configuration key, not just telemetry-related ones.
 func ResourceRuntimeConfig() *schema.Resource {
 	return &schema.Resource{
-		Description: "YBA Runtime Config Resource. Sets a runtime configuration key on a " +
-			"specific scope. Use the global scope " +
-			"(`00000000-0000-0000-0000-000000000000`) for feature flags such as " +
+		Description: "Sets a runtime configuration key on one scope in " +
+			"YugabyteDB Anywhere. The scope is the global scope, a customer, a " +
+			"provider or a universe.\n\n" +
+			"Use the global scope (`00000000-0000-0000-0000-000000000000`, the " +
+			"default) for keys that apply to all of YBA, such as " +
 			"`yb.telemetry.allow_s3` or `yb.universe.metrics_export_enabled`. " +
-			"Deleting the resource resets the key to its default by calling the " +
-			"YBA delete-key API.\n\n" +
-			"~> **Note:** Most runtime config keys require a Super Admin user.\n\n" +
-			"~> **Note:** Some keys are write-only on the YBA side; the read flow " +
-			"will reflect the most recent value YBA reports for the scope.",
+			"Set `scope` to a provider or universe UUID to change a key for " +
+			"that provider or universe only. Destroying the resource removes " +
+			"the key from the scope. The scope then uses the value of a wider " +
+			"scope, or the default of the key.\n\n" +
+			"~> **Note:** Only a Super Admin user can set or remove a key on " +
+			"the global scope.\n\n" +
+			"~> **Note:** YBA masks the value of a secret key, such as " +
+			"`yb.security.ldap.ldap_service_account_password`, when it reads " +
+			"the key. For such a key, Terraform shows a change on every plan. " +
+			"The `value` attribute is not marked sensitive, so Terraform also " +
+			"shows the value in plan output.",
 
 		CreateContext: resourceRuntimeConfigCreateOrUpdate,
 		ReadContext:   resourceRuntimeConfigRead,
@@ -74,22 +82,29 @@ func ResourceRuntimeConfig() *schema.Resource {
 
 		Schema: map[string]*schema.Schema{
 			"scope": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				ForceNew:    true,
-				Default:     globalRuntimeScope,
-				Description: "Scope UUID for the runtime config. Defaults to the YBA global scope.",
+				Type:     schema.TypeString,
+				Optional: true,
+				ForceNew: true,
+				Default:  globalRuntimeScope,
+				Description: "UUID of the scope: the global scope " +
+					"`00000000-0000-0000-0000-000000000000` (the default), or a " +
+					"customer, provider or universe UUID. Changing it replaces the " +
+					"resource.",
 			},
 			"key": {
-				Type:        schema.TypeString,
-				Required:    true,
-				ForceNew:    true,
-				Description: "Runtime configuration key (e.g. `yb.telemetry.allow_s3`).",
+				Type:     schema.TypeString,
+				Required: true,
+				ForceNew: true,
+				Description: "Runtime configuration key, for example " +
+					"`yb.telemetry.allow_s3`. Changing it replaces the resource.",
 			},
 			"value": {
-				Type:        schema.TypeString,
-				Required:    true,
-				Description: "Value of the runtime configuration key. Sent as plain text to YBA.",
+				Type:     schema.TypeString,
+				Required: true,
+				Description: "Value of the key, as a string. Write booleans, " +
+					"numbers, durations and lists as strings, for example `\"true\"` " +
+					"or `\"3 hours\"`. YBA checks the value against the type of the " +
+					"key and stores it as written.",
 			},
 		},
 	}

@@ -27,23 +27,28 @@ func ResourceGCPCloudMonitoringTelemetryProvider() *schema.Resource {
 		resourceType: "yba_gcp_cloud_monitoring_telemetry_provider",
 		displayName:  "GCP Cloud Monitoring",
 		apiType:      typeGCPCloudMonitor,
-		description: "GCP Cloud Monitoring Telemetry Provider resource. Defines " +
-			"a reusable Google Cloud Monitoring/Logging destination that " +
-			"universes can use to export audit logs and query logs.",
+		description: "Manages a GCP Cloud Monitoring telemetry provider in " +
+			"YugabyteDB Anywhere. Universes send logs to it, in Google Cloud " +
+			"Logging, through `yba_universe_telemetry_config`.",
+		notes: "~> **Note:** Requires YugabyteDB Anywhere 2026.1.0.0 or later. YBA " +
+			"accepts a GCP Cloud Monitoring telemetry provider only in a log " +
+			"pipeline, not in `metrics`. All GCP Cloud Monitoring telemetry " +
+			"providers that one universe uses must have the same " +
+			"`credentials_json`.\n\n",
 		fields: map[string]*schema.Schema{
 			"project": {
 				Type:     schema.TypeString,
 				Optional: true,
 				ForceNew: true,
-				Description: "GCP project ID. If empty, the project_id from the " +
-					"service-account credentials is used.",
+				Description: "GCP project ID. Defaults to the `project_id` in " +
+					"`credentials_json`.",
 			},
 			"credentials_json": {
 				Type:        schema.TypeString,
 				Required:    true,
 				ForceNew:    true,
 				Sensitive:   true,
-				Description: "GCP service account credentials as a JSON string.",
+				Description: "Contents of a GCP service account key file, as a JSON string.",
 			},
 		},
 		buildConfig: func(d *schema.ResourceData) map[string]interface{} {

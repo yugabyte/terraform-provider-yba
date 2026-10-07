@@ -1,20 +1,21 @@
-# Mint mode: YugabyteDB Anywhere generates the root certificate and holds its
-# private key (4-year root, 1-year server certificates by platform default).
-# The generated CA is exported through the `certificate` attribute for
-# distribution to clients.
-resource "yba_self_signed_certificate" "minted" {
+# Generated mode: YugabyteDB Anywhere generates the root certificate and keeps
+# its private key. By default, the root certificate is valid for 4 years and the
+# server certificates for 1 year. The `certificate` attribute holds the
+# generated root certificate, for you to distribute to clients.
+resource "yba_self_signed_certificate" "generated" {
   label = "prod-n2n-ca"
 
-  # The universe rotates to a replacement before the old configuration is
-  # deleted; YBA refuses to delete certificates that are still in use.
+  # Create the replacement and rotate the universe to it before the old
+  # configuration is deleted: YugabyteDB Anywhere does not delete a certificate
+  # that a universe uses.
   lifecycle {
     create_before_destroy = true
   }
 }
 
-# Bring-your-own mode: provide the root certificate and its private key, from
-# files or inline. YugabyteDB Anywhere signs the per-node server certificates
-# with this key.
+# Bring-your-own mode: set the root certificate and its private key, from files
+# or inline. YugabyteDB Anywhere signs the server certificate of each node with
+# this key.
 resource "yba_self_signed_certificate" "byo" {
   label       = "prod-byo-ca"
   certificate = file("${path.module}/ca.crt")

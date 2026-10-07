@@ -29,10 +29,11 @@ import (
 // this configuration.
 func DataSourceTelemetryProvider() *schema.Resource {
 	return &schema.Resource{
-		Description: experimentalAdmonition +
-			"Telemetry Provider data source. Looks up an existing telemetry " +
-			"provider by name and returns its UUID, type, and tags so it can be " +
-			"referenced (e.g. as an `exporter_uuid`) without hard-coding the UUID.",
+		Description: "Looks up a telemetry provider in YugabyteDB Anywhere by " +
+			"name. The `id` attribute is the telemetry provider UUID: use it as an " +
+			"`exporter_uuid` in `yba_universe_telemetry_config`.\n\n" +
+			experimentalAdmonition + "\n\n" +
+			"The read fails when no telemetry provider has the name.",
 
 		ReadContext: dataSourceTelemetryProviderRead,
 
@@ -40,18 +41,20 @@ func DataSourceTelemetryProvider() *schema.Resource {
 			"name": {
 				Type:        schema.TypeString,
 				Required:    true,
-				Description: "Name of the telemetry provider to look up.",
+				Description: "Name of the telemetry provider.",
 			},
 			"type": {
-				Type:        schema.TypeString,
-				Computed:    true,
-				Description: "Telemetry provider type (e.g. DATA_DOG, OTLP, S3).",
+				Type:     schema.TypeString,
+				Computed: true,
+				Description: "Type of the telemetry provider: `DATA_DOG`, `SPLUNK`, " +
+					"`AWS_CLOUDWATCH`, `GCP_CLOUD_MONITORING`, `LOKI`, `DYNATRACE`, " +
+					"`S3` or `OTLP`.",
 			},
 			"tags": {
 				Type:        schema.TypeMap,
 				Computed:    true,
 				Elem:        &schema.Schema{Type: schema.TypeString},
-				Description: "Tags associated with the telemetry provider.",
+				Description: "Tags of the telemetry provider.",
 			},
 		},
 	}

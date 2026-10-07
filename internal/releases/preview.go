@@ -21,10 +21,10 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 )
 
-const previewAdmonition = "~> **Preview:** This resource manages YugabyteDB (YBDB) " +
-	"database releases through the YugabyteDB Anywhere release management API " +
-	"(`/ybdb_release`), which is marked preview and may change in backward-incompatible " +
-	"ways across YBA releases.\n\n"
+// previewAdmonition follows the summary paragraph of the resource Description.
+const previewAdmonition = "~> **Preview:** The YugabyteDB Anywhere API that this resource " +
+	"uses is marked preview. A later YBA release can change it in ways that are not " +
+	"backward compatible.\n\n"
 
 func previewWarning(resourceName string) diag.Diagnostic {
 	return diag.Diagnostic{

@@ -27,15 +27,22 @@ func ResourceS3TelemetryProvider() *schema.Resource {
 		resourceType: "yba_s3_telemetry_provider",
 		displayName:  "Amazon S3",
 		apiType:      typeS3,
-		description: "Amazon S3 Telemetry Provider resource. Defines a reusable " +
-			"S3 destination that universes can use to export audit logs and " +
-			"query logs — useful for long-term archival.",
+		description: "Manages an Amazon S3 telemetry provider in YugabyteDB " +
+			"Anywhere. Universes send logs to an S3 bucket through " +
+			"`yba_universe_telemetry_config`, for example to archive audit logs.",
+		notes: "~> **Note:** Requires YugabyteDB Anywhere 2026.1.0.0 or later. YBA " +
+			"creates an S3 telemetry provider only when the global runtime " +
+			"config `yb.telemetry.allow_s3` is `true`. The default is `false`. " +
+			"To set it, use the `yba_runtime_config` resource. YBA accepts an S3 " +
+			"telemetry provider only in a log pipeline, not in `metrics`. All AWS " +
+			"CloudWatch and S3 telemetry providers that one universe uses must " +
+			"have the same `access_key` and `secret_key`.\n\n",
 		fields: map[string]*schema.Schema{
 			"bucket": {
 				Type:        schema.TypeString,
 				Required:    true,
 				ForceNew:    true,
-				Description: "S3 bucket name.",
+				Description: "Name of the S3 bucket.",
 			},
 			"region": {
 				Type:        schema.TypeString,
@@ -48,40 +55,41 @@ func ResourceS3TelemetryProvider() *schema.Resource {
 				Required:    true,
 				ForceNew:    true,
 				Sensitive:   true,
-				Description: "AWS access key with bucket write permissions.",
+				Description: "AWS access key ID with permission to write to the bucket.",
 			},
 			"secret_key": {
 				Type:        schema.TypeString,
 				Required:    true,
 				ForceNew:    true,
 				Sensitive:   true,
-				Description: "AWS secret key for the access key.",
+				Description: "AWS secret access key of `access_key`.",
 			},
 			"directory_prefix": {
 				Type:     schema.TypeString,
 				Optional: true,
 				ForceNew: true,
-				Description: "S3 prefix (root directory inside the bucket) " +
-					"to write objects under.",
+				Description: "Root directory in the bucket for the objects. " +
+					"YBA uses `yb-logs/` when this is not set.",
 			},
 			"file_prefix": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				ForceNew:    true,
-				Description: "Optional file-name prefix prepended to every object.",
+				Type:     schema.TypeString,
+				Optional: true,
+				ForceNew: true,
+				Description: "Prefix of each object name. YBA uses `yb-otel-` " +
+					"when this is not set.",
 			},
 			"endpoint": {
 				Type:     schema.TypeString,
 				Optional: true,
 				ForceNew: true,
-				Description: "Optional override endpoint URL " +
-					"(e.g. for VPC endpoints or S3-compatible stores).",
+				Description: "S3 endpoint URL to use instead of the default, for " +
+					"example a VPC endpoint or an S3-compatible store.",
 			},
 			"role_arn": {
 				Type:        schema.TypeString,
 				Optional:    true,
 				ForceNew:    true,
-				Description: "Optional IAM role ARN to assume.",
+				Description: "ARN of an IAM role to assume to write the objects.",
 			},
 			"partition": {
 				Type:     schema.TypeString,
@@ -91,38 +99,38 @@ func ResourceS3TelemetryProvider() *schema.Resource {
 					[]string{"hour", "minute"},
 					false,
 				),
-				Description: "Time granularity of the S3 object directory " +
-					"layout. One of `hour` or `minute` (YBA default: `minute`).",
+				Description: "Time unit of the directory layout in the bucket: " +
+					"`hour` or `minute`. YBA uses `minute` when this is not set.",
 			},
 			"marshaler": {
 				Type:     schema.TypeString,
 				Optional: true,
 				ForceNew: true,
-				Description: "Optional marshaler used to serialize " +
-					"records (defaults to YBA's choice).",
+				Description: "Format of the objects: `OTLP_JSON` or `SUMO_IC`. " +
+					"YBA uses `OTLP_JSON` when this is not set.",
 			},
 			"disable_ssl": {
 				Type:        schema.TypeBool,
 				Optional:    true,
 				ForceNew:    true,
 				Default:     false,
-				Description: "Disable SSL when talking to the S3 endpoint.",
+				Description: "Connect to the S3 endpoint without TLS. Defaults to `false`.",
 			},
 			"force_path_style": {
 				Type:     schema.TypeBool,
 				Optional: true,
 				ForceNew: true,
 				Default:  false,
-				Description: "Force path-style addressing instead of the " +
-					"default virtual-hosted style.",
+				Description: "Use path-style addressing instead of " +
+					"virtual-hosted-style addressing. Defaults to `false`.",
 			},
 			"include_universe_and_node_in_prefix": {
 				Type:     schema.TypeBool,
 				Optional: true,
 				ForceNew: true,
 				Default:  false,
-				Description: "Append `<universe-uuid>/<node-name>` to the " +
-					"directory prefix when writing objects.",
+				Description: "Add `<universe-uuid>/<node-name>` to the directory " +
+					"of each object. Defaults to `false`.",
 			},
 		},
 		buildConfig: func(d *schema.ResourceData) map[string]interface{} {

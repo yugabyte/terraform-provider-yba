@@ -1,34 +1,33 @@
 ---
 page_title: "yba_runtime_config Data Source - YugabyteDB Anywhere"
 description: |-
-  Reads the value of a single YugabyteDB Anywhere runtime configuration key on a given scope. The value is always returned as a string, exactly as YBA stores it; convert it with tobool, tonumber, or jsondecode to consume it as another type.
+  Reads the value of one runtime configuration key on one scope in YugabyteDB Anywhere.
 ---
 
 # yba_runtime_config (Data Source)
 
-Reads the value of a single YugabyteDB Anywhere runtime configuration key on a given scope. The value is always returned as a string, exactly as YBA stores it; convert it with `tobool`, `tonumber`, or `jsondecode` to consume it as another type.
+Reads the value of one runtime configuration key on one scope in YugabyteDB Anywhere.
 
-~> **Note:** Reading most runtime config keys requires a Super Admin user.
+The value is a string, as YBA stores it. Convert it with `tobool`, `tonumber` or `jsondecode` to use it as another type. When the scope has no value for the key, the data source returns the value of a wider scope, or the default of the key. YBA masks the value of a secret key, such as `yb.security.ldap.ldap_service_account_password`. The plan fails when YBA does not know the key.
 
 ## Example Usage
 
 ```terraform
-# Read a runtime config key from the global scope. The value is always a string.
+# Read a key from the global scope, which is the default.
 data "yba_runtime_config" "allow_s3" {
   key = "yb.telemetry.allow_s3"
 }
 
-# Because value is a string, convert it to the type you need with the matching
-# Terraform function: tobool(...) for booleans, tonumber(...) for numbers, or
-# jsondecode(...) for lists/objects.
+# The value is a string. Convert it with tobool, tonumber or jsondecode to use
+# it as another type.
 output "s3_telemetry_allowed" {
   value = tobool(data.yba_runtime_config.allow_s3.value)
 }
 
-# Read a key from a non-global scope by passing its scope UUID.
-data "yba_runtime_config" "universe_metrics" {
-  scope = "00000000-0000-0000-0000-000000000000"
-  key   = "yb.universe.metrics_export_enabled"
+# Read a key from the scope of one universe.
+data "yba_runtime_config" "under_replicated_check" {
+  scope = yba_universe.main.id
+  key   = "yb.checks.under_replicated_tablets.enabled"
 }
 ```
 
@@ -37,13 +36,13 @@ data "yba_runtime_config" "universe_metrics" {
 
 ### Required
 
-- `key` (String) Runtime configuration key to read (e.g. `yb.telemetry.allow_s3`).
+- `key` (String) Runtime configuration key to read, for example `yb.telemetry.allow_s3`.
 
 ### Optional
 
-- `scope` (String) Scope UUID to read the key from. Defaults to the YBA global scope.
+- `scope` (String) UUID of the scope to read: the global scope `00000000-0000-0000-0000-000000000000` (the default), or a customer, provider or universe UUID.
 
 ### Read-Only
 
 - `id` (String) The ID of this resource.
-- `value` (String) Current value of the key as reported by YBA, as a plain string.
+- `value` (String) Value of the key on the scope, as a string.

@@ -289,8 +289,9 @@ func earResource(s earSpec) *schema.Resource {
 			Type:     schema.TypeString,
 			Required: true,
 			ForceNew: true,
-			Description: "Name of the configuration, unique per customer. YugabyteDB " +
-				"Anywhere does not allow renaming, so a change forces replacement.",
+			Description: "Name of the configuration. Must be unique per customer. " +
+				"YugabyteDB Anywhere cannot rename a configuration, so a change forces " +
+				"replacement.",
 		},
 		"uuid": {
 			Type:        schema.TypeString,
@@ -300,8 +301,8 @@ func earResource(s earSpec) *schema.Resource {
 		"in_use": {
 			Type:     schema.TypeBool,
 			Computed: true,
-			Description: "True while any universe holds key history for this configuration. " +
-				"Such a configuration cannot be deleted.",
+			Description: "Whether a universe holds key history for this configuration. " +
+				"A configuration in use cannot be deleted.",
 		},
 	}
 	for k, v := range s.fields {
@@ -336,24 +337,25 @@ func earResource(s earSpec) *schema.Resource {
 // shares; these strings ship verbatim into the user-facing docs.
 func earSharedNotes(s earSpec) string {
 	return fmt.Sprintf(
-		"~> **Note:** Only the credential arguments can change in place. Every other "+
-			"argument is fixed by YugabyteDB Anywhere and forces replacement, and a "+
-			"configuration that any universe has used cannot be deleted: YugabyteDB "+
-			"Anywhere keeps the universe's key history after encryption is disabled and "+
-			"after the universe moves to another configuration, and only deleting the "+
-			"universe clears it. To move universes off a configuration, create the new "+
-			"one, change each universe's `encryption_at_rest.kms_config_uuid`, and keep the "+
-			"old configuration (or remove it from state) until its universes are gone. Give "+
-			"the new configuration `depends_on` on the old one, so that `terraform destroy` "+
-			"removes the universe before the old configuration.\n\n"+
-			"~> **Drift Note:** Read refreshes `in_use` and the non-secret settings. "+
-			"Credentials are never read back, because YugabyteDB Anywhere masks them: a "+
-			"credential changed in the YugabyteDB Anywhere UI is not detected as drift. "+
-			"Re-apply from Terraform to restore the intended value.\n\n"+
-			"~> **Import Note:** Import verifies the provider: importing a configuration "+
-			"that is not a %s configuration fails and names the actual provider. "+
-			"Credentials cannot be recovered through the API and stay empty after import; "+
-			"the first apply submits them again.",
+		"~> **Note:** Only the credential arguments can change in place. A change to any "+
+			"other argument forces replacement. YugabyteDB Anywhere does not delete a "+
+			"configuration that a universe has used: it keeps the universe's key history, "+
+			"also after encryption is disabled or the universe moves to another "+
+			"configuration, until the universe is deleted. A destroy of such a configuration "+
+			"fails, and the error names the universes. To move universes to a new "+
+			"configuration, create it, change `encryption_at_rest.kms_config_uuid` on each "+
+			"universe, and keep the old configuration (or remove it from state) until its "+
+			"universes are deleted. Give the new configuration `depends_on` on the old one, "+
+			"so that `terraform destroy` deletes the universe before the old configuration.\n\n"+
+			"~> **Drift Note:** Terraform refreshes `in_use` and the non-secret settings. "+
+			"YugabyteDB Anywhere masks credentials, so a credential changed outside "+
+			"Terraform, for example in the YugabyteDB Anywhere UI, does not show as drift. "+
+			"An apply without a change to the credential in the configuration does not send "+
+			"it again.\n\n"+
+			"~> **Import Note:** Import checks the KMS provider: importing a configuration "+
+			"that is not a %s configuration fails, and the error names its KMS provider. "+
+			"YugabyteDB Anywhere never returns credentials, so they are empty after import, "+
+			"and the first apply sends them again.",
 		s.displayName)
 }
 

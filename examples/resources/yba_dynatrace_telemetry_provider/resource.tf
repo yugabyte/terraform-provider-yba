@@ -1,12 +1,13 @@
-# Dynatrace OTLP ingest destination. Metrics only: YBA does not allow
-# Dynatrace in a universe's audit log or query log exporter lists.
+# Dynatrace destination for metrics. YBA does not accept a Dynatrace
+# telemetry provider in a log pipeline.
 resource "yba_dynatrace_telemetry_provider" "dynatrace" {
   name = "dynatrace"
 
-  endpoint  = "https://abc12345.live.dynatrace.com/api/v2/otlp"
+  # The URL of the Dynatrace environment. YBA appends /api/v2/otlp.
+  endpoint  = "https://abc12345.live.dynatrace.com"
   api_token = var.dynatrace_api_token
 
-  # Optional tags, upserted as attributes onto every exported record.
+  # Optional tags. YBA adds them as attributes to every exported record.
   tags = {
     env = "prod"
   }

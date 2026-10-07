@@ -41,23 +41,29 @@ const maskedPassword = "********"
 // than a separate resource per kind.
 func ResourcePerfAdvisorEndpoint() *schema.Resource {
 	return &schema.Resource{
-		Description: previewAdmonition +
-			"Perf Advisor Endpoint resource. Defines an external Perf Advisor " +
-			"that universes registered in online mode send their collected " +
-			"data to, attached to a universe via " +
-			"`yba_universe_perf_advisor_registration`.\n\n" +
-			"~> **Validation Note:** YBA probes both endpoints from a Perf " +
-			"Advisor collector before storing anything, so an unreachable URL " +
-			"or a rejected credential fails the apply rather than surfacing " +
-			"later as silently dropped data. A destination that is temporarily " +
-			"down therefore cannot be created or edited.\n\n" +
-			"~> **Drift Note:** Passwords are read back masked, so they are " +
-			"not reconciled against the server. Everything else is. A " +
-			"password changed out-of-band in the YBA UI is not detected as " +
-			"drift; re-apply from Terraform to restore the intended value.\n\n" +
-			"~> **Security Note:** Endpoint passwords are stored in the " +
-			"Terraform state file (marked sensitive). Use a secure backend " +
-			"and restrict access to your state files.",
+		Description: "Manages a Perf Advisor endpoint in YugabyteDB Anywhere: an " +
+			"external Perf Advisor that receives the data YBA collects from " +
+			"universes registered in `ONLINE` mode. Register a universe against " +
+			"an endpoint with `yba_universe_perf_advisor_registration`.\n\n" +
+			previewAdmonition +
+			"~> **Note:** Perf Advisor online mode must be on. Set the runtime " +
+			"config key " + onlineModeKey + " to `true` on the global scope or " +
+			"on your customer scope, for example with `yba_runtime_config`. " +
+			"The key is `false` by default. While it is `false`, YBA rejects " +
+			"every endpoint request, so `terraform plan` fails for this " +
+			"resource.\n\n" +
+			"~> **Note:** When a Perf Advisor collector exists, YBA uses it to " +
+			"test both URLs and their credentials before it saves the endpoint. " +
+			"The apply fails when a URL cannot be reached or a credential is " +
+			"rejected, so you cannot create or change an endpoint while its " +
+			"destination is down.\n\n" +
+			"~> **Note:** YBA returns passwords masked, so Terraform cannot " +
+			"detect a password that is changed outside Terraform. Terraform " +
+			"sends the configured passwords with every update of the " +
+			"endpoint. Terraform detects changes to every other field.\n\n" +
+			"~> **Security Note:** Terraform stores the endpoint passwords in " +
+			"the state file. They are marked sensitive. Use a secure state " +
+			"backend and restrict access to your state files.",
 
 		CreateContext: resourcePerfAdvisorEndpointCreate,
 		ReadContext:   resourcePerfAdvisorEndpointRead,
@@ -79,7 +85,7 @@ func ResourcePerfAdvisorEndpoint() *schema.Resource {
 			"name": {
 				Type:        schema.TypeString,
 				Required:    true,
-				Description: "Name of the endpoint. Unique per customer.",
+				Description: "Name of the endpoint. It must be unique for the customer.",
 			},
 			"type": {
 				Type:     schema.TypeString,
@@ -88,22 +94,22 @@ func ResourcePerfAdvisorEndpoint() *schema.Resource {
 				ValidateFunc: validation.StringInSlice([]string{
 					"BYOC", "PA_ONLINE",
 				}, false),
-				Description: "Endpoint kind. One of BYOC, PA_ONLINE. " +
-					"PA_ONLINE is reserved for the Yugabyte-hosted service and " +
-					"is rejected by YBA until that exists.",
+				Description: "Kind of endpoint. Defaults to `BYOC`, the only kind " +
+					"YBA accepts. A `BYOC` endpoint is a Perf Advisor that you run, " +
+					"or a BYOC ingest gateway in front of one.",
 			},
 			"collection_endpoint": {
 				Type:     schema.TypeString,
 				Required: true,
-				Description: "URL of the destination's Collection API, where " +
-					"everything other than metrics goes.",
+				Description: "URL of the Collection API of the destination. The " +
+					"collector sends all data except metrics to this URL.",
 			},
 			"collection_auth": authSchema(
-				"Credentials for the collection endpoint."),
+				"Credentials for `collection_endpoint`."),
 			"metrics_endpoint": {
 				Type:        schema.TypeString,
 				Required:    true,
-				Description: "URL the collector sends metrics to.",
+				Description: "URL that the collector sends metrics to.",
 			},
 			"metrics_type": {
 				Type:     schema.TypeString,
@@ -112,29 +118,30 @@ func ResourcePerfAdvisorEndpoint() *schema.Resource {
 				ValidateFunc: validation.StringInSlice([]string{
 					"otlphttp", "remotewrite",
 				}, false),
-				Description: "Metrics protocol. One of otlphttp, remotewrite.",
+				Description: "Protocol for `metrics_endpoint`. Allowed values: " +
+					"`otlphttp`, `remotewrite`. Defaults to `otlphttp`.",
 			},
 			"metrics_auth": authSchema(
-				"Credentials for the metrics endpoint."),
+				"Credentials for `metrics_endpoint`."),
 			"ybm_account_id": {
 				Type:     schema.TypeString,
 				Optional: true,
-				Description: "YugabyteDB Managed account ID, sent as the " +
-					"YBM-Account-ID header on both endpoints. Required by a " +
-					"BYOC ingest gateway, and left unset for a plain Perf Advisor.",
+				Description: "YugabyteDB Managed account ID. YBA sends it in the " +
+					"`YBM-Account-ID` header to both URLs. A BYOC ingest gateway " +
+					"requires it. Leave it unset for a Perf Advisor that you run.",
 			},
 			"ybm_project_id": {
 				Type:     schema.TypeString,
 				Optional: true,
-				Description: "YugabyteDB Managed project ID, sent as the " +
-					"YBM-Project-ID header on both endpoints.",
+				Description: "YugabyteDB Managed project ID. YBA sends it in the " +
+					"`YBM-Project-ID` header to both URLs.",
 			},
 			"universe_uuids": {
 				Type:     schema.TypeList,
 				Computed: true,
 				Elem:     &schema.Schema{Type: schema.TypeString},
-				Description: "Universes currently registered in online mode " +
-					"against this endpoint.",
+				Description: "UUIDs of the universes that are registered in " +
+					"`ONLINE` mode against this endpoint.",
 			},
 		},
 	}
@@ -153,18 +160,19 @@ func authSchema(description string) *schema.Schema {
 					Optional:     true,
 					Default:      "NONE",
 					ValidateFunc: validation.StringInSlice([]string{"NONE", "BASIC"}, false),
-					Description:  "Authentication type. One of NONE, BASIC.",
+					Description: "Authentication type. Allowed values: `NONE`, " +
+						"`BASIC`. Defaults to `NONE`.",
 				},
 				"username": {
 					Type:        schema.TypeString,
 					Optional:    true,
-					Description: "Username. Required for BASIC.",
+					Description: "Username. Required for `BASIC`.",
 				},
 				"password": {
 					Type:        schema.TypeString,
 					Optional:    true,
 					Sensitive:   true,
-					Description: "Password. Required for BASIC.",
+					Description: "Password for `BASIC` authentication.",
 				},
 			},
 		},

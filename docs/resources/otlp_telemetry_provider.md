@@ -1,55 +1,46 @@
 ---
 page_title: "yba_otlp_telemetry_provider Resource - YugabyteDB Anywhere"
 description: |-
-  ~> Experimental: This resource wraps a YugabyteDB Anywhere telemetry export API that is still experimental and may change in backward-incompatible ways across YBA releases. Pin your provider version and review release notes before upgrading.
-  OTLP Telemetry Provider resource. Defines a reusable OpenTelemetry Protocol destination that universes can use to export audit logs, query logs, and metrics.
-  ~> Note: YBA does not allow editing a telemetry provider in place. Any change to a field forces Terraform to destroy and recreate the resource. YBA also refuses to delete a provider that is still referenced by a universe's telemetry config, so the destroy step first enumerates every universe whose audit / query / metrics exporter list references this provider and rewrites that list with the provider removed (via a rolling-upgrade task on each universe). Once every detach task reaches a terminal state, the provider itself is deleted. The universes themselves are never destroyed — only their OpenTelemetry collector configuration is updated.
-  ~> Drift Note: Read refreshes only name and tags. The OTLP connection fields are not reconciled against the server, because YBA masks credentials in its responses and every field is ForceNew anyway. A field edited out-of-band in the YBA UI is therefore not detected as drift — re-apply from Terraform to restore the intended configuration.
-  ~> Import Note: Import verifies the provider's type: importing a provider that is not a OTLP destination fails with the actual type, so it can be imported with the matching yba_*_telemetry_provider resource instead.
-  ~> Security Note: Credentials such as API keys, tokens, and secret access keys are stored in the Terraform state file (marked sensitive). Use a secure backend and restrict access to your state files.
+  Manages an OpenTelemetry Protocol (OTLP) telemetry provider in YugabyteDB Anywhere. Universes send logs and metrics to it through yba_universe_telemetry_config.
 ---
 
 # yba_otlp_telemetry_provider (Resource)
 
-~> **Experimental:** This resource wraps a YugabyteDB Anywhere telemetry export API that is still experimental and may change in backward-incompatible ways across YBA releases. Pin your provider version and review release notes before upgrading.
+Manages an OpenTelemetry Protocol (OTLP) telemetry provider in YugabyteDB Anywhere. Universes send logs and metrics to it through `yba_universe_telemetry_config`.
 
-OTLP Telemetry Provider resource. Defines a reusable OpenTelemetry Protocol destination that universes can use to export audit logs, query logs, and metrics.
+~> **Experimental:** Telemetry export is an experimental feature of YugabyteDB Anywhere. A later YBA release can change it in ways that are not backward compatible. Read the release notes before you upgrade YBA or the provider.
 
-~> **Note:** YBA does not allow editing a telemetry provider in place. Any change to a field forces Terraform to destroy and recreate the resource. YBA also refuses to delete a provider that is still referenced by a universe's telemetry config, so the destroy step first enumerates every universe whose audit / query / metrics exporter list references this provider and rewrites that list with the provider removed (via a rolling-upgrade task on each universe). Once every detach task reaches a terminal state, the provider itself is deleted. The universes themselves are never destroyed — only their OpenTelemetry collector configuration is updated.
+~> **Note:** Requires YugabyteDB Anywhere 2026.1.0.0 or later. YBA creates an OTLP telemetry provider only when the global runtime config `yb.telemetry.allow_otlp` is `true`. The default is `true` from YugabyteDB Anywhere 2026.1.2.0. To set it, use the `yba_runtime_config` resource.
 
-~> **Drift Note:** Read refreshes only `name` and `tags`. The OTLP connection fields are **not** reconciled against the server, because YBA masks credentials in its responses and every field is `ForceNew` anyway. A field edited out-of-band in the YBA UI is therefore not detected as drift — re-apply from Terraform to restore the intended configuration.
+~> **Note:** YBA cannot change a telemetry provider in place, so a change to any argument replaces the resource. Before Terraform deletes a telemetry provider, it removes the telemetry provider from every universe that uses it. Each of those universes goes through a rolling restart. The universes are not deleted.
 
-~> **Import Note:** Import verifies the provider's type: importing a provider that is not a OTLP destination fails with the actual type, so it can be imported with the matching `yba_*_telemetry_provider` resource instead.
+~> **Drift Note:** Terraform reads back only `name` and `tags`. It does not detect a change to the OTLP connection arguments made outside Terraform, for example in the YBA UI. To apply the configured values again, replace the resource with `terraform apply -replace`.
 
-~> **Security Note:** Credentials such as API keys, tokens, and secret access keys are stored in the Terraform state file (marked sensitive). Use a secure backend and restrict access to your state files.
+~> **Security Note:** Terraform stores the credentials of this telemetry provider in the state file, marked sensitive. Use a secure backend and restrict access to the state file.
 
 ## Example Usage
 
 ```terraform
-# Generic OTLP destination (e.g. Prometheus with the OTLP receiver).
-#
-# When this resource is replaced (any field change forces a recreate),
-# Terraform first rewrites every universe whose telemetry config
-# references this provider to drop the exporter (rolling upgrade), then
-# deletes the old provider and creates the replacement. The universe
-# itself is never destroyed.
+# OTLP destination, for example Prometheus with its OTLP receiver turned on.
+# With protocol = "HTTP", endpoint is a base URL: metrics go to
+# <endpoint>/v1/metrics.
 resource "yba_otlp_telemetry_provider" "prometheus" {
   name = "prometheus"
 
-  endpoint        = "http://10.242.32.5:9091/api/v1/otlp/v1/metrics"
+  endpoint        = "http://prometheus.example.com:9090/api/v1/otlp"
   auth_type       = "NoAuth"
   protocol        = "HTTP"
   compression     = "gzip"
   timeout_seconds = 5
 
-  # Optional tags, upserted as attributes onto every exported record.
+  # Optional tags. YBA adds them as attributes to every exported record.
   tags = {
     env = "prod"
   }
 }
 
-# OTLP collector behind basic auth, with per-signal endpoint overrides
-# (HTTP protocol only) and extra headers.
+# OTLP collector behind basic authentication, with full URLs for logs and
+# metrics (HTTP protocol only) and extra headers.
 resource "yba_otlp_telemetry_provider" "collector" {
   name = "otel-collector"
 
@@ -67,7 +58,7 @@ resource "yba_otlp_telemetry_provider" "collector" {
   }
 }
 
-# OTLP endpoint authenticated with a bearer token (gRPC transport).
+# OTLP endpoint with bearer token authentication, over gRPC.
 resource "yba_otlp_telemetry_provider" "bearer" {
   name = "otel-bearer"
 
@@ -82,22 +73,22 @@ resource "yba_otlp_telemetry_provider" "bearer" {
 
 ### Required
 
-- `endpoint` (String) OTLP endpoint URL.
-- `name` (String) Name of the telemetry provider configuration.
+- `endpoint` (String) URL of the OTLP endpoint. With `protocol = "HTTP"`, this is a base URL: logs go to `<endpoint>/v1/logs` and metrics to `<endpoint>/v1/metrics`. To give a full URL instead, set `logs_endpoint` or `metrics_endpoint`.
+- `name` (String) Name of the telemetry provider. YBA requires a unique name.
 
 ### Optional
 
-- `auth_type` (String) Authentication type. One of NoAuth, BasicAuth, BearerToken.
-- `basic_auth_password` (String, Sensitive) BasicAuth password (only used when auth_type=BasicAuth).
-- `basic_auth_username` (String) BasicAuth username (only used when auth_type=BasicAuth).
-- `bearer_token` (String, Sensitive) Bearer token (only used when auth_type=BearerToken).
-- `compression` (String) Compression for the OTLP exporter. One of gzip, none, snappy, zstd.
-- `headers` (Map of String) Additional headers to send on every OTLP request.
-- `logs_endpoint` (String) Override endpoint for log export (HTTP protocol only). When set, the value of `endpoint` is ignored for logs.
-- `metrics_endpoint` (String) Override endpoint for metric export (HTTP protocol only). When set, the value of `endpoint` is ignored for metrics.
-- `protocol` (String) Transport protocol. One of gRPC, HTTP.
-- `tags` (Map of String) Optional string tags associated with the configuration.
-- `timeout_seconds` (Number) Timeout in seconds for the OTLP exporter. Must be positive.
+- `auth_type` (String) Authentication type: `NoAuth`, `BasicAuth` or `BearerToken`. Defaults to `NoAuth`.
+- `basic_auth_password` (String, Sensitive) Password for `BasicAuth`. Required when `auth_type = "BasicAuth"`, and ignored otherwise.
+- `basic_auth_username` (String) User name for `BasicAuth`. Required when `auth_type = "BasicAuth"`, and ignored otherwise.
+- `bearer_token` (String, Sensitive) Token for `BearerToken` authentication. Required when `auth_type = "BearerToken"`, and ignored otherwise.
+- `compression` (String) Compression of the exported data: `gzip`, `none`, `snappy` or `zstd`. Defaults to `gzip`.
+- `headers` (Map of String) Additional headers to send with each export request.
+- `logs_endpoint` (String) Full URL for log export, used instead of `endpoint` for logs. Requires `protocol = "HTTP"`.
+- `metrics_endpoint` (String) Full URL for metric export, used instead of `endpoint` for metrics. Requires `protocol = "HTTP"`.
+- `protocol` (String) Transport protocol: `gRPC` or `HTTP`. Defaults to `gRPC`.
+- `tags` (Map of String) Tags that YBA adds as attributes to every record that a universe exports to this telemetry provider.
+- `timeout_seconds` (Number) Timeout of each export request, in seconds. Defaults to `5`.
 - `timeouts` (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))
 
 ### Read-Only
@@ -114,38 +105,67 @@ Optional:
 - `delete` (String)
 - `read` (String)
 
-## Replacing an in-use provider
+## Replacing a telemetry provider in use
 
-YBA does not support editing a telemetry provider — any change to a
-field forces Terraform to destroy-and-recreate the resource. YBA also
-rejects delete requests for a provider that is still referenced by a
-universe's telemetry configuration:
+YBA cannot change a telemetry provider in place. A change to any argument
+destroys the telemetry provider and creates a new one. YBA does not delete a
+telemetry provider that a universe uses, so before Terraform deletes the
+telemetry provider, it removes the telemetry provider from the telemetry
+configuration of each universe that uses it.
 
-```
-Cannot delete Telemetry Provider '...', as it is in use.
-```
+When you destroy or replace a telemetry provider that universes use, expect the
+following:
 
-The destroy step handles this proactively: before issuing the YBA delete
-it enumerates every universe whose telemetry config references the
-provider and rewrites each universe's config with the provider filtered
-out of the audit/query/metrics exporter lists (through the unified
-`/api/v2/customers/{c}/universes/{u}/export-telemetry-configs` endpoint).
-It waits for every resulting rolling-upgrade task to reach a terminal
-state, and only then issues the YBA delete. The detach step is therefore
-the canonical "detach, then mutate" workflow — destroy-and-recreate
-plans, plain `terraform destroy`, and any `yba_universe_telemetry_config`
-update planned in the same `terraform apply` (which is then applied with
-the new provider UUID) all go through it.
+- Each of those universes goes through a rolling restart. Several universes can
+  restart at the same time. The universes are not deleted, and their other
+  telemetry providers do not change.
+- A pipeline whose only exporter was this telemetry provider is turned off.
+- When a `yba_universe_telemetry_config` resource refers to the telemetry
+  provider, Terraform then updates that resource to use the new telemetry
+  provider. The update turns the pipeline on again and restarts the universe a
+  second time.
 
-The universes themselves are never destroyed — only their OpenTelemetry
-collector configuration is updated.
+The delete timeout covers the restarts of all these universes. It defaults to
+2 hours. For large universes, set a longer `timeouts.delete`.
 
 ## Import
 
-Telemetry providers can be imported using their UUID. Import verifies
-the provider's type: importing a provider of a different sink type fails
-with a message naming the matching resource.
+Import a telemetry provider with its UUID:
 
 ```sh
 terraform import yba_otlp_telemetry_provider.prometheus <telemetry-provider-uuid>
 ```
+
+The import fails when the telemetry provider is not an OTLP telemetry
+provider. The error names its type. Import it with the resource for that type
+instead.
+
+Import reads only `name` and `tags`. The other arguments are not in the state
+after import, so the next plan replaces the telemetry provider, and each
+universe that uses it restarts. To keep the imported telemetry provider, add the
+other arguments to `ignore_changes`:
+
+```terraform
+resource "yba_otlp_telemetry_provider" "prometheus" {
+  # ...
+
+  lifecycle {
+    ignore_changes = [
+      endpoint,
+      auth_type,
+      protocol,
+      compression,
+      timeout_seconds,
+      basic_auth_username,
+      basic_auth_password,
+      bearer_token,
+      headers,
+      logs_endpoint,
+      metrics_endpoint,
+    ]
+  }
+}
+```
+
+Remove the `lifecycle` block when you want Terraform to manage these arguments
+again. The next apply then replaces the telemetry provider.

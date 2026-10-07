@@ -1,4 +1,4 @@
-# AWS CloudWatch Logs destination for audit/query logs.
+# AWS CloudWatch Logs destination for logs.
 resource "yba_aws_cloudwatch_telemetry_provider" "cw" {
   name = "cloudwatch"
 
@@ -8,11 +8,11 @@ resource "yba_aws_cloudwatch_telemetry_provider" "cw" {
   access_key = var.aws_access_key
   secret_key = var.aws_secret_key
 
-  # Optional: assume a role and use a VPC endpoint.
+  # Optional: assume an IAM role, and use a VPC endpoint.
   role_arn = "arn:aws:iam::111111111111:role/yba-cloudwatch"
   endpoint = "https://logs.us-west-2.amazonaws.com"
 
-  # Optional tags, upserted as attributes onto every exported record.
+  # Optional tags. YBA adds them as attributes to every exported record.
   tags = {
     env = "prod"
   }

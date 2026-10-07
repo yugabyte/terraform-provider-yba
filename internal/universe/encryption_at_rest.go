@@ -54,51 +54,42 @@ func encryptionAtRestSchema() *schema.Schema {
 		Optional: true,
 		Computed: true,
 		MaxItems: 1,
-		Description: "Encryption at rest for the universe's data, keyed through an " +
-			"encryption-at-rest configuration (`yba_gcp_ear_config`, or one found with " +
-			"`yba_ear_config`). Set at creation to encrypt from the first write, or add to an " +
-			"existing universe to enable it in place. Changing `kms_config_uuid` on an " +
-			"enabled universe rotates the master key: YugabyteDB Anywhere re-wraps every " +
-			"universe key with the new configuration in one task, without restarting nodes. " +
-			"Changing `universe_key_rotation_trigger` rotates the universe key itself under " +
-			"the current master key. The block is read from the universe when omitted, so " +
-			"removing it changes nothing; set `enabled = false` to turn encryption off.\n\n" +
-			"~> **Note:** A configuration that a universe has used keeps that universe's key " +
-			"history until the universe is deleted, and cannot be deleted before then, even " +
-			"after encryption is disabled or the universe moves to another configuration. " +
-			"YugabyteDB Anywhere needs the history to restore backups taken under earlier " +
-			"keys.",
+		Description: "Encryption at rest for the universe, with the master key from an " +
+			"encryption-at-rest configuration (`yba_gcp_ear_config`, or one that " +
+			"`yba_ear_config` finds). Set the block at creation to encrypt from the first " +
+			"write, or add it to an existing universe to enable encryption in place. When " +
+			"the block is omitted, Terraform reads it from the universe, so removing the " +
+			"block changes nothing; set `enabled = false` to disable encryption. None of " +
+			"these changes restart nodes.",
 		Elem: &schema.Resource{
 			Schema: map[string]*schema.Schema{
 				"enabled": {
 					Type:     schema.TypeBool,
 					Required: true,
-					Description: "Whether encryption at rest is enabled. `true` enables it at " +
-						"creation or in place; `false` disables it in place through a " +
-						"YugabyteDB Anywhere task, and data written afterwards is stored in " +
-						"clear.",
+					Description: "Whether encryption at rest is on. `true` enables it, at " +
+						"creation or in place. `false` disables it in place, and data written " +
+						"after that is not encrypted.",
 				},
 				"kms_config_uuid": {
 					Type:     schema.TypeString,
 					Optional: true,
 					Computed: true,
 					Description: "UUID of the encryption-at-rest configuration whose master " +
-						"key wraps the universe keys. Required when `enabled` is true. Changing " +
-						"it on an enabled universe rotates the master key. After disabling, " +
-						"YugabyteDB Anywhere keeps reporting the last configuration here.",
+						"key wraps the universe keys. Required when `enabled` is true. A change " +
+						"on an enabled universe rotates the master key. After a disable, " +
+						"YugabyteDB Anywhere still reports the last configuration here.",
 				},
 				"universe_key_rotation_trigger": {
 					Type:     schema.TypeString,
 					Optional: true,
-					Description: "Opaque trigger for universe key rotation: changing it to any " +
-						"new non-empty value generates a fresh universe key under the current " +
-						"master key on the next apply (setting it for the first time counts). " +
-						"Removing it never fires. A date reads well in diffs; pair it with " +
-						"`time_rotating` for automated rotation. It applies to an enabled " +
-						"universe only, and when it changes in the same apply that enables " +
-						"encryption the enable itself already generates a fresh key. When it " +
-						"changes together with `kms_config_uuid`, the master key rotation runs " +
-						"first.",
+					Description: "Change this value to rotate the universe key: on the next " +
+						"apply, YugabyteDB Anywhere generates a new universe key under the " +
+						"current master key. Any new non-empty value rotates the key, also the " +
+						"first value set on an existing universe; removing the value does " +
+						"nothing. Requires `enabled = true`. A value set at creation, or in the " +
+						"apply that enables encryption, does not run a separate rotation: the " +
+						"enable already generates a new key. Use a date, or a `time_rotating` " +
+						"value to rotate on a schedule.",
 				},
 			},
 		},

@@ -1,47 +1,46 @@
 ---
 page_title: "yba_custom_server_certificate Resource - YugabyteDB Anywhere"
 description: |-
-  Custom server certificate configuration for universe client-to-node encryption in transit: a root CA certificate for verification plus an externally-signed server certificate and key that YugabyteDB Anywhere places on every DB node. Use this when your organization issues the client-to-node certificates from its own CA.
+  Manages a YugabyteDB Anywhere custom server certificate configuration for client-to-node encryption in transit: your organization's root CA certificate, and a server certificate and key signed by that CA. YugabyteDB Anywhere places the server certificate and key on every node of the universe.
 ---
 
 # yba_custom_server_certificate (Resource)
 
-Custom server certificate configuration for universe client-to-node encryption in transit: a root CA certificate for verification plus an externally-signed server certificate and key that YugabyteDB Anywhere places on every DB node. Use this when your organization issues the client-to-node certificates from its own CA.
+Manages a YugabyteDB Anywhere custom server certificate configuration for client-to-node encryption in transit: your organization's root CA certificate, and a server certificate and key signed by that CA. YugabyteDB Anywhere places the server certificate and key on every node of the universe.
 
-~> **Warning:** YugabyteDB Anywhere accepts this certificate type only for client-to-node TLS — reference it from the universe's `client_root_ca`. Using it as `root_ca` (node-to-node) is rejected by the API.
+~> **Warning:** Use this certificate only as a universe's `client_root_ca`. YugabyteDB Anywhere rejects it as `root_ca` (node-to-node encryption).
 
-~> **Note:** `server_key` is a write-only argument: Terraform never stores it in the plan or the state file, so this resource requires Terraform 1.11 or later. Because nothing is stored, a change to only `server_key` is not detected — the key belongs to its `server_certificate` and they change together, which forces the replacement. YugabyteDB Anywhere verifies at upload that the certificate and key match.
+YugabyteDB Anywhere cannot edit a certificate configuration, so a change to any argument forces replacement. When a universe uses the certificate, add `lifecycle { create_before_destroy = true }`. Terraform then creates the replacement and rotates the universe to it before it deletes the old configuration. A destroy of a certificate that a universe still uses fails, and the error names the universes.
 
-Certificate configurations are immutable in YugabyteDB Anywhere: changing any argument forces replacement, so add `lifecycle { create_before_destroy = true }` when the certificate is referenced by a universe.
+To rotate to a server certificate that the same CA re-issued, change `label`, `server_certificate` and `server_key`, and keep `root_certificate` as it is.
 
-~> **Note:** After `terraform import`, `server_certificate` is empty in state (the API never returns it), so the next plan proposes a replacement. Add `lifecycle { ignore_changes = [server_certificate] }` to adopt the imported certificate as-is, or recreate the resource from the original files instead of importing.
+~> **Note:** Labels are unique per customer. With `create_before_destroy`, the replacement exists at the same time as the old configuration, so give the replacement a new `label`, for example with a date or a version in it.
 
-~> **Note:** Labels are unique per customer, and with `create_before_destroy` the replacement is created while the old configuration still exists. Give the replacement a new `label` (include a date or version, for example), or the create fails with a duplicate-label error.
+~> **Note:** `server_key` is a write-only argument: Terraform never stores it in the plan or the state file, so this resource requires Terraform 1.11 or later. Terraform cannot detect a change to `server_key` alone, so change it together with `server_certificate`, which forces replacement. YugabyteDB Anywhere checks at upload that the server certificate and the key match.
 
-To rotate a server certificate re-issued from the same CA, create the replacement with identical `root_certificate` content and the new `server_certificate`/`server_key`, then point the universe's `client_root_ca` at it — YugabyteDB Anywhere detects the unchanged root and performs the lightweight server-certificate rotation instead of a full root swap.
+~> **Note:** YugabyteDB Anywhere never returns `server_certificate`, so after `terraform import` the next plan proposes a replacement. The Import section below shows how to keep the imported certificate.
 
-Reference the certificate from a universe via `client_root_ca` only. Rotation semantics are
-documented in the
-[Universe Edit Actions](../guides/universe-edit-actions.md#certificate-rotation) guide.
+Use the certificate in a universe through `client_root_ca` only. The
+[Certificate Rotation](../guides/universe-edit-actions.md#certificate-rotation) section of the
+Universe Edit Actions guide describes how a universe rotates to a new certificate.
 
 ## Example Usage
 
 ```terraform
-# Custom server certificate for client-to-node TLS: your organization's CA
-# certificate plus a server certificate/key it signed. Reference it from the
-# universe's `client_root_ca` — YugabyteDB Anywhere rejects this type for
-# node-to-node (`root_ca`) use.
+# Custom server certificate for client-to-node encryption: your organization's
+# CA certificate, and a server certificate and key signed by that CA. Use it as
+# a universe's `client_root_ca`. YugabyteDB Anywhere rejects this type as
+# `root_ca` (node-to-node encryption).
 resource "yba_custom_server_certificate" "c2n" {
   label              = "prod-c2n-2026"
   root_certificate   = file("${path.module}/org-ca.crt")
   server_certificate = file("${path.module}/server.crt")
   server_key         = file("${path.module}/server.key")
 
-  # Rotation pattern: when the org re-issues the server certificate from the
-  # same CA, change label/server_certificate/server_key (or create a new
-  # resource) and repoint the universe's client_root_ca. With
-  # create_before_destroy, Terraform uploads the replacement, rotates the
-  # universe, then deletes this configuration.
+  # To rotate to a server certificate that the same CA re-issued, change
+  # `label`, `server_certificate` and `server_key`. With create_before_destroy,
+  # Terraform uploads the replacement, rotates the universe to it, and then
+  # deletes this configuration.
   lifecycle {
     create_before_destroy = true
   }
@@ -55,10 +54,10 @@ resource "yba_custom_server_certificate" "c2n" {
 
 > **NOTE**: [Write-only arguments](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments) are supported in Terraform 1.11 and later.
 
-- `label` (String) Name YugabyteDB Anywhere uses to identify the certificate. Must be unique per customer. Certificate configurations cannot be edited (the API has no update for this type), so changing the label forces recreation of the resource.
-- `root_certificate` (String) Root CA certificate in PEM format, provided inline or via `file(...)`. Clients use it to verify the server certificate. Changing the content forces recreation of the resource.
-- `server_certificate` (String) Server certificate in PEM format signed by the root CA, provided inline or via `file(...)`. Placed on every DB node for client-to-node TLS. Never returned by the API, so imported resources cannot recover it and plan a replacement — see the import note above. Changing the value forces recreation of the resource.
-- `server_key` (String, Sensitive, [Write-only](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments)) Private key of the server certificate in PEM format, provided inline or via `file(...)` or an ephemeral value. Write-only: never stored in the Terraform plan or state, never returned by the API (imported resources cannot recover it). Requires Terraform 1.11+. The key rotates together with `server_certificate`, whose change forces recreation of the resource.
+- `label` (String) Name of the certificate configuration in YugabyteDB Anywhere. Must be unique per customer. A change forces replacement.
+- `root_certificate` (String) Root CA certificate in PEM format, inline or from `file(...)`. Clients use it to verify the server certificate. Every certificate in it must be a CA certificate. A change forces replacement.
+- `server_certificate` (String) Server certificate in PEM format, signed by the root CA, inline or from `file(...)`. YugabyteDB Anywhere places it on every node for client-to-node encryption. YugabyteDB Anywhere never returns it, so an imported resource plans a replacement (see Import). A change forces replacement.
+- `server_key` (String, Sensitive, [Write-only](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments)) Private key of the server certificate in PEM format, inline, from `file(...)`, or from an ephemeral value. It must be an RSA key of 2048 bits or more. Write-only: Terraform never stores it in the plan or state, and it requires Terraform 1.11 or later.
 
 ### Optional
 
@@ -66,10 +65,10 @@ resource "yba_custom_server_certificate" "c2n" {
 
 ### Read-Only
 
-- `expiry_date` (String) Expiry date of the certificate (RFC 3339).
+- `expiry_date` (String) End of the validity period of `root_certificate` (the earliest expiry in the chain), in RFC 3339 format. This is not the expiry of `server_certificate`.
 - `id` (String) The ID of this resource.
-- `in_use` (Boolean) True while at least one universe references this certificate. Certificates in use cannot be deleted.
-- `start_date` (String) Creation date of the certificate (RFC 3339).
+- `in_use` (Boolean) Whether a universe uses this certificate. A certificate in use cannot be deleted.
+- `start_date` (String) Start of the validity period of `root_certificate`, in RFC 3339 format.
 - `uuid` (String) UUID of the certificate configuration.
 
 <a id="nestedblock--timeouts"></a>
@@ -83,17 +82,17 @@ Optional:
 
 ## Import
 
-Custom server certificate configurations can be imported using the certificate UUID:
+Import a custom server certificate configuration with its UUID:
 
 ```sh
-terraform import yba_custom_server_certificate.example <certificate-uuid>
+terraform import yba_custom_server_certificate.c2n <certificate-uuid>
 ```
 
-`server_certificate` and `server_key` cannot be recovered through the API and stay empty
-after import. Because `server_certificate` is required and forces replacement, the next
-plan proposes to replace the imported certificate — and while a universe references it,
-the delete side of that replacement fails. To adopt an imported certificate without
-replacing it, ignore the unrecoverable argument:
+YugabyteDB Anywhere never returns `server_certificate` or `server_key`, so they stay empty
+after import. Because `server_certificate` is required and forces replacement, the next plan
+proposes to replace the imported certificate, and the replacement fails while a universe uses
+the certificate. To keep the imported certificate, ignore the argument that import cannot
+recover:
 
 ```terraform
 lifecycle {
@@ -101,6 +100,6 @@ lifecycle {
 }
 ```
 
-Remove the `ignore_changes` entry when you intend to rotate to a re-issued certificate.
-Alternatively, skip the import and recreate the certificate from the original files —
-the plan is then clean from the start.
+Remove the `ignore_changes` entry when you rotate to a re-issued certificate. Or do not
+import: create the certificate again from the original files, and the plan is clean from the
+start.

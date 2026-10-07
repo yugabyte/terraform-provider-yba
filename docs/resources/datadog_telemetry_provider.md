@@ -1,39 +1,32 @@
 ---
 page_title: "yba_datadog_telemetry_provider Resource - YugabyteDB Anywhere"
 description: |-
-  ~> Experimental: This resource wraps a YugabyteDB Anywhere telemetry export API that is still experimental and may change in backward-incompatible ways across YBA releases. Pin your provider version and review release notes before upgrading.
-  Datadog Telemetry Provider resource. Defines a reusable Datadog export destination that universes can use to export audit logs, query logs, and metrics.
-  ~> Note: YBA does not allow editing a telemetry provider in place. Any change to a field forces Terraform to destroy and recreate the resource. YBA also refuses to delete a provider that is still referenced by a universe's telemetry config, so the destroy step first enumerates every universe whose audit / query / metrics exporter list references this provider and rewrites that list with the provider removed (via a rolling-upgrade task on each universe). Once every detach task reaches a terminal state, the provider itself is deleted. The universes themselves are never destroyed — only their OpenTelemetry collector configuration is updated.
-  ~> Drift Note: Read refreshes only name and tags. The Datadog connection fields are not reconciled against the server, because YBA masks credentials in its responses and every field is ForceNew anyway. A field edited out-of-band in the YBA UI is therefore not detected as drift — re-apply from Terraform to restore the intended configuration.
-  ~> Import Note: Import verifies the provider's type: importing a provider that is not a Datadog destination fails with the actual type, so it can be imported with the matching yba_*_telemetry_provider resource instead.
-  ~> Security Note: Credentials such as API keys, tokens, and secret access keys are stored in the Terraform state file (marked sensitive). Use a secure backend and restrict access to your state files.
+  Manages a Datadog telemetry provider in YugabyteDB Anywhere. Universes send logs and metrics to it through yba_universe_telemetry_config.
 ---
 
 # yba_datadog_telemetry_provider (Resource)
 
-~> **Experimental:** This resource wraps a YugabyteDB Anywhere telemetry export API that is still experimental and may change in backward-incompatible ways across YBA releases. Pin your provider version and review release notes before upgrading.
+Manages a Datadog telemetry provider in YugabyteDB Anywhere. Universes send logs and metrics to it through `yba_universe_telemetry_config`.
 
-Datadog Telemetry Provider resource. Defines a reusable Datadog export destination that universes can use to export audit logs, query logs, and metrics.
+~> **Experimental:** Telemetry export is an experimental feature of YugabyteDB Anywhere. A later YBA release can change it in ways that are not backward compatible. Read the release notes before you upgrade YBA or the provider.
 
-~> **Note:** YBA does not allow editing a telemetry provider in place. Any change to a field forces Terraform to destroy and recreate the resource. YBA also refuses to delete a provider that is still referenced by a universe's telemetry config, so the destroy step first enumerates every universe whose audit / query / metrics exporter list references this provider and rewrites that list with the provider removed (via a rolling-upgrade task on each universe). Once every detach task reaches a terminal state, the provider itself is deleted. The universes themselves are never destroyed — only their OpenTelemetry collector configuration is updated.
+~> **Note:** YBA cannot change a telemetry provider in place, so a change to any argument replaces the resource. Before Terraform deletes a telemetry provider, it removes the telemetry provider from every universe that uses it. Each of those universes goes through a rolling restart. The universes are not deleted.
 
-~> **Drift Note:** Read refreshes only `name` and `tags`. The Datadog connection fields are **not** reconciled against the server, because YBA masks credentials in its responses and every field is `ForceNew` anyway. A field edited out-of-band in the YBA UI is therefore not detected as drift — re-apply from Terraform to restore the intended configuration.
+~> **Drift Note:** Terraform reads back only `name` and `tags`. It does not detect a change to the Datadog connection arguments made outside Terraform, for example in the YBA UI. To apply the configured values again, replace the resource with `terraform apply -replace`.
 
-~> **Import Note:** Import verifies the provider's type: importing a provider that is not a Datadog destination fails with the actual type, so it can be imported with the matching `yba_*_telemetry_provider` resource instead.
-
-~> **Security Note:** Credentials such as API keys, tokens, and secret access keys are stored in the Terraform state file (marked sensitive). Use a secure backend and restrict access to your state files.
+~> **Security Note:** Terraform stores the credentials of this telemetry provider in the state file, marked sensitive. Use a secure backend and restrict access to the state file.
 
 ## Example Usage
 
 ```terraform
-# Datadog destination for audit/query logs and metrics.
+# Datadog destination for logs and metrics.
 resource "yba_datadog_telemetry_provider" "datadog" {
   name = "datadog"
 
   site    = "datadoghq.com"
   api_key = var.datadog_api_key
 
-  # Optional tags, upserted as attributes onto every exported record.
+  # Optional tags. YBA adds them as attributes to every exported record.
   tags = {
     env = "prod"
   }
@@ -46,12 +39,12 @@ resource "yba_datadog_telemetry_provider" "datadog" {
 ### Required
 
 - `api_key` (String, Sensitive) Datadog API key.
-- `name` (String) Name of the telemetry provider configuration.
-- `site` (String) Datadog site (e.g. datadoghq.com, datadoghq.eu).
+- `name` (String) Name of the telemetry provider. YBA requires a unique name.
+- `site` (String) Datadog site, such as `datadoghq.com` or `datadoghq.eu`.
 
 ### Optional
 
-- `tags` (Map of String) Optional string tags associated with the configuration.
+- `tags` (Map of String) Tags that YBA adds as attributes to every record that a universe exports to this telemetry provider.
 - `timeouts` (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))
 
 ### Read-Only
@@ -68,38 +61,55 @@ Optional:
 - `delete` (String)
 - `read` (String)
 
-## Replacing an in-use provider
+## Replacing a telemetry provider in use
 
-YBA does not support editing a telemetry provider — any change to a
-field forces Terraform to destroy-and-recreate the resource. YBA also
-rejects delete requests for a provider that is still referenced by a
-universe's telemetry configuration:
+YBA cannot change a telemetry provider in place. A change to any argument
+destroys the telemetry provider and creates a new one. YBA does not delete a
+telemetry provider that a universe uses, so before Terraform deletes the
+telemetry provider, it removes the telemetry provider from the telemetry
+configuration of each universe that uses it.
 
-```
-Cannot delete Telemetry Provider '...', as it is in use.
-```
+When you destroy or replace a telemetry provider that universes use, expect the
+following:
 
-The destroy step handles this proactively: before issuing the YBA delete
-it enumerates every universe whose telemetry config references the
-provider and rewrites each universe's config with the provider filtered
-out of the audit/query/metrics exporter lists (through the unified
-`/api/v2/customers/{c}/universes/{u}/export-telemetry-configs` endpoint).
-It waits for every resulting rolling-upgrade task to reach a terminal
-state, and only then issues the YBA delete. The detach step is therefore
-the canonical "detach, then mutate" workflow — destroy-and-recreate
-plans, plain `terraform destroy`, and any `yba_universe_telemetry_config`
-update planned in the same `terraform apply` (which is then applied with
-the new provider UUID) all go through it.
+- Each of those universes goes through a rolling restart. Several universes can
+  restart at the same time. The universes are not deleted, and their other
+  telemetry providers do not change.
+- A pipeline whose only exporter was this telemetry provider is turned off.
+- When a `yba_universe_telemetry_config` resource refers to the telemetry
+  provider, Terraform then updates that resource to use the new telemetry
+  provider. The update turns the pipeline on again and restarts the universe a
+  second time.
 
-The universes themselves are never destroyed — only their OpenTelemetry
-collector configuration is updated.
+The delete timeout covers the restarts of all these universes. It defaults to
+2 hours. For large universes, set a longer `timeouts.delete`.
 
 ## Import
 
-Telemetry providers can be imported using their UUID. Import verifies
-the provider's type: importing a provider of a different sink type fails
-with a message naming the matching resource.
+Import a telemetry provider with its UUID:
 
 ```sh
 terraform import yba_datadog_telemetry_provider.datadog <telemetry-provider-uuid>
 ```
+
+The import fails when the telemetry provider is not a Datadog telemetry
+provider. The error names its type. Import it with the resource for that type
+instead.
+
+Import reads only `name` and `tags`. The other arguments are not in the state
+after import, so the next plan replaces the telemetry provider, and each
+universe that uses it restarts. To keep the imported telemetry provider, add the
+other arguments to `ignore_changes`:
+
+```terraform
+resource "yba_datadog_telemetry_provider" "datadog" {
+  # ...
+
+  lifecycle {
+    ignore_changes = [site, api_key]
+  }
+}
+```
+
+Remove the `lifecycle` block when you want Terraform to manage these arguments
+again. The next apply then replaces the telemetry provider.

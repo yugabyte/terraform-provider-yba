@@ -4,7 +4,7 @@ data "yba_ear_config" "ui_created" {
   name = "gcp-kms-prod"
 }
 
-# A universe attaches it through its encryption_at_rest block:
+# A universe uses it through its encryption_at_rest block:
 #
 #   encryption_at_rest {
 #     enabled         = true
@@ -13,13 +13,12 @@ data "yba_ear_config" "ui_created" {
 #
 # The yba_universe example shows a complete universe with the block.
 
-output "ear_config_provider" {
+output "ear_config_kms_provider" {
   value = data.yba_ear_config.ui_created.key_provider
 }
 
-# The UUID also drives an import into yba_gcp_ear_config, to start managing
-# the configuration in Terraform:
-#   terraform import yba_gcp_ear_config.prod <uuid>
+# To manage the configuration in Terraform, import it with this UUID:
+#   terraform import yba_gcp_ear_config.service_account <uuid>
 output "ear_config_uuid" {
   value = data.yba_ear_config.ui_created.uuid
 }
