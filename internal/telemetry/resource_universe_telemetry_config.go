@@ -1559,22 +1559,32 @@ func resourceUniverseTelemetryConfigRead(
 	return nil
 }
 
-// getExportTelemetryConfig fetches the v2 telemetry config, mapping a gone
-// universe to utils.ErrUniverseMissing and other errors to a formatted error.
+// errExportTelemetryRouteMissing marks a 404 from the v2 telemetry config GET.
 // YBA reports a gone universe on this route as a 400 ("Cannot find universe"),
-// so a 404 means the YBA lacks the route. It surfaces as an error rather than
-// dropping a live config from state.
+// so a 404 means the YBA lacks the route.
+var errExportTelemetryRouteMissing = errors.New(
+	"YBA does not have the export-telemetry-configs API")
+
+// getExportTelemetryConfig fetches the v2 telemetry config, mapping a gone
+// universe to utils.ErrUniverseMissing, a missing route to
+// errExportTelemetryRouteMissing, and other errors to a formatted error. The
+// config resource surfaces a missing route as an error rather than dropping a
+// live config from state.
 func getExportTelemetryConfig(
 	ctx context.Context, apiClient *api.APIClient, universeUUID, operation string,
 ) (*clientv2.TelemetryConfig, error) {
 	config, response, err := apiClient.YugawareClientV2.UniverseAPI.
 		GetExportTelemetryConfig(ctx, apiClient.CustomerID, universeUUID).Execute()
 	if err != nil {
-		if !utils.IsHTTPNotFound(response) && utils.IsUniverseMissing(response, err) {
+		httpErr := utils.ErrorFromHTTPResponse(response, err,
+			utils.ResourceEntity, "Universe Telemetry Config", operation)
+		if utils.IsHTTPNotFound(response) {
+			return nil, fmt.Errorf("%w: %w", errExportTelemetryRouteMissing, httpErr)
+		}
+		if utils.IsUniverseMissing(response, err) {
 			return nil, utils.ErrUniverseMissing
 		}
-		return nil, utils.ErrorFromHTTPResponse(response, err,
-			utils.ResourceEntity, "Universe Telemetry Config", operation)
+		return nil, httpErr
 	}
 	return config, nil
 }

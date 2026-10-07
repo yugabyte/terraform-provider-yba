@@ -94,11 +94,12 @@ func detachFromUniverse(
 	config, err := getExportTelemetryConfig(
 		ctx, apiClient, ref.UUID, "Detach - Get Config")
 	if err != nil {
-		if errors.Is(err, utils.ErrUniverseMissing) {
+		if errors.Is(err, utils.ErrUniverseMissing) ||
+			errors.Is(err, errExportTelemetryRouteMissing) {
 			// The universe disappeared between the list and this read, or
-			// the YBA predates the v2 route (a 404 either way). Neither has
-			// a v2 config to rewrite; YBA's in-use check on the delete still
-			// catches a reference made through the older per-universe APIs.
+			// the YBA predates the v2 route. Neither has a v2 config to
+			// rewrite; YBA's in-use check on the delete still catches a
+			// reference made through the older per-universe APIs.
 			return false, nil
 		}
 		return false, err
