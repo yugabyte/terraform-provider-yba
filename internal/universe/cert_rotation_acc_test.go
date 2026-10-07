@@ -209,8 +209,9 @@ func TestAccLong_Universe_GCP_CertRotation(t *testing.T) {
 				// the referencing universe, not corrupt state.
 				Config: certRotationUniverseConfig(rName, certA+certB2+certTwo,
 					splitAttrs("a", "two")),
-				Taint:       []string{"yba_custom_server_certificate.two"},
-				ExpectError: regexp.MustCompile("still referenced by universe"),
+				Taint: []string{"yba_custom_server_certificate.two"},
+				ExpectError: regexp.MustCompile(
+					`in use by universe\(s\) ` + regexp.QuoteMeta(rName)),
 			},
 		},
 	})
