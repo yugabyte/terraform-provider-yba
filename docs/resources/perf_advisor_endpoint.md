@@ -8,7 +8,7 @@ description: |-
 
 Manages a Perf Advisor endpoint in YugabyteDB Anywhere: an external Perf Advisor that receives the data YBA collects from universes registered in `ONLINE` mode. Register a universe against an endpoint with `yba_universe_perf_advisor_registration`.
 
-~> **Preview:** YugabyteDB Anywhere marks the Perf Advisor API that this resource uses as preview. The API can change in ways that are not backward compatible between YBA releases.
+~> **Preview:** This resource works only with YugabyteDB Anywhere preview releases. No stable YBA release has the Perf Advisor API that this resource uses. The API can change in ways that are not backward compatible between YBA releases.
 
 ~> **Note:** Perf Advisor online mode must be on. Set the runtime config key `yb.ui.feature_flags.enable_pa_online_mode` to `true` on the global scope or on your customer scope, for example with `yba_runtime_config`. The key is `false` by default. While it is `false`, YBA rejects every endpoint request, so `terraform plan` fails for this resource.
 

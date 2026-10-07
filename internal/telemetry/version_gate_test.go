@@ -46,8 +46,8 @@ func TestValidateYBAVersionPlanTime(t *testing.T) {
 			"master_logs requires YugabyteDB Anywhere 2.31.0.0-b386"},
 		{"server-log block at its minimum", "2.31.0.0-b386", block("master_logs"), ""},
 		{"no server-log block skips its minimum", "2.31.0.0-b385", block("metrics"), ""},
-		{"below the unified API floor", "2025.2.0.0-b131", block("metrics"),
-			"yba_universe_telemetry_config requires YugabyteDB Anywhere 2026.1.0.0-b61"},
+		{"below the unified API floor", "2026.1.1.0-b91", block("metrics"),
+			"yba_universe_telemetry_config requires YugabyteDB Anywhere 2026.1.2.0-b35"},
 		{"unparseable version is let through", "dev-build", block("master_logs"), ""},
 		{"unknown version skips the gate", "", block("master_logs"), ""},
 	}

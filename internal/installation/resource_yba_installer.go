@@ -193,9 +193,11 @@ func installerInputProvided(d inputReader, spec installerFileSpec) bool {
 	return false
 }
 
+const defaultSSHPort = 22
+
 // ResourceYBAInstaller handles installation of YugabyteDB Anywhere using YBA installer
 func ResourceYBAInstaller() *schema.Resource {
-	return &schema.Resource{
+	r := &schema.Resource{
 		Description: "Manages the installation of YugabyteDB Anywhere on an existing virtual" +
 			" machine using YBA Installer.\n\n" +
 			"~> **Note:** Destroy runs `yba-ctl clean` on the host. This removes the " +
@@ -233,6 +235,8 @@ func ResourceYBAInstaller() *schema.Resource {
 
 		CustomizeDiff: resourceYBAInstallerDiff(),
 
+		SchemaVersion: 1,
+
 		Schema: map[string]*schema.Schema{
 			"yba_version": {
 				Type:     schema.TypeString,
@@ -267,7 +271,7 @@ func ResourceYBAInstaller() *schema.Resource {
 			"ssh_port": {
 				Type:         schema.TypeInt,
 				Optional:     true,
-				Default:      22,
+				Default:      defaultSSHPort,
 				ValidateFunc: validation.IntBetween(1, 65535),
 				Description: "TCP port for SSH and SCP connections to the host. Default is " +
 					"22. Set this field when sshd listens on a different port at " +
@@ -409,6 +413,30 @@ func ResourceYBAInstaller() *schema.Resource {
 			},
 		},
 	}
+	// Version 0 state comes from v1.0.0 (no ssh_port) or from a pre-release
+	// that already has it. The current schema covers both shapes.
+	r.StateUpgraders = []schema.StateUpgrader{{
+		Version: 0,
+		Type:    r.CoreConfigSchema().ImpliedType(),
+		Upgrade: upgradeYBAInstallerStateV0,
+	}}
+	return r
+}
+
+// upgradeYBAInstallerStateV0 sets ssh_port in state that does not have it.
+// Without the value, every plan shows ssh_port changing from null to 22, and
+// the apply connects to the host (and runs yba-ctl reconfigure when
+// reconfigure = true).
+func upgradeYBAInstallerStateV0(
+	_ context.Context, rawState map[string]interface{}, _ interface{},
+) (map[string]interface{}, error) {
+	if rawState == nil {
+		return rawState, nil
+	}
+	if v, ok := rawState["ssh_port"]; !ok || v == nil {
+		rawState["ssh_port"] = defaultSSHPort
+	}
+	return rawState, nil
 }
 
 // validateInstallerFileAttr returns a CustomizeDiff function that
@@ -631,6 +659,15 @@ func resourceYBAInstallerUpdate(
 			utils.RevertFields(d, installerUpdateRevertAttrs...)
 		}
 	}()
+
+	// Terraform plans an update with no attribute change when only the
+	// sensitivity of an attribute changed: once after an upgrade from v1.0.0,
+	// whose state does not mark the sensitive inputs added since. Such an
+	// update must not touch the host. With reconfigure = true, it would
+	// restart YBA.
+	if !d.HasChangesExcept() {
+		return diag.Diagnostics{}
+	}
 
 	hostIPForSSH := d.Get("ssh_host_ip").(string)
 	user := d.Get("ssh_user").(string)

@@ -278,7 +278,9 @@ func resourcePerfAdvisorEndpointUpdate(
 		return diag.FromErr(utils.ErrorFromHTTPResponse(
 			response, err, "Perf Advisor Endpoint", "Update", "Edit"))
 	}
-	return resourcePerfAdvisorEndpointRead(ctx, d, meta)
+	return append(
+		diag.Diagnostics{previewWarning("yba_perf_advisor_endpoint")},
+		resourcePerfAdvisorEndpointRead(ctx, d, meta)...)
 }
 
 func resourcePerfAdvisorEndpointDelete(

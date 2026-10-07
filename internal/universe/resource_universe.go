@@ -110,6 +110,29 @@ func validateDeviceInfoIopsThroughput(st string, iops, throughput int32, label s
 	return errs
 }
 
+// validateOnPremUserIntent rejects an on-prem cluster that sets instance tags
+// or a storage type, or that has no mount points. Other provider types pass.
+func validateOnPremUserIntent(ui client.UserIntent, clusterLabel string) error {
+	if ui.GetProviderType() != "onprem" {
+		return nil
+	}
+	var errs []string
+	if len(ui.GetInstanceTags()) > 0 {
+		errs = append(errs, "cannot add instance tags to onprem "+clusterLabel+" clusters")
+	}
+	if len(ui.DeviceInfo.GetMountPoints()) == 0 {
+		errs = append(errs, "mount points are compulsory for onprem clusters")
+	}
+	if len(ui.DeviceInfo.GetStorageType()) > 0 {
+		errs = append(errs, "cannot specify storage type for onprem clusters")
+	}
+	if len(errs) > 0 {
+		return fmt.Errorf("error in onprem %s cluster definition: %s",
+			clusterLabel, strings.Join(errs, "; "))
+	}
+	return nil
+}
+
 // storage types grouped by cloud provider. Cross-cloud storage_type transitions
 // are structurally impossible (the provider UUID cannot change on a universe),
 // so a same-universe storage_type change that crosses groups is always a user
@@ -1688,53 +1711,14 @@ func resourceUniverseDiff() schema.CustomizeDiffFunc {
 		),
 		customdiff.ValidateValue("clusters", func(ctx context.Context, value,
 			meta interface{}) error {
-			// block adding instance tags to on prem nodes
-			// mount path is required for on prem
-			// storage type should not be given
 			clusterSet := buildClusters(value.([]interface{}))
-			primary, isPresent := getClusterByType(clusterSet, "PRIMARY")
-			readOnly, isRRPresnt := getClusterByType(clusterSet, "ASYNC")
-			if isPresent {
-				primaryUI := primary.GetUserIntent()
-				if primaryUI.GetProviderType() == "onprem" {
-					err := errors.New("Error in onprem primary cluster definition: ")
-					if len(primaryUI.GetInstanceTags()) > 0 {
-						errMessage := "cannot add instance tags to onprem primary cluster"
-						err = fmt.Errorf("%w %s", err, errMessage)
-					}
-					if len(primaryUI.DeviceInfo.GetMountPoints()) == 0 {
-						errMessage := "mount points are compulsory for onprem clusters"
-						err = fmt.Errorf("%w %s", err, errMessage)
-					}
-					if len(primaryUI.DeviceInfo.GetStorageType()) > 0 {
-						errMessage := "cannot specify storage type for onprem clusters"
-						err = fmt.Errorf("%w %s", err, errMessage)
-					}
-					if err.Error() != "error in onprem primary cluster definition: " {
-						return err
-					}
+			if primary, ok := getClusterByType(clusterSet, "PRIMARY"); ok {
+				if err := validateOnPremUserIntent(primary.GetUserIntent(), "primary"); err != nil {
+					return err
 				}
 			}
-			if isRRPresnt {
-				readUI := readOnly.GetUserIntent()
-				if readUI.GetProviderType() == "onprem" {
-					err := errors.New("Error in onprem read replica cluster definition: ")
-					if len(readUI.GetInstanceTags()) > 0 {
-						errMessage := "cannot add instance tags to onprem read replica clusters"
-						err = fmt.Errorf("%w %s", err, errMessage)
-					}
-					if len(readUI.DeviceInfo.GetMountPoints()) == 0 {
-						errMessage := "mount points are compulsory for onprem clusters"
-						err = fmt.Errorf("%w %s", err, errMessage)
-					}
-					if len(readUI.DeviceInfo.GetStorageType()) > 0 {
-						errMessage := "cannot specify storage type for onprem clusters"
-						err = fmt.Errorf("%w %s", err, errMessage)
-					}
-					if err.Error() != "error in onprem read replica cluster definition: " {
-						return err
-					}
-				}
+			if readOnly, ok := getClusterByType(clusterSet, "ASYNC"); ok {
+				return validateOnPremUserIntent(readOnly.GetUserIntent(), "read replica")
 			}
 			return nil
 		}),
