@@ -1,12 +1,12 @@
-# Google Cloud Monitoring/Logging destination for audit/query logs.
+# GCP Cloud Monitoring destination for logs, in Google Cloud Logging.
 resource "yba_gcp_cloud_monitoring_telemetry_provider" "gcm" {
   name = "gcp-cloud-monitoring"
 
-  # Optional: defaults to the project_id inside the credentials JSON.
+  # Optional. Defaults to the project_id in the credentials JSON.
   project          = "my-gcp-project"
   credentials_json = file("service-account.json")
 
-  # Optional tags, upserted as attributes onto every exported record.
+  # Optional tags. YBA adds them as attributes to every exported record.
   tags = {
     env = "prod"
   }

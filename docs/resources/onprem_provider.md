@@ -191,13 +191,13 @@ Read-Only:
 
 Optional:
 
-- `key_info` (Block List, Max: 1) (see [below for nested schema](#nestedblock--access_keys--key_info))
+- `key_info` (Block List, Max: 1) Deprecated. Use the top-level `ssh_keypair_name` and `ssh_private_key_content` fields. (see [below for nested schema](#nestedblock--access_keys--key_info))
 
 Read-Only:
 
-- `access_key_id` (List of Object) (see [below for nested schema](#nestedatt--access_keys--access_key_id))
-- `creation_date` (String)
-- `expiration_date` (String)
+- `access_key_id` (List of Object) Deprecated. The provider does not set this field. (see [below for nested schema](#nestedatt--access_keys--access_key_id))
+- `creation_date` (String) Deprecated. The provider does not set this field.
+- `expiration_date` (String) Deprecated. The provider does not set this field.
 
 <a id="nestedblock--access_keys--key_info"></a>
 
@@ -205,20 +205,20 @@ Read-Only:
 
 Optional:
 
-- `key_pair_name` (String)
+- `key_pair_name` (String) Deprecated. Use the top-level `ssh_keypair_name` field.
 - `ssh_private_key_content` (String, Sensitive) Content of the SSH private key. Stored in Terraform state - use an encrypted backend for security.
-- `ssh_private_key_file_path` (String)
+- `ssh_private_key_file_path` (String) Deprecated. The provider ignores this field. Use the top-level `ssh_private_key_content` field.
 
 Read-Only:
 
-- `air_gap_install` (Boolean)
-- `install_node_exporter` (Boolean)
-- `node_exporter_port` (Number)
-- `node_exporter_user` (String)
-- `passwordless_sudo_access` (Boolean)
-- `skip_provisioning` (Boolean)
-- `ssh_port` (Number)
-- `ssh_user` (String)
+- `air_gap_install` (Boolean) Deprecated. The provider does not set this field.
+- `install_node_exporter` (Boolean) Deprecated. The provider does not set this field.
+- `node_exporter_port` (Number) Deprecated. The provider does not set this field.
+- `node_exporter_user` (String) Deprecated. The provider does not set this field.
+- `passwordless_sudo_access` (Boolean) Deprecated. The provider does not set this field.
+- `skip_provisioning` (Boolean) Deprecated. The provider does not set this field.
+- `ssh_port` (Number) Deprecated. The provider does not set this field.
+- `ssh_user` (String) Deprecated. The provider does not set this field.
 
 <a id="nestedatt--access_keys--access_key_id"></a>
 
@@ -235,20 +235,20 @@ Read-Only:
 
 Optional:
 
-- `air_gap_install` (Boolean)
-- `install_node_exporter` (Boolean)
-- `node_exporter_port` (Number)
-- `node_exporter_user` (String)
-- `ntp_servers` (List of String)
-- `passwordless_sudo_access` (Boolean)
-- `skip_provisioning` (Boolean)
-- `ssh_port` (Number)
-- `ssh_user` (String)
-- `yb_home_dir` (String)
+- `air_gap_install` (Boolean) Deprecated. Use the top-level `air_gap_install` field.
+- `install_node_exporter` (Boolean) Deprecated. Use the top-level `install_node_exporter` field.
+- `node_exporter_port` (Number) Deprecated. Use the top-level `node_exporter_port` field.
+- `node_exporter_user` (String) Deprecated. Use the top-level `node_exporter_user` field.
+- `ntp_servers` (List of String) Deprecated. Use the top-level `ntp_servers` field.
+- `passwordless_sudo_access` (Boolean) Deprecated. Use the top-level `passwordless_sudo_access` field.
+- `skip_provisioning` (Boolean) Deprecated. Use the top-level `skip_provisioning` field.
+- `ssh_port` (Number) Deprecated. Use the top-level `ssh_port` field.
+- `ssh_user` (String) Deprecated. Use the top-level `ssh_user` field.
+- `yb_home_dir` (String) Deprecated. Use the top-level `yb_home_dir` field.
 
 Read-Only:
 
-- `provision_instance_script` (String)
+- `provision_instance_script` (String) Deprecated. The provider does not set this field.
 
 <a id="nestedblock--instance_types"></a>
 

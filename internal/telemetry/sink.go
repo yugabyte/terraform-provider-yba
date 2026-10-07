@@ -48,7 +48,8 @@ type sinkSpec struct {
 	resourceType string // Terraform type, e.g. "yba_datadog_telemetry_provider"
 	displayName  string // human name for docs, e.g. "Datadog"
 	apiType      string // YBA config discriminator, e.g. DATA_DOG
-	description  string // sink-specific lead sentence of the resource docs
+	description  string // summary paragraph of the resource docs
+	notes        string // optional sink-specific callouts, after the admonition
 	fields       map[string]*schema.Schema
 	// buildConfig maps the flat resource fields onto YBA's camelCase config
 	// keys. The factory adds the "type" discriminator itself.
@@ -62,14 +63,15 @@ func sinkResource(s sinkSpec) *schema.Resource {
 			Type:        schema.TypeString,
 			Required:    true,
 			ForceNew:    true,
-			Description: "Name of the telemetry provider configuration.",
+			Description: "Name of the telemetry provider. YBA requires a unique name.",
 		},
 		"tags": {
-			Type:        schema.TypeMap,
-			Optional:    true,
-			ForceNew:    true,
-			Description: "Optional string tags associated with the configuration.",
-			Elem:        &schema.Schema{Type: schema.TypeString},
+			Type:     schema.TypeMap,
+			Optional: true,
+			ForceNew: true,
+			Description: "Tags that YBA adds as attributes to every record that a " +
+				"universe exports to this telemetry provider.",
+			Elem: &schema.Schema{Type: schema.TypeString},
 		},
 	}
 	for k, v := range s.fields {
@@ -77,8 +79,8 @@ func sinkResource(s sinkSpec) *schema.Resource {
 	}
 
 	return &schema.Resource{
-		Description: experimentalAdmonition + s.description + "\n\n" +
-			sinkSharedNotes(s),
+		Description: s.description + "\n\n" + experimentalAdmonition + "\n\n" +
+			s.notes + sinkSharedNotes(s),
 
 		CreateContext: sinkCreate(s),
 		ReadContext:   sinkRead(s),
@@ -104,32 +106,20 @@ func sinkResource(s sinkSpec) *schema.Resource {
 // resource shares; these strings ship verbatim into the user-facing docs.
 func sinkSharedNotes(s sinkSpec) string {
 	return fmt.Sprintf(
-		"~> **Note:** YBA does not allow editing a telemetry provider in "+
-			"place. Any change to a field forces Terraform to destroy and "+
-			"recreate the resource. YBA also refuses to delete a provider that "+
-			"is still referenced by a universe's telemetry config, so the "+
-			"destroy step first enumerates every universe whose audit / query "+
-			"/ metrics exporter list references this provider and rewrites "+
-			"that list with the provider removed (via a rolling-upgrade task "+
-			"on each universe). Once every detach task reaches a terminal "+
-			"state, the provider itself is deleted. The universes themselves "+
-			"are never destroyed — only their OpenTelemetry collector "+
-			"configuration is updated.\n\n"+
-			"~> **Drift Note:** Read refreshes only `name` and `tags`. The "+
-			"%s connection fields are **not** reconciled against the server, "+
-			"because YBA masks credentials in its responses and every field "+
-			"is `ForceNew` anyway. A field edited out-of-band in the YBA UI "+
-			"is therefore not detected as drift — re-apply from Terraform to "+
-			"restore the intended configuration.\n\n"+
-			"~> **Import Note:** Import verifies the provider's type: "+
-			"importing a provider that is not a %s destination fails with "+
-			"the actual type, so it can be imported with the matching "+
-			"`yba_*_telemetry_provider` resource instead.\n\n"+
-			"~> **Security Note:** Credentials such as API keys, tokens, and "+
-			"secret access keys are stored in the Terraform state file "+
-			"(marked sensitive). Use a secure backend and restrict access to "+
-			"your state files.",
-		s.displayName, s.displayName)
+		"~> **Note:** YBA cannot change a telemetry provider in place, so a "+
+			"change to any argument replaces the resource. Before Terraform "+
+			"deletes a telemetry provider, it removes the telemetry provider "+
+			"from every universe that uses it. Each of those universes goes "+
+			"through a rolling restart. The universes are not deleted.\n\n"+
+			"~> **Drift Note:** Terraform reads back only `name` and `tags`. "+
+			"It does not detect a change to the %s connection arguments made "+
+			"outside Terraform, for example in the YBA UI. To apply the "+
+			"configured values again, replace the resource with "+
+			"`terraform apply -replace`.\n\n"+
+			"~> **Security Note:** Terraform stores the credentials of this "+
+			"telemetry provider in the state file, marked sensitive. Use a "+
+			"secure backend and restrict access to the state file.",
+		s.displayName)
 }
 
 // setIfNonEmpty writes an optional string field into the config payload only

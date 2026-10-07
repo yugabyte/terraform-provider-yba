@@ -1,12 +1,12 @@
 ---
 page_title: "yba_release_version Data Source - YugabyteDB Anywhere"
 description: |-
-  Retrieve release version.
+  Looks up the YugabyteDB (YBDB) release versions that are available in YugabyteDB Anywhere. The data source lists the versions that match the filters, newest first, and selects the first one.
 ---
 
 # yba_release_version (Data Source)
 
-Retrieve release version.
+Looks up the YugabyteDB (YBDB) release versions that are available in YugabyteDB Anywhere. The data source lists the versions that match the filters, newest first, and selects the first one.
 
 ## Example Usage
 
@@ -32,12 +32,12 @@ data "yba_release_version" "release_version_aarch64" {
 
 ### Optional
 
-- `deployment_type` (String) Only return versions that have an artifact for this deployment type. Allowed values: x86_64, aarch64, kubernetes. Uses the release management API (`/ybdb_release`), which YugabyteDB Anywhere marks preview and which requires YugabyteDB Anywhere version 2024.2.0.0-b1 (stable) or 2.23.1.0-b27 (preview) and above, with the global runtime config `yb.releases.use_redesign` set to `true` (the default). Releases in DELETED state are excluded; DISABLED and INCOMPLETE releases are included.
-- `track` (String) YugabyteDB release verion track. Allowed values: stable, preview. Uses the latest/user given version from the corresponding track.
-- `version` (String) Release version given by user.
+- `deployment_type` (String) Return only the versions that have an artifact for this deployment type. Allowed values: x86_64, aarch64, kubernetes. Requires the global runtime config `yb.releases.use_redesign` to be `true`, which is the default. With this filter, the result leaves out DELETED releases and includes DISABLED and INCOMPLETE releases.
+- `track` (String) YugabyteDB release track to search. Allowed values: stable, preview. When unset, the data source searches both tracks.
+- `version` (String) Version prefix to match, for example `2024.2`. The data source returns only the versions that start with this value.
 
 ### Read-Only
 
 - `id` (String) The ID of this resource.
-- `selected_version` (String) Selected release version. If version is empty, use lastest version available.
-- `version_list` (List of String) List of releases matching the selected release. If selected_version is not provided, returns entire list.
+- `selected_version` (String) First version in `version_list`. When `track` is unset, this is the newest stable version if one matches.
+- `version_list` (List of String) Versions that match the filters, newest first. When `track` is unset, stable versions come before preview versions.

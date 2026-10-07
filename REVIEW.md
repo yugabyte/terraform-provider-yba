@@ -213,9 +213,10 @@ failure this project can ship.
 The codebase splits on some styles. Where it does, match the form named here;
 a third form is a finding.
 
-- A preview or experimental YBA API gets an admonition constant prefixed to
-  the resource `Description`, plus a `diag.Warning` on Create and Update. A
-  bare `~> **Note:**` is a finding.
+- A preview or experimental YBA API gets an admonition constant placed
+  right after the summary paragraph of the resource `Description`, so the
+  registry summary still says what the resource manages, plus a
+  `diag.Warning` on Create and Update. A bare `~> **Note:**` is a finding.
 - Create and Update end with `return resource<X>Read(ctx, d, meta)`. A Create
   that returns `nil` after `d.SetId` leaves computed fields unset.
 - An Update that writes credentials uses a named `diags` return, a deferred

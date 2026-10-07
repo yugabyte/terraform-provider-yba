@@ -8,10 +8,11 @@ description: |-
 
 {{ .Description | trimspace }}
 
-Attach the configuration to a universe through its `encryption_at_rest` block. Enabling,
-master key rotation, universe key rotation and disabling are documented in the
-[Universe Edit Actions](../guides/universe-edit-actions.md#encryption-at-rest) guide. For the
-YugabyteDB Anywhere side, see [Enable encryption at rest](https://docs.yugabyte.com/stable/yugabyte-platform/security/enable-encryption-at-rest/).
+Use the configuration in a universe through its `encryption_at_rest` block. The
+[Encryption at Rest](../guides/universe-edit-actions.md#encryption-at-rest) section of the
+Universe Edit Actions guide describes how to enable encryption, rotate the master key or the
+universe key, and disable encryption. For the YugabyteDB Anywhere side, see
+[Enable encryption at rest](https://docs.yugabyte.com/stable/yugabyte-platform/security/enable-encryption-at-rest/).
 
 ## Example Usage
 
@@ -21,12 +22,12 @@ YugabyteDB Anywhere side, see [Enable encryption at rest](https://docs.yugabyte.
 
 ## Import
 
-GCP encryption-at-rest configurations can be imported using the configuration UUID. The
-`yba_ear_config` data source returns it for a configuration name:
+Import a GCP KMS configuration with its UUID. The `yba_ear_config` data source returns the
+UUID for a configuration name:
 
 ```sh
-terraform import yba_gcp_ear_config.example <config-uuid>
+terraform import yba_gcp_ear_config.service_account <config-uuid>
 ```
 
-`credentials` cannot be recovered through the API and stays empty after import; the first
-apply submits the configured key again.
+YugabyteDB Anywhere never returns `credentials`, so it stays empty after import. The first
+apply sends the configured key again.

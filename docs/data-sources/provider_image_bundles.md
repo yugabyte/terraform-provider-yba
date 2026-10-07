@@ -49,7 +49,7 @@ data "yba_provider_image_bundles" "named_bundle" {
 ### Read-Only
 
 - `id` (String) The ID of this resource.
-- `image_bundles` (List of Object) (see [below for nested schema](#nestedatt--image_bundles))
+- `image_bundles` (List of Object) Image bundles of the provider that match the filters. (see [below for nested schema](#nestedatt--image_bundles))
 
 <a id="nestedatt--image_bundles"></a>
 

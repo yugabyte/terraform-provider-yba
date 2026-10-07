@@ -1,19 +1,19 @@
-# Encryption-at-rest configuration on an existing Cloud KMS crypto key,
-# authenticating with a service-account key. The key file's project_id names
+# Encryption-at-rest configuration on an existing Cloud KMS crypto key, with a
+# service-account key for authentication. The project_id in the key file names
 # the key ring's project.
 resource "yba_gcp_ear_config" "service_account" {
   name          = "gcp-kms-prod"
-  credentials   = file("~/.gcp/kms-service-account.json")
+  credentials   = file("${path.module}/kms-service-account.json")
   location_id   = "us-east1"
   key_ring_id   = "yugabyte-ring"
   crypto_key_id = "yugabyte-master-key"
 }
 
-# The same key ring reached with the YugabyteDB Anywhere host's own identity
-# (attached service account, workload identity, or GOOGLE_APPLICATION_CREDENTIALS):
-# no key file in Terraform or in state. The key ring lives in another project,
-# so project_id names it explicitly. See the resource description for the
-# YugabyteDB Anywhere version this needs.
+# The same kind of key ring, reached with the identity of the YugabyteDB
+# Anywhere host (attached service account, workload identity, or
+# GOOGLE_APPLICATION_CREDENTIALS): no key file in Terraform or in state. The key
+# ring is in another project, so project_id names it. use_gcp_iam and project_id
+# need a YugabyteDB Anywhere release later than 2026.1.
 resource "yba_gcp_ear_config" "host_identity" {
   name          = "gcp-kms-central"
   use_gcp_iam   = true
@@ -22,13 +22,14 @@ resource "yba_gcp_ear_config" "host_identity" {
   key_ring_id   = "central-ring"
   crypto_key_id = "yugabyte-master-key"
 
-  # Optional: protection level for a key YugabyteDB Anywhere creates, and a
-  # custom Cloud KMS endpoint (Private Service Connect / restricted VIP).
+  # Optional: the protection level of a crypto key that YugabyteDB Anywhere
+  # creates, and a custom Cloud KMS endpoint (Private Service Connect or a
+  # restricted VIP).
   protection_level = "HSM"
   kms_endpoint     = "kms.example.internal:443"
 }
 
-# A universe attaches a configuration through its encryption_at_rest block:
+# A universe uses a configuration through its encryption_at_rest block:
 #
 #   encryption_at_rest {
 #     enabled         = true

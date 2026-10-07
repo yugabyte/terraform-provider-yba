@@ -396,15 +396,32 @@ func deprecatedAccessKeysSchema() *schema.Schema {
 			"Use ssh_keypair_name and ssh_private_key_content instead.",
 		Elem: &schema.Resource{
 			Schema: map[string]*schema.Schema{
-				"creation_date":   {Type: schema.TypeString, Computed: true},
-				"expiration_date": {Type: schema.TypeString, Computed: true},
+				"creation_date": {
+					Type:        schema.TypeString,
+					Computed:    true,
+					Description: "Deprecated. The provider does not set this field.",
+				},
+				"expiration_date": {
+					Type:        schema.TypeString,
+					Computed:    true,
+					Description: "Deprecated. The provider does not set this field.",
+				},
 				"access_key_id": {
-					Type:     schema.TypeList,
-					Computed: true,
+					Type:        schema.TypeList,
+					Computed:    true,
+					Description: "Deprecated. The provider does not set this field.",
 					Elem: &schema.Resource{
 						Schema: map[string]*schema.Schema{
-							"keycode":       {Type: schema.TypeString, Computed: true},
-							"provider_uuid": {Type: schema.TypeString, Computed: true},
+							"keycode": {
+								Type:        schema.TypeString,
+								Computed:    true,
+								Description: "Deprecated. The provider does not set this field.",
+							},
+							"provider_uuid": {
+								Type:        schema.TypeString,
+								Computed:    true,
+								Description: "Deprecated. The provider does not set this field.",
+							},
 						},
 					},
 				},
@@ -413,14 +430,23 @@ func deprecatedAccessKeysSchema() *schema.Schema {
 					Optional: true,
 					Computed: true,
 					MaxItems: 1,
+					Description: "Deprecated. Use the top-level `ssh_keypair_name` and " +
+						"`ssh_private_key_content` fields.",
 					Elem: &schema.Resource{
 						Schema: map[string]*schema.Schema{
 							"key_pair_name": {
 								Type:     schema.TypeString,
 								Optional: true,
 								Computed: true,
+								Description: "Deprecated. Use the top-level `ssh_keypair_name` " +
+									"field.",
 							},
-							"ssh_private_key_file_path": {Type: schema.TypeString, Optional: true},
+							"ssh_private_key_file_path": {
+								Type:     schema.TypeString,
+								Optional: true,
+								Description: "Deprecated. The provider ignores this field. Use " +
+									"the top-level `ssh_private_key_content` field.",
+							},
 							"ssh_private_key_content": {
 								Type:      schema.TypeString,
 								Optional:  true,
@@ -428,14 +454,46 @@ func deprecatedAccessKeysSchema() *schema.Schema {
 								Description: "Content of the SSH private key. " +
 									"Stored in Terraform state - use an encrypted backend for security.",
 							},
-							"air_gap_install":          {Type: schema.TypeBool, Computed: true},
-							"install_node_exporter":    {Type: schema.TypeBool, Computed: true},
-							"node_exporter_port":       {Type: schema.TypeInt, Computed: true},
-							"node_exporter_user":       {Type: schema.TypeString, Computed: true},
-							"passwordless_sudo_access": {Type: schema.TypeBool, Computed: true},
-							"skip_provisioning":        {Type: schema.TypeBool, Computed: true},
-							"ssh_port":                 {Type: schema.TypeInt, Computed: true},
-							"ssh_user":                 {Type: schema.TypeString, Computed: true},
+							"air_gap_install": {
+								Type:        schema.TypeBool,
+								Computed:    true,
+								Description: "Deprecated. The provider does not set this field.",
+							},
+							"install_node_exporter": {
+								Type:        schema.TypeBool,
+								Computed:    true,
+								Description: "Deprecated. The provider does not set this field.",
+							},
+							"node_exporter_port": {
+								Type:        schema.TypeInt,
+								Computed:    true,
+								Description: "Deprecated. The provider does not set this field.",
+							},
+							"node_exporter_user": {
+								Type:        schema.TypeString,
+								Computed:    true,
+								Description: "Deprecated. The provider does not set this field.",
+							},
+							"passwordless_sudo_access": {
+								Type:        schema.TypeBool,
+								Computed:    true,
+								Description: "Deprecated. The provider does not set this field.",
+							},
+							"skip_provisioning": {
+								Type:        schema.TypeBool,
+								Computed:    true,
+								Description: "Deprecated. The provider does not set this field.",
+							},
+							"ssh_port": {
+								Type:        schema.TypeInt,
+								Computed:    true,
+								Description: "Deprecated. The provider does not set this field.",
+							},
+							"ssh_user": {
+								Type:        schema.TypeString,
+								Computed:    true,
+								Description: "Deprecated. The provider does not set this field.",
+							},
 						},
 					},
 				},
@@ -458,37 +516,71 @@ func deprecatedDetailsSchema() *schema.Schema {
 		Description: "Deprecated: Provider details. Use flat fields instead.",
 		Elem: &schema.Resource{
 			Schema: map[string]*schema.Schema{
-				"air_gap_install":       {Type: schema.TypeBool, Optional: true, Computed: true},
-				"install_node_exporter": {Type: schema.TypeBool, Optional: true, Computed: true},
-				"node_exporter_port":    {Type: schema.TypeInt, Optional: true, Computed: true},
-				"node_exporter_user":    {Type: schema.TypeString, Optional: true, Computed: true},
+				"air_gap_install": {
+					Type:        schema.TypeBool,
+					Optional:    true,
+					Computed:    true,
+					Description: "Deprecated. Use the top-level `air_gap_install` field.",
+				},
+				"install_node_exporter": {
+					Type:        schema.TypeBool,
+					Optional:    true,
+					Computed:    true,
+					Description: "Deprecated. Use the top-level `install_node_exporter` field.",
+				},
+				"node_exporter_port": {
+					Type:        schema.TypeInt,
+					Optional:    true,
+					Computed:    true,
+					Description: "Deprecated. Use the top-level `node_exporter_port` field.",
+				},
+				"node_exporter_user": {
+					Type:        schema.TypeString,
+					Optional:    true,
+					Computed:    true,
+					Description: "Deprecated. Use the top-level `node_exporter_user` field.",
+				},
 				"ntp_servers": {
-					Type:     schema.TypeList,
-					Elem:     &schema.Schema{Type: schema.TypeString},
-					Optional: true,
-					Computed: true,
+					Type:        schema.TypeList,
+					Elem:        &schema.Schema{Type: schema.TypeString},
+					Optional:    true,
+					Computed:    true,
+					Description: "Deprecated. Use the top-level `ntp_servers` field.",
 				},
 				"passwordless_sudo_access": {
-					Type:     schema.TypeBool,
-					Optional: true,
-					Computed: true,
+					Type:        schema.TypeBool,
+					Optional:    true,
+					Computed:    true,
+					Description: "Deprecated. Use the top-level `passwordless_sudo_access` field.",
 				},
-				"provision_instance_script": {Type: schema.TypeString, Computed: true},
+				"provision_instance_script": {
+					Type:        schema.TypeString,
+					Computed:    true,
+					Description: "Deprecated. The provider does not set this field.",
+				},
 				"skip_provisioning": {
-					Type:     schema.TypeBool,
-					Optional: true,
-					Computed: true,
+					Type:        schema.TypeBool,
+					Optional:    true,
+					Computed:    true,
+					Description: "Deprecated. Use the top-level `skip_provisioning` field.",
 				},
-				"ssh_port": {Type: schema.TypeInt, Optional: true, Computed: true},
+				"ssh_port": {
+					Type:        schema.TypeInt,
+					Optional:    true,
+					Computed:    true,
+					Description: "Deprecated. Use the top-level `ssh_port` field.",
+				},
 				"ssh_user": {
-					Type:     schema.TypeString,
-					Optional: true,
-					Computed: true,
+					Type:        schema.TypeString,
+					Optional:    true,
+					Computed:    true,
+					Description: "Deprecated. Use the top-level `ssh_user` field.",
 				},
 				"yb_home_dir": {
-					Type:     schema.TypeString,
-					Optional: true,
-					Computed: true,
+					Type:        schema.TypeString,
+					Optional:    true,
+					Computed:    true,
+					Description: "Deprecated. Use the top-level `yb_home_dir` field.",
 				},
 			},
 		},
@@ -1467,13 +1559,42 @@ func NodeInstanceSchema() *schema.Schema {
 		Description: "Node instances for the on-premises provider.",
 		Elem: &schema.Resource{
 			Schema: map[string]*schema.Schema{
-				"ip":            {Type: schema.TypeString, Required: true},
-				"region":        {Type: schema.TypeString, Required: true},
-				"zone":          {Type: schema.TypeString, Required: true},
-				"instance_type": {Type: schema.TypeString, Required: true},
-				"instance_name": {Type: schema.TypeString, Optional: true},
-				"node_name":     {Type: schema.TypeString, Computed: true},
-				"in_use":        {Type: schema.TypeBool, Computed: true},
+				"ip": {
+					Type:        schema.TypeString,
+					Required:    true,
+					Description: "IP address or DNS name of the node.",
+				},
+				"region": {
+					Type:        schema.TypeString,
+					Required:    true,
+					Description: "Region code of the node.",
+				},
+				"zone": {
+					Type:        schema.TypeString,
+					Required:    true,
+					Description: "Zone code of the node.",
+				},
+				"instance_type": {
+					Type:        schema.TypeString,
+					Required:    true,
+					Description: "Instance type code of the node.",
+				},
+				"instance_name": {
+					Type:        schema.TypeString,
+					Optional:    true,
+					Description: "Instance name of the node.",
+				},
+				"node_name": {
+					Type:     schema.TypeString,
+					Computed: true,
+					Description: "Name of the universe node that uses this node instance. " +
+						"Empty when no universe uses it.",
+				},
+				"in_use": {
+					Type:        schema.TypeBool,
+					Computed:    true,
+					Description: "Whether a universe uses the node.",
+				},
 			},
 		},
 	}

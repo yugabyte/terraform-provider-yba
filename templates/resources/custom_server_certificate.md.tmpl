@@ -8,9 +8,9 @@ description: |-
 
 {{ .Description | trimspace }}
 
-Reference the certificate from a universe via `client_root_ca` only. Rotation semantics are
-documented in the
-[Universe Edit Actions](../guides/universe-edit-actions.md#certificate-rotation) guide.
+Use the certificate in a universe through `client_root_ca` only. The
+[Certificate Rotation](../guides/universe-edit-actions.md#certificate-rotation) section of the
+Universe Edit Actions guide describes how a universe rotates to a new certificate.
 
 ## Example Usage
 
@@ -20,17 +20,17 @@ documented in the
 
 ## Import
 
-Custom server certificate configurations can be imported using the certificate UUID:
+Import a custom server certificate configuration with its UUID:
 
 ```sh
-terraform import yba_custom_server_certificate.example <certificate-uuid>
+terraform import yba_custom_server_certificate.c2n <certificate-uuid>
 ```
 
-`server_certificate` and `server_key` cannot be recovered through the API and stay empty
-after import. Because `server_certificate` is required and forces replacement, the next
-plan proposes to replace the imported certificate — and while a universe references it,
-the delete side of that replacement fails. To adopt an imported certificate without
-replacing it, ignore the unrecoverable argument:
+YugabyteDB Anywhere never returns `server_certificate` or `server_key`, so they stay empty
+after import. Because `server_certificate` is required and forces replacement, the next plan
+proposes to replace the imported certificate, and the replacement fails while a universe uses
+the certificate. To keep the imported certificate, ignore the argument that import cannot
+recover:
 
 ```terraform
 lifecycle {
@@ -38,6 +38,6 @@ lifecycle {
 }
 ```
 
-Remove the `ignore_changes` entry when you intend to rotate to a re-issued certificate.
-Alternatively, skip the import and recreate the certificate from the original files —
-the plan is then clean from the start.
+Remove the `ignore_changes` entry when you rotate to a re-issued certificate. Or do not
+import: create the certificate again from the original files, and the plan is clean from the
+start.

@@ -1,9 +1,8 @@
-# The embedded Perf Advisor collector. YBA creates and owns it, so it is looked
-# up rather than declared; with a single collector configured no filter is
-# needed.
+# The only collector. YBA creates and manages the embedded collector, so
+# Terraform looks it up and does not declare it.
 data "yba_pa_collector" "embedded" {}
 
-# A specific collector, when more than one is configured.
+# One collector by UUID, when there is more than one.
 data "yba_pa_collector" "selected" {
   uuid = var.pa_collector_uuid
 }

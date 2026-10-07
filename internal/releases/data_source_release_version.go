@@ -33,49 +33,50 @@ import (
 // ReleaseVersion data spurce keeps track of the imported releases on current YBA
 func ReleaseVersion() *schema.Resource {
 	return &schema.Resource{
-		Description: "Retrieve release version.",
+		Description: "Looks up the YugabyteDB (YBDB) release versions that are available " +
+			"in YugabyteDB Anywhere. The data source lists the versions that match the " +
+			"filters, newest first, and selects the first one.",
 
 		ReadContext: dataSourceReleaseVersionRead,
 
 		Schema: map[string]*schema.Schema{
 			"version": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				Description: "Release version given by user.",
+				Type:     schema.TypeString,
+				Optional: true,
+				Description: "Version prefix to match, for example `2024.2`. The data source " +
+					"returns only the versions that start with this value.",
 			},
 			"selected_version": {
 				Type:     schema.TypeString,
 				Computed: true,
-				Description: "Selected release version. If version is empty, use " +
-					"lastest version available.",
+				Description: "First version in `version_list`. When `track` is unset, this is " +
+					"the newest stable version if one matches.",
 			},
 			"track": {
 				Type:     schema.TypeString,
 				Optional: true,
 				ValidateDiagFunc: validation.ToDiagFunc(
 					validation.StringInSlice([]string{"stable", "preview"}, false)),
-				Description: "YugabyteDB release verion track. Allowed values: stable, preview." +
-					" Uses the latest/user given version from the corresponding track.",
+				Description: "YugabyteDB release track to search. Allowed values: stable, " +
+					"preview. When unset, the data source searches both tracks.",
 			},
 			"deployment_type": {
 				Type:     schema.TypeString,
 				Optional: true,
 				ValidateDiagFunc: validation.ToDiagFunc(
 					validation.StringInSlice(releaseDeploymentTypes, false)),
-				Description: "Only return versions that have an artifact for this deployment " +
-					"type. Allowed values: x86_64, aarch64, kubernetes. Uses the release " +
-					"management API (`/ybdb_release`), which YugabyteDB Anywhere marks preview " +
-					"and which requires YugabyteDB Anywhere version 2024.2.0.0-b1 (stable) or " +
-					"2.23.1.0-b27 (preview) and above, with the global runtime config " +
-					"`yb.releases.use_redesign` set to `true` (the default). Releases in " +
-					"DELETED state are excluded; DISABLED and INCOMPLETE releases are included.",
+				Description: "Return only the versions that have an artifact for this " +
+					"deployment type. Allowed values: x86_64, aarch64, kubernetes. Requires the " +
+					"global runtime config `yb.releases.use_redesign` to be `true`, which is " +
+					"the default. With this filter, the result leaves out DELETED releases and " +
+					"includes DISABLED and INCOMPLETE releases.",
 			},
 			"version_list": {
 				Type:     schema.TypeList,
 				Elem:     &schema.Schema{Type: schema.TypeString},
 				Computed: true,
-				Description: "List of releases matching the selected release. " +
-					"If selected_version is not provided, returns entire list.",
+				Description: "Versions that match the filters, newest first. When `track` is " +
+					"unset, stable versions come before preview versions.",
 			},
 		},
 	}

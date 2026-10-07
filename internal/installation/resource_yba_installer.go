@@ -198,18 +198,23 @@ func ResourceYBAInstaller() *schema.Resource {
 	return &schema.Resource{
 		Description: "Manages the installation of YugabyteDB Anywhere on an existing virtual" +
 			" machine using YBA Installer.\n\n" +
-			"~> **Note:** When `/opt/yugabyte/data` is already populated " +
-			"(typically because it lives on a separately managed " +
-			"persistent disk that survives the host VM), the resource " +
-			"installs with `--without-data` and starts services in place " +
-			"rather than reinitialising storage. Destroy runs `yba-ctl " +
-			"clean` only and leaves `/opt/yugabyte/data` intact; wiping " +
-			"the data directory is the operator's responsibility. " +
-			"Consequently, destroying and recreating this resource on the " +
-			"**same** host preserves the existing data: the recreate detects " +
-			"the populated data directory and starts in place instead of " +
-			"performing a clean install. To force a fresh install, wipe " +
-			"`/opt/yugabyte/data` on the host between destroy and apply.",
+			"~> **Note:** Destroy runs `yba-ctl clean` on the host. This removes the " +
+			"YugabyteDB Anywhere software and keeps the data directory, " +
+			"`/opt/yugabyte/data`. To delete the data, remove that directory on the host " +
+			"yourself.\n\n" +
+			"~> **Note:** When `/opt/yugabyte/data` already holds YugabyteDB Anywhere data " +
+			"(for example, on a persistent disk that outlives the VM), create installs the " +
+			"software without data and starts YBA on the existing data. So when you destroy " +
+			"and recreate this resource on the same host, YBA keeps its data. For a fresh " +
+			"installation, delete `/opt/yugabyte/data` on the host before the next apply.\n\n" +
+			"~> **Warning:** If nothing accepts an SSH connection at `ssh_host_ip` and " +
+			"`ssh_port` for about 30 seconds, destroy treats the host as gone. It removes " +
+			"the resource from state and does not clean up the host. Make sure that the host " +
+			"(and any SSH tunnel to it) is reachable before you destroy this resource.\n\n" +
+			"~> **Security Note:** The values of `ssh_private_key`, `yba_license`, " +
+			"`application_settings`, `tls_certificate` and `tls_key` are stored in the " +
+			"Terraform state file (marked as sensitive). Use an encrypted backend and " +
+			"restrict access to your state files.",
 
 		CreateContext: resourceYBAInstallerCreate,
 		ReadContext:   resourceYBAInstallerRead,
@@ -233,10 +238,11 @@ func ResourceYBAInstaller() *schema.Resource {
 				Type:     schema.TypeString,
 				Required: true,
 				// Change in this triggers ./yba-ctl upgrade
-				Description: "Version of YugabyteDB Anywhere to be installed. " +
-					"Changing this on an existing installation runs `yba-ctl " +
-					"upgrade` to the new version. Downgrades are not supported " +
-					"and are rejected at plan time.",
+				Description: "Version of YugabyteDB Anywhere to install, with its build " +
+					"number, for example `2025.2.7.0-b107`. A change to this field on an " +
+					"existing installation runs `yba-ctl upgrade` to the new version. " +
+					"YBA Installer does not support downgrades, so the plan fails when the " +
+					"new version is lower.",
 			},
 			"host_os": {
 				Type:        schema.TypeString,
@@ -255,18 +261,18 @@ func ResourceYBAInstaller() *schema.Resource {
 			"ssh_host_ip": {
 				Type:     schema.TypeString,
 				Required: true,
-				Description: "IP address of VM for SSH. Typically same as public_ip or " +
-					"private_ip.",
+				Description: "IP address of the host for SSH and SCP connections. With a " +
+					"local SSH tunnel to the host, use `127.0.0.1`.",
 			},
 			"ssh_port": {
 				Type:         schema.TypeInt,
 				Optional:     true,
 				Default:      22,
 				ValidateFunc: validation.IntBetween(1, 65535),
-				Description: "TCP port used for SSH and SCP connections to the host. " +
-					"Defaults to 22. Set this when sshd is reachable on a different port " +
-					"at `ssh_host_ip` - for example a non-standard sshd port, a NAT or " +
-					"firewall port mapping, or the local end of an SSH tunnel.",
+				Description: "TCP port for SSH and SCP connections to the host. Default is " +
+					"22. Set this field when sshd listens on a different port at " +
+					"`ssh_host_ip`: for example, a custom sshd port, a NAT or firewall " +
+					"port mapping, or the local end of an SSH tunnel.",
 			},
 			"ssh_private_key_file_path": {
 				Type:     schema.TypeString,
@@ -276,8 +282,9 @@ func ResourceYBAInstaller() *schema.Resource {
 					"ssh_private_key",
 				},
 				ConflictsWith: []string{"ssh_private_key"},
-				Description: "Path to file containing the private key to use for ssh " +
-					"commands. Conflicts with `ssh_private_key`.",
+				Description: "Path to a local file that contains the private key for SSH " +
+					"connections. Set exactly one of `ssh_private_key_file_path` or " +
+					"`ssh_private_key`.",
 			},
 			"ssh_private_key": {
 				Type:      schema.TypeString,
@@ -286,9 +293,10 @@ func ResourceYBAInstaller() *schema.Resource {
 				ConflictsWith: []string{
 					"ssh_private_key_file_path",
 				},
-				Description: "Contents of the private key to use for ssh commands. " +
-					"Use this instead of `ssh_private_key_file_path` to pass the key " +
-					"directly without writing it to a local file.",
+				Description: "Contents of the private key for SSH connections. Use this " +
+					"field instead of `ssh_private_key_file_path` to pass the key without " +
+					"a local file. Set exactly one of `ssh_private_key_file_path` or " +
+					"`ssh_private_key`.",
 			},
 			"ssh_user": {
 				Type:        schema.TypeString,
@@ -300,9 +308,10 @@ func ResourceYBAInstaller() *schema.Resource {
 				Optional: true,
 				// change should trigger yba-ctl reconfigure
 				ConflictsWith: []string{"tls_certificate"},
-				Description: "Path to a TLS certificate file used to configure HTTPS. " +
-					"Ensure the application settings have *server_cert_path* set to " +
-					"/tmp/server.crt. Conflicts with `tls_certificate`.",
+				Description: "Path to a local TLS certificate file for HTTPS. The provider " +
+					"copies it to `/tmp/server.crt` on the host, so set `server_cert_path` " +
+					"to that path in the application settings. Conflicts with " +
+					"`tls_certificate`.",
 			},
 			"tls_certificate": {
 				Type:      schema.TypeString,
@@ -310,18 +319,19 @@ func ResourceYBAInstaller() *schema.Resource {
 				Sensitive: true,
 				// change should trigger yba-ctl reconfigure
 				ConflictsWith: []string{"tls_certificate_file"},
-				Description: "Inline TLS certificate contents used to configure HTTPS. " +
-					"Ensure the application settings have *server_cert_path* set to " +
-					"/tmp/server.crt.",
+				Description: "Contents of the TLS certificate for HTTPS. The provider " +
+					"copies it to `/tmp/server.crt` on the host, so set `server_cert_path` " +
+					"to that path in the application settings. Conflicts with " +
+					"`tls_certificate_file`.",
 			},
 			"tls_key_file": {
 				Type:     schema.TypeString,
 				Optional: true,
 				// change should trigger yba-ctl reconfigure
 				ConflictsWith: []string{"tls_key"},
-				Description: "Path to a TLS key file used to configure HTTPS. Ensure " +
-					"the application settings have *server_key_path* set to " +
-					"/tmp/server.key. Conflicts with `tls_key`.",
+				Description: "Path to a local TLS key file for HTTPS. The provider copies " +
+					"it to `/tmp/server.key` on the host, so set `server_key_path` to that " +
+					"path in the application settings. Conflicts with `tls_key`.",
 			},
 			"tls_key": {
 				Type:      schema.TypeString,
@@ -329,9 +339,9 @@ func ResourceYBAInstaller() *schema.Resource {
 				Sensitive: true,
 				// change should trigger yba-ctl reconfigure
 				ConflictsWith: []string{"tls_key_file"},
-				Description: "Inline TLS key contents used to configure HTTPS. Ensure " +
-					"the application settings have *server_key_path* set to " +
-					"/tmp/server.key.",
+				Description: "Contents of the TLS key for HTTPS. The provider copies it to " +
+					"`/tmp/server.key` on the host, so set `server_key_path` to that path in " +
+					"the application settings. Conflicts with `tls_key_file`.",
 			},
 			"yba_license_file": {
 				Type:     schema.TypeString,
@@ -341,8 +351,8 @@ func ResourceYBAInstaller() *schema.Resource {
 					"yba_license",
 				},
 				ConflictsWith: []string{"yba_license"},
-				Description: "Path to a YugabyteDB Anywhere license file used for " +
-					"installation. Conflicts with `yba_license`.",
+				Description: "Path to a local YugabyteDB Anywhere license file. Set exactly " +
+					"one of `yba_license_file` or `yba_license`.",
 			},
 			"yba_license": {
 				Type:      schema.TypeString,
@@ -351,20 +361,19 @@ func ResourceYBAInstaller() *schema.Resource {
 				ConflictsWith: []string{
 					"yba_license_file",
 				},
-				Description: "Inline YugabyteDB Anywhere license contents used for " +
-					"installation. Use this instead of `yba_license_file` to pass " +
-					"the license without writing it to a local file.",
+				Description: "Contents of the YugabyteDB Anywhere license. Use this field " +
+					"instead of `yba_license_file` to pass the license without a local " +
+					"file. Set exactly one of `yba_license_file` or `yba_license`.",
 			},
 			"application_settings_file": {
 				Type:     schema.TypeString,
 				Optional: true,
 				// Change in this should trigger yba-ctl reconfigure
 				ConflictsWith: []string{"application_settings"},
-				Description: "Path to an application settings file to configure " +
-					"YugabyteDB Anywhere. If left empty, the [default configuration]" +
-					"(https://github.com/yugabyte/terraform-provider-yba/tree/main" +
-					"/acctest/resources/yba-ctl.yml)" +
-					" would be used. Conflicts with `application_settings`.",
+				Description: "Path to a local YBA Installer settings file (`yba-ctl.yml`) " +
+					"that configures YugabyteDB Anywhere. If you set neither this field nor " +
+					"`application_settings`, YBA Installer uses its default settings. " +
+					"Conflicts with `application_settings`.",
 			},
 			"application_settings": {
 				Type:      schema.TypeString,
@@ -372,11 +381,10 @@ func ResourceYBAInstaller() *schema.Resource {
 				Sensitive: true,
 				// Change in this should trigger yba-ctl reconfigure
 				ConflictsWith: []string{"application_settings_file"},
-				Description: "Inline application settings contents used to configure " +
-					"YugabyteDB Anywhere. If left empty, the [default configuration]" +
-					"(https://github.com/yugabyte/terraform-provider-yba/tree/main" +
-					"/acctest/resources/yba-ctl.yml)" +
-					" would be used.",
+				Description: "Contents of the YBA Installer settings file (`yba-ctl.yml`) " +
+					"that configures YugabyteDB Anywhere. If you set neither this field nor " +
+					"`application_settings_file`, YBA Installer uses its default settings. " +
+					"Conflicts with `application_settings_file`.",
 			},
 			"reconfigure": {
 				Type:     schema.TypeBool,
@@ -384,10 +392,12 @@ func ResourceYBAInstaller() *schema.Resource {
 				Default:  false,
 				// True should trigger yba-ctl reconfigure
 				// if the contents of application_settings_file have been modified
-				Description: "Force a reconfiguration on the next apply, even when " +
-					"no other tracked attribute has changed. Content changes to " +
-					"`application_settings`, `tls_certificate`, or `tls_key` " +
-					"already trigger reconfiguration automatically.",
+				Description: "Change this field to `true` to run `yba-ctl reconfigure` on the " +
+					"next apply when no other input changed. While it stays `true`, every " +
+					"update of this resource also runs a reconfiguration. Requires " +
+					"`application_settings` or `application_settings_file`. A change to " +
+					"`application_settings`, `tls_certificate` or `tls_key`, or to the path " +
+					"in their `_file` fields, starts a reconfiguration without this field.",
 			},
 			"skip_preflight_checks": {
 				Type:     schema.TypeList,

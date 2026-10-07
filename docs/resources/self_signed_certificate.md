@@ -1,48 +1,51 @@
 ---
 page_title: "yba_self_signed_certificate Resource - YugabyteDB Anywhere"
 description: |-
-  Self-signed certificate configuration for universe encryption in transit. YugabyteDB Anywhere holds the root certificate's private key and signs the per-node server certificates itself. Two modes are supported: omit certificate and private_key to have YugabyteDB Anywhere mint a new root certificate (4-year root, 1-year server certificates by platform default), or provide both to bring your own root CA. Certificate configurations are immutable in YugabyteDB Anywhere: changing any argument forces replacement, so add lifecycle { create_before_destroy = true } when the certificate is referenced by a universe — Terraform then rotates the universe to the replacement before deleting the old configuration.
+  Manages a YugabyteDB Anywhere self-signed certificate configuration for universe encryption in transit. YugabyteDB Anywhere keeps the root certificate's private key and uses it to sign the server certificate of each node.
 ---
 
 # yba_self_signed_certificate (Resource)
 
-Self-signed certificate configuration for universe encryption in transit. YugabyteDB Anywhere holds the root certificate's private key and signs the per-node server certificates itself. Two modes are supported: omit `certificate` and `private_key` to have YugabyteDB Anywhere mint a new root certificate (4-year root, 1-year server certificates by platform default), or provide both to bring your own root CA. Certificate configurations are immutable in YugabyteDB Anywhere: changing any argument forces replacement, so add `lifecycle { create_before_destroy = true }` when the certificate is referenced by a universe — Terraform then rotates the universe to the replacement before deleting the old configuration.
+Manages a YugabyteDB Anywhere self-signed certificate configuration for universe encryption in transit. YugabyteDB Anywhere keeps the root certificate's private key and uses it to sign the server certificate of each node.
 
-~> **Note:** Labels are unique per customer, and with `create_before_destroy` the replacement is created while the old configuration still exists. Give the replacement a new `label` (include a date or version, for example), or the create fails with a duplicate-label error.
+The resource has two modes. In the generated mode, omit `certificate` and `private_key`, and YugabyteDB Anywhere generates a new root certificate. By default, the root certificate is valid for 4 years and the server certificates for 1 year. In the bring-your-own mode, set both arguments to use your own root certificate.
 
-~> **Note:** `private_key` is a write-only argument: Terraform never stores it in the plan or the state file. Setting it requires Terraform 1.11 or later (the mint mode works with any Terraform version). Because nothing is stored, a change to only `private_key` is not detected — the key belongs to its `certificate` and they change together, which forces the replacement. YugabyteDB Anywhere verifies at upload that the certificate and key match.
+YugabyteDB Anywhere cannot edit a certificate configuration, so a change to any argument forces replacement. When a universe uses the certificate, add `lifecycle { create_before_destroy = true }`. Terraform then creates the replacement and rotates the universe to it before it deletes the old configuration. A destroy of a certificate that a universe still uses fails, and the error names the universes.
 
-~> **Note:** Same-CA server-certificate refresh (fresh 1-year node certificates from the unchanged root) is triggered from the universe resource via `cert_rotation.server_cert_trigger` / `cert_rotation.client_cert_trigger`, not from this resource.
+~> **Note:** Labels are unique per customer. With `create_before_destroy`, the replacement exists at the same time as the old configuration, so give the replacement a new `label`, for example with a date or a version in it.
 
-Reference the certificate from a universe via `root_ca` (node-to-node TLS) and/or
-`client_root_ca` (client-to-node TLS). Rotation semantics — including the same-CA
-server-certificate refresh driven by the universe's `cert_rotation` triggers — are documented
-in the [Universe Edit Actions](../guides/universe-edit-actions.md#certificate-rotation) guide.
+~> **Note:** `private_key` is a write-only argument: Terraform never stores it in the plan or the state file. Setting it requires Terraform 1.11 or later; the generated mode works with any Terraform version. Terraform cannot detect a change to `private_key` alone, so change it together with `certificate`, which forces replacement. YugabyteDB Anywhere checks at upload that the certificate and the key match.
 
--> **Note:** Creation of the minted (label-only) mode uses a YugabyteDB Anywhere endpoint that
-is internal API surface (available since YBA 2.20.0.0, below this provider's minimum supported
-version). The bring-your-own mode uses the public certificate upload API only.
+~> **Note:** To re-issue the server certificates from the same root certificate, change a `cert_rotation` trigger on the `yba_universe` resource. This resource does not re-issue them.
+
+Use the certificate in a universe through `root_ca` (node-to-node encryption),
+`client_root_ca` (client-to-node encryption), or both. The
+[Certificate Rotation](../guides/universe-edit-actions.md#certificate-rotation) section of the
+Universe Edit Actions guide describes how a universe rotates to a new certificate, and how the
+universe's `cert_rotation` triggers re-issue the server certificates from the same root
+certificate.
 
 ## Example Usage
 
 ```terraform
-# Mint mode: YugabyteDB Anywhere generates the root certificate and holds its
-# private key (4-year root, 1-year server certificates by platform default).
-# The generated CA is exported through the `certificate` attribute for
-# distribution to clients.
-resource "yba_self_signed_certificate" "minted" {
+# Generated mode: YugabyteDB Anywhere generates the root certificate and keeps
+# its private key. By default, the root certificate is valid for 4 years and the
+# server certificates for 1 year. The `certificate` attribute holds the
+# generated root certificate, for you to distribute to clients.
+resource "yba_self_signed_certificate" "generated" {
   label = "prod-n2n-ca"
 
-  # The universe rotates to a replacement before the old configuration is
-  # deleted; YBA refuses to delete certificates that are still in use.
+  # Create the replacement and rotate the universe to it before the old
+  # configuration is deleted: YugabyteDB Anywhere does not delete a certificate
+  # that a universe uses.
   lifecycle {
     create_before_destroy = true
   }
 }
 
-# Bring-your-own mode: provide the root certificate and its private key, from
-# files or inline. YugabyteDB Anywhere signs the per-node server certificates
-# with this key.
+# Bring-your-own mode: set the root certificate and its private key, from files
+# or inline. YugabyteDB Anywhere signs the server certificate of each node with
+# this key.
 resource "yba_self_signed_certificate" "byo" {
   label       = "prod-byo-ca"
   certificate = file("${path.module}/ca.crt")
@@ -59,22 +62,22 @@ resource "yba_self_signed_certificate" "byo" {
 
 ### Required
 
-- `label` (String) Name YugabyteDB Anywhere uses to identify the certificate. Must be unique per customer. Certificate configurations cannot be edited (the API has no update for this type), so changing the label forces recreation of the resource.
+- `label` (String) Name of the certificate configuration in YugabyteDB Anywhere. Must be unique per customer. A change forces replacement.
 
 ### Optional
 
 > **NOTE**: [Write-only arguments](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments) are supported in Terraform 1.11 and later.
 
-- `certificate` (String) Root certificate in PEM format, provided inline or via `file(...)`. Omit (together with `private_key`) to have YugabyteDB Anywhere mint a new self-signed root certificate; the minted certificate is then exported through this attribute for distribution to clients. Certificate configurations cannot be edited, so changing the content forces recreation of the resource.
-- `private_key` (String, Sensitive, [Write-only](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments)) Private key of the root certificate in PEM format, provided inline or via `file(...)` or an ephemeral value. Required when `certificate` is set. YugabyteDB Anywhere uses this key to sign per-node server certificates. Write-only: never stored in the Terraform plan or state, never returned by the API (for minted certificates the key stays on the YugabyteDB Anywhere host only, and imported resources cannot recover it). Requires Terraform 1.11+ to set. The key rotates together with `certificate`, whose change forces recreation of the resource.
+- `certificate` (String) Root certificate in PEM format, inline or from `file(...)`. Every certificate in it must be a CA certificate. Omit it, together with `private_key`, to have YugabyteDB Anywhere generate a new root certificate; this attribute then holds the generated certificate, for you to distribute to clients. A change forces replacement.
+- `private_key` (String, Sensitive, [Write-only](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments)) Private key of the root certificate in PEM format, inline, from `file(...)`, or from an ephemeral value. Required when `certificate` is set. It must be an RSA key of 2048 bits or more. Write-only: Terraform never stores it in the plan or state, and setting it requires Terraform 1.11 or later.
 - `timeouts` (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))
 
 ### Read-Only
 
-- `expiry_date` (String) Expiry date of the root certificate (RFC 3339).
+- `expiry_date` (String) End of the root certificate's validity period, in RFC 3339 format. For a certificate chain, the earliest expiry in the chain.
 - `id` (String) The ID of this resource.
-- `in_use` (Boolean) True while at least one universe references this certificate. Certificates in use cannot be deleted.
-- `start_date` (String) Creation date of the root certificate (RFC 3339).
+- `in_use` (Boolean) Whether a universe uses this certificate. A certificate in use cannot be deleted.
+- `start_date` (String) Start of the root certificate's validity period, in RFC 3339 format.
 - `uuid` (String) UUID of the certificate configuration.
 
 <a id="nestedblock--timeouts"></a>
@@ -88,10 +91,11 @@ Optional:
 
 ## Import
 
-Self-signed certificate configurations can be imported using the certificate UUID:
+Import a self-signed certificate configuration with its UUID:
 
 ```sh
-terraform import yba_self_signed_certificate.example <certificate-uuid>
+terraform import yba_self_signed_certificate.generated <certificate-uuid>
 ```
 
-`private_key` cannot be recovered through the API and stays empty after import.
+YugabyteDB Anywhere never returns `private_key`, so it stays empty after import. This does
+not cause a plan change: Terraform does not store write-only arguments.

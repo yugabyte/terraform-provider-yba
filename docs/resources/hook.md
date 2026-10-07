@@ -1,26 +1,48 @@
 ---
 page_title: "yba_hook Resource - YugabyteDB Anywhere"
 description: |-
-  YBA Hook Resource. Manages a custom hook — a Bash or Python script that YugabyteDB Anywhere runs on universe nodes when the configured trigger fires (for example node provisioning, a rolling restart, or a software upgrade) — together with where it applies: every universe (the default), one provider, one universe, or one cluster.
+  Manages a custom hook in YugabyteDB Anywhere: a Bash or Python script that YBA runs on universe nodes when a trigger fires, such as node provisioning, a rolling restart or a software upgrade. A hook applies to every universe, or to one provider, one universe or one cluster.
 ---
 
 # yba_hook (Resource)
 
-YBA Hook Resource. Manages a custom hook — a Bash or Python script that YugabyteDB Anywhere runs on universe nodes when the configured trigger fires (for example node provisioning, a rolling restart, or a software upgrade) — together with where it applies: every universe (the default), one provider, one universe, or one cluster.
+Manages a custom hook in YugabyteDB Anywhere: a Bash or Python script that YBA runs on universe nodes when a trigger fires, such as node provisioning, a rolling restart or a software upgrade. A hook applies to every universe, or to one provider, one universe or one cluster.
 
-Behind the API, YBA binds hooks to triggers through hook scope objects shared by every hook with the same trigger and target. The resource manages those scopes automatically: it reuses an existing scope or creates one on demand, and deletes a scope when its last hook is removed.
+YBA binds each hook to its trigger and target through a hook scope, which all hooks with the same trigger and target share. The resource creates the hook scope when it does not exist, and deletes the hook scope when its last hook is removed.
 
-~> **Note:** Custom hooks must be enabled on the YBA instance: set the global runtime config key `yb.security.custom_hooks.enable_custom_hooks` to `true` (for example with the `yba_runtime_config` resource). All custom hook operations require a Super Admin API token (an Admin token when YBA runs in cloud mode). Hooks run on VM-based universes only (cloud and on-prem providers); YBA inserts no hook tasks into Kubernetes universe operations.
+~> **Note:** Custom hooks must be enabled. Set the global runtime config key `yb.security.custom_hooks.enable_custom_hooks` to `true`, for example with the `yba_runtime_config` resource. Every custom hook operation requires the API token of a Super Admin user.
 
-~> **Note:** All hooks that fire on the same trigger run in natural sort order of their names. Prefix names with a number (`10-mount.sh`, `20-tune.sh`) to control execution order.
+~> **Note:** YBA runs hooks only on VM universes (cloud and on-premises providers). Kubernetes universe tasks run no hooks.
 
-~> **Warning:** Deleting a hook scope in YBA cascade-deletes every hook attached to it. This resource deletes a scope only after re-reading it and finding it empty, but any other writer (the YBA UI, the API, or a second Terraform state managing hooks on the same trigger and target) can attach a hook between that check and the delete and lose it to the cascade. Keep every hook on one trigger and target in a single Terraform state, and do not manage hooks on that pair outside Terraform.
+~> **Note:** Hooks that fire on the same trigger run in natural sort order of their names. Prefix the names with a number (`10-mount.sh`, `20-tune.sh`) to set the order.
+
+~> **Warning:** When YBA deletes a hook scope, it also deletes every hook attached to it. This resource deletes a hook scope only after it reads the scope again and finds no hooks. Another client, such as a script that calls the YBA API or a second Terraform state, can attach a hook between that read and the delete, and YBA then deletes that hook too. Keep all hooks for one trigger and target in one Terraform state, and do not manage hooks for that trigger and target outside Terraform.
+
+## Triggers
+
+Set `trigger_type` to one of these values:
+
+| Trigger | When the hook runs |
+| --- | --- |
+| `PreNodeProvision`, `PostNodeProvision` | Before and after YugabyteDB Anywhere provisions a node. |
+| `Pre<Task>`, `Post<Task>` | Once before and once after the whole task. |
+| `Pre<Task>NodeUpgrade`, `Post<Task>NodeUpgrade` | Before and after the task acts on each node. |
+| `ApiTriggered` | Only when you start it through the YugabyteDB Anywhere API. |
+
+`<Task>` is one of `RestartUniverse`, `SoftwareUpgrade`, `RebootUniverse`,
+`ThirdpartySoftwareUpgrade` or `ConfigureDBApis`. For example,
+`PreRestartUniverse` runs before a universe restart, and
+`PostSoftwareUpgradeNodeUpgrade` runs after the software upgrade of each node.
+
+The `ConfigureDBApis` triggers require YugabyteDB Anywhere 2025.2.0.0 or later.
+To run `ApiTriggered` hooks, set the global runtime config key
+`yb.security.custom_hooks.enable_api_triggered_hooks` to `true`.
 
 ## Example Usage
 
 ```terraform
-# Custom hooks must be enabled on the YBA instance before hooks can be
-# managed; use_sudo additionally requires the enable_sudo flag.
+# Custom hooks must be enabled before Terraform can manage hooks. A hook with
+# use_sudo = true also needs the enable_sudo key.
 resource "yba_runtime_config" "enable_custom_hooks" {
   key   = "yb.security.custom_hooks.enable_custom_hooks"
   value = "true"
@@ -31,11 +53,11 @@ resource "yba_runtime_config" "enable_sudo_hooks" {
   value = "true"
 }
 
-# A Bash hook that runs on every node provision, on nodes backed by one cloud
-# provider. Hooks that fire on the same trigger run in natural sort order of
-# their names, so a numeric prefix pins the execution order. YBA passes each
-# runtime_args entry to the script as a "--KEY VALUE" command-line flag, after
-# its own "--parent_task" and "--trigger" flags.
+# A Bash hook that runs before YBA provisions a node of one provider. Hooks
+# that fire on the same trigger run in natural sort order of their names, so a
+# number prefix sets the order. YBA passes each runtime_args entry to the
+# script as a "--KEY VALUE" flag, after its own "--parent_task" and "--trigger"
+# flags.
 resource "yba_hook" "mount_volume" {
   name           = "10-mount-volume.sh"
   execution_lang = "Bash"
@@ -64,9 +86,9 @@ resource "yba_hook" "mount_volume" {
   ]
 }
 
-# A Python hook loaded from a file next to the Terraform configuration,
-# applying to every universe (no universe_uuid or provider_uuid): it runs
-# after every rolling restart, anywhere.
+# A Python hook, loaded from a file next to the configuration, that runs after
+# every universe restart. With no universe_uuid or provider_uuid, it applies to
+# every universe.
 resource "yba_hook" "collect_diagnostics" {
   name           = "20-collect-diagnostics.py"
   execution_lang = "Python"
@@ -78,9 +100,15 @@ resource "yba_hook" "collect_diagnostics" {
   depends_on = [yba_runtime_config.enable_custom_hooks]
 }
 
-# A hook bound to a single cluster of one universe; cluster_uuid requires
-# universe_uuid. ApiTriggered hooks only run when explicitly invoked through
-# the YBA run-hooks API.
+# ApiTriggered hooks run only when you start them through the YBA API, and
+# only while this key is true.
+resource "yba_runtime_config" "enable_api_triggered_hooks" {
+  key   = "yb.security.custom_hooks.enable_api_triggered_hooks"
+  value = "true"
+}
+
+# An ApiTriggered hook for one cluster of one universe. cluster_uuid requires
+# universe_uuid.
 resource "yba_hook" "rotate_credentials" {
   name           = "30-rotate-credentials.sh"
   execution_lang = "Bash"
@@ -88,9 +116,12 @@ resource "yba_hook" "rotate_credentials" {
 
   trigger_type  = "ApiTriggered"
   universe_uuid = yba_universe.gcp.id
-  cluster_uuid  = "5f8aa2a2-3bce-45c7-9cf2-31ba14b7ab61"
+  cluster_uuid  = yba_universe.gcp.clusters[0].uuid
 
-  depends_on = [yba_runtime_config.enable_custom_hooks]
+  depends_on = [
+    yba_runtime_config.enable_custom_hooks,
+    yba_runtime_config.enable_api_triggered_hooks,
+  ]
 }
 ```
 
@@ -99,19 +130,19 @@ resource "yba_hook" "rotate_credentials" {
 
 ### Required
 
-- `execution_lang` (String) Language the hook is written in. Allowed values: `Bash`, `Python`.
-- `hook_text` (String) Full contents of the hook script. Use the Terraform `file()` function to load it from disk.
-- `name` (String) Name of the hook, unique per customer, at most 100 characters. The name also determines execution order: hooks firing on the same trigger run in natural sort order of their names.
-- `trigger_type` (String) Trigger the hook runs on. Node lifecycle triggers are `PreNodeProvision` and `PostNodeProvision`. `ApiTriggered` hooks run only when explicitly invoked through the YBA run-hooks API, which also requires the global runtime config key `yb.security.custom_hooks.enable_api_triggered_hooks`. Upgrade-task triggers follow the pattern `Pre<Task>`/`Post<Task>` (around the whole task) and `Pre<Task>NodeUpgrade`/`Post<Task>NodeUpgrade` (around each node) for the tasks `RestartUniverse`, `SoftwareUpgrade`, `RebootUniverse`, `ThirdpartySoftwareUpgrade` and `ConfigureDBApis`, for example `PreRestartUniverse` or `PostSoftwareUpgradeNodeUpgrade`. The `ConfigureDBApis` triggers need YugabyteDB Anywhere 2025.2.0.0 or later; every other trigger is available on every YBA version the provider supports. Every trigger fires on VM-based universes only; Kubernetes universe tasks run no hooks. YBA rejects unknown values.
+- `execution_lang` (String) Language of the hook script. Allowed values: `Bash`, `Python`.
+- `hook_text` (String) Contents of the hook script. Use the Terraform `file()` function to load it from a file.
+- `name` (String) Name of the hook. It must be unique for the customer and at most 100 characters. Hooks that fire on the same trigger run in natural sort order of their names.
+- `trigger_type` (String) Trigger that runs the hook, for example `PreNodeProvision` or `PostRestartUniverse`. The Triggers section lists every value. YBA rejects unknown values.
 
 ### Optional
 
-- `cluster_uuid` (String) UUID of the cluster within `universe_uuid` the hook applies to; requires `universe_uuid`.
-- `provider_uuid` (String) UUID of the cloud provider the hook applies to. Cannot be combined with `universe_uuid`; leave both unset to apply the hook to every universe.
-- `runtime_args` (Map of String) Optional string arguments for the hook. YBA passes each entry to the script as a `--KEY VALUE` command-line flag, after its own `--parent_task <task>` and `--trigger <trigger>` flags.
+- `cluster_uuid` (String) UUID of the cluster in `universe_uuid` that the hook applies to. Requires `universe_uuid`.
+- `provider_uuid` (String) UUID of the provider that the hook applies to. The hook runs on the universe nodes of that provider. Conflicts with `universe_uuid`. Leave both unset to apply the hook to every universe.
+- `runtime_args` (Map of String) String arguments for the hook. YBA passes each entry to the script as a `--KEY VALUE` command-line flag, after its own `--parent_task <task>` and `--trigger <trigger>` flags.
 - `timeouts` (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))
-- `universe_uuid` (String) UUID of the universe the hook applies to. Cannot be combined with `provider_uuid`; leave both unset to apply the hook to every universe.
-- `use_sudo` (Boolean) Run the hook with superuser privileges. Requires the global runtime config key `yb.security.custom_hooks.enable_sudo` to be `true`. False by default.
+- `universe_uuid` (String) UUID of the universe that the hook applies to. Conflicts with `provider_uuid`. Leave both unset to apply the hook to every universe.
+- `use_sudo` (Boolean) Run the hook with superuser privileges. Requires the global runtime config key `yb.security.custom_hooks.enable_sudo` set to `true`. YBA skips the hook when the key is `false` at the time the trigger fires. Defaults to `false`.
 
 ### Read-Only
 
@@ -133,5 +164,5 @@ Optional:
 Hooks can be imported using the hook UUID:
 
 ```sh
-terraform import yba_hook.mount_volume 4f1f66a1-6b7f-4c5e-89f2-1b9f2f31e2c3
+terraform import yba_hook.mount_volume <hook-uuid>
 ```

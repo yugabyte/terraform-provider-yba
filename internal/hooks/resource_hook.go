@@ -76,36 +76,34 @@ const hookNameMaxLen = 100
 // ResourceHook manages a YBA custom hook and its trigger binding.
 func ResourceHook() *schema.Resource {
 	return &schema.Resource{
-		Description: "YBA Hook Resource. Manages a custom hook — a Bash or " +
-			"Python script that YugabyteDB Anywhere runs on universe nodes " +
-			"when the configured trigger fires (for example node " +
-			"provisioning, a rolling restart, or a software upgrade) — " +
-			"together with where it applies: every universe (the default), " +
-			"one provider, one universe, or one cluster.\n\n" +
-			"Behind the API, YBA binds hooks to triggers through hook scope " +
-			"objects shared by every hook with the same trigger and target. " +
-			"The resource manages those scopes automatically: it reuses an " +
-			"existing scope or creates one on demand, and deletes a scope " +
-			"when its last hook is removed.\n\n" +
-			"~> **Note:** Custom hooks must be enabled on the YBA instance: " +
-			"set the global runtime config key " +
-			"`yb.security.custom_hooks.enable_custom_hooks` to `true` (for " +
-			"example with the `yba_runtime_config` resource). All custom " +
-			"hook operations require a Super Admin API token (an Admin " +
-			"token when YBA runs in cloud mode). Hooks run on VM-based " +
-			"universes only (cloud and on-prem providers); YBA inserts no " +
-			"hook tasks into Kubernetes universe operations.\n\n" +
-			"~> **Note:** All hooks that fire on the same trigger run in " +
-			"natural sort order of their names. Prefix names with a number " +
-			"(`10-mount.sh`, `20-tune.sh`) to control execution order.\n\n" +
-			"~> **Warning:** Deleting a hook scope in YBA cascade-deletes " +
-			"every hook attached to it. This resource deletes a scope only " +
-			"after re-reading it and finding it empty, but any other writer " +
-			"(the YBA UI, the API, or a second Terraform state managing hooks " +
-			"on the same trigger and target) can attach a hook between that " +
-			"check and the delete and lose it to the cascade. Keep every hook " +
-			"on one trigger and target in a single Terraform state, and do " +
-			"not manage hooks on that pair outside Terraform.",
+		Description: "Manages a custom hook in YugabyteDB Anywhere: a Bash or " +
+			"Python script that YBA runs on universe nodes when a trigger " +
+			"fires, such as node provisioning, a rolling restart or a software " +
+			"upgrade. A hook applies to every universe, or to one provider, one " +
+			"universe or one cluster.\n\n" +
+			"YBA binds each hook to its trigger and target through a hook " +
+			"scope, which all hooks with the same trigger and target share. " +
+			"The resource creates the hook scope when it does not exist, and " +
+			"deletes the hook scope when its last hook is removed.\n\n" +
+			"~> **Note:** Custom hooks must be enabled. Set the global runtime " +
+			"config key `yb.security.custom_hooks.enable_custom_hooks` to " +
+			"`true`, for example with the `yba_runtime_config` resource. Every " +
+			"custom hook operation requires the API token of a Super Admin " +
+			"user.\n\n" +
+			"~> **Note:** YBA runs hooks only on VM universes (cloud and " +
+			"on-premises providers). Kubernetes universe tasks run no " +
+			"hooks.\n\n" +
+			"~> **Note:** Hooks that fire on the same trigger run in natural " +
+			"sort order of their names. Prefix the names with a number " +
+			"(`10-mount.sh`, `20-tune.sh`) to set the order.\n\n" +
+			"~> **Warning:** When YBA deletes a hook scope, it also deletes " +
+			"every hook attached to it. This resource deletes a hook scope " +
+			"only after it reads the scope again and finds no hooks. Another " +
+			"client, such as a script that calls the YBA API or a second " +
+			"Terraform state, can attach a hook between that read and the " +
+			"delete, and YBA then deletes that hook too. Keep all hooks for " +
+			"one trigger and target in one Terraform state, and do not manage " +
+			"hooks for that trigger and target outside Terraform.",
 
 		CreateContext: resourceHookCreate,
 		ReadContext:   resourceHookRead,
@@ -128,22 +126,21 @@ func ResourceHook() *schema.Resource {
 				Type:         schema.TypeString,
 				Required:     true,
 				ValidateFunc: validation.StringLenBetween(1, hookNameMaxLen),
-				Description: "Name of the hook, unique per customer, at most 100 " +
-					"characters. The name also determines execution order: hooks " +
-					"firing on the same trigger run in natural sort order of their " +
-					"names.",
+				Description: "Name of the hook. It must be unique for the " +
+					"customer and at most 100 characters. Hooks that fire on the " +
+					"same trigger run in natural sort order of their names.",
 			},
 			"execution_lang": {
 				Type:         schema.TypeString,
 				Required:     true,
 				ValidateFunc: validation.StringInSlice(hookExecutionLangs, false),
-				Description:  "Language the hook is written in. Allowed values: `Bash`, `Python`.",
+				Description:  "Language of the hook script. Allowed values: `Bash`, `Python`.",
 			},
 			"hook_text": {
 				Type:     schema.TypeString,
 				Required: true,
-				Description: "Full contents of the hook script. Use the Terraform " +
-					"`file()` function to load it from disk.",
+				Description: "Contents of the hook script. Use the Terraform " +
+					"`file()` function to load it from a file.",
 			},
 			"use_sudo": {
 				Type:     schema.TypeBool,
@@ -151,60 +148,47 @@ func ResourceHook() *schema.Resource {
 				Default:  false,
 				Description: "Run the hook with superuser privileges. Requires the " +
 					"global runtime config key `yb.security.custom_hooks.enable_sudo` " +
-					"to be `true`. False by default.",
+					"set to `true`. YBA skips the hook when the key is `false` at the " +
+					"time the trigger fires. Defaults to `false`.",
 			},
 			"runtime_args": {
 				Type:     schema.TypeMap,
 				Optional: true,
 				Elem:     &schema.Schema{Type: schema.TypeString},
-				Description: "Optional string arguments for the hook. YBA passes " +
-					"each entry to the script as a `--KEY VALUE` command-line flag, " +
-					"after its own `--parent_task <task>` and `--trigger <trigger>` " +
-					"flags.",
+				Description: "String arguments for the hook. YBA passes each " +
+					"entry to the script as a `--KEY VALUE` command-line flag, after " +
+					"its own `--parent_task <task>` and `--trigger <trigger>` flags.",
 			},
 			"trigger_type": {
 				Type:     schema.TypeString,
 				Required: true,
-				Description: "Trigger the hook runs on. Node lifecycle triggers are " +
-					"`PreNodeProvision` and `PostNodeProvision`. `ApiTriggered` " +
-					"hooks run only when explicitly invoked through the YBA " +
-					"run-hooks API, which also requires the global runtime config " +
-					"key `yb.security.custom_hooks.enable_api_triggered_hooks`. " +
-					"Upgrade-task triggers follow the pattern " +
-					"`Pre<Task>`/`Post<Task>` (around the whole task) and " +
-					"`Pre<Task>NodeUpgrade`/`Post<Task>NodeUpgrade` (around each " +
-					"node) for the tasks `RestartUniverse`, `SoftwareUpgrade`, " +
-					"`RebootUniverse`, `ThirdpartySoftwareUpgrade` and " +
-					"`ConfigureDBApis`, for example `PreRestartUniverse` or " +
-					"`PostSoftwareUpgradeNodeUpgrade`. The `ConfigureDBApis` " +
-					"triggers need YugabyteDB Anywhere 2025.2.0.0 or later; every " +
-					"other trigger is available on every YBA version the provider " +
-					"supports. Every trigger fires on VM-based universes only; " +
-					"Kubernetes universe tasks run no hooks. YBA rejects unknown " +
-					"values.",
+				Description: "Trigger that runs the hook, for example " +
+					"`PreNodeProvision` or `PostRestartUniverse`. The Triggers " +
+					"section lists every value. YBA rejects unknown values.",
 			},
 			"universe_uuid": {
 				Type:          schema.TypeString,
 				Optional:      true,
 				ConflictsWith: []string{"provider_uuid"},
-				Description: "UUID of the universe the hook applies to. Cannot be " +
-					"combined with `provider_uuid`; leave both unset to apply the " +
+				Description: "UUID of the universe that the hook applies to. " +
+					"Conflicts with `provider_uuid`. Leave both unset to apply the " +
 					"hook to every universe.",
 			},
 			"cluster_uuid": {
 				Type:         schema.TypeString,
 				Optional:     true,
 				RequiredWith: []string{"universe_uuid"},
-				Description: "UUID of the cluster within `universe_uuid` the hook " +
-					"applies to; requires `universe_uuid`.",
+				Description: "UUID of the cluster in `universe_uuid` that the " +
+					"hook applies to. Requires `universe_uuid`.",
 			},
 			"provider_uuid": {
 				Type:          schema.TypeString,
 				Optional:      true,
 				ConflictsWith: []string{"universe_uuid"},
-				Description: "UUID of the cloud provider the hook applies to. " +
-					"Cannot be combined with `universe_uuid`; leave both unset to " +
-					"apply the hook to every universe.",
+				Description: "UUID of the provider that the hook applies to. The " +
+					"hook runs on the universe nodes of that provider. Conflicts " +
+					"with `universe_uuid`. Leave both unset to apply the hook to " +
+					"every universe.",
 			},
 		},
 	}

@@ -28,10 +28,10 @@ import (
 // DataSourceEARConfig defines the encryption-at-rest configuration lookup.
 func DataSourceEARConfig() *schema.Resource {
 	return &schema.Resource{
-		Description: "Looks up an encryption-at-rest configuration by name, whichever key " +
-			"management service backs it. Use it to reference a configuration created in the " +
+		Description: "Looks up a YugabyteDB Anywhere encryption-at-rest configuration by " +
+			"name, for any KMS provider. Use it to reference a configuration created in the " +
 			"YugabyteDB Anywhere UI from a universe's `encryption_at_rest` block, or to find " +
-			"the UUID for `terraform import` into `yba_gcp_ear_config`.",
+			"the UUID to import into `yba_gcp_ear_config`.",
 
 		ReadContext: dataSourceEARConfigRead,
 
@@ -49,14 +49,13 @@ func DataSourceEARConfig() *schema.Resource {
 			"key_provider": {
 				Type:     schema.TypeString,
 				Computed: true,
-				Description: "Key management service behind the configuration: `GCP`, `AWS`, " +
-					"`AZU`, `HASHICORP`, `CIPHERTRUST`, `OCI` or `SMARTKEY`.",
+				Description: "KMS provider of the configuration: `GCP`, `AWS`, `AZU`, " +
+					"`HASHICORP`, `CIPHERTRUST`, `OCI` or `SMARTKEY`.",
 			},
 			"in_use": {
-				Type:     schema.TypeBool,
-				Computed: true,
-				Description: "True while any universe holds key history for this " +
-					"configuration.",
+				Type:        schema.TypeBool,
+				Computed:    true,
+				Description: "Whether a universe holds key history for this configuration.",
 			},
 			"universes": {
 				Type:     schema.TypeList,

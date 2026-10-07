@@ -373,7 +373,7 @@ Optional:
 
 Required:
 
-- `details` (Block List, Min: 1, Max: 1) (see [below for nested schema](#nestedblock--image_bundles--details))
+- `details` (Block List, Min: 1, Max: 1) Image bundle details: architecture, SSH settings and images. (see [below for nested schema](#nestedblock--image_bundles--details))
 - `name` (String) Name of the image bundle.
 
 Optional:
@@ -383,7 +383,7 @@ Optional:
 Read-Only:
 
 - `active` (Boolean) Is the image bundle active.
-- `metadata` (List of Object) (see [below for nested schema](#nestedatt--image_bundles--metadata))
+- `metadata` (List of Object) Image bundle metadata that YugabyteDB Anywhere reports. (see [below for nested schema](#nestedatt--image_bundles--metadata))
 - `uuid` (String) Image bundle UUID.
 
 <a id="nestedblock--image_bundles--details"></a>

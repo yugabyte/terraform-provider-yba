@@ -1,44 +1,39 @@
 ---
 page_title: "yba_splunk_telemetry_provider Resource - YugabyteDB Anywhere"
 description: |-
-  ~> Experimental: This resource wraps a YugabyteDB Anywhere telemetry export API that is still experimental and may change in backward-incompatible ways across YBA releases. Pin your provider version and review release notes before upgrading.
-  Splunk Telemetry Provider resource. Defines a reusable Splunk HTTP Event Collector destination that universes can use to export audit logs and query logs.
-  ~> Note: YBA does not allow editing a telemetry provider in place. Any change to a field forces Terraform to destroy and recreate the resource. YBA also refuses to delete a provider that is still referenced by a universe's telemetry config, so the destroy step first enumerates every universe whose audit / query / metrics exporter list references this provider and rewrites that list with the provider removed (via a rolling-upgrade task on each universe). Once every detach task reaches a terminal state, the provider itself is deleted. The universes themselves are never destroyed — only their OpenTelemetry collector configuration is updated.
-  ~> Drift Note: Read refreshes only name and tags. The Splunk connection fields are not reconciled against the server, because YBA masks credentials in its responses and every field is ForceNew anyway. A field edited out-of-band in the YBA UI is therefore not detected as drift — re-apply from Terraform to restore the intended configuration.
-  ~> Import Note: Import verifies the provider's type: importing a provider that is not a Splunk destination fails with the actual type, so it can be imported with the matching yba_*_telemetry_provider resource instead.
-  ~> Security Note: Credentials such as API keys, tokens, and secret access keys are stored in the Terraform state file (marked sensitive). Use a secure backend and restrict access to your state files.
+  Manages a Splunk telemetry provider in YugabyteDB Anywhere. Universes send logs to a Splunk HTTP Event Collector (HEC) through yba_universe_telemetry_config.
 ---
 
 # yba_splunk_telemetry_provider (Resource)
 
-~> **Experimental:** This resource wraps a YugabyteDB Anywhere telemetry export API that is still experimental and may change in backward-incompatible ways across YBA releases. Pin your provider version and review release notes before upgrading.
+Manages a Splunk telemetry provider in YugabyteDB Anywhere. Universes send logs to a Splunk HTTP Event Collector (HEC) through `yba_universe_telemetry_config`.
 
-Splunk Telemetry Provider resource. Defines a reusable Splunk HTTP Event Collector destination that universes can use to export audit logs and query logs.
+~> **Experimental:** Telemetry export is an experimental feature of YugabyteDB Anywhere. A later YBA release can change it in ways that are not backward compatible. Read the release notes before you upgrade YBA or the provider.
 
-~> **Note:** YBA does not allow editing a telemetry provider in place. Any change to a field forces Terraform to destroy and recreate the resource. YBA also refuses to delete a provider that is still referenced by a universe's telemetry config, so the destroy step first enumerates every universe whose audit / query / metrics exporter list references this provider and rewrites that list with the provider removed (via a rolling-upgrade task on each universe). Once every detach task reaches a terminal state, the provider itself is deleted. The universes themselves are never destroyed — only their OpenTelemetry collector configuration is updated.
+~> **Note:** YBA accepts a Splunk telemetry provider only in a log pipeline, not in `metrics`.
 
-~> **Drift Note:** Read refreshes only `name` and `tags`. The Splunk connection fields are **not** reconciled against the server, because YBA masks credentials in its responses and every field is `ForceNew` anyway. A field edited out-of-band in the YBA UI is therefore not detected as drift — re-apply from Terraform to restore the intended configuration.
+~> **Note:** YBA cannot change a telemetry provider in place, so a change to any argument replaces the resource. Before Terraform deletes a telemetry provider, it removes the telemetry provider from every universe that uses it. Each of those universes goes through a rolling restart. The universes are not deleted.
 
-~> **Import Note:** Import verifies the provider's type: importing a provider that is not a Splunk destination fails with the actual type, so it can be imported with the matching `yba_*_telemetry_provider` resource instead.
+~> **Drift Note:** Terraform reads back only `name` and `tags`. It does not detect a change to the Splunk connection arguments made outside Terraform, for example in the YBA UI. To apply the configured values again, replace the resource with `terraform apply -replace`.
 
-~> **Security Note:** Credentials such as API keys, tokens, and secret access keys are stored in the Terraform state file (marked sensitive). Use a secure backend and restrict access to your state files.
+~> **Security Note:** Terraform stores the credentials of this telemetry provider in the state file, marked sensitive. Use a secure backend and restrict access to the state file.
 
 ## Example Usage
 
 ```terraform
-# Splunk HTTP Event Collector destination for audit/query logs.
+# Splunk HTTP Event Collector (HEC) destination for logs.
 resource "yba_splunk_telemetry_provider" "splunk" {
   name = "splunk"
 
   endpoint = "https://splunk.example.com:8088"
   token    = var.splunk_hec_token
 
-  # Optional Splunk event routing fields.
+  # Optional Splunk fields for the events.
   source      = "yba"
   source_type = "_json"
   index       = "main"
 
-  # Optional tags, upserted as attributes onto every exported record.
+  # Optional tags. YBA adds them as attributes to every exported record.
   tags = {
     env = "prod"
   }
@@ -50,16 +45,16 @@ resource "yba_splunk_telemetry_provider" "splunk" {
 
 ### Required
 
-- `endpoint` (String) Splunk HEC endpoint URL.
-- `name` (String) Name of the telemetry provider configuration.
-- `token` (String, Sensitive) Splunk HEC access token.
+- `endpoint` (String) URL of the Splunk HEC endpoint.
+- `name` (String) Name of the telemetry provider. YBA requires a unique name.
+- `token` (String, Sensitive) Splunk HEC token.
 
 ### Optional
 
-- `index` (String) Optional Splunk index name.
-- `source` (String) Optional Splunk source field.
-- `source_type` (String) Optional Splunk source type field.
-- `tags` (Map of String) Optional string tags associated with the configuration.
+- `index` (String) Splunk index that receives the events.
+- `source` (String) Splunk `source` value of the events.
+- `source_type` (String) Splunk `sourcetype` value of the events.
+- `tags` (Map of String) Tags that YBA adds as attributes to every record that a universe exports to this telemetry provider.
 - `timeouts` (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))
 
 ### Read-Only
@@ -76,38 +71,55 @@ Optional:
 - `delete` (String)
 - `read` (String)
 
-## Replacing an in-use provider
+## Replacing a telemetry provider in use
 
-YBA does not support editing a telemetry provider — any change to a
-field forces Terraform to destroy-and-recreate the resource. YBA also
-rejects delete requests for a provider that is still referenced by a
-universe's telemetry configuration:
+YBA cannot change a telemetry provider in place. A change to any argument
+destroys the telemetry provider and creates a new one. YBA does not delete a
+telemetry provider that a universe uses, so before Terraform deletes the
+telemetry provider, it removes the telemetry provider from the telemetry
+configuration of each universe that uses it.
 
-```
-Cannot delete Telemetry Provider '...', as it is in use.
-```
+When you destroy or replace a telemetry provider that universes use, expect the
+following:
 
-The destroy step handles this proactively: before issuing the YBA delete
-it enumerates every universe whose telemetry config references the
-provider and rewrites each universe's config with the provider filtered
-out of the audit/query/metrics exporter lists (through the unified
-`/api/v2/customers/{c}/universes/{u}/export-telemetry-configs` endpoint).
-It waits for every resulting rolling-upgrade task to reach a terminal
-state, and only then issues the YBA delete. The detach step is therefore
-the canonical "detach, then mutate" workflow — destroy-and-recreate
-plans, plain `terraform destroy`, and any `yba_universe_telemetry_config`
-update planned in the same `terraform apply` (which is then applied with
-the new provider UUID) all go through it.
+- Each of those universes goes through a rolling restart. Several universes can
+  restart at the same time. The universes are not deleted, and their other
+  telemetry providers do not change.
+- A pipeline whose only exporter was this telemetry provider is turned off.
+- When a `yba_universe_telemetry_config` resource refers to the telemetry
+  provider, Terraform then updates that resource to use the new telemetry
+  provider. The update turns the pipeline on again and restarts the universe a
+  second time.
 
-The universes themselves are never destroyed — only their OpenTelemetry
-collector configuration is updated.
+The delete timeout covers the restarts of all these universes. It defaults to
+2 hours. For large universes, set a longer `timeouts.delete`.
 
 ## Import
 
-Telemetry providers can be imported using their UUID. Import verifies
-the provider's type: importing a provider of a different sink type fails
-with a message naming the matching resource.
+Import a telemetry provider with its UUID:
 
 ```sh
 terraform import yba_splunk_telemetry_provider.splunk <telemetry-provider-uuid>
 ```
+
+The import fails when the telemetry provider is not a Splunk telemetry
+provider. The error names its type. Import it with the resource for that type
+instead.
+
+Import reads only `name` and `tags`. The other arguments are not in the state
+after import, so the next plan replaces the telemetry provider, and each
+universe that uses it restarts. To keep the imported telemetry provider, add the
+other arguments to `ignore_changes`:
+
+```terraform
+resource "yba_splunk_telemetry_provider" "splunk" {
+  # ...
+
+  lifecycle {
+    ignore_changes = [endpoint, token, source, source_type, index]
+  }
+}
+```
+
+Remove the `lifecycle` block when you want Terraform to manage these arguments
+again. The next apply then replaces the telemetry provider.

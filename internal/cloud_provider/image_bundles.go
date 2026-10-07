@@ -45,9 +45,10 @@ func ImageBundleSchema() *schema.Schema {
 					Description: "Is the image bundle active.",
 				},
 				"details": {
-					Type:     schema.TypeList,
-					Required: true,
-					MaxItems: 1,
+					Type:        schema.TypeList,
+					Required:    true,
+					MaxItems:    1,
+					Description: "Image bundle details: architecture, SSH settings and images.",
 					Elem: &schema.Resource{
 						Schema: map[string]*schema.Schema{
 							"arch": {
@@ -89,8 +90,9 @@ func ImageBundleSchema() *schema.Schema {
 					},
 				},
 				"metadata": {
-					Type:     schema.TypeList,
-					Computed: true,
+					Type:        schema.TypeList,
+					Computed:    true,
+					Description: "Image bundle metadata that YugabyteDB Anywhere reports.",
 					Elem: &schema.Resource{
 						Schema: map[string]*schema.Schema{
 							"type": {

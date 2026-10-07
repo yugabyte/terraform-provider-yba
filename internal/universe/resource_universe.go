@@ -136,7 +136,8 @@ func storageTypeCloud(st string) string {
 // ResourceUniverse creates and maintains resource for universes
 func ResourceUniverse() *schema.Resource {
 	return &schema.Resource{
-		Description: "Universe Resource.",
+		Description: "Manages a YugabyteDB universe in YugabyteDB Anywhere: its primary " +
+			"and read replica clusters, software version, encryption and other settings.",
 
 		CreateContext: resourceUniverseCreate,
 		ReadContext:   resourceUniverseRead,
@@ -160,6 +161,8 @@ func ResourceUniverse() *schema.Resource {
 				Type:     schema.TypeList,
 				Optional: true,
 				MaxItems: 1,
+				Description: "Options that YugabyteDB Anywhere applies when Terraform " +
+					"destroys the universe.",
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
 						"delete_certs": {
@@ -199,12 +202,12 @@ func ResourceUniverse() *schema.Resource {
 				},
 				Description: "The UUID of the rootCA used for node-to-node TLS encryption." +
 					" When not set, YBA creates and assigns a root CA automatically." +
-					" Changing the value on an existing universe performs a root certificate" +
-					" rotation (a multi-phase operation with rolling node restarts;" +
-					" see `cert_rotation` and `node_restart_settings`). When the referenced" +
-					" certificate is a Terraform resource, set" +
-					" `lifecycle { create_before_destroy = true }` on it so the replacement" +
-					" exists before the old configuration is deleted.",
+					" A change on an existing universe rotates node-to-node encryption to the" +
+					" new certificate, and also client-to-node encryption when one root" +
+					" certificate serves both and `client_root_ca` is not set. Nodes restart" +
+					" according to `node_restart_settings`. When the certificate is a Terraform" +
+					" resource, set `lifecycle { create_before_destroy = true }` on it, so" +
+					" that the new certificate exists before Terraform deletes the old one.",
 			},
 			"client_root_ca": {
 				Type:     schema.TypeString,
@@ -225,59 +228,44 @@ func ResourceUniverse() *schema.Resource {
 					" encryption is enabled); in that case YBA auto-generates a root CA for" +
 					" node-to-node if needed and uses the provided value for client-to-node." +
 					" When not set, root_ca is reused for client-to-node TLS." +
-					" Changing the value on an existing universe performs a certificate" +
-					" rotation: YBA runs the lightweight server-certificate rotation when the" +
-					" new configuration's root CA content is identical to the current one" +
-					" (e.g. a re-issued `yba_custom_server_certificate`), and a full root" +
-					" certificate rotation otherwise.",
+					" A change on an existing universe rotates client-to-node encryption to" +
+					" the new certificate. Nodes restart according to `node_restart_settings`.",
 			},
 			"cert_rotation": {
 				Type:     schema.TypeList,
 				Optional: true,
 				MaxItems: 1,
-				Description: "Triggers for same-CA server-certificate rotation: regenerating " +
-					"the per-node server certificates from the unchanged (SelfSigned) root " +
-					"certificate, which YBA issues with a 1-year lifetime by default. " +
-					"Changing a trigger to any new non-empty value fires the rotation on the " +
-					"next apply; the values are otherwise opaque bookkeeping (a date reads " +
-					"well in diffs, or wire in `time_rotating` for automated renewal). " +
-					"Setting a trigger at universe creation records it without rotating; " +
-					"adding a trigger to an already-managed universe fires a rotation on the " +
-					"next apply (first-time set counts as a change). Removing one never " +
-					"fires. Restart behaviour follows `node_restart_settings` (Non-Restart " +
-					"performs a hot certificate reload; among other eligibility gates the " +
-					"universe must first have completed a Rolling certificate rotation — " +
-					"see the universe-edit-actions guide). To change the certificate " +
-					"itself, edit `root_ca`/`client_root_ca` instead — and avoid bumping a " +
-					"trigger in the same apply as a CA change, which already re-issues the " +
-					"server certificates: the trigger adds a second full restart.\n\n" +
-					"~> **Note:** Rolling rotations restart nodes one at a time and honor " +
-					"the `node_restart_settings` sleeps, which compound on multi-node " +
-					"universes — raise the resource's `timeouts { update }` (60 minutes by " +
-					"default) when a rotation can outlast it. If the universe's node-to-node " +
-					"certificates have expired, use Non-Rolling: YBA rejects expired-cert " +
-					"rotations under Rolling (except a client-certificate-only rotation) " +
-					"and Non-Restart.",
+				Description: "Triggers that re-issue the server certificates of each node " +
+					"from the current root certificate, which must be a self-signed " +
+					"certificate. YugabyteDB Anywhere issues these server certificates with a " +
+					"1-year lifetime by default. A change of a trigger to any new non-empty " +
+					"value rotates the certificates on the next apply. A trigger set at " +
+					"universe creation does not rotate, but a trigger added to an existing " +
+					"universe does. Removing a trigger does nothing. Nodes restart according to " +
+					"`node_restart_settings`. To move to another root certificate, change " +
+					"`root_ca` or `client_root_ca` instead, and do not change a trigger in the " +
+					"same apply: that runs a second rotation, with a second restart of every node.",
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
 						"server_cert_trigger": {
 							Type:     schema.TypeString,
 							Optional: true,
-							Description: "Fires `selfSignedServerCertRotate`: fresh " +
-								"node-to-node server certificates signed by the unchanged " +
-								"`root_ca` (which must be a SelfSigned configuration). On " +
-								"universes where one root certificate serves both channels, " +
-								"client-to-node server certificates are rotated in the same task.",
+							Description: "Change it to re-issue the node-to-node server " +
+								"certificates from the current `root_ca`, which must be a " +
+								"self-signed certificate. Requires " +
+								"`enable_node_to_node_encrypt`. When one root certificate serves " +
+								"node-to-node and client-to-node encryption, the same task also " +
+								"re-issues the client-to-node server certificates.",
 						},
 						"client_cert_trigger": {
 							Type:     schema.TypeString,
 							Optional: true,
-							Description: "Fires `selfSignedClientCertRotate`: fresh " +
-								"client-to-node server certificates signed by the unchanged " +
-								"`client_root_ca` (which must be a SelfSigned configuration). " +
-								"On universes where one root certificate serves both " +
-								"channels, node-to-node server certificates are rotated in " +
-								"the same task.",
+							Description: "Change it to re-issue the client-to-node server " +
+								"certificates from the current `client_root_ca`, which must be a " +
+								"self-signed certificate. Requires " +
+								"`enable_client_to_node_encrypt`. When one root certificate " +
+								"serves node-to-node and client-to-node encryption, the same " +
+								"task also re-issues the node-to-node server certificates.",
 						},
 					},
 				},
@@ -347,6 +335,8 @@ func ResourceUniverse() *schema.Resource {
 			"clusters": {
 				Type:     schema.TypeList,
 				Required: true,
+				Description: "Clusters of the universe: one `PRIMARY` cluster, and " +
+					"optionally one `ASYNC` (read replica) cluster.",
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
 						"uuid": {
@@ -485,9 +475,10 @@ func ResourceUniverse() *schema.Resource {
 				},
 			},
 			"node_details_set": {
-				Type:     schema.TypeList,
-				Computed: true,
-				Elem:     nodeDetailsSetSchema(),
+				Type:        schema.TypeList,
+				Computed:    true,
+				Elem:        nodeDetailsSetSchema(),
+				Description: "Nodes of the universe, with their placement, addresses and state.",
 			},
 			"db_version_upgrade_options": {
 				Type:     schema.TypeList,

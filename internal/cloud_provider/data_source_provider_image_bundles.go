@@ -58,8 +58,9 @@ func ProviderImageBundles() *schema.Resource {
 					"contains this string (case-insensitive).",
 			},
 			"image_bundles": {
-				Type:     schema.TypeList,
-				Computed: true,
+				Type:        schema.TypeList,
+				Computed:    true,
+				Description: "Image bundles of the provider that match the filters.",
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
 						"uuid": {

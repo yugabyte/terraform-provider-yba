@@ -59,8 +59,8 @@ var (
 // internal, so their gates live in code only.
 func versionNote(subject string, minimum utils.YBAMinimumVersion) string {
 	release, _, _ := strings.Cut(minimum.Stable, "-")
-	return fmt.Sprintf("%s YugabyteDB Anywhere `%s` or later; "+
-		"`terraform plan` fails against an older YBA.", subject, release)
+	return fmt.Sprintf("%s YugabyteDB Anywhere %s or later. "+
+		"`terraform plan` fails on an older YBA.", subject, release)
 }
 
 // validateYBAVersion fails the plan when the target YBA predates the unified

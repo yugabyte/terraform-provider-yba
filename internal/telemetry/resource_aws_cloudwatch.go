@@ -26,53 +26,58 @@ func ResourceAWSCloudWatchTelemetryProvider() *schema.Resource {
 		resourceType: "yba_aws_cloudwatch_telemetry_provider",
 		displayName:  "AWS CloudWatch",
 		apiType:      typeAWSCloudWatch,
-		description: "AWS CloudWatch Telemetry Provider resource. Defines a " +
-			"reusable CloudWatch Logs destination that universes can use to " +
-			"export audit logs and query logs.",
+		description: "Manages an AWS CloudWatch telemetry provider in YugabyteDB " +
+			"Anywhere. Universes send logs to it, in CloudWatch Logs, through " +
+			"`yba_universe_telemetry_config`.",
+		notes: "~> **Note:** YBA accepts an AWS CloudWatch telemetry provider only in " +
+			"a log pipeline, not in `metrics`. All AWS CloudWatch and S3 " +
+			"telemetry providers that one universe uses must have the same " +
+			"`access_key` and `secret_key`.\n\n",
 		fields: map[string]*schema.Schema{
 			"log_group": {
 				Type:        schema.TypeString,
 				Required:    true,
 				ForceNew:    true,
-				Description: "CloudWatch log group.",
+				Description: "CloudWatch Logs log group.",
 			},
 			"log_stream": {
 				Type:        schema.TypeString,
 				Required:    true,
 				ForceNew:    true,
-				Description: "CloudWatch log stream.",
+				Description: "CloudWatch Logs log stream.",
 			},
 			"region": {
 				Type:        schema.TypeString,
 				Required:    true,
 				ForceNew:    true,
-				Description: "AWS region.",
+				Description: "AWS region of the log group.",
 			},
 			"access_key": {
 				Type:        schema.TypeString,
 				Required:    true,
 				ForceNew:    true,
 				Sensitive:   true,
-				Description: "AWS access key with CloudWatch permissions.",
+				Description: "AWS access key ID with permission to write to CloudWatch Logs.",
 			},
 			"secret_key": {
 				Type:        schema.TypeString,
 				Required:    true,
 				ForceNew:    true,
 				Sensitive:   true,
-				Description: "AWS secret key for the access key.",
+				Description: "AWS secret access key of `access_key`.",
 			},
 			"role_arn": {
 				Type:        schema.TypeString,
 				Optional:    true,
 				ForceNew:    true,
-				Description: "Optional IAM role ARN to assume.",
+				Description: "ARN of an IAM role to assume to write the logs.",
 			},
 			"endpoint": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				ForceNew:    true,
-				Description: "Optional override endpoint URL (e.g. for VPC endpoints).",
+				Type:     schema.TypeString,
+				Optional: true,
+				ForceNew: true,
+				Description: "CloudWatch Logs endpoint URL to use instead of the " +
+					"default, for example a VPC endpoint.",
 			},
 		},
 		buildConfig: func(d *schema.ResourceData) map[string]interface{} {

@@ -17,13 +17,18 @@ resource "yba_universe_telemetry_config" "main" {
 
     ycql_audit_config {
       log_level           = "WARNING"
-      included_categories = ["QUERY", "DML", "DDL", "DCL", "AUTH", "PREPARE", "ERROR", "OTHER"]
+      included_categories = ["DDL", "DCL", "AUTH", "ERROR"]
+      excluded_categories = ["QUERY", "DML"]
+      included_keyspaces  = ["app"]
+      excluded_keyspaces  = ["app_staging"]
+      included_users      = ["app_admin"]
+      excluded_users      = ["app_monitor"]
     }
 
     exporter {
       exporter_uuid = yba_datadog_telemetry_provider.datadog.id
       additional_tags = {
-        query_logs_key = yba_universe.main.name
+        universe = yba_universe.main.name
       }
     }
   }
@@ -41,17 +46,21 @@ resource "yba_universe_telemetry_config" "main" {
     }
 
     exporter {
-      exporter_uuid              = yba_datadog_telemetry_provider.datadog.id
-      send_batch_max_size        = 1000
-      send_batch_size            = 100
-      send_batch_timeout_seconds = 10
-      memory_limit_mib           = 2048
+      exporter_uuid = yba_datadog_telemetry_provider.datadog.id
+      additional_tags = {
+        universe = yba_universe.main.name
+      }
+      send_batch_max_size                 = 1000
+      send_batch_size                     = 100
+      send_batch_timeout_seconds          = 10
+      memory_limit_mib                    = 2048
+      memory_limit_check_interval_seconds = 10
     }
   }
 
   metrics {
-    scrape_interval_seconds = 301
-    scrape_timeout_seconds  = 60
+    scrape_interval_seconds = 60
+    scrape_timeout_seconds  = 30
     collection_level        = "NORMAL"
     scrape_config_targets = [
       "MASTER_EXPORT",
@@ -63,18 +72,19 @@ resource "yba_universe_telemetry_config" "main" {
       "OTEL_EXPORT",
     ]
 
-    # Repeat the exporter block per destination — each becomes one entry in the
-    # API's exporters array (metrics here fan out to both Prometheus and Datadog).
+    # Repeat the exporter block for each telemetry provider. Here, metrics go
+    # to both Prometheus and Datadog.
     exporter {
       exporter_uuid = yba_otlp_telemetry_provider.prometheus.id
       additional_tags = {
-        metrics_key = "muthu"
+        env = "prod"
       }
-      send_batch_max_size        = 1000
-      send_batch_size            = 100
-      send_batch_timeout_seconds = 60
-      memory_limit_mib           = 2048
-      metrics_prefix             = "ybdb."
+      send_batch_max_size                 = 1000
+      send_batch_size                     = 100
+      send_batch_timeout_seconds          = 60
+      memory_limit_mib                    = 2048
+      memory_limit_check_interval_seconds = 10
+      metrics_prefix                      = "ybdb."
     }
     exporter {
       exporter_uuid  = yba_datadog_telemetry_provider.datadog.id
@@ -82,10 +92,10 @@ resource "yba_universe_telemetry_config" "main" {
     }
   }
 
-  # Server-log pipelines: yb-master and yb-tserver glog export. They send logs
-  # to the same log destination as audit_logs and query_logs. min_level bounds
-  # the exported severity; master_logs can additionally drop a fraction of
-  # high-volume noise lines.
+  # Server-log pipelines export the logs of the database processes. They
+  # accept the same telemetry providers as audit_logs and query_logs.
+  # min_level sets the lowest severity to export. master_logs can also drop
+  # a fraction of high-volume, low-value lines.
   master_logs {
     min_level               = "INFO"
     noise_sample_drop_ratio = 0.99
@@ -104,7 +114,7 @@ resource "yba_universe_telemetry_config" "main" {
   }
 
   tserver_logs {
-    # Defaults to WARNING (not INFO) — yb-tserver INFO logs are very high volume.
+    # The default is WARNING, because yb-tserver writes many INFO lines.
     min_level = "WARNING"
 
     exporter {
@@ -112,13 +122,14 @@ resource "yba_universe_telemetry_config" "main" {
     }
   }
 
-  # The remaining server-log pipelines carry only exporter blocks.
+  # The other server-log pipelines have only exporter blocks.
   ysql_conn_mgr_logs {
     exporter {
       exporter_uuid = yba_datadog_telemetry_provider.datadog.id
     }
   }
 
+  # node_agent_logs and ynp_logs are for VM universes only.
   node_agent_logs {
     exporter {
       exporter_uuid = yba_datadog_telemetry_provider.datadog.id
@@ -137,7 +148,10 @@ resource "yba_universe_telemetry_config" "main" {
     }
   }
 
+  # Restart one server at a time, and wait 1 minute after each restart.
   upgrade_options {
-    rolling_upgrade = false
+    rolling_upgrade                    = true
+    sleep_after_master_restart_millis  = 60000
+    sleep_after_tserver_restart_millis = 60000
   }
 }

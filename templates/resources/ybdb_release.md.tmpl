@@ -8,9 +8,9 @@ description: |-
 
 {{ .Description | trimspace }}
 
-Select releases by architecture with the `yba_release_version` data source's
-`deployment_type` filter, for example to pick the latest release that ships an
-aarch64 artifact.
+To pick a release by architecture, use the `deployment_type` filter of the
+`yba_release_version` data source. For example, the filter can return the newest
+release that has an aarch64 artifact.
 
 ## Example Usage
 
@@ -20,17 +20,18 @@ aarch64 artifact.
 
 ## Import
 
-Releases can be imported using the release UUID:
+Import a release by its release UUID:
 
 ```sh
 terraform import yba_ybdb_release.ybdb_release <release-uuid>
 ```
 
-The API does not return `local_file` or `sha256`, so both stay empty after import.
-The API also hides `package_url` once YugabyteDB Anywhere has downloaded a
-Kubernetes chart, and it does not return the S3 or GCS source of an artifact
-registered through the legacy release import. On the next apply, the provider
-deletes and adds again each imported artifact whose `local_file` or `package_url`
-it could not read back. YugabyteDB Anywhere rejects this while a universe uses the
-release. The artifact block order after import follows YugabyteDB Anywhere, not the
+YugabyteDB Anywhere does not return `local_file` or `sha256`, so both are empty
+after import. YBA also does not return `package_url` after it downloads a
+Kubernetes Helm chart, or the S3 or GCS source of an artifact that its older
+release import added. On the next apply, the provider deletes and adds again each
+imported artifact whose `local_file` or `package_url` it could not read back.
+YBA rejects this while a universe uses the release. To keep these artifacts as
+they are, add `artifact` to `ignore_changes` in a `lifecycle` block. After
+import, the order of the `artifact` blocks follows YugabyteDB Anywhere, not your
 configuration.

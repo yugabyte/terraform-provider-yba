@@ -1,7 +1,7 @@
 ---
 page_title: "{{.Name}} {{.Type}} - {{.RenderedProviderName}}"
 description: |-
-{{ .Description | plainmarkdown | trimspace | prefixlines "  " }}
+{{ index (split (trimspace .Description) "\n\n") 0 | plainmarkdown | trimspace | prefixlines "  " }}
 ---
 
 # {{.Name}} ({{.Type}})
@@ -10,21 +10,21 @@ description: |-
 
 ## Example Usage
 
-YBA stores a single telemetry configuration per universe, so manage every pipeline (`audit_logs`, `query_logs`, `metrics`, and the server-log blocks) from **one** `yba_universe_telemetry_config` resource. Declaring a second resource for the same `universe_uuid` is rejected at plan time, because the two would overwrite each other on every apply.
-
 {{ tffile "examples/resources/yba_universe_telemetry_config/resource.tf" }}
 
 ### Multiple exporters per pipeline
 
-To fan a pipeline out to multiple telemetry destinations, repeat its `exporter` block **within that same resource**. The `metrics` pipeline in the example above does exactly this, shipping to both Prometheus and Datadog from the single resource:
+To send a pipeline to more than one telemetry provider, repeat its `exporter`
+block in the same resource. Do not add a second `yba_universe_telemetry_config`
+resource for the universe. The `metrics` block of the example above sends
+metrics to Prometheus and to Datadog:
 
 ```terraform
 resource "yba_universe_telemetry_config" "main" {
   universe_uuid = yba_universe.main.id
 
   metrics {
-    # Each exporter block adds one destination; do NOT add a second
-    # yba_universe_telemetry_config resource for the same universe.
+    # Each exporter block adds one telemetry provider.
     exporter {
       exporter_uuid  = yba_otlp_telemetry_provider.prometheus.id
       metrics_prefix = "ybdb."
@@ -38,3 +38,17 @@ resource "yba_universe_telemetry_config" "main" {
 ```
 
 {{ .SchemaMarkdown | trimspace }}
+
+## Import
+
+Import the telemetry configuration of a universe with the universe UUID:
+
+```sh
+terraform import yba_universe_telemetry_config.main <universe-uuid>
+```
+
+Import reads every pipeline. It does not read `upgrade_options`, because YBA
+does not return them. If the configuration sets `upgrade_options`, the first
+plan after import shows an update that adds them, and YBA rejects that update
+because no pipeline changes. To get a clean plan after import, leave
+`upgrade_options` out of the configuration until the next change to a pipeline.

@@ -8,6 +8,26 @@ description: |-
 
 {{ .Description | trimspace }}
 
+## Triggers
+
+Set `trigger_type` to one of these values:
+
+| Trigger | When the hook runs |
+| --- | --- |
+| `PreNodeProvision`, `PostNodeProvision` | Before and after YugabyteDB Anywhere provisions a node. |
+| `Pre<Task>`, `Post<Task>` | Once before and once after the whole task. |
+| `Pre<Task>NodeUpgrade`, `Post<Task>NodeUpgrade` | Before and after the task acts on each node. |
+| `ApiTriggered` | Only when you start it through the YugabyteDB Anywhere API. |
+
+`<Task>` is one of `RestartUniverse`, `SoftwareUpgrade`, `RebootUniverse`,
+`ThirdpartySoftwareUpgrade` or `ConfigureDBApis`. For example,
+`PreRestartUniverse` runs before a universe restart, and
+`PostSoftwareUpgradeNodeUpgrade` runs after the software upgrade of each node.
+
+The `ConfigureDBApis` triggers require YugabyteDB Anywhere 2025.2.0.0 or later.
+To run `ApiTriggered` hooks, set the global runtime config key
+`yb.security.custom_hooks.enable_api_triggered_hooks` to `true`.
+
 ## Example Usage
 
 {{ tffile "examples/resources/yba_hook/resource.tf" }}
@@ -19,5 +39,5 @@ description: |-
 Hooks can be imported using the hook UUID:
 
 ```sh
-terraform import yba_hook.mount_volume 4f1f66a1-6b7f-4c5e-89f2-1b9f2f31e2c3
+terraform import yba_hook.mount_volume <hook-uuid>
 ```

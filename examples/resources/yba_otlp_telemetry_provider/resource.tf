@@ -1,27 +1,23 @@
-# Generic OTLP destination (e.g. Prometheus with the OTLP receiver).
-#
-# When this resource is replaced (any field change forces a recreate),
-# Terraform first rewrites every universe whose telemetry config
-# references this provider to drop the exporter (rolling upgrade), then
-# deletes the old provider and creates the replacement. The universe
-# itself is never destroyed.
+# OTLP destination, for example Prometheus with its OTLP receiver turned on.
+# With protocol = "HTTP", endpoint is a base URL: metrics go to
+# <endpoint>/v1/metrics.
 resource "yba_otlp_telemetry_provider" "prometheus" {
   name = "prometheus"
 
-  endpoint        = "http://10.242.32.5:9091/api/v1/otlp/v1/metrics"
+  endpoint        = "http://prometheus.example.com:9090/api/v1/otlp"
   auth_type       = "NoAuth"
   protocol        = "HTTP"
   compression     = "gzip"
   timeout_seconds = 5
 
-  # Optional tags, upserted as attributes onto every exported record.
+  # Optional tags. YBA adds them as attributes to every exported record.
   tags = {
     env = "prod"
   }
 }
 
-# OTLP collector behind basic auth, with per-signal endpoint overrides
-# (HTTP protocol only) and extra headers.
+# OTLP collector behind basic authentication, with full URLs for logs and
+# metrics (HTTP protocol only) and extra headers.
 resource "yba_otlp_telemetry_provider" "collector" {
   name = "otel-collector"
 
@@ -39,7 +35,7 @@ resource "yba_otlp_telemetry_provider" "collector" {
   }
 }
 
-# OTLP endpoint authenticated with a bearer token (gRPC transport).
+# OTLP endpoint with bearer token authentication, over gRPC.
 resource "yba_otlp_telemetry_provider" "bearer" {
   name = "otel-bearer"
 

@@ -1,10 +1,10 @@
-# Look up an existing telemetry provider by name (e.g. one created outside
-# this Terraform configuration) and reference its UUID without hard-coding it.
+# Look up a telemetry provider by name, for example one created outside this
+# Terraform configuration.
 data "yba_telemetry_provider" "datadog" {
   name = "datadog"
 }
 
-# Wire the looked-up provider into a universe's audit-log export pipeline.
+# Send the audit logs of a universe to the telemetry provider.
 resource "yba_universe_telemetry_config" "example" {
   universe_uuid = var.universe_uuid
 

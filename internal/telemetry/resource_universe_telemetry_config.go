@@ -121,51 +121,76 @@ func derefFloat64(p *float64) float64 {
 	return *p
 }
 
+// codeList renders allowed values for a Description: "`A`, `B` or `C`".
+func codeList(values []string) string {
+	quoted := make([]string, len(values))
+	for i, v := range values {
+		quoted[i] = "`" + v + "`"
+	}
+	if len(quoted) < 2 {
+		return strings.Join(quoted, "")
+	}
+	return strings.Join(quoted[:len(quoted)-1], ", ") + " or " + quoted[len(quoted)-1]
+}
+
+// defaultNote renders a schema Default for a Description; tfplugindocs does
+// not print Default on its own.
+func defaultNote(v interface{}) string {
+	return fmt.Sprintf("Defaults to `%v`.", v)
+}
+
 // ResourceUniverseTelemetryConfig configures audit-log, query-log, server-log,
 // and metric export pipelines for a single universe via the unified
 // export-telemetry-configs API. Every write queues a universe upgrade task the
 // resource waits on.
 func ResourceUniverseTelemetryConfig() *schema.Resource {
 	return &schema.Resource{
-		Description: experimentalAdmonition +
-			"Universe Telemetry Config Resource. Attaches audit log, query log, " +
-			"server log (yb-master, yb-tserver, YSQL Connection Manager, " +
-			"node-agent, node provisioning, YB-Controller), and metrics export " +
-			"pipelines to a YBA universe. Each exporter references a " +
-			"telemetry provider resource (`yba_datadog_telemetry_provider`, " +
-			"`yba_otlp_telemetry_provider`, ... — or any pre-existing telemetry " +
-			"provider UUID) and triggers a rolling/non-rolling restart of the " +
-			"universe to install or update the OpenTelemetry collector.\n\n" +
+		Description: "Manages the telemetry export configuration of a universe in " +
+			"YugabyteDB Anywhere: the audit log, query log, server log and metrics " +
+			"pipelines, and the telemetry providers that each pipeline sends data " +
+			"to.\n\n" +
+			experimentalAdmonition + "\n\n" +
+			"YBA runs an OpenTelemetry Collector on the universe nodes to export " +
+			"the data.\n\n" +
 			"~> **Note:** " + versionNote("This resource requires", unifiedTelemetryAPIMin) +
-			"\n\n~> **Note:** " + versionNote("The server-log pipelines (`master_logs`, `tserver_logs`, "+
-			"`ysql_conn_mgr_logs`, `node_agent_logs`, `ynp_logs`, "+
-			"`controller_logs`) require", serverLogPipelinesMin) + "\n\n" +
-			"~> **Note:** OTLP-based exporters require the global runtime config " +
-			"`yb.telemetry.allow_otlp` to be set to `true`. Manage that with the " +
-			"`yba_runtime_config` resource.\n\n" +
-			"~> **Note:** Import an existing universe-level configuration with the " +
-			"universe UUID as the resource ID " +
-			"(`terraform import yba_universe_telemetry_config.example <universe-uuid>`).\n\n" +
-			"~> **One resource per universe:** YBA stores a single telemetry " +
-			"configuration per universe and this resource owns it wholesale — " +
-			"Terraform is the source of truth. On apply it **replaces** whatever the " +
-			"universe currently has (including anything configured out-of-band in " +
-			"the YBA UI), so manage every pipeline (`audit_logs`, `query_logs`, " +
-			"`metrics`, and the server-log blocks) from a **single** " +
-			"`yba_universe_telemetry_config` block. " +
-			"Declaring two resources for the same `universe_uuid` is rejected at " +
-			"plan time (they would otherwise overwrite each other on every apply). " +
-			"On destroy the resource disables every exporter on the universe, but " +
-			"only if a configuration still exists server-side — an already-empty " +
-			"universe is left untouched.\n\n" +
-			"~> **Dependency Note:** When `exporter_uuid` is wired through a " +
-			"reference like `yba_datadog_telemetry_provider.x.id`, Terraform's dependency " +
-			"graph automatically orders create / replace / destroy of the provider " +
-			"before this resource — there is **no need to add an explicit " +
-			"`depends_on`**. The provider's own destroy step also proactively " +
-			"detaches itself from every referencing universe before deletion, so " +
-			"a plan that destroys-and-recreates a provider in the same apply is " +
-			"safe.",
+			" " + versionNote("The server-log pipelines (`master_logs`, `tserver_logs`, "+
+			"`ysql_conn_mgr_logs`, `node_agent_logs`, `ynp_logs` and `controller_logs`) "+
+			"require", serverLogPipelinesMin) + "\n\n" +
+			"~> **Note:** Each create and each update restarts the yb-master and " +
+			"yb-tserver processes on every node of the universe. By default, YBA " +
+			"restarts one server at a time and waits 3 minutes after each restart, " +
+			"so a universe with 3 masters and 9 tservers waits 36 minutes in total. " +
+			"Use `upgrade_options` to change the wait or to restart all nodes at " +
+			"once. Destroy turns off every pipeline on the universe, which also " +
+			"restarts it. If the universe has no telemetry configuration at that " +
+			"time, destroy only removes the resource from the state.\n\n" +
+			"~> **Note:** YBA stores one telemetry configuration per universe, and " +
+			"this resource replaces all of it on each apply. A pipeline that the " +
+			"configuration does not declare is turned off, also when it was set up " +
+			"in the YBA UI. Manage all pipelines of a universe in one " +
+			"`yba_universe_telemetry_config` resource. The provider rejects a " +
+			"second resource for the same `universe_uuid` in one configuration at " +
+			"plan time. It cannot detect a second resource in another Terraform " +
+			"state.\n\n" +
+			"~> **Note:** Datadog and OTLP telemetry providers accept logs and " +
+			"metrics. Dynatrace accepts only metrics. AWS CloudWatch, GCP Cloud " +
+			"Monitoring, Splunk and S3 accept only logs. All AWS CloudWatch and S3 " +
+			"telemetry providers that one universe uses must have the same access " +
+			"key and secret key. All GCP Cloud Monitoring telemetry providers that " +
+			"one universe uses must have the same credentials.\n\n" +
+			"~> **Note:** On a Kubernetes universe, `node_agent_logs` and " +
+			"`ynp_logs` are not available. Audit log export needs YugabyteDB " +
+			"2025.1.0.0 or later on the universe, and the other pipelines need " +
+			"YugabyteDB 2026.1.2.0 or later. `metrics` must set " +
+			"`scrape_config_targets` to a subset of `MASTER_EXPORT`, " +
+			"`TSERVER_EXPORT`, `YSQL_EXPORT`, `CQL_EXPORT` and `OTEL_EXPORT`.\n\n" +
+			"~> **Note:** When `exporter_uuid` refers to a telemetry provider " +
+			"resource, Terraform orders the work itself, and `depends_on` is not " +
+			"needed. When an apply replaces a telemetry provider that this " +
+			"universe uses, the universe restarts twice. The first restart removes " +
+			"the old telemetry provider before Terraform deletes it. A pipeline " +
+			"whose only exporter was the old telemetry provider stays off until " +
+			"the second restart, which adds the new telemetry provider.",
 
 		CreateContext: resourceUniverseTelemetryConfigCreate,
 		ReadContext:   resourceUniverseTelemetryConfigRead,
@@ -190,7 +215,7 @@ func ResourceUniverseTelemetryConfig() *schema.Resource {
 				Type:        schema.TypeString,
 				Required:    true,
 				ForceNew:    true,
-				Description: "UUID of the universe whose telemetry pipelines are managed.",
+				Description: "UUID of the universe. A change replaces the resource.",
 			},
 			"audit_logs":         auditLogsSchema(),
 			"query_logs":         queryLogsSchema(),
@@ -198,44 +223,47 @@ func ResourceUniverseTelemetryConfig() *schema.Resource {
 			"master_logs":        masterLogsSchema(),
 			"tserver_logs":       tserverLogsSchema(),
 			"ysql_conn_mgr_logs": serverLogsSchema("YSQL Connection Manager", kubernetesLogsNote),
-			"node_agent_logs":    serverLogsSchema("node-agent", vmOnlyLogsNote),
+			"node_agent_logs":    serverLogsSchema("Node agent", vmOnlyLogsNote),
 			"ynp_logs":           serverLogsSchema("YNP (node provisioning)", vmOnlyLogsNote),
 			"controller_logs":    serverLogsSchema("YB-Controller", kubernetesLogsNote),
 			"upgrade_options": {
 				Type:     schema.TypeList,
 				Optional: true,
 				MaxItems: 1,
-				Description: "Optional rolling-restart options applied while reconfiguring " +
-					"the universe.\n\n" +
-					"~> **Performance Note:** The `sleep_after_*_restart_millis` defaults " +
-					"of 180000 (3 minutes) are applied per node. A 9-node universe " +
-					"therefore spends ~27 minutes just sleeping between restarts on top " +
-					"of the actual restart work. Lower these values for faster reconfigures " +
-					"on healthy clusters, or raise them for clusters under heavy traffic.",
+				Description: "Options for the restart that applies each change. YBA " +
+					"uses them only with a change to a pipeline, and rejects an apply " +
+					"that changes only `upgrade_options`. Lower the wait times to " +
+					"apply a change faster on a universe with a light load, and raise " +
+					"them for a universe under heavy load.",
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
 						"rolling_upgrade": {
 							Type:     schema.TypeBool,
 							Optional: true,
 							Default:  true,
-							Description: "Perform a rolling restart (default true). " +
-								"Set to false to restart all nodes at once.",
+							Description: "Restart one server at a time. Set to `false` " +
+								"to restart all nodes at once, which makes the universe " +
+								"unavailable during the restart. Defaults to `true`.",
 						},
 						"sleep_after_master_restart_millis": {
 							Type:         schema.TypeInt,
 							Optional:     true,
 							Default:      180000,
 							ValidateFunc: validation.IntBetween(0, math.MaxInt32),
-							Description: "Sleep between master restarts (ms). Defaults to " +
-								"180000 (3 minutes).",
+							Description: "Time, in milliseconds, that YBA waits after it " +
+								"restarts each yb-master. Defaults to `180000` (3 minutes). " +
+								"`0` uses the YBA runtime config " +
+								"`yb.upgrade.sleep_after_master_restart_ms`.",
 						},
 						"sleep_after_tserver_restart_millis": {
 							Type:         schema.TypeInt,
 							Optional:     true,
 							Default:      180000,
 							ValidateFunc: validation.IntBetween(0, math.MaxInt32),
-							Description: "Sleep between tserver restarts (ms). Defaults to " +
-								"180000 (3 minutes).",
+							Description: "Time, in milliseconds, that YBA waits after it " +
+								"restarts each yb-tserver. Defaults to `180000` (3 minutes). " +
+								"`0` uses the YBA runtime config " +
+								"`yb.upgrade.sleep_after_tserver_restart_ms`.",
 						},
 					},
 				},
@@ -246,22 +274,20 @@ func ResourceUniverseTelemetryConfig() *schema.Resource {
 
 func auditLogsSchema() *schema.Schema {
 	return &schema.Schema{
-		Type:        schema.TypeList,
-		Optional:    true,
-		MaxItems:    1,
-		Description: "Audit log export configuration. Omit to disable audit log export.",
+		Type:     schema.TypeList,
+		Optional: true,
+		MaxItems: 1,
+		Description: "Audit logging and audit log export. Omit the block to turn " +
+			"off audit logging and its export.",
 		Elem: &schema.Resource{
 			Schema: map[string]*schema.Schema{
 				"ysql_audit_config": {
 					Type:     schema.TypeList,
 					Optional: true,
 					MaxItems: 1,
-					Description: "YSQL audit (pgaudit) logging configuration. Declaring this " +
-						"block enables YSQL audit logging on the universe — YBA derives " +
-						"`enabled` from the block's presence, so there is no `enabled` " +
-						"field; omit the block to disable. The YBA API marks every field " +
-						"below `required` with no server default, so the `Default` values " +
-						"are **provider defaults** chosen to mirror the YBA UI.",
+					Description: "YSQL audit logging, through the pgaudit extension. " +
+						"The block turns on YSQL audit logging. Omit it to turn YSQL " +
+						"audit logging off.",
 					Elem: &schema.Resource{
 						Schema: map[string]*schema.Schema{
 							"classes": {
@@ -274,22 +300,24 @@ func auditLogsSchema() *schema.Schema {
 										false,
 									),
 								},
-								Description: "YSQL audit log classes (e.g. READ, WRITE, DDL, ROLE).",
+								Description: "Sets `pgaudit.log`: the classes of statements " +
+									"to log. Allowed values: " +
+									codeList(allowedYSQLAuditClasses) + ".",
 							},
 							"log_catalog": {
 								Type:     schema.TypeBool,
 								Optional: true,
 								Default:  true,
 								Description: "Sets `pgaudit.log_catalog`: also log statements " +
-									"whose relations are all in `pg_catalog`. Set to false to " +
-									"drop the catalog lookups that tools make.",
+									"whose relations are all in `pg_catalog`. Set to `false` to " +
+									"drop the catalog lookups that tools make. Defaults to `true`.",
 							},
 							"log_client": {
 								Type:     schema.TypeBool,
 								Optional: true,
 								Default:  true,
 								Description: "Sets `pgaudit.log_client`: also send audit " +
-									"messages to the client, such as ysqlsh.",
+									"messages to the client, such as ysqlsh. Defaults to `true`.",
 							},
 							"log_level": {
 								Type:     schema.TypeString,
@@ -301,14 +329,15 @@ func auditLogsSchema() *schema.Schema {
 								),
 								Description: "Sets `pgaudit.log_level`: the severity of the " +
 									"audit messages sent to the client. Applies only when " +
-									"`log_client` is true.",
+									"`log_client` is `true`. Allowed values: " +
+									codeList(allowedYSQLAuditLogLevels) + ". Defaults to `LOG`.",
 							},
 							"log_parameter": {
 								Type:     schema.TypeBool,
 								Optional: true,
 								Default:  false,
 								Description: "Sets `pgaudit.log_parameter`: include the " +
-									"statement parameters in the audit log.",
+									"statement parameters in the audit log. Defaults to `false`.",
 							},
 							"log_parameter_max_size": {
 								Type:         schema.TypeInt,
@@ -317,8 +346,9 @@ func auditLogsSchema() *schema.Schema {
 								ValidateFunc: validation.IntBetween(0, math.MaxInt32),
 								Description: "Sets `pgaudit.log_parameter_max_size`: the " +
 									"largest parameter, in bytes, to log when `log_parameter` " +
-									"is true. A longer parameter is replaced with " +
-									"`<long param suppressed>`. 0 logs every parameter.",
+									"is `true`. A longer parameter is replaced with " +
+									"`<long param suppressed>`. `0` logs every parameter. " +
+									"Defaults to `0`.",
 							},
 							"log_relation": {
 								Type:     schema.TypeBool,
@@ -326,21 +356,22 @@ func auditLogsSchema() *schema.Schema {
 								Default:  false,
 								Description: "Sets `pgaudit.log_relation`: write a separate " +
 									"entry for each relation that a SELECT or DML statement " +
-									"references.",
+									"references. Defaults to `false`.",
 							},
 							"log_rows": {
 								Type:     schema.TypeBool,
 								Optional: true,
 								Default:  false,
 								Description: "Sets `pgaudit.log_rows`: include the number of " +
-									"rows that the statement retrieved or changed.",
+									"rows that the statement retrieved or changed. Defaults to " +
+									"`false`.",
 							},
 							"log_statement": {
 								Type:     schema.TypeBool,
 								Optional: true,
 								Default:  true,
 								Description: "Sets `pgaudit.log_statement`: include the " +
-									"statement text and parameters.",
+									"statement text and parameters. Defaults to `true`.",
 							},
 							"log_statement_once": {
 								Type:     schema.TypeBool,
@@ -348,7 +379,7 @@ func auditLogsSchema() *schema.Schema {
 								Default:  false,
 								Description: "Sets `pgaudit.log_statement_once`: include the " +
 									"statement text and parameters only in the first entry " +
-									"for a statement or sub-statement.",
+									"for a statement or sub-statement. Defaults to `false`.",
 							},
 						},
 					},
@@ -357,11 +388,8 @@ func auditLogsSchema() *schema.Schema {
 					Type:     schema.TypeList,
 					Optional: true,
 					MaxItems: 1,
-					Description: "YCQL audit logging configuration. Declaring this block " +
-						"enables YCQL audit logging — YBA derives `enabled` from the " +
-						"block's presence, so there is no `enabled` field; omit the block " +
-						"to disable. `log_level`'s `Default` is a **provider default** " +
-						"(the YBA API requires the field but defines no default).",
+					Description: "YCQL audit logging. The block turns on YCQL audit " +
+						"logging. Omit it to turn YCQL audit logging off.",
 					Elem: &schema.Resource{
 						Schema: map[string]*schema.Schema{
 							"log_level": {
@@ -374,7 +402,9 @@ func auditLogsSchema() *schema.Schema {
 								),
 								Description: "Sets `ycql_audit_log_level`: the severity of " +
 									"audit records, which selects the yb-tserver log file " +
-									"they go to.",
+									"they go to. Allowed values: " +
+									codeList(allowedYCQLAuditLogLevels) +
+									". Defaults to `WARNING`.",
 							},
 							"included_categories": {
 								Type:     schema.TypeSet,
@@ -387,7 +417,8 @@ func auditLogsSchema() *schema.Schema {
 									),
 								},
 								Description: "Sets `ycql_audit_included_categories`: the " +
-									"statement categories to audit.",
+									"statement categories to audit. Allowed values: " +
+									codeList(allowedYCQLAuditCategories) + ".",
 							},
 							"excluded_categories": {
 								Type:     schema.TypeSet,
@@ -400,7 +431,8 @@ func auditLogsSchema() *schema.Schema {
 									),
 								},
 								Description: "Sets `ycql_audit_excluded_categories`: the " +
-									"statement categories not to audit.",
+									"statement categories not to audit. Allowed values: " +
+									codeList(allowedYCQLAuditCategories) + ".",
 							},
 							"included_keyspaces": {
 								Type:        schema.TypeSet,
@@ -433,20 +465,23 @@ func auditLogsSchema() *schema.Schema {
 				"exporter": {
 					Type:     schema.TypeList,
 					Optional: true,
-					Description: "Exporter (telemetry destination) for audit logs. Repeat " +
-						"this block to send to more than one destination.",
+					Description: "Telemetry provider that receives the audit logs. " +
+						"Repeat the block to send them to more than one telemetry " +
+						"provider. A telemetry provider can appear only once in a pipeline.",
 					Elem: &schema.Resource{
 						Schema: map[string]*schema.Schema{
 							"exporter_uuid": {
 								Type:        schema.TypeString,
 								Required:    true,
-								Description: "UUID of the telemetry provider to send audit logs to.",
+								Description: "UUID of the telemetry provider.",
 							},
 							"additional_tags": {
-								Type:        schema.TypeMap,
-								Optional:    true,
-								Description: "Additional string tags appended to each audit log record.",
-								Elem:        &schema.Schema{Type: schema.TypeString},
+								Type:     schema.TypeMap,
+								Optional: true,
+								Description: "Tags that YBA adds as attributes to each audit " +
+									"log record. A tag here overrides a telemetry provider tag " +
+									"with the same key.",
+								Elem: &schema.Schema{Type: schema.TypeString},
 							},
 						},
 					},
@@ -458,21 +493,19 @@ func auditLogsSchema() *schema.Schema {
 
 func queryLogsSchema() *schema.Schema {
 	return &schema.Schema{
-		Type:        schema.TypeList,
-		Optional:    true,
-		MaxItems:    1,
-		Description: "Query log export configuration. Omit to disable query log export.",
+		Type:     schema.TypeList,
+		Optional: true,
+		MaxItems: 1,
+		Description: "Query logging and query log export. Omit the block to turn " +
+			"off query logging and its export.",
 		Elem: &schema.Resource{
 			Schema: map[string]*schema.Schema{
 				"ysql_query_log_config": {
 					Type:     schema.TypeList,
 					Optional: true,
 					MaxItems: 1,
-					Description: "YSQL query logging configuration. Declaring this block " +
-						"enables YSQL query logging — YBA derives `enabled` from the " +
-						"block's presence, so there is no `enabled` field; omit the block " +
-						"to disable. `Default` values are sourced from the YBA API's own " +
-						"`default:` (via the generated client) so they track the server.",
+					Description: "YSQL query logging. The block turns on YSQL query " +
+						"logging. Omit it to turn YSQL query logging off.",
 					Elem: &schema.Resource{
 						Schema: map[string]*schema.Schema{
 							"log_statement": {
@@ -484,14 +517,17 @@ func queryLogsSchema() *schema.Schema {
 									false,
 								),
 								Description: "Sets `log_statement`: which SQL statements to " +
-									"log. `MOD` logs DDL and data-changing statements.",
+									"log. Allowed values: " + codeList(allowedQueryLogStatements) +
+									". `MOD` logs DDL and data-changing statements. " +
+									defaultNote(queryLogDefaults.LogStatement),
 							},
 							"log_min_error_statement": {
 								Type:     schema.TypeString,
 								Optional: true,
 								Default:  queryLogDefaults.LogMinErrorStatement,
 								Description: "Sets `log_min_error_statement`: the lowest " +
-									"error severity that logs the statement that caused it.",
+									"error severity that logs the statement that caused it. " +
+									defaultNote(queryLogDefaults.LogMinErrorStatement),
 							},
 							"log_error_verbosity": {
 								Type:     schema.TypeString,
@@ -502,35 +538,39 @@ func queryLogsSchema() *schema.Schema {
 									false,
 								),
 								Description: "Sets `log_error_verbosity`: how much detail " +
-									"each logged message carries.",
+									"each logged message carries. Allowed values: " +
+									codeList(allowedQueryErrorVerbosity) + ". " +
+									defaultNote(queryLogDefaults.LogErrorVerbosity),
 							},
 							"log_duration": {
 								Type:     schema.TypeBool,
 								Optional: true,
 								Default:  queryLogDefaults.LogDuration,
 								Description: "Sets `log_duration`: log the duration of every " +
-									"completed statement.",
+									"completed statement. " + defaultNote(queryLogDefaults.LogDuration),
 							},
 							"debug_print_plan": {
 								Type:     schema.TypeBool,
 								Optional: true,
 								Default:  queryLogDefaults.DebugPrintPlan,
 								Description: "Sets `debug_print_plan`: log the execution " +
-									"plan of every query.",
+									"plan of every query. " + defaultNote(queryLogDefaults.DebugPrintPlan),
 							},
 							"log_connections": {
 								Type:     schema.TypeBool,
 								Optional: true,
 								Default:  queryLogDefaults.LogConnections,
 								Description: "Sets `log_connections`: log each connection " +
-									"attempt and each completed client authentication.",
+									"attempt and each completed client authentication. " +
+									defaultNote(queryLogDefaults.LogConnections),
 							},
 							"log_disconnections": {
 								Type:     schema.TypeBool,
 								Optional: true,
 								Default:  queryLogDefaults.LogDisconnections,
 								Description: "Sets `log_disconnections`: log each session " +
-									"end, with the session duration.",
+									"end, with the session duration. " +
+									defaultNote(queryLogDefaults.LogDisconnections),
 							},
 							"log_min_duration_statement": {
 								Type:     schema.TypeInt,
@@ -540,7 +580,8 @@ func queryLogsSchema() *schema.Schema {
 								ValidateFunc: validation.IntBetween(-1, math.MaxInt32),
 								Description: "Sets `log_min_duration_statement`: log each " +
 									"statement that runs for at least this many " +
-									"milliseconds. -1 turns this off; 0 logs every statement.",
+									"milliseconds. `-1` turns this off, and `0` logs every " +
+									"statement. " + defaultNote(queryLogDefaults.LogMinDurationStatement),
 							},
 						},
 					},
@@ -556,7 +597,7 @@ func metricsSchema() *schema.Schema {
 		Type:        schema.TypeList,
 		Optional:    true,
 		MaxItems:    1,
-		Description: "Metric export configuration. Omit to disable metric export.",
+		Description: "Metric export. Omit the block to turn off metric export.",
 		Elem: &schema.Resource{
 			Schema: map[string]*schema.Schema{
 				"scrape_interval_seconds": {
@@ -564,14 +605,16 @@ func metricsSchema() *schema.Schema {
 					Optional:     true,
 					Default:      derefInt32(metricsDefaults.ScrapeIntervalSeconds),
 					ValidateFunc: validation.IntBetween(1, math.MaxInt32),
-					Description:  "Seconds between scrapes of each scrape target.",
+					Description: "Seconds between two scrapes of each target. " +
+						defaultNote(derefInt32(metricsDefaults.ScrapeIntervalSeconds)),
 				},
 				"scrape_timeout_seconds": {
 					Type:         schema.TypeInt,
 					Optional:     true,
 					Default:      derefInt32(metricsDefaults.ScrapeTimeoutSeconds),
 					ValidateFunc: validation.IntBetween(1, math.MaxInt32),
-					Description:  "Timeout of each scrape, in seconds.",
+					Description: "Timeout of each scrape, in seconds. " +
+						defaultNote(derefInt32(metricsDefaults.ScrapeTimeoutSeconds)),
 				},
 				"collection_level": {
 					Type:         schema.TypeString,
@@ -579,7 +622,8 @@ func metricsSchema() *schema.Schema {
 					Default:      derefString(metricsDefaults.CollectionLevel),
 					ValidateFunc: validation.StringInSlice(allowedCollectionLevels, false),
 					Description: "Which metrics to collect: `ALL`, `NORMAL`, `TABLE_OFF` " +
-						"(no table-level metrics), `MINIMAL`, or `OFF`.",
+						"(no table-level metrics), `MINIMAL` or `OFF`. " +
+						defaultNote(derefString(metricsDefaults.CollectionLevel)),
 				},
 				"scrape_config_targets": {
 					Type:     schema.TypeSet,
@@ -591,8 +635,9 @@ func metricsSchema() *schema.Schema {
 						Type:         schema.TypeString,
 						ValidateFunc: validation.StringInSlice(allowedScrapeTargets, false),
 					},
-					Description: "Scrape target types to include. Omit to let YBA " +
-						"include all supported targets.",
+					Description: "Targets to scrape. Allowed values: " +
+						codeList(allowedScrapeTargets) + ". When not set, YBA scrapes " +
+						"all targets. A Kubernetes universe requires this argument.",
 				},
 				"exporter": metricsExporterSchema(),
 			},
@@ -623,7 +668,7 @@ func batchingSchema(defaults batchingDefaults) map[string]*schema.Schema {
 			Optional:     true,
 			Default:      int(def),
 			ValidateFunc: validation.IntBetween(1, math.MaxInt32),
-			Description:  description,
+			Description:  description + " " + defaultNote(def),
 		}
 	}
 	return map[string]*schema.Schema{
@@ -650,21 +695,24 @@ func queryLogsExporterSchema() *schema.Schema {
 		"exporter_uuid": {
 			Type:        schema.TypeString,
 			Required:    true,
-			Description: "UUID of the telemetry provider that receives the data.",
+			Description: "UUID of the telemetry provider.",
 		},
 		"additional_tags": {
-			Type:        schema.TypeMap,
-			Optional:    true,
-			Description: "Additional string tags appended to each record.",
-			Elem:        &schema.Schema{Type: schema.TypeString},
+			Type:     schema.TypeMap,
+			Optional: true,
+			Description: "Tags that YBA adds as attributes to each query log " +
+				"record. A tag here overrides a telemetry provider tag with the " +
+				"same key.",
+			Elem: &schema.Schema{Type: schema.TypeString},
 		},
 	}
 	maps.Copy(s, batchingSchema(queryExporterDefaults))
 	return &schema.Schema{
 		Type:     schema.TypeList,
 		Optional: true,
-		Description: "Exporter (telemetry destination). Repeat this block to send to " +
-			"more than one destination.",
+		Description: "Telemetry provider that receives the query logs. Repeat " +
+			"the block to send them to more than one telemetry provider. A " +
+			"telemetry provider can appear only once in a pipeline.",
 		Elem: &schema.Resource{Schema: s},
 	}
 }
@@ -674,26 +722,28 @@ func metricsExporterSchema() *schema.Schema {
 		"exporter_uuid": {
 			Type:        schema.TypeString,
 			Required:    true,
-			Description: "UUID of the telemetry provider that receives the metric data.",
+			Description: "UUID of the telemetry provider.",
 		},
 		"additional_tags": {
-			Type:        schema.TypeMap,
-			Optional:    true,
-			Description: "Additional string tags appended to each metric.",
-			Elem:        &schema.Schema{Type: schema.TypeString},
+			Type:     schema.TypeMap,
+			Optional: true,
+			Description: "Tags that YBA adds as attributes to each metric. A tag " +
+				"here overrides a telemetry provider tag with the same key.",
+			Elem: &schema.Schema{Type: schema.TypeString},
 		},
 		"metrics_prefix": {
 			Type:        schema.TypeString,
 			Optional:    true,
-			Description: "Optional prefix prepended to every metric name.",
+			Description: "Prefix that YBA adds to the name of each metric.",
 		},
 	}
 	maps.Copy(s, batchingSchema(metricExporterDefaults))
 	return &schema.Schema{
 		Type:     schema.TypeList,
 		Optional: true,
-		Description: "Metric exporter (telemetry destination). Repeat this block to " +
-			"send metrics to more than one destination.",
+		Description: "Telemetry provider that receives the metrics. Repeat the " +
+			"block to send them to more than one telemetry provider. A telemetry " +
+			"provider can appear only once in a pipeline.",
 		Elem: &schema.Resource{Schema: s},
 	}
 }
@@ -715,9 +765,9 @@ func serverLogsElem(extra map[string]*schema.Schema) *schema.Resource {
 // Kubernetes universes, so the docs state these rules and the server enforces
 // them.
 const (
-	vmOnlyLogsNote     = "VM universes only: YBA rejects this block on a Kubernetes universe."
-	kubernetesLogsNote = "On a Kubernetes universe, YBA also requires the universe's " +
-		"YugabyteDB version to be `2026.1.2.0` or later."
+	vmOnlyLogsNote     = "Not available on a Kubernetes universe."
+	kubernetesLogsNote = "On a Kubernetes universe, YBA also requires YugabyteDB " +
+		"2026.1.2.0 or later on the universe."
 )
 
 func serverLogsSchema(display, platformNote string) *schema.Schema {
@@ -725,9 +775,8 @@ func serverLogsSchema(display, platformNote string) *schema.Schema {
 		Type:     schema.TypeList,
 		Optional: true,
 		MaxItems: 1,
-		Description: display + " log export configuration. Omit to disable " +
-			display + " log export. " + versionNote("Requires", serverLogPipelinesMin) +
-			" " + platformNote,
+		Description: display + " log export. Omit the block to turn it off. " +
+			versionNote("Requires", serverLogPipelinesMin) + " " + platformNote,
 		Elem: serverLogsElem(nil),
 	}
 }
@@ -737,9 +786,8 @@ func masterLogsSchema() *schema.Schema {
 		Type:     schema.TypeList,
 		Optional: true,
 		MaxItems: 1,
-		Description: "yb-master log export configuration. Omit to disable " +
-			"yb-master log export. " + versionNote("Requires", serverLogPipelinesMin) +
-			" " + kubernetesLogsNote,
+		Description: "yb-master log export. Omit the block to turn it off. " +
+			versionNote("Requires", serverLogPipelinesMin) + " " + kubernetesLogsNote,
 		Elem: serverLogsElem(map[string]*schema.Schema{
 			"min_level": serverLogMinLevelSchema(
 				"yb-master", derefString(masterLogsDefaults.MinLevel), ""),
@@ -748,10 +796,9 @@ func masterLogsSchema() *schema.Schema {
 				Optional:     true,
 				Default:      derefFloat64(masterLogsDefaults.NoiseSampleDropRatio),
 				ValidateFunc: validation.FloatBetween(0, 1),
-				Description: "Fraction (0.0-1.0) of high-volume, low-value noise " +
-					"log lines to drop. Set to 0.0 to keep every line. `Default` " +
-					"is sourced from the YBA API's own `default:` (via the " +
-					"generated client) so it tracks the server.",
+				Description: "Fraction, from `0.0` to `1.0`, of the high-volume, " +
+					"low-value log lines to drop. `0.0` keeps every line. " +
+					defaultNote(derefFloat64(masterLogsDefaults.NoiseSampleDropRatio)),
 			},
 		}),
 	}
@@ -762,14 +809,13 @@ func tserverLogsSchema() *schema.Schema {
 		Type:     schema.TypeList,
 		Optional: true,
 		MaxItems: 1,
-		Description: "yb-tserver log export configuration. Omit to disable " +
-			"yb-tserver log export. " + versionNote("Requires", serverLogPipelinesMin) +
-			" " + kubernetesLogsNote,
+		Description: "yb-tserver log export. Omit the block to turn it off. " +
+			versionNote("Requires", serverLogPipelinesMin) + " " + kubernetesLogsNote,
 		Elem: serverLogsElem(map[string]*schema.Schema{
 			"min_level": serverLogMinLevelSchema(
 				"yb-tserver", derefString(tserverLogsDefaults.MinLevel),
-				" The default is higher than yb-master's because yb-tserver "+
-					"INFO logs are very high volume."),
+				" The default is higher than for yb-master, because yb-tserver "+
+					"writes many INFO lines."),
 		}),
 	}
 }
@@ -780,10 +826,9 @@ func serverLogMinLevelSchema(process, defaultLevel, note string) *schema.Schema 
 		Optional:     true,
 		Default:      defaultLevel,
 		ValidateFunc: validation.StringInSlice(allowedServerLogLevels, false),
-		Description: "Minimum " + process + " glog severity to export; lines " +
-			"below this level are dropped. `Default` is sourced from the YBA " +
-			"API's own `default:` (via the generated client) so it tracks the " +
-			"server." + note,
+		Description: "Lowest " + process + " log severity to export. YBA drops " +
+			"lines below this severity. Allowed values: " +
+			codeList(allowedServerLogLevels) + ". " + defaultNote(defaultLevel) + note,
 	}
 }
 
@@ -792,21 +837,23 @@ func serverLogsExporterSchema() *schema.Schema {
 		"exporter_uuid": {
 			Type:        schema.TypeString,
 			Required:    true,
-			Description: "UUID of the telemetry provider that receives the log data.",
+			Description: "UUID of the telemetry provider.",
 		},
 		"additional_tags": {
-			Type:        schema.TypeMap,
-			Optional:    true,
-			Description: "Additional string tags appended to each log record.",
-			Elem:        &schema.Schema{Type: schema.TypeString},
+			Type:     schema.TypeMap,
+			Optional: true,
+			Description: "Tags that YBA adds as attributes to each log record. A " +
+				"tag here overrides a telemetry provider tag with the same key.",
+			Elem: &schema.Schema{Type: schema.TypeString},
 		},
 	}
 	maps.Copy(s, batchingSchema(serverLogsExporterDefaults))
 	return &schema.Schema{
 		Type:     schema.TypeList,
 		Optional: true,
-		Description: "Exporter (telemetry destination). Repeat this block to send to " +
-			"more than one destination.",
+		Description: "Telemetry provider that receives the logs. Repeat the " +
+			"block to send them to more than one telemetry provider. A telemetry " +
+			"provider can appear only once in a pipeline.",
 		Elem: &schema.Resource{Schema: s},
 	}
 }

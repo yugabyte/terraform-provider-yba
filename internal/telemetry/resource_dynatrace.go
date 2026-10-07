@@ -26,26 +26,29 @@ func ResourceDynatraceTelemetryProvider() *schema.Resource {
 		resourceType: "yba_dynatrace_telemetry_provider",
 		displayName:  "Dynatrace",
 		apiType:      typeDynatrace,
-		description: "Dynatrace Telemetry Provider resource. Defines a reusable " +
-			"Dynatrace OTLP ingest destination that universes can use to export " +
-			"metrics.\n\n" +
-			"~> **Note:** YBA allows Dynatrace only as a **metrics** exporter — " +
-			"it cannot be referenced from a universe's audit log or query log " +
-			"exporter lists.",
+		description: "Manages a Dynatrace telemetry provider in YugabyteDB Anywhere. " +
+			"Universes send metrics to it through `yba_universe_telemetry_config`.",
+		notes: "~> **Note:** Requires YugabyteDB Anywhere 2025.2.0.0 or later. YBA " +
+			"accepts a Dynatrace telemetry provider only in a `metrics` " +
+			"exporter. It rejects one in a log pipeline, such as `audit_logs`, " +
+			"`query_logs` or a server-log block.\n\n",
 		fields: map[string]*schema.Schema{
 			"endpoint": {
 				Type:     schema.TypeString,
 				Required: true,
 				ForceNew: true,
-				Description: "Dynatrace OTLP ingest base URL " +
-					"(e.g. https://<env>.live.dynatrace.com/api/v2/otlp).",
+				Description: "URL of the Dynatrace environment, such as " +
+					"`https://<environment-id>.live.dynatrace.com`. YBA appends " +
+					"`/api/v2/otlp` to it.",
 			},
 			"api_token": {
-				Type:        schema.TypeString,
-				Required:    true,
-				ForceNew:    true,
-				Sensitive:   true,
-				Description: "Dynatrace ingest access token.",
+				Type:      schema.TypeString,
+				Required:  true,
+				ForceNew:  true,
+				Sensitive: true,
+				Description: "Dynatrace API token. When YBA creates the telemetry " +
+					"provider, it checks that the token has the scopes " +
+					"`metrics.ingest`, `logs.ingest` and `openTelemetryTrace.ingest`.",
 			},
 		},
 		buildConfig: func(d *schema.ResourceData) map[string]interface{} {

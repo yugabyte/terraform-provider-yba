@@ -36,13 +36,15 @@ import (
 // delete for it. So there is nothing here to declare, only a UUID to look up.
 func DataSourcePACollector() *schema.Resource {
 	return &schema.Resource{
-		Description: "Perf Advisor Collector data source. Looks up the " +
-			"collector that scrapes universes for Perf Advisor, so its UUID " +
-			"can be passed to `yba_universe_perf_advisor_registration`.\n\n" +
-			"~> **Note:** The embedded collector is created and managed by " +
-			"YBA itself and cannot be declared in Terraform. With no filter " +
-			"this data source returns the single configured collector, and " +
-			"errors if there is more than one.",
+		Description: "Looks up a Perf Advisor collector in YugabyteDB " +
+			"Anywhere. Pass its UUID to `yba_universe_perf_advisor_registration` " +
+			"to register a universe with it.\n\n" +
+			"~> **Note:** This data source requires YugabyteDB Anywhere " +
+			"2026.1.0.0 or later.\n\n" +
+			"YBA creates and manages the embedded collector itself, so " +
+			"Terraform only looks it up. Without `uuid`, the data source " +
+			"returns the only collector, and fails when there is more than " +
+			"one.",
 
 		ReadContext: dataSourcePACollectorRead,
 
@@ -52,43 +54,45 @@ func DataSourcePACollector() *schema.Resource {
 
 		Schema: map[string]*schema.Schema{
 			"uuid": {
-				Type:        schema.TypeString,
-				Optional:    true,
-				Computed:    true,
-				Description: "UUID of the collector. Set to select a specific one.",
+				Type:     schema.TypeString,
+				Optional: true,
+				Computed: true,
+				Description: "UUID of the collector. Set it to select one " +
+					"collector when there is more than one.",
 			},
 			"pa_url": {
 				Type:        schema.TypeString,
 				Computed:    true,
-				Description: "URL of the Perf Advisor the collector runs against.",
+				Description: "URL of the collector.",
 			},
 			"yba_url": {
 				Type:        schema.TypeString,
 				Computed:    true,
-				Description: "URL the collector uses to reach this YBA.",
+				Description: "URL that the collector uses to reach YBA.",
 			},
 			"metrics_url": {
-				Type:        schema.TypeString,
-				Computed:    true,
-				Description: "URL of the Prometheus the collector scrapes.",
+				Type:     schema.TypeString,
+				Computed: true,
+				Description: "URL of the Prometheus that the collector reads " +
+					"metrics from.",
 			},
 			"metrics_scrape_period_secs": {
 				Type:        schema.TypeInt,
 				Computed:    true,
-				Description: "Scrape interval, in seconds.",
+				Description: "Interval between metric scrapes, in seconds.",
 			},
 			"embedded": {
 				Type:     schema.TypeBool,
 				Computed: true,
-				Description: "True when this is the embedded Perf Advisor that " +
-					"YBA manages itself.",
+				Description: "`true` for the embedded collector, which YBA " +
+					"creates and manages itself.",
 			},
 			"in_use_status": {
 				Type:     schema.TypeString,
 				Computed: true,
-				Description: "Whether any universe is registered with this " +
-					"collector: IN_USE, NOT_IN_USE, or ERROR when the " +
-					"collector could not be reached.",
+				Description: "`IN_USE` when a universe is registered with the " +
+					"collector, `NOT_IN_USE` when none is, or `ERROR` when YBA " +
+					"cannot reach the collector.",
 			},
 		},
 	}
