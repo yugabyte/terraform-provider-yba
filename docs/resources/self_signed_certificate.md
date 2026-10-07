@@ -62,7 +62,7 @@ resource "yba_self_signed_certificate" "byo" {
 
 ### Required
 
-- `label` (String) Name of the certificate configuration in YugabyteDB Anywhere. Must be unique per customer. A change forces replacement.
+- `label` (String) Name of the certificate configuration in YugabyteDB Anywhere. Must be unique per customer. In the generated mode, no other self-signed certificate configuration can have a label that starts with this label: YugabyteDB Anywhere would add a `~N` suffix to the new label, so the provider fails the create instead. In this comparison, `_` matches any one character and `%` matches any characters. A change forces replacement.
 
 ### Optional
 

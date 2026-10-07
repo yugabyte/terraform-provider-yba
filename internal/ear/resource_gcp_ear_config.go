@@ -20,10 +20,12 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/structure"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 
+	"github.com/yugabyte/terraform-provider-yba/internal/api"
 	"github.com/yugabyte/terraform-provider-yba/internal/utils"
 )
 
@@ -52,13 +54,18 @@ var gcpSettingAttrs = map[string]string{
 	"project_id":       gcpKeyProjectID,
 }
 
-// gcpHostIdentityRequirement is the version gate of USE_GCP_IAM and
-// GCP_PROJECT_ID (yugabyte-db commit 7252ad16745, master, 2026-09-21; not on
-// the 2026.1 branch). It renders into the resource docs, which name stable
+// gcpHostIdentityMin is the first build with USE_GCP_IAM and GCP_PROJECT_ID:
+// yugabyte-db commit 7252ad16745, first in 2.31.0.0-b473. No stable branch has
+// the commit, so Stable stays empty and gcpRequireHostIdentity fails every
+// stable build. An older build keeps the stored key on an edit to USE_GCP_IAM,
+// which gcpFlatten then rejects on every Read, and ignores GCP_PROJECT_ID.
+var gcpHostIdentityMin = utils.YBAMinimumVersion{Preview: "2.31.0.0-b473"}
+
+// gcpHostIdentityRequirement renders into the resource docs, which name stable
 // releases only.
-const gcpHostIdentityRequirement = "`use_gcp_iam` and `project_id` need a YugabyteDB " +
-	"Anywhere release later than 2026.1. YugabyteDB Anywhere 2026.1 and earlier require " +
-	"`credentials`, and ignore `project_id`: they use the project of the service-account key."
+const gcpHostIdentityRequirement = "`use_gcp_iam` and `project_id` work only with " +
+	"YugabyteDB Anywhere preview releases. No stable release supports them, and " +
+	"`terraform plan` fails when you set either of them on a stable release."
 
 // ResourceGCPEARConfig defines the GCP KMS encryption-at-rest configuration.
 func ResourceGCPEARConfig() *schema.Resource {
@@ -113,7 +120,7 @@ func gcpEARSpec() earSpec {
 				Description: "Authenticate as the YugabyteDB Anywhere host instead of with a " +
 					"key file: the attached service account on Compute Engine, workload " +
 					"identity on GKE, or the key file at `GOOGLE_APPLICATION_CREDENTIALS`. " +
-					"Not supported on YugabyteDB Anywhere 2026.1 or earlier. Can change in " +
+					"Works only with YugabyteDB Anywhere preview releases. Can change in " +
 					"place; YugabyteDB Anywhere deletes the stored key when the configuration " +
 					"changes to the host identity.",
 			},
@@ -123,8 +130,8 @@ func gcpEARSpec() earSpec {
 				ForceNew: true,
 				Description: "GCP project that owns the key ring. Defaults to the project of " +
 					"the service-account key, or to the host's project with `use_gcp_iam`. Set " +
-					"it when the key ring is in another project. Not supported on YugabyteDB " +
-					"Anywhere 2026.1 or earlier. A change forces replacement.",
+					"it when the key ring is in another project. Works only with YugabyteDB " +
+					"Anywhere preview releases. A change forces replacement.",
 			},
 			"location_id": {
 				Type:     schema.TypeString,
@@ -179,13 +186,56 @@ func gcpEARSpec() earSpec {
 
 // gcpCustomizeDiff rejects a key-file configuration without a key at plan
 // time, when the value is known. Unknown values (a key read at apply time)
-// are checked again in gcpBuildAuth.
-func gcpCustomizeDiff(_ context.Context, d *schema.ResourceDiff, _ interface{}) error {
+// are checked again in gcpBuildAuth. It also gates use_gcp_iam and project_id
+// on the YBA version, but only when the plan sets or changes them, so an
+// unchanged configuration plans as before.
+func gcpCustomizeDiff(ctx context.Context, d *schema.ResourceDiff, meta interface{}) error {
+	gated := ""
+	switch {
+	case d.HasChange("use_gcp_iam") && d.Get("use_gcp_iam").(bool):
+		gated = "use_gcp_iam"
+	case d.HasChange("project_id") &&
+		(!d.NewValueKnown("project_id") || d.Get("project_id").(string) != ""):
+		gated = "project_id"
+	}
+	if gated != "" {
+		if err := gcpRequireHostIdentity(ctx, meta, gated); err != nil {
+			return err
+		}
+	}
 	if d.Get("use_gcp_iam").(bool) || !d.NewValueKnown("credentials") {
 		return nil
 	}
 	if d.Get("credentials").(string) == "" {
 		return fmt.Errorf("credentials is required when use_gcp_iam is false")
+	}
+	return nil
+}
+
+// gcpRequireHostIdentity fails the plan when the target YBA lacks the field.
+// A version outside YBA's scheme passes with a warning; the server stays the
+// backstop.
+func gcpRequireHostIdentity(ctx context.Context, meta interface{}, field string) error {
+	c, ok := meta.(*api.APIClient)
+	if !ok || c == nil {
+		return nil
+	}
+	version, err := c.AppVersion(ctx)
+	if err != nil || version == "" {
+		return err
+	}
+	if utils.IsVersionStable(version) && !utils.IsExperimentalPatchVersion(version) {
+		return fmt.Errorf("%s requires a YugabyteDB Anywhere preview release; "+
+			"the target YBA reports %s", field, version)
+	}
+	ok, applied, err := utils.MeetsMinimum(version, gcpHostIdentityMin)
+	switch {
+	case err != nil:
+		tflog.Warn(ctx, "cannot parse the YBA version; skipping the minimum-version check",
+			map[string]interface{}{"version": version, "check": field})
+	case !ok:
+		return fmt.Errorf("%s requires YugabyteDB Anywhere %s or later; "+
+			"the target YBA reports %s", field, applied, version)
 	}
 	return nil
 }

@@ -95,6 +95,7 @@ const (
 // zero-valued so tests can assert which endpoints were exercised.
 type fakeYBA struct {
 	listBody      string
+	preMintList   string // list before the mint call; listBody once it is made
 	downloadPEM   string
 	uploadPayload map[string]interface{}
 	mintBody      map[string]string
@@ -108,6 +109,10 @@ func (f *fakeYBA) handler(t *testing.T) http.HandlerFunc {
 		w.Header().Set("Content-Type", "application/json")
 		switch {
 		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/certificates"):
+			if f.mintBody == nil && f.preMintList != "" {
+				_, _ = w.Write([]byte(f.preMintList))
+				return
+			}
 			_, _ = w.Write([]byte(f.listBody))
 		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/download"):
 			pemBody := f.downloadPEM
@@ -265,7 +270,10 @@ func TestSelfSignedCreateUploadsNormalizedPEM(t *testing.T) {
 }
 
 func TestSelfSignedCreateMintMode(t *testing.T) {
-	f := &fakeYBA{listBody: listWith(testCertUUID, "minted-ca", "SelfSigned", false)}
+	f := &fakeYBA{
+		preMintList: "[]",
+		listBody:    listWith(testCertUUID, "minted-ca", "SelfSigned", false),
+	}
 	meta := f.apiClient(t)
 
 	d := testResourceDataWithRawConfig(t, ResourceSelfSignedCertificate().Schema,
