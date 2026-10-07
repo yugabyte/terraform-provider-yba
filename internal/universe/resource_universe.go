@@ -3414,10 +3414,15 @@ func resourceUniverseUpdate(
 	c := meta.(*api.APIClient).YugawareClient
 	cUUID := meta.(*api.APIClient).CustomerID
 
-	// Encryption at rest runs last; until it has, keep its planned block out
-	// of the state the deferred Read writes (see revertEncryptionAtRest).
+	// Certificate rotation and encryption at rest run last; until each has,
+	// keep its planned block out of the state the deferred Read writes (see
+	// revertCertRotation and revertEncryptionAtRest).
+	certsRotated := false
 	earApplied := false
 	defer func() {
+		if !certsRotated {
+			revertCertRotation(d)
+		}
 		if !earApplied {
 			revertEncryptionAtRest(d)
 		}
@@ -4818,6 +4823,7 @@ func resourceUniverseUpdate(
 		sleepAfterMasterMs, sleepAfterTServerMs); certDiags != nil {
 		return certDiags
 	}
+	certsRotated = true
 
 	// Encryption-at-rest changes take the universe lock like any other task
 	// and never restart nodes, so they run after every restarting operation.

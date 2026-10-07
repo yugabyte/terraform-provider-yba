@@ -454,7 +454,7 @@ universe key), or Disabling encryption at rest
 | Field | Purpose |
 |---|---|
 | `encryption_at_rest.enabled` | Whether the universe encrypts data at rest. Required in the block: `true` enables encryption, `false` disables it in place. |
-| `encryption_at_rest.kms_config_uuid` | The encryption-at-rest configuration (`yba_gcp_ear_config`, or one that `yba_ear_config` finds) whose master key wraps the universe keys. A change rotates the master key. |
+| `encryption_at_rest.kms_config_uuid` | The encryption-at-rest configuration (`yba_gcp_ear_config`, or one that `yba_ear_config` finds) whose master key wraps the universe keys. A change rotates the master key. It can change only when `enabled` is true. |
 | `encryption_at_rest.universe_key_rotation_trigger` | A change to a new non-empty value rotates the universe key under the current master key. |
 
 **Behavior:** YugabyteDB encrypts each data file with its own data key, and wraps the data
@@ -481,7 +481,9 @@ masters.
   [`time_rotating`](https://registry.terraform.io/providers/hashicorp/time/latest/docs/resources/rotating)
   value as the trigger to rotate on a schedule. A trigger change in the apply that enables
   encryption does not run a separate rotation, because the enable already generates a new
-  key.
+  key. The exception is an enable with a different configuration from the one last used:
+  that enable keeps the earlier universe key, so the provider runs the universe key rotation
+  after it.
 - **Disable:** `enabled = false`. YugabyteDB Anywhere turns encryption off on the masters
   and keeps every key, so files encrypted earlier stay readable. You can enable encryption
   again later. With the same configuration, the enable generates a new universe key. With
@@ -491,7 +493,8 @@ masters.
 
 When `kms_config_uuid` and the trigger change in the same apply, the provider runs the
 master key rotation first and the universe key rotation after it, as two tasks. A trigger
-change in an apply that disables encryption is an error.
+change in an apply that disables encryption is an error, and so is a `kms_config_uuid`
+change while `enabled` is false.
 
 When the block is omitted, Terraform reads it from the universe, as it does for `root_ca`.
 So removing the block from the configuration changes nothing, and a universe imported into

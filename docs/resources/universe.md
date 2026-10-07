@@ -489,8 +489,8 @@ Required:
 
 Optional:
 
-- `kms_config_uuid` (String) UUID of the encryption-at-rest configuration whose master key wraps the universe keys. Required when `enabled` is true. A change on an enabled universe rotates the master key. After a disable, YugabyteDB Anywhere still reports the last configuration here.
-- `universe_key_rotation_trigger` (String) Change this value to rotate the universe key: on the next apply, YugabyteDB Anywhere generates a new universe key under the current master key. Any new non-empty value rotates the key, also the first value set on an existing universe; removing the value does nothing. Requires `enabled = true`. A value set at creation, or in the apply that enables encryption, does not run a separate rotation: the enable already generates a new key. Use a date, or a `time_rotating` value to rotate on a schedule.
+- `kms_config_uuid` (String) UUID of the encryption-at-rest configuration whose master key wraps the universe keys. Required when `enabled` is true. A change on an enabled universe rotates the master key. It can change only when `enabled` is true. After a disable, YugabyteDB Anywhere still reports the last configuration here.
+- `universe_key_rotation_trigger` (String) Change this value to rotate the universe key: on the next apply, YugabyteDB Anywhere generates a new universe key under the current master key. Any new non-empty value rotates the key, also the first value set on an existing universe; removing the value does nothing. Requires `enabled = true`. A value set at creation, or in the apply that enables encryption, does not run a separate rotation: the enable already generates a new key. The exception is an enable with a different configuration from the one last used: that enable keeps the earlier universe key, so the rotation runs after it. Use a date, or a `time_rotating` value to rotate on a schedule.
 
 <a id="nestedblock--full_move"></a>
 

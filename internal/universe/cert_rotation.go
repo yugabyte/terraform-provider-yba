@@ -244,6 +244,15 @@ func performCertRotations(
 	return nil
 }
 
+// revertCertRotation puts the prior triggers back when an update ends before
+// performCertRotations has finished, whether an earlier step failed or one of
+// its own tasks did. Read never sets the triggers, so a planned value left in
+// d would reach state and the rotation would never be retried. root_ca and
+// client_root_ca need no revert: Read refreshes them from the universe.
+func revertCertRotation(d *schema.ResourceData) {
+	utils.RevertFields(d, "cert_rotation")
+}
+
 // clientRootCASetInConfig reports whether client_root_ca is explicitly
 // written in the user's HCL config. d.Get cannot answer this: the attribute
 // is Optional+Computed, so on shared-CA universes it returns the state echo
