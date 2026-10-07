@@ -27,18 +27,36 @@ import (
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	client "github.com/yugabyte/platform-go-client"
 
 	"github.com/yugabyte/terraform-provider-yba/internal/api"
+	"github.com/yugabyte/terraform-provider-yba/internal/utils"
 )
 
+// newHookTestClient answers reads of the hook runtime config keys with "true"
+// and sends every other request to handler.
 func newHookTestClient(t *testing.T, handler http.HandlerFunc) *api.APIClient {
 	t.Helper()
-	srv := httptest.NewServer(handler)
+	keyPrefix := "/api/v1/customers/cust-1/runtime_config/" +
+		utils.GlobalRuntimeConfigScope + "/key/"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, keyPrefix) {
+			w.Header().Set("Content-Type", "text/plain")
+			_, _ = w.Write([]byte("true"))
+			return
+		}
+		handler(w, r)
+	}))
 	t.Cleanup(srv.Close)
+	host := strings.TrimPrefix(srv.URL, "http://")
+	cfg := client.NewConfiguration()
+	cfg.Host = host
+	cfg.Scheme = "http"
 	return &api.APIClient{
+		YugawareClient: client.NewAPIClient(cfg),
 		VanillaClient: &api.VanillaClient{
 			Client:      srv.Client(),
-			Host:        strings.TrimPrefix(srv.URL, "http://"),
+			Host:        host,
 			EnableHTTPS: false,
 		},
 		CustomerID: "cust-1",

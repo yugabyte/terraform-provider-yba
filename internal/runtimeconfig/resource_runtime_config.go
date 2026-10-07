@@ -36,6 +36,11 @@ import (
 // https://docs.yugabyte.com/preview/yugabyte-platform/administer-yugabyte-platform/manage-runtime-config/
 const globalRuntimeScope = "00000000-0000-0000-0000-000000000000"
 
+// runtimeConfigOperationTimeout bounds each runtime config call; every
+// endpoint is a plain YBA database operation, no long-running task is
+// involved.
+const runtimeConfigOperationTimeout = 2 * time.Minute
+
 // ResourceRuntimeConfig manages a single YBA runtime configuration key/value
 // pair. Useful for enabling feature flags such as
 // `yb.telemetry.allow_s3` (required to allow the S3 telemetry exporter) or
@@ -76,10 +81,10 @@ func ResourceRuntimeConfig() *schema.Resource {
 		},
 
 		Timeouts: &schema.ResourceTimeout{
-			Create: schema.DefaultTimeout(2 * time.Minute),
-			Update: schema.DefaultTimeout(2 * time.Minute),
-			Delete: schema.DefaultTimeout(2 * time.Minute),
-			Read:   schema.DefaultTimeout(2 * time.Minute),
+			Create: schema.DefaultTimeout(runtimeConfigOperationTimeout),
+			Update: schema.DefaultTimeout(runtimeConfigOperationTimeout),
+			Delete: schema.DefaultTimeout(runtimeConfigOperationTimeout),
+			Read:   schema.DefaultTimeout(runtimeConfigOperationTimeout),
 		},
 
 		Schema: map[string]*schema.Schema{
@@ -112,10 +117,14 @@ func ResourceRuntimeConfig() *schema.Resource {
 	}
 }
 
-// fetchRuntimeConfigValue reads the current value of a runtime config key on a
-// scope. It is shared by the resource and data source reads. On any API error
-// it returns the translated YBA error; notFound is true only when YBA reports
-// the key is not set on the scope (HTTP 404). The resource treats notFound as
+// fetchRuntimeConfigValue reads the value of a runtime config key on a scope.
+// It is shared by the resource and data source reads. On any API error it
+// returns the translated YBA error. YBA answers a key that is not set on the
+// scope with the value the scope inherits, or the key's default, so a key
+// removed out of band reads back as that value, not as a 404. notFound is
+// true on a 404, which YBA returns when the scope no longer exists (a deleted
+// provider or universe), the key is not a mutable key, or the scope does not
+// support the key and has no value set there. The resource treats notFound as
 // "removed from state" (and ignores the error), while the data source surfaces
 // the YBA error directly. The entity label (utils.ResourceEntity /
 // utils.DataSourceEntity) only shapes the error message.

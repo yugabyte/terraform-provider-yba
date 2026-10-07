@@ -73,6 +73,14 @@ const hookOperationTimeout = 2 * time.Minute
 // YBA rejects longer names at apply time with a 400.
 const hookNameMaxLen = 100
 
+// Global runtime config keys that gate hook writes. YBA rejects every hook
+// request while enableCustomHooksKey is false, and a sudo hook while
+// enableSudoKey is false, with a 401 that names neither key.
+const (
+	enableCustomHooksKey = "yb.security.custom_hooks.enable_custom_hooks"
+	enableSudoKey        = "yb.security.custom_hooks.enable_sudo"
+)
+
 // ResourceHook manages a YBA custom hook and its trigger binding.
 func ResourceHook() *schema.Resource {
 	return &schema.Resource{
@@ -335,11 +343,35 @@ func deleteScopeIfEmpty(ctx context.Context, apiClient *api.APIClient, scopeUUID
 	return nil
 }
 
+// checkHookFlags reads the global runtime config keys that YBA checks before
+// it writes a hook, so a disabled key fails with an error that names it.
+func checkHookFlags(ctx context.Context, apiClient *api.APIClient, useSudo bool) error {
+	keys := []string{enableCustomHooksKey}
+	if useSudo {
+		keys = append(keys, enableSudoKey)
+	}
+	for _, key := range keys {
+		enabled, err := utils.GetGlobalRuntimeConfigBool(
+			ctx, apiClient.YugawareClient, apiClient.CustomerID, key)
+		if err != nil {
+			return err
+		}
+		if !enabled {
+			return fmt.Errorf("hook requires global runtime config %s=true (%s=false)",
+				key, key)
+		}
+	}
+	return nil
+}
+
 func resourceHookCreate(
 	ctx context.Context, d *schema.ResourceData, meta interface{},
 ) diag.Diagnostics {
 	apiClient := meta.(*api.APIClient)
 	hook := hookFromResourceData(d)
+	if err := checkHookFlags(ctx, apiClient, hook.UseSudo); err != nil {
+		return diag.FromErr(err)
+	}
 
 	tflog.Info(ctx, fmt.Sprintf("Creating hook %q", hook.Name))
 	created, err := apiClient.VanillaClient.CreateHook(
@@ -428,6 +460,11 @@ func resourceHookUpdate(
 ) diag.Diagnostics {
 	apiClient := meta.(*api.APIClient)
 	hook := hookFromResourceData(d)
+	if err := checkHookFlags(ctx, apiClient, hook.UseSudo); err != nil {
+		utils.RevertFields(d, hookScriptFields...)
+		utils.RevertFields(d, hookScopeFields...)
+		return diag.FromErr(err)
+	}
 
 	tflog.Info(ctx, fmt.Sprintf("Updating hook %q (%s)", hook.Name, d.Id()))
 	if _, err := apiClient.VanillaClient.UpdateHook(

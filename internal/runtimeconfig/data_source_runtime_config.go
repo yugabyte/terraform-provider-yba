@@ -77,8 +77,9 @@ func dataSourceRuntimeConfigRead(
 	key := d.Get("key").(string)
 
 	// notFound is intentionally ignored: unlike the resource (which removes
-	// itself from state when the key is gone), the data source surfaces YBA's
-	// error directly so a missing or non-mutable key fails the plan.
+	// itself from state on a 404, for example when its scope is gone), the data
+	// source surfaces YBA's error directly so a missing or non-mutable key fails
+	// the plan.
 	value, _, err := fetchRuntimeConfigValue(ctx, apiClient, scope, key, utils.DataSourceEntity)
 	if err != nil {
 		return diag.FromErr(err)
