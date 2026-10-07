@@ -193,6 +193,9 @@ failure this project can ship.
 - Nothing published from this repo (`Description` strings, `docs/`,
   `templates/`, `examples/`) names an internal ticket or warns that a feature
   is broken. Docs describe supported behaviour.
+- A version in published docs is a stable release (`2026.1.2.0`), the only
+  official kind of YBA release. Preview versions (`2.31.0.0`) and `-bN`
+  builds are internal: the code may gate on them, the docs never show them.
 - Explanations use the identifiers from the YBA source, never imported
   vocabulary. An external term may appear once, as an alias.
 - `Description` callouts use `~> **Note:**` and `~> **Warning:**`. A
@@ -234,5 +237,12 @@ a third form is a finding.
   in state.
 - `internal/installation/`: `yba_installer` acts on a live host over SSH. A
   wrong verdict in `Read` reinstalls or upgrades YBA.
+- Loops over universes. Independent per-universe work runs in parallel
+  through `utils.RunParallel`. A sequential loop is a finding, most of all
+  when each turn waits on a universe task: N rolling restarts in turn take N
+  times as long as one.
+- Schema helpers that build nested blocks, above all one shared by several
+  blocks. AGENTS.md's `Description` rule covers every field inside them;
+  check each field.
 - Skip `docs/`: `make documents` generates it from `templates/` and the
   schema. Review the template and the `Description` instead. Skip `go.sum`.

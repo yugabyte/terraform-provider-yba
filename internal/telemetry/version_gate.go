@@ -18,6 +18,7 @@ package telemetry
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
@@ -54,10 +55,12 @@ var (
 // verb ("This resource requires", "Requires"). Resource-level callers prefix a
 // "~> **Note:**" callout; nested-block descriptions stay one paragraph because
 // tfplugindocs appends the nested-schema link to the description's last line.
+// The docs name only the stable release: preview lines and -bN builds are
+// internal, so their gates live in code only.
 func versionNote(subject string, minimum utils.YBAMinimumVersion) string {
-	return fmt.Sprintf("%s YugabyteDB Anywhere `%s` (stable) or "+
-		"`%s` (preview) or later; `terraform plan` fails against an older build.",
-		subject, minimum.Stable, minimum.Preview)
+	release, _, _ := strings.Cut(minimum.Stable, "-")
+	return fmt.Sprintf("%s YugabyteDB Anywhere `%s` or later; "+
+		"`terraform plan` fails against an older YBA.", subject, release)
 }
 
 // validateYBAVersion fails the plan when the target YBA predates the unified

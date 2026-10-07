@@ -19,6 +19,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"math"
 	"net/http"
 	"sort"
@@ -130,8 +131,7 @@ func ResourceUniverseTelemetryConfig() *schema.Resource {
 			"Universe Telemetry Config Resource. Attaches audit log, query log, " +
 			"server log (yb-master, yb-tserver, YSQL Connection Manager, " +
 			"node-agent, node provisioning, YB-Controller), and metrics export " +
-			"pipelines to a YBA universe via the unified " +
-			"`export-telemetry-configs` API. Each exporter references a " +
+			"pipelines to a YBA universe. Each exporter references a " +
 			"telemetry provider resource (`yba_datadog_telemetry_provider`, " +
 			"`yba_otlp_telemetry_provider`, ... — or any pre-existing telemetry " +
 			"provider UUID) and triggers a rolling/non-rolling restart of the " +
@@ -145,8 +145,7 @@ func ResourceUniverseTelemetryConfig() *schema.Resource {
 			"`yba_runtime_config` resource.\n\n" +
 			"~> **Note:** Import an existing universe-level configuration with the " +
 			"universe UUID as the resource ID " +
-			"(`terraform import yba_universe_telemetry_config.example <universe-uuid>`); " +
-			"state is populated from the unified `export-telemetry-configs` GET API.\n\n" +
+			"(`terraform import yba_universe_telemetry_config.example <universe-uuid>`).\n\n" +
 			"~> **One resource per universe:** YBA stores a single telemetry " +
 			"configuration per universe and this resource owns it wholesale — " +
 			"Terraform is the source of truth. On apply it **replaces** whatever the " +
@@ -281,11 +280,16 @@ func auditLogsSchema() *schema.Schema {
 								Type:     schema.TypeBool,
 								Optional: true,
 								Default:  true,
+								Description: "Sets `pgaudit.log_catalog`: also log statements " +
+									"whose relations are all in `pg_catalog`. Set to false to " +
+									"drop the catalog lookups that tools make.",
 							},
 							"log_client": {
 								Type:     schema.TypeBool,
 								Optional: true,
 								Default:  true,
+								Description: "Sets `pgaudit.log_client`: also send audit " +
+									"messages to the client, such as ysqlsh.",
 							},
 							"log_level": {
 								Type:     schema.TypeString,
@@ -295,37 +299,56 @@ func auditLogsSchema() *schema.Schema {
 									allowedYSQLAuditLogLevels,
 									false,
 								),
+								Description: "Sets `pgaudit.log_level`: the severity of the " +
+									"audit messages sent to the client. Applies only when " +
+									"`log_client` is true.",
 							},
 							"log_parameter": {
 								Type:     schema.TypeBool,
 								Optional: true,
 								Default:  false,
+								Description: "Sets `pgaudit.log_parameter`: include the " +
+									"statement parameters in the audit log.",
 							},
 							"log_parameter_max_size": {
 								Type:         schema.TypeInt,
 								Optional:     true,
 								Default:      0,
 								ValidateFunc: validation.IntBetween(0, math.MaxInt32),
+								Description: "Sets `pgaudit.log_parameter_max_size`: the " +
+									"largest parameter, in bytes, to log when `log_parameter` " +
+									"is true. A longer parameter is replaced with " +
+									"`<long param suppressed>`. 0 logs every parameter.",
 							},
 							"log_relation": {
 								Type:     schema.TypeBool,
 								Optional: true,
 								Default:  false,
+								Description: "Sets `pgaudit.log_relation`: write a separate " +
+									"entry for each relation that a SELECT or DML statement " +
+									"references.",
 							},
 							"log_rows": {
 								Type:     schema.TypeBool,
 								Optional: true,
 								Default:  false,
+								Description: "Sets `pgaudit.log_rows`: include the number of " +
+									"rows that the statement retrieved or changed.",
 							},
 							"log_statement": {
 								Type:     schema.TypeBool,
 								Optional: true,
 								Default:  true,
+								Description: "Sets `pgaudit.log_statement`: include the " +
+									"statement text and parameters.",
 							},
 							"log_statement_once": {
 								Type:     schema.TypeBool,
 								Optional: true,
 								Default:  false,
+								Description: "Sets `pgaudit.log_statement_once`: include the " +
+									"statement text and parameters only in the first entry " +
+									"for a statement or sub-statement.",
 							},
 						},
 					},
@@ -349,6 +372,9 @@ func auditLogsSchema() *schema.Schema {
 									allowedYCQLAuditLogLevels,
 									false,
 								),
+								Description: "Sets `ycql_audit_log_level`: the severity of " +
+									"audit records, which selects the yb-tserver log file " +
+									"they go to.",
 							},
 							"included_categories": {
 								Type:     schema.TypeSet,
@@ -360,6 +386,8 @@ func auditLogsSchema() *schema.Schema {
 										false,
 									),
 								},
+								Description: "Sets `ycql_audit_included_categories`: the " +
+									"statement categories to audit.",
 							},
 							"excluded_categories": {
 								Type:     schema.TypeSet,
@@ -371,26 +399,33 @@ func auditLogsSchema() *schema.Schema {
 										false,
 									),
 								},
+								Description: "Sets `ycql_audit_excluded_categories`: the " +
+									"statement categories not to audit.",
 							},
 							"included_keyspaces": {
-								Type:     schema.TypeSet,
-								Optional: true,
-								Elem:     &schema.Schema{Type: schema.TypeString},
+								Type:        schema.TypeSet,
+								Optional:    true,
+								Elem:        &schema.Schema{Type: schema.TypeString},
+								Description: "Sets `ycql_audit_included_keyspaces`: the keyspaces to audit.",
 							},
 							"excluded_keyspaces": {
 								Type:     schema.TypeSet,
 								Optional: true,
 								Elem:     &schema.Schema{Type: schema.TypeString},
+								Description: "Sets `ycql_audit_excluded_keyspaces`: the " +
+									"keyspaces not to audit.",
 							},
 							"included_users": {
-								Type:     schema.TypeSet,
-								Optional: true,
-								Elem:     &schema.Schema{Type: schema.TypeString},
+								Type:        schema.TypeSet,
+								Optional:    true,
+								Elem:        &schema.Schema{Type: schema.TypeString},
+								Description: "Sets `ycql_audit_included_users`: the users to audit.",
 							},
 							"excluded_users": {
-								Type:     schema.TypeSet,
-								Optional: true,
-								Elem:     &schema.Schema{Type: schema.TypeString},
+								Type:        schema.TypeSet,
+								Optional:    true,
+								Elem:        &schema.Schema{Type: schema.TypeString},
+								Description: "Sets `ycql_audit_excluded_users`: the users not to audit.",
 							},
 						},
 					},
@@ -399,8 +434,7 @@ func auditLogsSchema() *schema.Schema {
 					Type:     schema.TypeList,
 					Optional: true,
 					Description: "Exporter (telemetry destination) for audit logs. Repeat " +
-						"this block to fan out to multiple destinations — each block " +
-						"becomes one entry in the API's `exporters` array.",
+						"this block to send to more than one destination.",
 					Elem: &schema.Resource{
 						Schema: map[string]*schema.Schema{
 							"exporter_uuid": {
@@ -449,11 +483,15 @@ func queryLogsSchema() *schema.Schema {
 									allowedQueryLogStatements,
 									false,
 								),
+								Description: "Sets `log_statement`: which SQL statements to " +
+									"log. `MOD` logs DDL and data-changing statements.",
 							},
 							"log_min_error_statement": {
 								Type:     schema.TypeString,
 								Optional: true,
 								Default:  queryLogDefaults.LogMinErrorStatement,
+								Description: "Sets `log_min_error_statement`: the lowest " +
+									"error severity that logs the statement that caused it.",
 							},
 							"log_error_verbosity": {
 								Type:     schema.TypeString,
@@ -463,26 +501,36 @@ func queryLogsSchema() *schema.Schema {
 									allowedQueryErrorVerbosity,
 									false,
 								),
+								Description: "Sets `log_error_verbosity`: how much detail " +
+									"each logged message carries.",
 							},
 							"log_duration": {
 								Type:     schema.TypeBool,
 								Optional: true,
 								Default:  queryLogDefaults.LogDuration,
+								Description: "Sets `log_duration`: log the duration of every " +
+									"completed statement.",
 							},
 							"debug_print_plan": {
 								Type:     schema.TypeBool,
 								Optional: true,
 								Default:  queryLogDefaults.DebugPrintPlan,
+								Description: "Sets `debug_print_plan`: log the execution " +
+									"plan of every query.",
 							},
 							"log_connections": {
 								Type:     schema.TypeBool,
 								Optional: true,
 								Default:  queryLogDefaults.LogConnections,
+								Description: "Sets `log_connections`: log each connection " +
+									"attempt and each completed client authentication.",
 							},
 							"log_disconnections": {
 								Type:     schema.TypeBool,
 								Optional: true,
 								Default:  queryLogDefaults.LogDisconnections,
+								Description: "Sets `log_disconnections`: log each session " +
+									"end, with the session duration.",
 							},
 							"log_min_duration_statement": {
 								Type:     schema.TypeInt,
@@ -490,11 +538,14 @@ func queryLogsSchema() *schema.Schema {
 								Default:  int(queryLogDefaults.LogMinDurationStatement),
 								// Bound the top end so the int32 conversion can't wrap.
 								ValidateFunc: validation.IntBetween(-1, math.MaxInt32),
+								Description: "Sets `log_min_duration_statement`: log each " +
+									"statement that runs for at least this many " +
+									"milliseconds. -1 turns this off; 0 logs every statement.",
 							},
 						},
 					},
 				},
-				"exporter": exporterListSchema(true /* metrics */),
+				"exporter": queryLogsExporterSchema(),
 			},
 		},
 	}
@@ -513,18 +564,22 @@ func metricsSchema() *schema.Schema {
 					Optional:     true,
 					Default:      derefInt32(metricsDefaults.ScrapeIntervalSeconds),
 					ValidateFunc: validation.IntBetween(1, math.MaxInt32),
+					Description:  "Seconds between scrapes of each scrape target.",
 				},
 				"scrape_timeout_seconds": {
 					Type:         schema.TypeInt,
 					Optional:     true,
 					Default:      derefInt32(metricsDefaults.ScrapeTimeoutSeconds),
 					ValidateFunc: validation.IntBetween(1, math.MaxInt32),
+					Description:  "Timeout of each scrape, in seconds.",
 				},
 				"collection_level": {
 					Type:         schema.TypeString,
 					Optional:     true,
 					Default:      derefString(metricsDefaults.CollectionLevel),
 					ValidateFunc: validation.StringInSlice(allowedCollectionLevels, false),
+					Description: "Which metrics to collect: `ALL`, `NORMAL`, `TABLE_OFF` " +
+						"(no table-level metrics), `MINIMAL`, or `OFF`.",
 				},
 				"scrape_config_targets": {
 					Type:     schema.TypeSet,
@@ -545,9 +600,52 @@ func metricsSchema() *schema.Schema {
 	}
 }
 
-// exporterListSchema builds the per-exporter fields; withBatching adds the
-// send_batch_*/memory_limit_* fields (query logs + metrics, not audit logs).
-func exporterListSchema(withBatching bool) *schema.Schema {
+// batchingDefaults is the shape every batched exporter config in the
+// generated client shares (query-log, metric and server-log exporters).
+type batchingDefaults interface {
+	GetSendBatchMaxSize() int32
+	GetSendBatchSize() int32
+	GetSendBatchTimeoutSeconds() int32
+	GetMemoryLimitMib() int32
+	GetMemoryLimitCheckIntervalSeconds() int32
+}
+
+// batchingSchema returns the batch processor and memory limiter fields of the
+// OpenTelemetry collector pipeline that YBA builds for each exporter, with
+// defaults from that exporter's generated client constructor.
+func batchingSchema(defaults batchingDefaults) map[string]*schema.Schema {
+	// IntBetween(1, MaxInt32) rejects two footguns: an overflowing value
+	// (wraps negative in the int32 conversion) and an explicit 0
+	// (GetInt32Pointer drops it, so YBA substitutes its default and diffs forever).
+	field := func(def int32, description string) *schema.Schema {
+		return &schema.Schema{
+			Type:         schema.TypeInt,
+			Optional:     true,
+			Default:      int(def),
+			ValidateFunc: validation.IntBetween(1, math.MaxInt32),
+			Description:  description,
+		}
+	}
+	return map[string]*schema.Schema{
+		"send_batch_size": field(defaults.GetSendBatchSize(),
+			"Number of records after which the collector sends a batch to this "+
+				"exporter, before `send_batch_timeout_seconds` passes."),
+		"send_batch_max_size": field(defaults.GetSendBatchMaxSize(),
+			"Largest batch, in records, that the collector sends to this exporter. "+
+				"The collector splits a larger batch."),
+		"send_batch_timeout_seconds": field(defaults.GetSendBatchTimeoutSeconds(),
+			"Seconds after which the collector sends a batch, whatever its size."),
+		"memory_limit_mib": field(defaults.GetMemoryLimitMib(),
+			"Memory limit, in MiB, of the collector's memory limiter for this "+
+				"exporter. When memory use comes close to the limit, the collector "+
+				"refuses new data."),
+		"memory_limit_check_interval_seconds": field(
+			defaults.GetMemoryLimitCheckIntervalSeconds(),
+			"Seconds between memory-use checks by the memory limiter."),
+	}
+}
+
+func queryLogsExporterSchema() *schema.Schema {
 	s := map[string]*schema.Schema{
 		"exporter_uuid": {
 			Type:        schema.TypeString,
@@ -561,47 +659,12 @@ func exporterListSchema(withBatching bool) *schema.Schema {
 			Elem:        &schema.Schema{Type: schema.TypeString},
 		},
 	}
-	if withBatching {
-		// IntBetween(1, MaxInt32) rejects two footguns: an overflowing value
-		// (wraps negative in the int32 conversion) and an explicit 0
-		// (GetInt32Pointer drops it, so YBA substitutes its default and diffs forever).
-		s["send_batch_max_size"] = &schema.Schema{
-			Type:         schema.TypeInt,
-			Optional:     true,
-			Default:      derefInt32(queryExporterDefaults.SendBatchMaxSize),
-			ValidateFunc: validation.IntBetween(1, math.MaxInt32),
-		}
-		s["send_batch_size"] = &schema.Schema{
-			Type:         schema.TypeInt,
-			Optional:     true,
-			Default:      derefInt32(queryExporterDefaults.SendBatchSize),
-			ValidateFunc: validation.IntBetween(1, math.MaxInt32),
-		}
-		s["send_batch_timeout_seconds"] = &schema.Schema{
-			Type:         schema.TypeInt,
-			Optional:     true,
-			Default:      derefInt32(queryExporterDefaults.SendBatchTimeoutSeconds),
-			ValidateFunc: validation.IntBetween(1, math.MaxInt32),
-		}
-		s["memory_limit_mib"] = &schema.Schema{
-			Type:         schema.TypeInt,
-			Optional:     true,
-			Default:      derefInt32(queryExporterDefaults.MemoryLimitMib),
-			ValidateFunc: validation.IntBetween(1, math.MaxInt32),
-		}
-		s["memory_limit_check_interval_seconds"] = &schema.Schema{
-			Type:         schema.TypeInt,
-			Optional:     true,
-			Default:      derefInt32(queryExporterDefaults.MemoryLimitCheckIntervalSeconds),
-			ValidateFunc: validation.IntBetween(1, math.MaxInt32),
-		}
-	}
+	maps.Copy(s, batchingSchema(queryExporterDefaults))
 	return &schema.Schema{
 		Type:     schema.TypeList,
 		Optional: true,
 		Description: "Exporter (telemetry destination). Repeat this block to send to " +
-			"multiple destinations — each becomes one entry in the API's " +
-			"`exporters` array.",
+			"more than one destination.",
 		Elem: &schema.Resource{Schema: s},
 	}
 }
@@ -619,50 +682,18 @@ func metricsExporterSchema() *schema.Schema {
 			Description: "Additional string tags appended to each metric.",
 			Elem:        &schema.Schema{Type: schema.TypeString},
 		},
-		// See exporterListSchema: IntBetween(1, MaxInt32) guards int32 wrap and
-		// the 0-dropped-diff footgun.
-		"send_batch_max_size": {
-			Type:         schema.TypeInt,
-			Optional:     true,
-			Default:      derefInt32(metricExporterDefaults.SendBatchMaxSize),
-			ValidateFunc: validation.IntBetween(1, math.MaxInt32),
-		},
-		"send_batch_size": {
-			Type:         schema.TypeInt,
-			Optional:     true,
-			Default:      derefInt32(metricExporterDefaults.SendBatchSize),
-			ValidateFunc: validation.IntBetween(1, math.MaxInt32),
-		},
-		"send_batch_timeout_seconds": {
-			Type:         schema.TypeInt,
-			Optional:     true,
-			Default:      derefInt32(metricExporterDefaults.SendBatchTimeoutSeconds),
-			ValidateFunc: validation.IntBetween(1, math.MaxInt32),
-		},
-		"memory_limit_mib": {
-			Type:         schema.TypeInt,
-			Optional:     true,
-			Default:      derefInt32(metricExporterDefaults.MemoryLimitMib),
-			ValidateFunc: validation.IntBetween(1, math.MaxInt32),
-		},
-		"memory_limit_check_interval_seconds": {
-			Type:         schema.TypeInt,
-			Optional:     true,
-			Default:      derefInt32(metricExporterDefaults.MemoryLimitCheckIntervalSeconds),
-			ValidateFunc: validation.IntBetween(1, math.MaxInt32),
-		},
 		"metrics_prefix": {
 			Type:        schema.TypeString,
 			Optional:    true,
 			Description: "Optional prefix prepended to every metric name.",
 		},
 	}
+	maps.Copy(s, batchingSchema(metricExporterDefaults))
 	return &schema.Schema{
 		Type:     schema.TypeList,
 		Optional: true,
 		Description: "Metric exporter (telemetry destination). Repeat this block to " +
-			"send metrics to multiple destinations — each becomes one entry in the " +
-			"API's `exporters` array.",
+			"send metrics to more than one destination.",
 		Elem: &schema.Resource{Schema: s},
 	}
 }
@@ -686,7 +717,7 @@ func serverLogsElem(extra map[string]*schema.Schema) *schema.Resource {
 const (
 	vmOnlyLogsNote     = "VM universes only: YBA rejects this block on a Kubernetes universe."
 	kubernetesLogsNote = "On a Kubernetes universe, YBA also requires the universe's " +
-		"YugabyteDB version to be `2026.1.2.0` (stable) or `2.31.0.0` (preview) or later."
+		"YugabyteDB version to be `2026.1.2.0` or later."
 )
 
 func serverLogsSchema(display, platformNote string) *schema.Schema {
@@ -756,8 +787,6 @@ func serverLogMinLevelSchema(process, defaultLevel, note string) *schema.Schema 
 	}
 }
 
-// serverLogsExporterSchema mirrors exporterListSchema's batching shape, wired to
-// the UniverseServerLogsExporterConfig defaults so a client bump tracks the server.
 func serverLogsExporterSchema() *schema.Schema {
 	s := map[string]*schema.Schema{
 		"exporter_uuid": {
@@ -771,46 +800,13 @@ func serverLogsExporterSchema() *schema.Schema {
 			Description: "Additional string tags appended to each log record.",
 			Elem:        &schema.Schema{Type: schema.TypeString},
 		},
-		// See exporterListSchema: IntBetween(1, MaxInt32) guards int32 wrap and
-		// the 0-dropped-diff footgun.
-		"send_batch_max_size": {
-			Type:         schema.TypeInt,
-			Optional:     true,
-			Default:      derefInt32(serverLogsExporterDefaults.SendBatchMaxSize),
-			ValidateFunc: validation.IntBetween(1, math.MaxInt32),
-		},
-		"send_batch_size": {
-			Type:         schema.TypeInt,
-			Optional:     true,
-			Default:      derefInt32(serverLogsExporterDefaults.SendBatchSize),
-			ValidateFunc: validation.IntBetween(1, math.MaxInt32),
-		},
-		"send_batch_timeout_seconds": {
-			Type:         schema.TypeInt,
-			Optional:     true,
-			Default:      derefInt32(serverLogsExporterDefaults.SendBatchTimeoutSeconds),
-			ValidateFunc: validation.IntBetween(1, math.MaxInt32),
-		},
-		"memory_limit_mib": {
-			Type:         schema.TypeInt,
-			Optional:     true,
-			Default:      derefInt32(serverLogsExporterDefaults.MemoryLimitMib),
-			ValidateFunc: validation.IntBetween(1, math.MaxInt32),
-		},
-		"memory_limit_check_interval_seconds": {
-			Type:     schema.TypeInt,
-			Optional: true,
-			Default: derefInt32(
-				serverLogsExporterDefaults.MemoryLimitCheckIntervalSeconds),
-			ValidateFunc: validation.IntBetween(1, math.MaxInt32),
-		},
 	}
+	maps.Copy(s, batchingSchema(serverLogsExporterDefaults))
 	return &schema.Schema{
 		Type:     schema.TypeList,
 		Optional: true,
 		Description: "Exporter (telemetry destination). Repeat this block to send to " +
-			"multiple destinations — each becomes one entry in the API's " +
-			"`exporters` array.",
+			"more than one destination.",
 		Elem: &schema.Resource{Schema: s},
 	}
 }
