@@ -196,6 +196,10 @@ failure this project can ship.
 - A version in published docs is a stable release (`2026.1.2.0`), the only
   official kind of YBA release. Preview versions (`2.31.0.0`) and `-bN`
   builds are internal: the code may gate on them, the docs never show them.
+- A feature that no stable release has yet gets a `~> **Preview:**` callout
+  that says its API is in preview and can change. The docs never say that it
+  works only with preview releases. When a stable release ships the API, the
+  code gates on that release and the docs name it.
 - Explanations use the identifiers from the YBA source, never imported
   vocabulary. An external term may appear once, as an alias.
 - `Description` callouts use `~> **Note:**` and `~> **Warning:**`. A

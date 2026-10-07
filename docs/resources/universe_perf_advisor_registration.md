@@ -8,7 +8,7 @@ description: |-
 
 Registers a YugabyteDB Anywhere universe with a Perf Advisor collector, which collects the universe's data for Perf Advisor.
 
-~> **Preview:** This resource works only with YugabyteDB Anywhere preview releases. No stable YBA release has the version of the Perf Advisor API that this resource uses. The API can change in ways that are not backward compatible between YBA releases.
+~> **Preview:** The YugabyteDB Anywhere Perf Advisor API that this resource uses is in preview. It can change in ways that are not backward compatible between YBA releases.
 
 The `mode` sets where the data goes:
 

@@ -13,8 +13,8 @@ This release adds resources for encryption in transit and certificate rotation, 
 - `yba_universe_load_balancer_config` - attach existing AWS, GCP, or Azure load balancers to a universe. YugabyteDB Anywhere keeps the universe nodes in the load balancers.
 - `yba_hook` - a custom hook: a Bash or Python script that YugabyteDB Anywhere runs on universe nodes when a trigger fires.
 - `yba_runtime_config` - a runtime configuration key on the global, customer, provider, or universe scope.
-- `yba_perf_advisor_endpoint` - an external Perf Advisor that receives universe data in `ONLINE` mode. Preview: works only with YugabyteDB Anywhere preview releases.
-- `yba_universe_perf_advisor_registration` - register a universe with a Perf Advisor collector. Preview: works only with YugabyteDB Anywhere preview releases.
+- `yba_perf_advisor_endpoint` - an external Perf Advisor that receives universe data in `ONLINE` mode. Uses a preview YugabyteDB Anywhere API.
+- `yba_universe_perf_advisor_registration` - register a universe with a Perf Advisor collector. Uses a preview YugabyteDB Anywhere API.
 
 YugabyteDB Anywhere marks the APIs of telemetry export, `yba_ybdb_release`, and `yba_universe_load_balancer_config` as preview. A later YugabyteDB Anywhere release can change them in ways that are not backward compatible.
 
