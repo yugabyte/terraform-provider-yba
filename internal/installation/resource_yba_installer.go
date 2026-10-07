@@ -201,14 +201,16 @@ func ResourceYBAInstaller() *schema.Resource {
 		Description: "Manages the installation of YugabyteDB Anywhere on an existing virtual" +
 			" machine using YBA Installer.\n\n" +
 			"~> **Note:** Destroy runs `yba-ctl clean` on the host. This removes the " +
-			"YugabyteDB Anywhere software and keeps the data directory, " +
-			"`/opt/yugabyte/data`. To delete the data, remove that directory on the host " +
-			"yourself.\n\n" +
+			"YugabyteDB Anywhere software and keeps the data directory (" +
+			"`/opt/yugabyte/data` with the default `installRoot`). To delete the data, " +
+			"remove that directory on the host yourself.\n\n" +
 			"~> **Note:** When `/opt/yugabyte/data` already holds YugabyteDB Anywhere data " +
 			"(for example, on a persistent disk that outlives the VM), create installs the " +
 			"software without data and starts YBA on the existing data. So when you destroy " +
 			"and recreate this resource on the same host, YBA keeps its data. For a fresh " +
-			"installation, delete `/opt/yugabyte/data` on the host before the next apply.\n\n" +
+			"installation, delete `/opt/yugabyte/data` on the host before the next apply. " +
+			"The provider checks only this path, also when `installRoot` in the " +
+			"application settings names another directory.\n\n" +
 			"~> **Warning:** If nothing accepts an SSH connection at `ssh_host_ip` and " +
 			"`ssh_port` for about 30 seconds, destroy treats the host as gone. It removes " +
 			"the resource from state and does not clean up the host. Make sure that the host " +
@@ -223,9 +225,8 @@ func ResourceYBAInstaller() *schema.Resource {
 		UpdateContext: resourceYBAInstallerUpdate,
 		DeleteContext: resourceYBAInstallerDelete,
 
-		Importer: &schema.ResourceImporter{
-			StateContext: schema.ImportStatePassthroughContext,
-		},
+		// No Importer: Read does not read the host, so an imported state holds
+		// only the ID and the next plan replaces the installation.
 
 		Timeouts: &schema.ResourceTimeout{
 			Create: schema.DefaultTimeout(10 * time.Minute),
@@ -397,7 +398,7 @@ func ResourceYBAInstaller() *schema.Resource {
 				// True should trigger yba-ctl reconfigure
 				// if the contents of application_settings_file have been modified
 				Description: "Change this field to `true` to run `yba-ctl reconfigure` on the " +
-					"next apply when no other input changed. While it stays `true`, every " +
+					"next apply, also when no other input changed. While it stays `true`, every " +
 					"update of this resource also runs a reconfiguration. Requires " +
 					"`application_settings` or `application_settings_file`. A change to " +
 					"`application_settings`, `tls_certificate` or `tls_key`, or to the path " +
@@ -475,16 +476,9 @@ func resourceYBAInstallerDiff() schema.CustomizeDiffFunc {
 			}
 			return nil
 		},
-		customdiff.IfValue("reconfigure",
-			func(ctx context.Context, value, meta interface{}) bool {
-				return value.(bool)
-			},
-			func(ctx context.Context, d *schema.ResourceDiff, meta interface{}) error {
-				if !installerInputProvided(d, applicationSettingsSpec) {
-					return errEmptyApplicationSettings
-				}
-				return nil
-			}),
+		func(ctx context.Context, d *schema.ResourceDiff, meta interface{}) error {
+			return validateApplicationSettingsProvided(d)
+		},
 		// yba-ctl upgrade refuses a target version lower than the
 		// installed one, but only at runtime on the host - by then the
 		// failed apply has already burned time staging the bundle.
@@ -497,6 +491,34 @@ func resourceYBAInstallerDiff() schema.CustomizeDiffFunc {
 			return validateNoYBAVersionDowngrade(old.(string), new.(string))
 		},
 	)
+}
+
+// validateApplicationSettingsProvided fails the plan when neither settings
+// attribute is set but an input needs them: reconfigure = true, a TLS input
+// on create (YBA would ignore the uploaded files), or a change to a TLS input
+// or to the settings on update (Update fails on the same condition). An
+// unchanged TLS input on an existing installation passes. Unknown settings
+// pass; the apply checks them.
+func validateApplicationSettingsProvided(d *schema.ResourceDiff) error {
+	if !d.NewValueKnown(applicationSettingsSpec.contentAttr) ||
+		!d.NewValueKnown(applicationSettingsSpec.fileAttr) ||
+		installerInputProvided(d, applicationSettingsSpec) {
+		return nil
+	}
+	if d.Get("reconfigure").(bool) {
+		return errEmptyApplicationSettings
+	}
+	for _, spec := range []installerFileSpec{tlsCertificateSpec, tlsKeySpec} {
+		if d.Id() == "" && installerInputProvided(d, spec) ||
+			d.Id() != "" && installerInputHasChange(d, spec) {
+			return fmt.Errorf("%s / %s requires application_settings or "+
+				"application_settings_file", spec.contentAttr, spec.fileAttr)
+		}
+	}
+	if d.Id() != "" && installerInputHasChange(d, applicationSettingsSpec) {
+		return errEmptyApplicationSettings
+	}
+	return nil
 }
 
 // validateNoYBAVersionDowngrade rejects a yba_version change to a lower

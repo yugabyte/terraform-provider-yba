@@ -27,12 +27,13 @@ through `root_ca`, `client_root_ca` and the `cert_rotation` triggers, and
 key, and disables encryption.
 
 ~> **Note:** A certificate rotation with the `Rolling` strategy restarts the nodes one at a
-time and pauses for the `node_restart_settings` sleep time after each restart. On a universe
-with many nodes, the rotation can take longer than the 60-minute default `update` timeout. Raise
-`timeouts { update }` when necessary. If the universe's node-to-node certificates have
-expired, set `node_restart_settings.upgrade_option = "Non-Rolling"`. With expired
-certificates, YugabyteDB Anywhere rejects `Non-Restart`, and rejects `Rolling` for every
-rotation except one that re-issues only the client-to-node server certificates.
+time and pauses for the `node_restart_settings` sleep time after each master and each TServer
+restart. A rotation to a new node-to-node root certificate restarts every node three times,
+so even on a small universe it can take longer than the 60-minute default `update` timeout.
+Raise `timeouts { update }` when necessary. If the universe's node-to-node
+certificates have expired, set `node_restart_settings.upgrade_option = "Non-Rolling"`. With
+expired certificates, YugabyteDB Anywhere rejects `Non-Restart`, and rejects `Rolling` for
+every rotation except one that re-issues only the client-to-node server certificates.
 
 ~> **Note:** An encryption-at-rest configuration that a universe has used keeps the
 universe's key history until the universe is deleted, also after encryption is disabled or
@@ -136,3 +137,12 @@ Choose one of the following to resolve this:
     State will continue to hold `REDACTED` for these fields; this is expected and does not affect universe operation.
 
 2. **Patch the state with the real secret value** so Terraform sees it as unchanged. This requires the current password and direct state edits (`terraform state pull` / `terraform state push`, or `terraform state rm` plus re-import after manual seeding); only use it when you intend to keep managing the password through Terraform.
+
+### Rotation triggers are not imported
+
+YugabyteDB Anywhere does not store the `cert_rotation` triggers or
+`encryption_at_rest.universe_key_rotation_trigger`, so they are empty after import. If your
+configuration sets a trigger, the first apply after import reads it as a new value and runs
+that rotation. A `cert_rotation` rotation restarts every node. To import without a rotation,
+leave the triggers out of the configuration, and add a trigger when you want the next
+rotation.

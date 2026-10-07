@@ -8,7 +8,7 @@ description: |-
 
 Registers a YugabyteDB Anywhere universe with a Perf Advisor collector, which collects the universe's data for Perf Advisor.
 
-~> **Preview:** This resource works only with YugabyteDB Anywhere preview releases. No stable YBA release has the version of the Perf Advisor API that this resource uses. The API can change in ways that are not backward compatible between YBA releases.
+~> **Preview:** The YugabyteDB Anywhere Perf Advisor API that this resource uses is in preview. It can change in ways that are not backward compatible between YBA releases.
 
 The `mode` sets where the data goes:
 
@@ -19,6 +19,8 @@ The `mode` sets where the data goes:
 ~> **Note:** A universe has one registration, and the resource ID is the universe UUID. Use one resource per universe. Two resources for the same `universe_uuid` overwrite each other on every apply.
 
 ~> **Note:** `ONLINE` mode requires the runtime config key `yb.ui.feature_flags.enable_pa_online_mode` set to `true` on the global scope or on your customer scope. The key is `false` by default. YBA sends the endpoint to the collector before it registers the universe, so the apply fails when the endpoint cannot be reached or rejects its credentials.
+
+~> **Note:** YBA checks that it has enough free memory before it registers the universe or moves it to `ADVANCED` mode. The memory it needs grows with the number of TServers in the universe. When YBA does not have enough free memory, the apply fails.
 
 Registration and unregistration run as YBA universe tasks, and this resource waits for them. They do not restart the universe. YBA registers Kubernetes universes in the same way as VM universes. Destroying the resource unregisters the universe from the collector and leaves the universe running.
 
@@ -82,9 +84,3 @@ Universe Perf Advisor registrations can be imported using the universe UUID:
 ```sh
 terraform import yba_universe_perf_advisor_registration.advanced <universe-uuid>
 ```
-
-Import does not read the collector UUID of the registration, so it leaves
-`pa_collector_uuid` empty. Because `pa_collector_uuid` forces a new
-resource, the first plan after import replaces the registration: it unregisters
-the universe and registers it again. To keep the imported registration, add
-`pa_collector_uuid` to `lifecycle.ignore_changes`.

@@ -6,15 +6,17 @@ This release adds resources for encryption in transit and certificate rotation, 
 
 - `yba_self_signed_certificate` - a self-signed root certificate for encryption in transit. YugabyteDB Anywhere generates the certificate, or you give your own certificate and private key.
 - `yba_custom_server_certificate` - a root certificate from your organization's CA, with a server certificate and key, for client-to-node encryption.
-- `yba_gcp_ear_config` - an encryption at rest configuration that uses a Google Cloud KMS key.
+- `yba_gcp_ear_config` - an encryption at rest configuration that uses a Google Cloud KMS key. The `use_gcp_iam` and `project_id` arguments use a preview YugabyteDB Anywhere API.
 - `yba_ybdb_release` - a YugabyteDB release. Upload release packages from the machine that runs Terraform, or give package or Helm chart URLs.
 - `yba_datadog_telemetry_provider`, `yba_otlp_telemetry_provider`, `yba_aws_cloudwatch_telemetry_provider`, `yba_gcp_cloud_monitoring_telemetry_provider`, `yba_splunk_telemetry_provider`, `yba_dynatrace_telemetry_provider`, `yba_s3_telemetry_provider` - a destination for universe logs or metrics.
 - `yba_universe_telemetry_config` - the audit logs, query logs, server logs, and metrics that a universe exports, and the telemetry providers that receive them.
 - `yba_universe_load_balancer_config` - attach existing AWS, GCP, or Azure load balancers to a universe. YugabyteDB Anywhere keeps the universe nodes in the load balancers.
 - `yba_hook` - a custom hook: a Bash or Python script that YugabyteDB Anywhere runs on universe nodes when a trigger fires.
 - `yba_runtime_config` - a runtime configuration key on the global, customer, provider, or universe scope.
-- `yba_perf_advisor_endpoint` - an external Perf Advisor that receives universe data in `ONLINE` mode. Preview: works only with YugabyteDB Anywhere preview releases.
-- `yba_universe_perf_advisor_registration` - register a universe with a Perf Advisor collector. Preview: works only with YugabyteDB Anywhere preview releases.
+- `yba_perf_advisor_endpoint` - an external Perf Advisor that receives universe data in `ONLINE` mode. Uses a preview YugabyteDB Anywhere API.
+- `yba_universe_perf_advisor_registration` - register a universe with a Perf Advisor collector. Uses a preview YugabyteDB Anywhere API.
+
+YugabyteDB Anywhere marks the APIs of telemetry export, `yba_ybdb_release`, and `yba_universe_load_balancer_config` as preview. A later YugabyteDB Anywhere release can change them in ways that are not backward compatible.
 
 ### New data sources
 
@@ -32,22 +34,22 @@ This release adds resources for encryption in transit and certificate rotation, 
 - `yba_universe`: `node_restart_settings` also controls how a certificate rotation restarts the nodes.
 - `yba_release_version`: new `deployment_type` filter (`x86_64`, `aarch64`, or `kubernetes`).
 - `yba_installer`: new `ssh_port` argument, for a custom SSH port or an SSH tunnel.
-- `yba_installer`: new inline arguments `ssh_private_key`, `yba_license`, `application_settings`, `tls_certificate`, and `tls_key`, as alternatives to the file path arguments.
-- `yba_installer`: a change to `application_settings`, `tls_certificate`, or `tls_key`, or to the path in their file arguments, reconfigures YugabyteDB Anywhere. These changes no longer need `reconfigure = true`.
+- `yba_installer`: new inline arguments `ssh_private_key`, `yba_license`, `application_settings`, `tls_certificate`, and `tls_key`, as alternatives to the file path arguments. Terraform tracks the content of an inline argument, so a change to `application_settings`, `tls_certificate`, or `tls_key` reconfigures YugabyteDB Anywhere on the next apply without `reconfigure = true`.
 - `yba_installer`: installs on a host whose `/opt/yugabyte/data` already holds YugabyteDB Anywhere data, for example on a persistent data disk, and starts YugabyteDB Anywhere on that data.
 - `yba_installer`: a downgrade of `yba_version` fails at plan time.
 - `yba_installer`: when an update fails, the state keeps the earlier values, so the next apply runs the update again.
-- Provider: connections to YugabyteDB Anywhere time out when the server does not answer, so a plan or apply no longer waits forever on a dead connection.
+- Provider: with `enable_https = true` (the default), connections to YugabyteDB Anywhere time out when the server does not answer, so a plan or apply no longer waits forever on a dead connection.
 
 ### Behavior changes
 
 - `yba_installer`: destroy runs `yba-ctl clean` and keeps `/opt/yugabyte/data`. v1.0.0 also deleted `/opt/yugabyte`.
 - `yba_installer`: when the host does not answer SSH for about 30 seconds, destroy removes the resource from state and does not clean up the host.
 - `yba_installer`: after you upgrade from v1.0.0, the first plan shows an in-place update with no changed attributes for each `yba_installer`. This update only marks the new sensitive arguments in the state. It does not connect to the host.
+- `yba_installer`: the resource can no longer be imported. The provider does not read the installation back from the host, so after an import the next plan replaced the installation.
+- `yba_installer`: a TLS certificate or key without `application_settings` or `application_settings_file` now fails at plan time. Before, YugabyteDB Anywhere ignored the files on create, and a later change failed at apply time.
 
 ### Bug fixes
 
-- `yba_installer`: the provider no longer crashes when it copies files to the host.
 - `yba_universe`: a DB version upgrade or a systemd upgrade no longer resets the load balancer and log export settings of the universe.
 - `yba_cloud_provider` (deprecated): Azure regions now send and read `vnet_name`, `yb_image`, and `security_group_id`.
 - `yba_cloud_provider` (deprecated): create no longer sends an empty access key, so YugabyteDB Anywhere generates a key pair when you give none.

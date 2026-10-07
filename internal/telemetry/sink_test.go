@@ -95,10 +95,16 @@ func TestSinkResourceGuardrails(t *testing.T) {
 				t.Errorf("name must be Required+ForceNew, got %+v", nameField)
 			}
 
+			if res.Description == "" {
+				t.Error("resource description is required")
+			}
 			for field, s := range res.Schema {
 				if !s.ForceNew {
 					t.Errorf("field %q must be ForceNew: YBA has no PUT "+
 						"endpoint for telemetry providers", field)
+				}
+				if s.Description == "" {
+					t.Errorf("field %q needs a Description: it renders into the docs", field)
 				}
 			}
 

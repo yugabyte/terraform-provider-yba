@@ -76,8 +76,9 @@ func encryptionAtRestSchema() *schema.Schema {
 					Computed: true,
 					Description: "UUID of the encryption-at-rest configuration whose master " +
 						"key wraps the universe keys. Required when `enabled` is true. A change " +
-						"on an enabled universe rotates the master key. After a disable, " +
-						"YugabyteDB Anywhere still reports the last configuration here.",
+						"on an enabled universe rotates the master key. It can change only when " +
+						"`enabled` is true. After a disable, YugabyteDB Anywhere still reports " +
+						"the last configuration here.",
 				},
 				"universe_key_rotation_trigger": {
 					Type:     schema.TypeString,
@@ -88,8 +89,10 @@ func encryptionAtRestSchema() *schema.Schema {
 						"first value set on an existing universe; removing the value does " +
 						"nothing. Requires `enabled = true`. A value set at creation, or in the " +
 						"apply that enables encryption, does not run a separate rotation: the " +
-						"enable already generates a new key. Use a date, or a `time_rotating` " +
-						"value to rotate on a schedule.",
+						"enable already generates a new key. The exception is an enable with a " +
+						"different configuration from the one last used: that enable keeps the " +
+						"earlier universe key, so the rotation runs after it. Use a date, or a " +
+						"`time_rotating` value to rotate on a schedule.",
 				},
 			},
 		},
@@ -187,6 +190,10 @@ func flattenEncryptionAtRest(
 // validateEncryptionAtRestDiff rejects enabled = true without a configuration
 // at plan time, when the UUID is known. An unknown UUID (a configuration
 // created in the same apply) is checked again at apply time.
+//
+// It also rejects a new configuration while encryption is off: no task runs,
+// YBA keeps reporting the configuration it last used, and the plan would show
+// the same change forever.
 func validateEncryptionAtRestDiff(_ context.Context, d *schema.ResourceDiff, _ interface{}) error {
 	list, _ := d.Get("encryption_at_rest").([]interface{})
 	if len(list) == 0 {
@@ -197,6 +204,12 @@ func validateEncryptionAtRestDiff(_ context.Context, d *schema.ResourceDiff, _ i
 		return nil
 	}
 	if enabled, _ := m["enabled"].(bool); !enabled {
+		kms, _ := m["kms_config_uuid"].(string)
+		if kms != "" && d.HasChange("encryption_at_rest.0.kms_config_uuid") &&
+			d.NewValueKnown("encryption_at_rest.0.kms_config_uuid") {
+			return fmt.Errorf("encryption_at_rest.kms_config_uuid can change only when "+
+				"encryption_at_rest.enabled is true (encryption_at_rest.kms_config_uuid=%s)", kms)
+		}
 		return nil
 	}
 	if !d.NewValueKnown("encryption_at_rest.0.kms_config_uuid") {
@@ -218,8 +231,11 @@ func validateEncryptionAtRestDiff(_ context.Context, d *schema.ResourceDiff, _ i
 //     matches gets none.
 //   - A fired trigger adds a universe key rotation (ENABLE with the current
 //     configuration) after any master key rotation. It is skipped when this
-//     apply enables encryption, because enabling already generates a fresh
-//     universe key, and rejected when the desired state is disabled.
+//     apply's enable generates a fresh universe key, and rejected when the
+//     desired state is disabled. An enable generates a key only on a universe
+//     with no configuration yet or with the one it last used; with another
+//     configuration, YBA turns encryption on with the earlier universe key and
+//     re-wraps it, so the trigger still needs its own rotation.
 func planEncryptionAtRest(desired earState, triggerFired bool, live earState) ([]earAction, error) {
 	if desired.enabled && desired.kmsConfigUUID == "" {
 		return nil, fmt.Errorf(
@@ -234,10 +250,10 @@ func planEncryptionAtRest(desired earState, triggerFired bool, live earState) ([
 	}
 
 	var actions []earAction
-	enabling := false
+	freshKey := false
 	switch {
 	case desired.enabled && !live.enabled:
-		enabling = true
+		freshKey = live.kmsConfigUUID == "" || live.kmsConfigUUID == desired.kmsConfigUUID
 		actions = append(actions, earAction{
 			label: "Enable Encryption At Rest", op: earOpEnable,
 			kmsConfigUUID: desired.kmsConfigUUID,
@@ -250,7 +266,7 @@ func planEncryptionAtRest(desired earState, triggerFired bool, live earState) ([
 	case !desired.enabled && live.enabled:
 		actions = append(actions, earAction{label: "Disable Encryption At Rest", op: earOpDisable})
 	}
-	if desired.enabled && triggerFired && !enabling {
+	if desired.enabled && triggerFired && !freshKey {
 		actions = append(actions, earAction{
 			label: "Universe Key Rotation", op: earOpEnable,
 			kmsConfigUUID: desired.kmsConfigUUID,

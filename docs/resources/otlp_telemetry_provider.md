@@ -8,13 +8,15 @@ description: |-
 
 Manages an OpenTelemetry Protocol (OTLP) telemetry provider in YugabyteDB Anywhere. Universes send logs and metrics to it through `yba_universe_telemetry_config`.
 
-~> **Experimental:** Telemetry export is an experimental feature of YugabyteDB Anywhere. A later YBA release can change it in ways that are not backward compatible. Read the release notes before you upgrade YBA or the provider.
+~> **Preview:** YugabyteDB Anywhere marks its telemetry export APIs as preview. A later YBA release can change them in ways that are not backward compatible. Read the release notes before you upgrade YBA or the provider.
 
-~> **Note:** Requires YugabyteDB Anywhere 2026.1.0.0 or later. YBA creates an OTLP telemetry provider only when the global runtime config `yb.telemetry.allow_otlp` is `true`. The default is `true` from YugabyteDB Anywhere 2026.1.2.0. To set it, use the `yba_runtime_config` resource.
+~> **Note:** Requires YugabyteDB Anywhere 2026.1.0.0 or later. YBA creates, reads and deletes an OTLP telemetry provider only when the global runtime config `yb.telemetry.allow_otlp` is `true`. The default is `true` from YugabyteDB Anywhere 2026.1.2.0. To set it, use the `yba_runtime_config` resource.
+
+~> **Note:** YBA creates, reads and deletes telemetry providers only when the global runtime config `yb.universe.audit_logging_enabled`, `yb.universe.query_logging_enabled` or `yb.universe.metrics_export_enabled` is `true`. Before YugabyteDB Anywhere 2025.2.0.0, YBA checks only `yb.universe.audit_logging_enabled`, and its default is `false`. From 2025.2.0.0, its default is `true`. To set one, use the `yba_runtime_config` resource.
 
 ~> **Note:** YBA cannot change a telemetry provider in place, so a change to any argument replaces the resource. Before Terraform deletes a telemetry provider, it removes the telemetry provider from every universe that uses it. Each of those universes goes through a rolling restart. The universes are not deleted.
 
-~> **Drift Note:** Terraform reads back only `name` and `tags`. It does not detect a change to the OTLP connection arguments made outside Terraform, for example in the YBA UI. To apply the configured values again, replace the resource with `terraform apply -replace`.
+~> **Note:** Terraform reads back only `name` and `tags`. YBA cannot edit a telemetry provider after it creates one, so the other arguments change only when Terraform replaces the telemetry provider.
 
 ~> **Security Note:** Terraform stores the credentials of this telemetry provider in the state file, marked sensitive. Use a secure backend and restrict access to the state file.
 
@@ -83,7 +85,7 @@ resource "yba_otlp_telemetry_provider" "bearer" {
 - `basic_auth_username` (String) User name for `BasicAuth`. Required when `auth_type = "BasicAuth"`, and ignored otherwise.
 - `bearer_token` (String, Sensitive) Token for `BearerToken` authentication. Required when `auth_type = "BearerToken"`, and ignored otherwise.
 - `compression` (String) Compression of the exported data: `gzip`, `none`, `snappy` or `zstd`. Defaults to `gzip`.
-- `headers` (Map of String) Additional headers to send with each export request.
+- `headers` (Map of String) Additional headers to send with each export request. Terraform shows the header values in plan output. For credentials, use `bearer_token` or `basic_auth_password` when the endpoint accepts them.
 - `logs_endpoint` (String) Full URL for log export, used instead of `endpoint` for logs. Requires `protocol = "HTTP"`.
 - `metrics_endpoint` (String) Full URL for metric export, used instead of `endpoint` for metrics. Requires `protocol = "HTTP"`.
 - `protocol` (String) Transport protocol: `gRPC` or `HTTP`. Defaults to `gRPC`.

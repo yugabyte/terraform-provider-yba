@@ -8,7 +8,7 @@ description: |-
 
 Reads the value of one runtime configuration key on one scope in YugabyteDB Anywhere.
 
-The value is a string, as YBA stores it. Convert it with `tobool`, `tonumber` or `jsondecode` to use it as another type. When the scope has no value for the key, the data source returns the value of a wider scope, or the default of the key. YBA masks the value of a secret key, such as `yb.security.ldap.ldap_service_account_password`. The plan fails when YBA does not know the key.
+The value is a string, as YBA stores it. Convert it with `tobool`, `tonumber` or `jsondecode` to use it as another type. When the scope has no value for the key, the data source returns the value of a wider scope, or the default of the key. YBA masks the value of a secret key, such as `yb.security.ldap.ldap_service_account_password`. The plan fails when YBA does not know the key, or when the scope does not support the key, such as a global key on a universe.
 
 ## Example Usage
 

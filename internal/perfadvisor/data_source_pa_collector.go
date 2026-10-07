@@ -39,12 +39,13 @@ func DataSourcePACollector() *schema.Resource {
 		Description: "Looks up a Perf Advisor collector in YugabyteDB " +
 			"Anywhere. Pass its UUID to `yba_universe_perf_advisor_registration` " +
 			"to register a universe with it.\n\n" +
+			collectorAPIAdmonition +
 			"~> **Note:** This data source requires YugabyteDB Anywhere " +
 			"2026.1.0.0 or later.\n\n" +
 			"YBA creates and manages the embedded collector itself, so " +
 			"Terraform only looks it up. Without `uuid`, the data source " +
-			"returns the only collector, and fails when there is more than " +
-			"one.",
+			"returns the only collector, and fails when there is none or more " +
+			"than one.",
 
 		ReadContext: dataSourcePACollectorRead,
 

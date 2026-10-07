@@ -29,6 +29,9 @@ import (
 	"github.com/yugabyte/terraform-provider-yba/internal/utils"
 )
 
+// endpointTimeout bounds each endpoint call. None of them runs a YBA task.
+const endpointTimeout = 5 * time.Minute
+
 // maskedPassword is what YBA returns in place of a stored password, and what it
 // accepts back to mean "keep the one you already have".
 const maskedPassword = "********"
@@ -50,8 +53,8 @@ func ResourcePerfAdvisorEndpoint() *schema.Resource {
 			"config key " + onlineModeKey + " to `true` on the global scope or " +
 			"on your customer scope, for example with `yba_runtime_config`. " +
 			"The key is `false` by default. While it is `false`, YBA rejects " +
-			"every endpoint request, so `terraform plan` fails for this " +
-			"resource.\n\n" +
+			"every endpoint request, so Terraform cannot create, read, change " +
+			"or delete an endpoint.\n\n" +
 			"~> **Note:** When a Perf Advisor collector exists, YBA uses it to " +
 			"test both URLs and their credentials before it saves the endpoint. " +
 			"The apply fails when a URL cannot be reached or a credential is " +
@@ -75,10 +78,10 @@ func ResourcePerfAdvisorEndpoint() *schema.Resource {
 		},
 
 		Timeouts: &schema.ResourceTimeout{
-			Create: schema.DefaultTimeout(5 * time.Minute),
-			Read:   schema.DefaultTimeout(5 * time.Minute),
-			Update: schema.DefaultTimeout(5 * time.Minute),
-			Delete: schema.DefaultTimeout(5 * time.Minute),
+			Create: schema.DefaultTimeout(endpointTimeout),
+			Read:   schema.DefaultTimeout(endpointTimeout),
+			Update: schema.DefaultTimeout(endpointTimeout),
+			Delete: schema.DefaultTimeout(endpointTimeout),
 		},
 
 		Schema: map[string]*schema.Schema{
@@ -212,8 +215,7 @@ func resourcePerfAdvisorEndpointRead(
 	endpoint, response, err := c.YugawareClientV2.PerfAdvisorEndpointAPI.
 		GetPerfAdvisorEndpoint(ctx, c.CustomerID, d.Id()).Execute()
 	if err != nil {
-		if response != nil && response.StatusCode == 404 {
-			// Removed out-of-band: drop it from state rather than failing every plan.
+		if endpointGone(ctx, c, d.Id()) {
 			d.SetId("")
 			return nil
 		}
@@ -292,6 +294,10 @@ func resourcePerfAdvisorEndpointDelete(
 	response, err := c.YugawareClientV2.PerfAdvisorEndpointAPI.
 		DeletePerfAdvisorEndpoint(ctx, c.CustomerID, d.Id()).Execute()
 	if err != nil {
+		if endpointGone(ctx, c, d.Id()) {
+			d.SetId("")
+			return nil
+		}
 		// YBA refuses while a universe is still registered against it, and
 		// names those universes - pass that through rather than retrying.
 		return diag.FromErr(utils.ErrorFromHTTPResponse(
@@ -299,6 +305,24 @@ func resourcePerfAdvisorEndpointDelete(
 	}
 	d.SetId("")
 	return nil
+}
+
+// endpointGone reports whether the endpoint is absent from a successful list.
+// YBA answers a GET or DELETE of a missing endpoint with a 400, the same status
+// as for other failures, and a 404 is an unknown route on an older YBA. A
+// failed list is never read as "gone".
+func endpointGone(ctx context.Context, c *api.APIClient, uuid string) bool {
+	endpoints, _, err := c.YugawareClientV2.PerfAdvisorEndpointAPI.
+		ListPerfAdvisorEndpoints(ctx, c.CustomerID).Execute()
+	if err != nil {
+		return false
+	}
+	for _, e := range endpoints {
+		if e.Info != nil && e.Info.Uuid == uuid {
+			return false
+		}
+	}
+	return true
 }
 
 func buildEndpointSpec(d *schema.ResourceData) clientv2.PerfAdvisorEndpointSpec {

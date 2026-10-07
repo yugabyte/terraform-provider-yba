@@ -14,7 +14,7 @@ YugabyteDB Anywhere cannot edit a certificate configuration, so a change to any 
 
 ~> **Note:** Labels are unique per customer. With `create_before_destroy`, the replacement exists at the same time as the old configuration, so give the replacement a new `label`, for example with a date or a version in it.
 
-~> **Note:** `private_key` is a write-only argument: Terraform never stores it in the plan or the state file. Setting it requires Terraform 1.11 or later; the generated mode works with any Terraform version. Terraform cannot detect a change to `private_key` alone, so change it together with `certificate`, which forces replacement. YugabyteDB Anywhere checks at upload that the certificate and the key match.
+~> **Note:** `private_key` is a write-only argument: Terraform never stores it in the plan or the state file. Setting it requires Terraform 1.11 or later; the generated mode works with any Terraform version. Terraform cannot detect a change to `private_key` alone, so change it together with `certificate`, which forces replacement. YugabyteDB Anywhere checks at upload that the certificate and the key match, unless the customer runtime configuration `yb.tls.enable_config_validation` is `false`.
 
 ~> **Note:** To re-issue the server certificates from the same root certificate, change a `cert_rotation` trigger on the `yba_universe` resource. This resource does not re-issue them.
 
@@ -62,7 +62,7 @@ resource "yba_self_signed_certificate" "byo" {
 
 ### Required
 
-- `label` (String) Name of the certificate configuration in YugabyteDB Anywhere. Must be unique per customer. A change forces replacement.
+- `label` (String) Name of the certificate configuration in YugabyteDB Anywhere. Must be unique per customer. In the generated mode, no other self-signed certificate configuration can have a label that starts with this label: YugabyteDB Anywhere would add a `~N` suffix to the new label, so the provider fails the create instead. In this comparison, `_` matches any one character and `%` matches any characters. A change forces replacement.
 
 ### Optional
 

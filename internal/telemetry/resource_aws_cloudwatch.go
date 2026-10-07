@@ -24,7 +24,6 @@ import (
 func ResourceAWSCloudWatchTelemetryProvider() *schema.Resource {
 	return sinkResource(sinkSpec{
 		resourceType: "yba_aws_cloudwatch_telemetry_provider",
-		displayName:  "AWS CloudWatch",
 		apiType:      typeAWSCloudWatch,
 		description: "Manages an AWS CloudWatch telemetry provider in YugabyteDB " +
 			"Anywhere. Universes send logs to it, in CloudWatch Logs, through " +

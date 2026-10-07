@@ -8,13 +8,15 @@ description: |-
 
 Manages a Splunk telemetry provider in YugabyteDB Anywhere. Universes send logs to a Splunk HTTP Event Collector (HEC) through `yba_universe_telemetry_config`.
 
-~> **Experimental:** Telemetry export is an experimental feature of YugabyteDB Anywhere. A later YBA release can change it in ways that are not backward compatible. Read the release notes before you upgrade YBA or the provider.
+~> **Preview:** YugabyteDB Anywhere marks its telemetry export APIs as preview. A later YBA release can change them in ways that are not backward compatible. Read the release notes before you upgrade YBA or the provider.
 
 ~> **Note:** YBA accepts a Splunk telemetry provider only in a log pipeline, not in `metrics`.
 
+~> **Note:** YBA creates, reads and deletes telemetry providers only when the global runtime config `yb.universe.audit_logging_enabled`, `yb.universe.query_logging_enabled` or `yb.universe.metrics_export_enabled` is `true`. Before YugabyteDB Anywhere 2025.2.0.0, YBA checks only `yb.universe.audit_logging_enabled`, and its default is `false`. From 2025.2.0.0, its default is `true`. To set one, use the `yba_runtime_config` resource.
+
 ~> **Note:** YBA cannot change a telemetry provider in place, so a change to any argument replaces the resource. Before Terraform deletes a telemetry provider, it removes the telemetry provider from every universe that uses it. Each of those universes goes through a rolling restart. The universes are not deleted.
 
-~> **Drift Note:** Terraform reads back only `name` and `tags`. It does not detect a change to the Splunk connection arguments made outside Terraform, for example in the YBA UI. To apply the configured values again, replace the resource with `terraform apply -replace`.
+~> **Note:** Terraform reads back only `name` and `tags`. YBA cannot edit a telemetry provider after it creates one, so the other arguments change only when Terraform replaces the telemetry provider.
 
 ~> **Security Note:** Terraform stores the credentials of this telemetry provider in the state file, marked sensitive. Use a secure backend and restrict access to the state file.
 

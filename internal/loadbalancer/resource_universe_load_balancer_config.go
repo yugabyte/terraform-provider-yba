@@ -44,9 +44,7 @@ func ResourceUniverseLoadBalancerConfig() *schema.Resource {
 			"Anywhere universe on AWS, GCP or Azure. YBA then adds and removes " +
 			"the universe's nodes in the load balancers as universe operations " +
 			"change the nodes.\n\n" +
-			"~> **Preview:** YugabyteDB Anywhere marks the API that this " +
-			"resource uses as preview. The API can change in ways that are not " +
-			"backward compatible between YBA releases.\n\n" +
+			previewAdmonition +
 			"This resource does not create the load balancers. Create them in " +
 			"the universe's cloud account first, for example with the cloud's " +
 			"own Terraform provider. Attaching and detaching load balancers " +
@@ -63,10 +61,12 @@ func ResourceUniverseLoadBalancerConfig() *schema.Resource {
 			"~> **Note:** YBA attaches load balancers only to universes on AWS, " +
 			"GCP and Azure providers. It does not support Kubernetes or " +
 			"on-premises universes.\n\n" +
-			"~> **Note:** YBA routes the universe's YSQL and YCQL ports through " +
-			"the load balancer over TCP. On Azure, the load balancer must " +
-			"already have a frontend IP configuration. To change the health " +
-			"checks, set the universe runtime config keys " +
+			"~> **Note:** YBA routes the YSQL and YCQL ports of the universe " +
+			"through the load balancer over TCP, only for the APIs that the " +
+			"universe enables. On AWS, the load balancer must be a Network Load " +
+			"Balancer. On Azure, the load balancer must already have a frontend " +
+			"IP configuration. To change the health checks, set the universe " +
+			"runtime config keys " +
 			"`yb.universe.network_load_balancer.custom_health_check_ports`, " +
 			"`yb.universe.network_load_balancer.custom_health_check_protocol` " +
 			"and `yb.universe.network_load_balancer.custom_health_check_paths`, " +
@@ -117,8 +117,8 @@ func ResourceUniverseLoadBalancerConfig() *schema.Resource {
 							Type:     schema.TypeString,
 							Required: true,
 							Description: "Name of the load balancer in the cloud: the " +
-								"load balancer name on AWS and Azure, the backend service " +
-								"name on GCP.",
+								"load balancer name on AWS and Azure, the name of the " +
+								"regional backend service on GCP.",
 						},
 						"read_replica": {
 							Type:     schema.TypeBool,
@@ -180,7 +180,9 @@ func resourceUniverseLoadBalancerConfigCreate(
 	}
 
 	d.SetId(uniUUID)
-	return nil
+	return append(
+		diag.Diagnostics{previewWarning("yba_universe_load_balancer_config")},
+		resourceUniverseLoadBalancerConfigRead(ctx, d, meta)...)
 }
 
 // buildDesiredClusters clears all live LB state then overlays the
@@ -404,9 +406,15 @@ func resourceUniverseLoadBalancerConfigUpdate(
 		return diag.FromErr(err)
 	}
 
-	return dispatchLoadBalancerConfig(ctx, apiClient, uniUUID, clusters,
+	if diags := dispatchLoadBalancerConfig(ctx, apiClient, uniUUID, clusters,
 		uni.UniverseDetails.GetNodeDetailsSet(),
-		d.Timeout(schema.TimeoutUpdate), "Update")
+		d.Timeout(schema.TimeoutUpdate), "Update"); diags != nil {
+		return diags
+	}
+
+	return append(
+		diag.Diagnostics{previewWarning("yba_universe_load_balancer_config")},
+		resourceUniverseLoadBalancerConfigRead(ctx, d, meta)...)
 }
 
 // Delete disables LB management (enableLB=false, lbName/lbFQDN cleared) so YBA

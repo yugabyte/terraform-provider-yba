@@ -95,6 +95,7 @@ const (
 // zero-valued so tests can assert which endpoints were exercised.
 type fakeYBA struct {
 	listBody      string
+	preMintList   string // list before the mint call; listBody once it is made
 	downloadPEM   string
 	uploadPayload map[string]interface{}
 	mintBody      map[string]string
@@ -108,6 +109,10 @@ func (f *fakeYBA) handler(t *testing.T) http.HandlerFunc {
 		w.Header().Set("Content-Type", "application/json")
 		switch {
 		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/certificates"):
+			if f.mintBody == nil && f.preMintList != "" {
+				_, _ = w.Write([]byte(f.preMintList))
+				return
+			}
 			_, _ = w.Write([]byte(f.listBody))
 		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/download"):
 			pemBody := f.downloadPEM
@@ -264,8 +269,39 @@ func TestSelfSignedCreateUploadsNormalizedPEM(t *testing.T) {
 	}
 }
 
+// mintLabelCollides mirrors YBA's LIKE '<label>%' over self-signed labels: a
+// match makes YBA rename the new certificate to "<label>~N".
+func TestMintLabelCollides(t *testing.T) {
+	cert := func(label, certType string) *client.CertificateInfoExt {
+		return &client.CertificateInfoExt{Label: &label, CertType: &certType}
+	}
+	cases := []struct {
+		label    string
+		existing *client.CertificateInfoExt
+		want     bool
+	}{
+		{"prod-ca", cert("prod-ca-2026", certTypeSelfSigned), true},
+		{"prod-ca", cert("prod-ca", certTypeSelfSigned), true},
+		{"prod-ca", cert("other-ca", certTypeSelfSigned), false},
+		{"prod-ca", cert("prod", certTypeSelfSigned), false},
+		{"prod-ca", cert("prod-ca-2026", certTypeCustomServerCert), false},
+		{"prod_ca", cert("prod-ca-2026", certTypeSelfSigned), true},
+		{"prod%ca", cert("prod-east-ca", certTypeSelfSigned), true},
+		{"prod.ca", cert("prod-ca", certTypeSelfSigned), false},
+	}
+	for _, tc := range cases {
+		if got := mintLabelCollides(tc.label)(tc.existing); got != tc.want {
+			t.Errorf("label %q vs %q (%s) = %v, want %v", tc.label,
+				tc.existing.GetLabel(), tc.existing.GetCertType(), got, tc.want)
+		}
+	}
+}
+
 func TestSelfSignedCreateMintMode(t *testing.T) {
-	f := &fakeYBA{listBody: listWith(testCertUUID, "minted-ca", "SelfSigned", false)}
+	f := &fakeYBA{
+		preMintList: "[]",
+		listBody:    listWith(testCertUUID, "minted-ca", "SelfSigned", false),
+	}
 	meta := f.apiClient(t)
 
 	d := testResourceDataWithRawConfig(t, ResourceSelfSignedCertificate().Schema,
@@ -363,7 +399,7 @@ func TestDeleteIsIdempotentForMissingCertificate(t *testing.T) {
 	}
 }
 
-func TestDeleteInUseFailsFastWithActionableError(t *testing.T) {
+func TestDeleteInUseFailsFastNamingUniverses(t *testing.T) {
 	f := &fakeYBA{
 		listBody: fmt.Sprintf(`[{
 			"uuid": %q, "label": "in-use", "certType": "SelfSigned", "inUse": true,
@@ -386,11 +422,8 @@ func TestDeleteInUseFailsFastWithActionableError(t *testing.T) {
 	if !diags.HasError() {
 		t.Fatal("in-use delete must surface an error, not be swallowed")
 	}
-	msg := diags[0].Summary
-	for _, want := range []string{"prod-universe", "create_before_destroy", "new label"} {
-		if !strings.Contains(msg, want) {
-			t.Errorf("in-use error must mention %q, got: %s", want, msg)
-		}
+	if msg := diags[0].Summary; !strings.Contains(msg, "prod-universe") {
+		t.Errorf("in-use error must name the universe, got: %s", msg)
 	}
 	if f.deleteCalled {
 		t.Error("in-use delete must fail fast without dispatching DELETE to YBA")

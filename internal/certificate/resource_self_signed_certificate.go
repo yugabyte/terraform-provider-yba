@@ -17,6 +17,8 @@ package certificate
 
 import (
 	"context"
+	"regexp"
+	"strings"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
@@ -51,7 +53,8 @@ func ResourceSelfSignedCertificate() *schema.Resource {
 			"generated mode works with any Terraform version. Terraform cannot detect a " +
 			"change to `private_key` alone, so change it together with `certificate`, which " +
 			"forces replacement. YugabyteDB Anywhere checks at upload that the certificate " +
-			"and the key match.\n\n" +
+			"and the key match, unless the customer runtime configuration " +
+			"`yb.tls.enable_config_validation` is `false`.\n\n" +
 			"~> **Note:** To re-issue the server certificates from the same root certificate, " +
 			"change a `cert_rotation` trigger on the `yba_universe` resource. This resource " +
 			"does not re-issue them.",
@@ -75,7 +78,12 @@ func ResourceSelfSignedCertificate() *schema.Resource {
 				Required: true,
 				ForceNew: true,
 				Description: "Name of the certificate configuration in YugabyteDB Anywhere. " +
-					"Must be unique per customer. A change forces replacement.",
+					"Must be unique per customer. In the generated mode, no other " +
+					"self-signed certificate configuration can have a label that starts " +
+					"with this label: YugabyteDB Anywhere would add a `~N` suffix to the " +
+					"new label, so the provider fails the create instead. In this " +
+					"comparison, `_` matches any one character and `%` matches any " +
+					"characters. A change forces replacement.",
 			},
 			"certificate": {
 				Type:             schema.TypeString,
@@ -151,6 +159,15 @@ func resourceSelfSignedCertificateCreate(
 
 	var certUUID string
 	if certContent == "" {
+		var conflict *client.CertificateInfoExt
+		conflict, err = findCertificate(ctx, c, cUUID, mintLabelCollides(label))
+		if err != nil {
+			return diag.FromErr(err)
+		}
+		if conflict != nil {
+			return diag.Errorf("create self-signed certificate (label=%s): the label of "+
+				"self-signed certificate %q starts with it", label, conflict.GetLabel())
+		}
 		// Mint mode: YBA generates the root certificate. Routed through the
 		// vanilla client because the generated CreateSelfSignedCert marshals
 		// the request body incorrectly (bare string instead of {"label": ...}).
@@ -175,6 +192,29 @@ func resourceSelfSignedCertificateCreate(
 
 	d.SetId(certUUID)
 	return resourceSelfSignedCertificateRead(ctx, d, meta)
+}
+
+// mintLabelCollides reports whether an existing certificate makes YBA's
+// generated-mode create rename the new root certificate. YBA matches existing
+// self-signed labels against SQL LIKE '<label>%' and, on a match, stores the
+// new one as "<label>~N"; Read would then plan a replacement on every apply.
+func mintLabelCollides(label string) func(*client.CertificateInfoExt) bool {
+	var b strings.Builder
+	b.WriteString("(?s)^")
+	for _, r := range label {
+		switch r {
+		case '_':
+			b.WriteString(".")
+		case '%':
+			b.WriteString(".*")
+		default:
+			b.WriteString(regexp.QuoteMeta(string(r)))
+		}
+	}
+	re := regexp.MustCompile(b.String())
+	return func(cert *client.CertificateInfoExt) bool {
+		return cert.GetCertType() == certTypeSelfSigned && re.MatchString(cert.GetLabel())
+	}
 }
 
 func resourceSelfSignedCertificateRead(

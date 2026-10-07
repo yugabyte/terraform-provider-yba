@@ -95,6 +95,28 @@ func TestPlanEncryptionAtRest(t *testing.T) {
 			},
 		},
 		{
+			// That enable keeps the earlier universe key, so the trigger
+			// still needs its own rotation.
+			name:    "trigger with a re-enable with another config",
+			desired: on("B"),
+			trigger: true,
+			live:    off("A"),
+			want: []earAction{
+				{label: "Enable Encryption At Rest", op: earOpEnable, kmsConfigUUID: "B"},
+				{label: "Universe Key Rotation", op: earOpEnable, kmsConfigUUID: "B"},
+			},
+		},
+		{
+			// Re-enabling with the last config generates a fresh key.
+			name:    "trigger with a re-enable with the same config",
+			desired: on("A"),
+			trigger: true,
+			live:    off("A"),
+			want: []earAction{
+				{label: "Enable Encryption At Rest", op: earOpEnable, kmsConfigUUID: "A"},
+			},
+		},
+		{
 			name:    "enabled without a config",
 			desired: on(""),
 			live:    off(""),
@@ -218,6 +240,42 @@ func TestPlanWithOmittedBlockIsEmpty(t *testing.T) {
 	}
 	if diff != nil && !diff.Empty() {
 		t.Fatalf("unexpected diff: %v", diff)
+	}
+}
+
+// While encryption stays off, no task runs and YBA keeps reporting the last
+// config, so a new kms_config_uuid would diff forever. The plan rejects it.
+func TestKMSConfigChangeNeedsEncryptionEnabled(t *testing.T) {
+	res := &schema.Resource{
+		Schema:        earTestSchema(),
+		CustomizeDiff: validateEncryptionAtRestDiff,
+	}
+	state := &terraform.InstanceState{ID: "u-1", Attributes: map[string]string{
+		"id":                                   "u-1",
+		"encryption_at_rest.#":                 "1",
+		"encryption_at_rest.0.enabled":         "false",
+		"encryption_at_rest.0.kms_config_uuid": "A",
+	}}
+	cases := []struct {
+		enabled bool
+		kms     string
+		wantErr bool
+	}{
+		{enabled: false, kms: "B", wantErr: true},
+		{enabled: false, kms: "A"},
+		{enabled: true, kms: "B"},
+	}
+	for _, tc := range cases {
+		cfg := terraform.NewResourceConfigRaw(map[string]interface{}{
+			"encryption_at_rest": []interface{}{map[string]interface{}{
+				"enabled": tc.enabled, "kms_config_uuid": tc.kms,
+			}},
+		})
+		_, err := res.Diff(context.Background(), state, cfg, nil)
+		if (err != nil) != tc.wantErr {
+			t.Errorf("enabled=%v kms_config_uuid=%s: err = %v, wantErr %v",
+				tc.enabled, tc.kms, err, tc.wantErr)
+		}
 	}
 }
 

@@ -16,8 +16,8 @@ data "yba_release_version" "release_version" {
 }
 
 data "yba_release_version" "release_version_x" {
-  // Retrieve a list of YBDB versions corresponding to the pattern string.
-  version = "<YBDB-version-string-to-be-matched>"
+  // Retrieve a list of YBDB versions that start with this prefix.
+  version = "2024.2"
 }
 
 data "yba_release_version" "release_version_aarch64" {

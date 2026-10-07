@@ -49,7 +49,9 @@ func ResourceCustomServerCertificate() *schema.Resource {
 			"in the plan or the state file, so this resource requires Terraform 1.11 or " +
 			"later. Terraform cannot detect a change to `server_key` alone, so change it " +
 			"together with `server_certificate`, which forces replacement. YugabyteDB " +
-			"Anywhere checks at upload that the server certificate and the key match.\n\n" +
+			"Anywhere checks at upload that the server certificate and the key match, " +
+			"unless the customer runtime configuration `yb.tls.enable_config_validation` " +
+			"is `false`.\n\n" +
 			"~> **Note:** YugabyteDB Anywhere never returns `server_certificate`, so after " +
 			"`terraform import` the next plan proposes a replacement. The Import section " +
 			"below shows how to keep the imported certificate.",

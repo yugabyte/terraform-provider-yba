@@ -26,6 +26,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
 
 	"github.com/yugabyte/terraform-provider-yba/internal/acctest"
+	"github.com/yugabyte/terraform-provider-yba/internal/ear"
 	"github.com/yugabyte/terraform-provider-yba/internal/utils"
 )
 
@@ -34,10 +35,9 @@ import (
 // TF_VAR_GCP_CREDENTIALS must hold the Cloud KMS permissions YBA checks at
 // create time.
 const (
-	envGCPEARLocationID   = "TF_VAR_GCP_EAR_LOCATION_ID"
-	envGCPEARKeyRingID    = "TF_VAR_GCP_EAR_KEY_RING_ID"
-	envGCPEARCryptoKeyID  = "TF_VAR_GCP_EAR_CRYPTO_KEY_ID"
-	envGCPEARHostIdentity = "TF_VAR_GCP_EAR_HOST_IDENTITY"
+	envGCPEARLocationID  = "TF_VAR_GCP_EAR_LOCATION_ID"
+	envGCPEARKeyRingID   = "TF_VAR_GCP_EAR_KEY_RING_ID"
+	envGCPEARCryptoKeyID = "TF_VAR_GCP_EAR_CRYPTO_KEY_ID"
 )
 
 func testAccPreCheckGCPEAR(t *testing.T) {
@@ -99,8 +99,9 @@ func TestAccGCPEARConfig_ServiceAccount(t *testing.T) {
 }
 
 // TestAccGCPEARConfig_HostIdentity needs a YBA build with host-identity support
-// for GCP KMS and a fixture host whose attached service account can use the
-// key ring, so it is opt-in.
+// for GCP KMS. It skips while the GCP fixture YBA fails the same version gate
+// that the plan applies, and runs once the fixture is upgraded. The fixture's
+// attached service account holds the KMS role (acctest/gcp/iam.tf).
 func TestAccGCPEARConfig_HostIdentity(t *testing.T) {
 	rName := acctest.RandomName("gcp-ear-iam")
 	res := "yba_gcp_ear_config.test"
@@ -108,11 +109,16 @@ func TestAccGCPEARConfig_HostIdentity(t *testing.T) {
 	resource.ParallelTest(t, resource.TestCase{
 		PreCheck: func() {
 			testAccPreCheckGCPEAR(t)
-			if os.Getenv(envGCPEARHostIdentity) != "true" {
-				t.Skipf(
-					"%s is not \"true\"; skipping the host identity test",
-					envGCPEARHostIdentity,
-				)
+			c, err := acctest.APIClientForCloud("GCP")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := c.AppVersion(context.Background()); err != nil {
+				t.Fatalf("read the GCP fixture YBA version: %v", err)
+			}
+			if err := ear.GCPRequireHostIdentity(
+				context.Background(), c, "use_gcp_iam"); err != nil {
+				t.Skipf("skipping the host identity test: %v", err)
 			}
 		},
 		ProviderFactories: acctest.ProviderFactories,

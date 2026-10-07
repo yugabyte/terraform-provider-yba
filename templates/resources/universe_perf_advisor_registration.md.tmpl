@@ -21,9 +21,3 @@ Universe Perf Advisor registrations can be imported using the universe UUID:
 ```sh
 terraform import yba_universe_perf_advisor_registration.advanced <universe-uuid>
 ```
-
-Import does not read the collector UUID of the registration, so it leaves
-`pa_collector_uuid` empty. Because `pa_collector_uuid` forces a new
-resource, the first plan after import replaces the registration: it unregisters
-the universe and registers it again. To keep the imported registration, add
-`pa_collector_uuid` to `lifecycle.ignore_changes`.

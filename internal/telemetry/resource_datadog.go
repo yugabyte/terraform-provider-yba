@@ -24,7 +24,6 @@ import (
 func ResourceDatadogTelemetryProvider() *schema.Resource {
 	return sinkResource(sinkSpec{
 		resourceType: "yba_datadog_telemetry_provider",
-		displayName:  "Datadog",
 		apiType:      typeDataDog,
 		description: "Manages a Datadog telemetry provider in YugabyteDB Anywhere. " +
 			"Universes send logs and metrics to it through " +

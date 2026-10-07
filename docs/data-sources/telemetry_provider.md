@@ -8,9 +8,11 @@ description: |-
 
 Looks up a telemetry provider in YugabyteDB Anywhere by name. The `id` attribute is the telemetry provider UUID: use it as an `exporter_uuid` in `yba_universe_telemetry_config`.
 
-~> **Experimental:** Telemetry export is an experimental feature of YugabyteDB Anywhere. A later YBA release can change it in ways that are not backward compatible. Read the release notes before you upgrade YBA or the provider.
+~> **Preview:** YugabyteDB Anywhere marks its telemetry export APIs as preview. A later YBA release can change them in ways that are not backward compatible. Read the release notes before you upgrade YBA or the provider.
 
 The read fails when no telemetry provider has the name.
+
+~> **Note:** YBA creates, reads and deletes telemetry providers only when the global runtime config `yb.universe.audit_logging_enabled`, `yb.universe.query_logging_enabled` or `yb.universe.metrics_export_enabled` is `true`. Before YugabyteDB Anywhere 2025.2.0.0, YBA checks only `yb.universe.audit_logging_enabled`, and its default is `false`. From 2025.2.0.0, its default is `true`. To set one, use the `yba_runtime_config` resource.
 
 ## Example Usage
 

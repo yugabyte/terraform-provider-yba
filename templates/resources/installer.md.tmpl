@@ -42,8 +42,14 @@ A change to `application_settings`, `tls_certificate` or `tls_key` runs `yba-ctl
 
 A change to `yba_license`, or to the path in `yba_license_file`, adds the new license on the next apply.
 
--> **Note:** The provider copies the TLS certificate and key to **/tmp/server.crt** and **/tmp/server.key** on the YugabyteDB Anywhere host. Before installation, set `server_cert_path` and `server_key_path` to these paths in the application settings.
+The provider does not read the installation back from the host. A change that you make on the host outside Terraform, for example with `yba-ctl`, does not show in the plan.
+
+-> **Note:** The provider copies the TLS certificate and key to **/tmp/server.crt** and **/tmp/server.key** on the YugabyteDB Anywhere host. Before installation, set `server_cert_path` and `server_key_path` to these paths in the application settings. When you set the TLS certificate or key, also set `application_settings` or `application_settings_file`, or the plan fails.
 
 For host requirements and settings, refer to [Install YBA software using YBA Installer](https://docs.yugabyte.com/stable/yugabyte-platform/install-yugabyte-platform/install-software/installer/).
 
 {{ .SchemaMarkdown | trimspace }}
+
+## Import
+
+This resource cannot be imported, because the provider does not read the installation back from the host.

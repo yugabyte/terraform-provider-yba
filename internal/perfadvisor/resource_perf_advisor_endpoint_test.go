@@ -16,11 +16,64 @@
 package perfadvisor
 
 import (
+	"context"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	clientv2 "github.com/yugabyte/platform-go-client/v2"
+
+	"github.com/yugabyte/terraform-provider-yba/internal/api"
 )
+
+// YBA answers a GET of a missing endpoint with a 400, the same status as other
+// failures, so Read clears state only when a successful list lacks the
+// endpoint. A failed list, or a list that still has it, keeps the error.
+func TestEndpointReadGoneVerdict(t *testing.T) {
+	cases := []struct {
+		name       string
+		listStatus int
+		listBody   string
+		wantGone   bool
+	}{
+		{name: "list fails", listStatus: http.StatusBadRequest,
+			listBody: `{"success":false,"error":"Perf Advisor online mode is not enabled"}`},
+		{name: "list lacks the endpoint", listStatus: http.StatusOK, listBody: `[]`,
+			wantGone: true},
+		{name: "list has the endpoint", listStatus: http.StatusOK,
+			listBody: `[{"info":{"uuid":"E"}}]`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(
+				func(w http.ResponseWriter, r *http.Request) {
+					w.Header().Set("Content-Type", "application/json")
+					if strings.HasSuffix(r.URL.Path, "/perf-advisor-endpoints") {
+						w.WriteHeader(tc.listStatus)
+						_, _ = w.Write([]byte(tc.listBody))
+						return
+					}
+					w.WriteHeader(http.StatusBadRequest)
+					_, _ = w.Write([]byte(
+						`{"success":false,"error":"Perf Advisor Endpoint E does not exist"}`))
+				}))
+			defer srv.Close()
+			cfg := clientv2.NewConfiguration()
+			cfg.Scheme = "http"
+			cfg.Host = strings.TrimPrefix(srv.URL, "http://")
+			c := &api.APIClient{YugawareClientV2: clientv2.NewAPIClient(cfg), CustomerID: "cust"}
+
+			d := ResourcePerfAdvisorEndpoint().TestResourceData()
+			d.SetId("E")
+			diags := resourcePerfAdvisorEndpointRead(context.Background(), d, c)
+			if gone := !diags.HasError() && d.Id() == ""; gone != tc.wantGone {
+				t.Errorf("gone = %v (diags=%v, id=%q), want %v", gone, diags, d.Id(), tc.wantGone)
+			}
+		})
+	}
+}
 
 // YBA reads passwords back masked. Without carrying the configured value over,
 // every plan would report a diff from the real password to "********" and an

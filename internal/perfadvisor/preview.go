@@ -22,10 +22,18 @@ import (
 )
 
 // previewAdmonition follows the summary paragraph of each resource Description:
-// the docs templates publish the first paragraph as the Registry summary.
-const previewAdmonition = "~> **Preview:** This resource works only with " +
-	"YugabyteDB Anywhere preview releases. No stable YBA release has the " +
-	"version of the Perf Advisor API that this resource uses. The API can " +
+// the docs templates publish the first paragraph as the Registry summary. No
+// stable YBA release has the Perf Advisor API that the resources use yet. When
+// one does, gate the resources on it and name that release in the docs.
+const previewAdmonition = "~> **Preview:** The YugabyteDB Anywhere Perf Advisor " +
+	"API that this resource uses is in preview. It can change in ways that are " +
+	"not backward compatible between YBA releases.\n\n"
+
+// collectorAPIAdmonition follows the summary paragraph of the yba_pa_collector
+// Description. YBA marks its Perf Advisor collector API as internal; the docs
+// call it preview, as for the Perf Advisor resources.
+const collectorAPIAdmonition = "~> **Preview:** The YugabyteDB Anywhere Perf " +
+	"Advisor collector API that this data source uses is in preview. It can " +
 	"change in ways that are not backward compatible between YBA releases.\n\n"
 
 // onlineModeKey is the customer runtime config key that turns on Perf Advisor
@@ -36,10 +44,10 @@ func previewWarning(resourceName string) diag.Diagnostic {
 	return diag.Diagnostic{
 		Severity: diag.Warning,
 		Summary: fmt.Sprintf(
-			"%s works only with YugabyteDB Anywhere preview releases", resourceName),
-		Detail: "No stable YugabyteDB Anywhere release has the version of the " +
-			"Perf Advisor API that this resource uses. The API can change in ways " +
-			"that are not backward compatible between YBA releases. Pin your " +
-			"provider version and read the release notes before you upgrade.",
+			"%s uses a preview YugabyteDB Anywhere API", resourceName),
+		Detail: "The YugabyteDB Anywhere Perf Advisor API that this resource uses " +
+			"is in preview. It can change in ways that are not backward compatible " +
+			"between YBA releases. Pin your provider version and read the release " +
+			"notes before you upgrade.",
 	}
 }

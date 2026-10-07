@@ -8,7 +8,7 @@ description: |-
 
 Manages the telemetry export configuration of a universe in YugabyteDB Anywhere: the audit log, query log, server log and metrics pipelines, and the telemetry providers that each pipeline sends data to.
 
-~> **Experimental:** Telemetry export is an experimental feature of YugabyteDB Anywhere. A later YBA release can change it in ways that are not backward compatible. Read the release notes before you upgrade YBA or the provider.
+~> **Preview:** YugabyteDB Anywhere marks its telemetry export APIs as preview. A later YBA release can change them in ways that are not backward compatible. Read the release notes before you upgrade YBA or the provider.
 
 YBA runs an OpenTelemetry Collector on the universe nodes to export the data.
 
@@ -20,7 +20,7 @@ YBA runs an OpenTelemetry Collector on the universe nodes to export the data.
 
 ~> **Note:** Datadog and OTLP telemetry providers accept logs and metrics. Dynatrace accepts only metrics. AWS CloudWatch, GCP Cloud Monitoring, Splunk and S3 accept only logs. All AWS CloudWatch and S3 telemetry providers that one universe uses must have the same access key and secret key. All GCP Cloud Monitoring telemetry providers that one universe uses must have the same credentials.
 
-~> **Note:** On a Kubernetes universe, `node_agent_logs` and `ynp_logs` are not available. Audit log export needs YugabyteDB 2025.1.0.0 or later on the universe, and the other pipelines need YugabyteDB 2026.1.2.0 or later. `metrics` must set `scrape_config_targets` to a subset of `MASTER_EXPORT`, `TSERVER_EXPORT`, `YSQL_EXPORT`, `CQL_EXPORT` and `OTEL_EXPORT`.
+~> **Note:** To export from a Kubernetes universe, install the OpenTelemetry Operator in its Kubernetes cluster first. On a Kubernetes universe, `node_agent_logs` and `ynp_logs` are not available. Audit log export needs YugabyteDB 2025.1.0.0 or later on the universe, and the other pipelines need YugabyteDB 2026.1.2.0 or later. `metrics` must set `scrape_config_targets` to a subset of `MASTER_EXPORT`, `TSERVER_EXPORT`, `YSQL_EXPORT`, `CQL_EXPORT` and `OTEL_EXPORT`.
 
 ~> **Note:** When `exporter_uuid` refers to a telemetry provider resource, Terraform orders the work itself, and `depends_on` is not needed. When an apply replaces a telemetry provider that this universe uses, the universe restarts twice. The first restart removes the old telemetry provider before Terraform deletes it. A pipeline whose only exporter was the old telemetry provider stays off until the second restart, which adds the new telemetry provider.
 
@@ -278,10 +278,10 @@ Optional:
 
 Optional:
 
-- `classes` (Set of String) Sets `pgaudit.log`: the classes of statements to log. Allowed values: `READ`, `WRITE`, `FUNCTION`, `ROLE`, `DDL`, `MISC` or `MISC_SET`.
+- `classes` (Set of String) Sets `pgaudit.log`: the classes of statements to log. Allowed values: `READ`, `WRITE`, `FUNCTION`, `ROLE`, `DDL`, `MISC` or `MISC_SET`. When not set, YBA does not set `pgaudit.log`, whose default, `none`, logs no statements.
 - `log_catalog` (Boolean) Sets `pgaudit.log_catalog`: also log statements whose relations are all in `pg_catalog`. Set to `false` to drop the catalog lookups that tools make. Defaults to `true`.
 - `log_client` (Boolean) Sets `pgaudit.log_client`: also send audit messages to the client, such as ysqlsh. Defaults to `true`.
-- `log_level` (String) Sets `pgaudit.log_level`: the severity of the audit messages sent to the client. Applies only when `log_client` is `true`. Allowed values: `DEBUG1`, `DEBUG2`, `DEBUG3`, `DEBUG4`, `DEBUG5`, `INFO`, `NOTICE`, `WARNING` or `LOG`. Defaults to `LOG`.
+- `log_level` (String) Sets `pgaudit.log_level`: the severity of the audit log entries when `log_client` is `true`. When `log_client` is `false`, pgaudit uses `LOG`. Allowed values: `DEBUG1`, `DEBUG2`, `DEBUG3`, `DEBUG4`, `DEBUG5`, `INFO`, `NOTICE`, `WARNING` or `LOG`. Defaults to `LOG`. A level below `WARNING` (`DEBUG1` to `DEBUG5`, `INFO` or `NOTICE`) also needs the yb-tserver flag `ysql_log_min_messages` set to that level or a more verbose one.
 - `log_parameter` (Boolean) Sets `pgaudit.log_parameter`: include the statement parameters in the audit log. Defaults to `false`.
 - `log_parameter_max_size` (Number) Sets `pgaudit.log_parameter_max_size`: the largest parameter, in bytes, to log when `log_parameter` is `true`. A longer parameter is replaced with `<long param suppressed>`. `0` logs every parameter. Defaults to `0`.
 - `log_relation` (Boolean) Sets `pgaudit.log_relation`: write a separate entry for each relation that a SELECT or DML statement references. Defaults to `false`.
@@ -349,7 +349,7 @@ Optional:
 
 - `collection_level` (String) Which metrics to collect: `ALL`, `NORMAL`, `TABLE_OFF` (no table-level metrics), `MINIMAL` or `OFF`. Defaults to `NORMAL`.
 - `exporter` (Block List) Telemetry provider that receives the metrics. Repeat the block to send them to more than one telemetry provider. A telemetry provider can appear only once in a pipeline. (see [below for nested schema](#nestedblock--metrics--exporter))
-- `scrape_config_targets` (Set of String) Targets to scrape. Allowed values: `MASTER_EXPORT`, `TSERVER_EXPORT`, `YSQL_EXPORT`, `CQL_EXPORT`, `NODE_EXPORT`, `NODE_AGENT_EXPORT` or `OTEL_EXPORT`. When not set, YBA scrapes all targets. A Kubernetes universe requires this argument.
+- `scrape_config_targets` (Set of String) Targets to scrape. Allowed values: `MASTER_EXPORT`, `TSERVER_EXPORT`, `YSQL_EXPORT`, `CQL_EXPORT`, `NODE_EXPORT`, `NODE_AGENT_EXPORT` or `OTEL_EXPORT`. When not set, YBA scrapes all targets. After you set it, removing the argument keeps the current targets. To scrape all targets again, list them all. A Kubernetes universe requires this argument.
 - `scrape_interval_seconds` (Number) Seconds between two scrapes of each target. Defaults to `30`.
 - `scrape_timeout_seconds` (Number) Timeout of each scrape, in seconds. Defaults to `20`.
 
@@ -434,7 +434,7 @@ Optional:
 - `log_duration` (Boolean) Sets `log_duration`: log the duration of every completed statement. Defaults to `false`.
 - `log_error_verbosity` (String) Sets `log_error_verbosity`: how much detail each logged message carries. Allowed values: `VERBOSE`, `TERSE` or `DEFAULT`. Defaults to `DEFAULT`.
 - `log_min_duration_statement` (Number) Sets `log_min_duration_statement`: log each statement that runs for at least this many milliseconds. `-1` turns this off, and `0` logs every statement. Defaults to `-1`.
-- `log_min_error_statement` (String) Sets `log_min_error_statement`: the lowest error severity that logs the statement that caused it. Defaults to `ERROR`.
+- `log_min_error_statement` (String) Sets `log_min_error_statement`: the lowest error severity that logs the statement that caused it. The only allowed value is `ERROR`. Defaults to `ERROR`.
 - `log_statement` (String) Sets `log_statement`: which SQL statements to log. Allowed values: `ALL`, `NONE`, `DDL` or `MOD`. `MOD` logs DDL and data-changing statements. Defaults to `NONE`.
 
 <a id="nestedblock--timeouts"></a>

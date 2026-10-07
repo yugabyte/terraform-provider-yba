@@ -13,7 +13,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package releases
+package loadbalancer
 
 import (
 	"fmt"
@@ -22,18 +22,18 @@ import (
 )
 
 // previewAdmonition follows the summary paragraph of the resource Description.
-const previewAdmonition = "~> **Preview:** The YugabyteDB Anywhere API that this resource " +
-	"uses is marked preview. A later YBA release can change it in ways that are not " +
-	"backward compatible.\n\n"
+const previewAdmonition = "~> **Preview:** YugabyteDB Anywhere marks the API that this " +
+	"resource uses as preview. The API can change in ways that are not backward " +
+	"compatible between YBA releases.\n\n"
 
 func previewWarning(resourceName string) diag.Diagnostic {
 	return diag.Diagnostic{
 		Severity: diag.Warning,
 		Summary: fmt.Sprintf(
 			"%s uses a preview YugabyteDB Anywhere API", resourceName),
-		Detail: "The YugabyteDB Anywhere release management API that this resource " +
-			"uses is marked preview. A later YBA release can change it in ways that " +
-			"are not backward compatible. Pin your provider version and read the " +
+		Detail: "YugabyteDB Anywhere marks the load balancer API that this resource " +
+			"uses as preview. The API can change in ways that are not backward " +
+			"compatible between YBA releases. Pin your provider version and read the " +
 			"release notes before you upgrade.",
 	}
 }

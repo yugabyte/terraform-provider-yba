@@ -32,8 +32,9 @@ func DataSourceTelemetryProvider() *schema.Resource {
 		Description: "Looks up a telemetry provider in YugabyteDB Anywhere by " +
 			"name. The `id` attribute is the telemetry provider UUID: use it as an " +
 			"`exporter_uuid` in `yba_universe_telemetry_config`.\n\n" +
-			experimentalAdmonition + "\n\n" +
-			"The read fails when no telemetry provider has the name.",
+			previewAdmonition + "\n\n" +
+			"The read fails when no telemetry provider has the name.\n\n" +
+			telemetryFlagsNote,
 
 		ReadContext: dataSourceTelemetryProviderRead,
 
