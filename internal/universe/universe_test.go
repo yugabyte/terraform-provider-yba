@@ -94,7 +94,8 @@ func TestAccLong_Universe_GCP_UpdatePrimaryNodes(t *testing.T) {
 				// Read on import has no raw config and no prior state, and must
 				// still write the per_process block. db_version_upgrade_options
 				// is config-only, YBA returns the passwords redacted, and the
-				// per_az entry sets no flags, so it never reaches YBA.
+				// per_az entry sets no flags, so it never reaches YBA. YBA lists
+				// node_details_set in no stable order.
 				ResourceName:      "yba_universe.gcp",
 				ImportState:       true,
 				ImportStateVerify: true,
@@ -103,6 +104,7 @@ func TestAccLong_Universe_GCP_UpdatePrimaryNodes(t *testing.T) {
 					"clusters.0.user_intent.0.ysql_password",
 					"clusters.0.user_intent.0.ycql_password",
 					"clusters.0.user_intent.0.specific_gflags.0.per_az",
+					"node_details_set",
 				},
 				ImportStateCheck: func(s []*terraform.InstanceState) error {
 					k := "clusters.0.user_intent.0.specific_gflags.0.per_process.#"
