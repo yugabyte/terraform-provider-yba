@@ -3376,15 +3376,31 @@ func editUniverseParameters(ctx context.Context, oldUserIntent client.UserIntent
 	return false, oldUserIntent
 }
 
+// primaryYBSoftwareVersion returns the PRIMARY cluster's yb_software_version.
+func primaryYBSoftwareVersion(clusters []client.Cluster) string {
+	primary, ok := getClusterByType(clusters, "PRIMARY")
+	if !ok {
+		return ""
+	}
+	return primary.UserIntent.GetYbSoftwareVersion()
+}
+
 // planPendingFinalize plans the finalize of an upgrade that a refresh found in
 // PreFinalize while finalize = true. An apply that ends between the upgrade
 // task and its finalize (interrupt, timeout, network error) leaves the universe
 // there; without this the config matches the refreshed state and no later plan
-// finalizes it. Update then runs the finalize.
+// finalizes it. Update then runs the finalize. Only the version the config asks
+// for is finalized: a config that changes yb_software_version (e.g. back to the
+// version before the pending upgrade) leaves the universe in PreFinalize.
 func planPendingFinalize(_ context.Context, d *schema.ResourceDiff, _ interface{}) error {
 	if d.Id() == "" ||
 		d.Get("db_version_upgrade_state").(string) != "PreFinalize" ||
 		!d.Get("db_version_upgrade_options.0.finalize").(bool) {
+		return nil
+	}
+	oldClusters, newClusters := d.GetChange("clusters")
+	if primaryYBSoftwareVersion(buildClusters(oldClusters.([]interface{}))) !=
+		primaryYBSoftwareVersion(buildClusters(newClusters.([]interface{}))) {
 		return nil
 	}
 	return d.SetNew("db_version_upgrade_state", "Ready")
@@ -3737,7 +3753,9 @@ func resourceUniverseUpdate(
 	// universe must not stay in PreFinalize. This covers flipping finalize from
 	// false to true after a monitoring phase, and an upgrade whose apply ended
 	// before its own finalize ran (planPendingFinalize plans that case). A
-	// universe that is Ready, e.g. ahead of an upgrade in this apply, is skipped.
+	// universe that is Ready, e.g. ahead of an upgrade in this apply, is skipped,
+	// and so is a pending upgrade to a version other than the configured one:
+	// finalizing it would commit the version the config moves away from.
 	if d.Get("db_version_upgrade_options.0.finalize").(bool) {
 		currentUni, response, err := c.UniverseManagementAPI.GetUniverse(ctx, cUUID, d.Id()).
 			Execute()
@@ -3746,7 +3764,10 @@ func resourceUniverseUpdate(
 				"Universe", "Update - Fetch for finalize")
 			return diag.FromErr(errMessage)
 		}
-		if currentUni.UniverseDetails.GetSoftwareUpgradeState() == "PreFinalize" {
+		configVersion := primaryYBSoftwareVersion(
+			buildClusters(d.Get("clusters").([]interface{})))
+		if currentUni.UniverseDetails.GetSoftwareUpgradeState() == "PreFinalize" &&
+			primaryYBSoftwareVersion(currentUni.UniverseDetails.Clusters) == configVersion {
 			if diags := runFinalizeUpgrade(ctx, c, cUUID, d.Id(),
 				currentUni.UniverseDetails.Clusters,
 				upgradeOption,

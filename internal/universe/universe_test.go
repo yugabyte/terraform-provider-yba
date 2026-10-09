@@ -33,8 +33,14 @@ import (
 )
 
 // The universe runs on a yba_ybdb_release that the test registers. Only this test
-// may use tfManagedReleaseVersion on the GCP fixture: YBA allows one release per
-// version.
+// may use tfManagedReleaseVersion: YBA allows one release per version.
+//
+// The last step covers an apply that ended between the DB upgrade task and its
+// finalize (Ctrl-C, timeout, network error): the universe is in PreFinalize
+// while state holds the new version and finalize = true. PreConfig runs that
+// upgrade outside Terraform, to the fixture's own build (preview, like
+// tfManagedReleaseVersion: YBA refuses an upgrade across the stable and preview
+// tracks), and the apply must finalize it.
 func TestAccLong_Universe_GCP_UpdatePrimaryNodes(t *testing.T) {
 	var universe client.UniverseResp
 
@@ -49,7 +55,7 @@ func TestAccLong_Universe_GCP_UpdatePrimaryNodes(t *testing.T) {
 		CheckDestroy:      testAccCheckDestroyProviderAndUniverse("GCP"),
 		Steps: []resource.TestStep{
 			{
-				Config: universeGcpConfigWithTFRelease(rName, 3),
+				Config: universeGcpConfigWithTFRelease(rName, 3, tfManagedReleaseExpr),
 				Check: resource.ComposeTestCheckFunc(
 					testAccCheckUniverseExists("GCP", "yba_universe.gcp", &universe),
 					testAccCheckNumNodes(&universe, 3),
@@ -57,10 +63,26 @@ func TestAccLong_Universe_GCP_UpdatePrimaryNodes(t *testing.T) {
 				),
 			},
 			{
-				Config: universeGcpConfigWithTFRelease(rName, 4),
+				Config: universeGcpConfigWithTFRelease(rName, 4, tfManagedReleaseExpr),
 				Check: resource.ComposeTestCheckFunc(
 					testAccCheckUniverseExists("GCP", "yba_universe.gcp", &universe),
 					testAccCheckNumNodes(&universe, 4),
+				),
+			},
+			{
+				PreConfig: func() { upgradeUniverseOutOfBand(t, "GCP", &universe) },
+				Config: universeGcpConfigWithTFRelease(rName, 4,
+					"data.yba_release_version.release_version.id"),
+				Check: resource.ComposeTestCheckFunc(
+					testAccCheckUniverseExists("GCP", "yba_universe.gcp", &universe),
+					resource.TestCheckResourceAttr("yba_universe.gcp",
+						"db_version_upgrade_state", "Ready"),
+					func(_ *terraform.State) error {
+						if s := universe.UniverseDetails.GetSoftwareUpgradeState(); s != "Ready" {
+							return fmt.Errorf("YBA db_version_upgrade_state is %q, want Ready", s)
+						}
+						return nil
+					},
 				),
 			},
 		},
@@ -323,9 +345,12 @@ const (
 		"yugabyte-2.25.2.0-b359-linux-x86_64.tar.gz"
 )
 
+const tfManagedReleaseExpr = "yba_ybdb_release.gcp.version"
+
 // universeGcpConfigWithTFRelease is universeGcpConfigWithNodes with the
-// universe on a yba_ybdb_release. The nodes download package_url themselves.
-func universeGcpConfigWithTFRelease(name string, nodes int) string {
+// yba_ybdb_release registered and the universe on softwareVersion, with
+// finalize = true. The nodes download package_url themselves.
+func universeGcpConfigWithTFRelease(name string, nodes int, softwareVersion string) string {
 	return acctest.YBAProviderBlock("GCP") + cloudProviderGCPConfig(name+"-provider") +
 		fmt.Sprintf(`
 	resource "yba_ybdb_release" "gcp" {
@@ -338,7 +363,61 @@ func universeGcpConfigWithTFRelease(name string, nodes int) string {
 		}
 	}
 `, tfManagedReleaseVersion, tfManagedReleaseURL) +
-		universeConfigWithSoftwareVersion("gcp", name, nodes, "", "yba_ybdb_release.gcp.version")
+		universeConfigWithSoftwareVersion("gcp", name, nodes, `
+  		db_version_upgrade_options {
+  			finalize = true
+  		}
+`, softwareVersion)
+}
+
+// upgradeUniverseOutOfBand upgrades the universe to the fixture's own build
+// outside Terraform and leaves it in PreFinalize, as an interrupted apply would.
+func upgradeUniverseOutOfBand(t *testing.T, cloud string, universe *client.UniverseResp) {
+	t.Helper()
+	apiClient, err := acctest.APIClientForCloud(cloud)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	c := apiClient.YugawareClient
+	cUUID := apiClient.CustomerID
+	target, err := apiClient.AppVersion(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	uUUID := universe.GetUniverseUUID()
+	clusters := universe.UniverseDetails.Clusters
+	for i := range clusters {
+		clusters[i].UserIntent.YbSoftwareVersion = utils.GetStringPointer(target)
+	}
+	req := client.SoftwareUpgradeParams{
+		YbSoftwareVersion:              target,
+		Clusters:                       clusters,
+		UpgradeOption:                  "Rolling",
+		UpgradeSystemCatalog:           true,
+		SleepAfterMasterRestartMillis:  30000,
+		SleepAfterTServerRestartMillis: 30000,
+	}
+	if diags := utils.DispatchAndWait(ctx, "DB Version Upgrade", cUUID, c, time.Hour,
+		utils.TestEntity, "Universe", "Upgrade out of band",
+		func() (string, *http.Response, error) {
+			r, resp, e := c.UniverseUpgradesManagementAPI.UpgradeDBVersion(
+				ctx, cUUID, uUUID).SoftwareUpgradeParams(req).Execute()
+			if e != nil {
+				return "", resp, e
+			}
+			return r.GetTaskUUID(), resp, nil
+		}); diags.HasError() {
+		t.Fatalf("upgrade to %s: %v", target, diags)
+	}
+	u, _, err := c.UniverseManagementAPI.GetUniverse(ctx, cUUID, uUUID).Execute()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s := u.UniverseDetails.GetSoftwareUpgradeState(); s != "PreFinalize" {
+		t.Fatalf("after upgrade to %s the universe is %q, want PreFinalize "+
+			"(the upgrade needs no finalize, so the step proves nothing)", target, s)
+	}
 }
 
 // deleteLeftoverRelease is a best-effort cleanup of what an aborted run left
