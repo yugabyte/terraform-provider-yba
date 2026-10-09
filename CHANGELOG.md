@@ -53,7 +53,7 @@ YugabyteDB Anywhere marks the APIs of telemetry export, `yba_ybdb_release`, and 
 
 - `yba_universe`: a DB version upgrade or a systemd upgrade no longer resets the load balancer and log export settings of the universe.
 - `yba_universe`: with `finalize = true`, the next apply finalizes a DB upgrade that an earlier apply left in `PreFinalize`, for example because the apply was interrupted or timed out after the upgrade task. Before, no later plan showed a change and the upgrade stayed unfinalized.
-- `yba_universe`: `specific_gflags` no longer shows a diff when YugabyteDB Anywhere holds the same flags in another form: a `per_process` block or a `per_az` entry that sets no flags, or `per_az` entries in another order. If the state already holds `per_az` in another form, the next plan shows the diff once more, and an apply clears it without a YugabyteDB Anywhere task.
+- `yba_universe`: `specific_gflags` no longer shows a diff when YugabyteDB Anywhere holds the same flags in another form: a `per_process` block or a `per_az` entry that sets no flags, or `per_az` entries in another order. If the state already holds `per_az` in another form, the next plan shows the diff once more, and an apply clears it without a YugabyteDB Anywhere task. After `terraform import`, the first plan can show the same `per_az` diff once; see the Import section of the `yba_universe` page.
 - `yba_cloud_provider` (deprecated): Azure regions now send and read `vnet_name`, `yb_image`, and `security_group_id`.
 - `yba_cloud_provider` (deprecated): create no longer sends an empty access key, so YugabyteDB Anywhere generates a key pair when you give none.
 - `yba_cloud_provider` (deprecated): GCP create no longer crashes when optional `gcp_config_settings` fields are not set.
