@@ -33,7 +33,8 @@ import (
 )
 
 // The universe runs on a yba_ybdb_release that the test registers. Only this test
-// may use tfManagedReleaseVersion: YBA allows one release per version.
+// may use tfManagedReleaseVersion on the GCP fixture: YBA allows one release per
+// version.
 func TestAccLong_Universe_GCP_UpdatePrimaryNodes(t *testing.T) {
 	var universe client.UniverseResp
 
