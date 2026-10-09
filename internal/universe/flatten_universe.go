@@ -16,6 +16,7 @@
 package universe
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"maps"
@@ -1054,7 +1055,13 @@ func alignClustersCloudList(
 	}
 }
 
+// flattenNodeDetailsSet lists the nodes by node_idx, then node_name. YBA
+// returns them in a new order on every GET.
 func flattenNodeDetailsSet(nsd []client.NodeDetailsResp) (res []interface{}) {
+	nsd = slices.SortedFunc(slices.Values(nsd), func(a, b client.NodeDetailsResp) int {
+		return cmp.Or(cmp.Compare(a.GetNodeIdx(), b.GetNodeIdx()),
+			strings.Compare(a.GetNodeName(), b.GetNodeName()))
+	})
 	for _, n := range nsd {
 		var lastVolTime string
 		if n.LastVolumeUpdateTime != nil {

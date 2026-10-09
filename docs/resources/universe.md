@@ -237,7 +237,7 @@ universe is deleted.
 
 - `db_version_upgrade_state` (String) Current DB version upgrade state reported by YugabyteDB Anywhere. Possible values: Ready, Upgrading, UpgradeFailed, PreFinalize, Finalizing, FinalizeFailed, RollingBack, RollbackFailed.
 - `id` (String) The ID of this resource.
-- `node_details_set` (List of Object) Nodes of the universe, with their placement, addresses and state. (see [below for nested schema](#nestedatt--node_details_set))
+- `node_details_set` (List of Object) Nodes of the universe, with their placement, addresses and state, listed by `node_idx`. (see [below for nested schema](#nestedatt--node_details_set))
 
 <a id="nestedblock--clusters"></a>
 

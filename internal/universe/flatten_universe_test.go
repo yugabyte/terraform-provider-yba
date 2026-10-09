@@ -17,6 +17,7 @@ package universe
 
 import (
 	"context"
+	"slices"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
@@ -165,5 +166,24 @@ func TestReadSpecificGFlagsPlansClean(t *testing.T) {
 				t.Fatalf("diff = %v, want diff %v", diff, tc.wantDiff)
 			}
 		})
+	}
+}
+
+// YBA returns the nodes in a new order on every GET. Read must list them by
+// node_idx, so that node_details_set[0] names the same node after each refresh.
+func TestFlattenNodeDetailsSetOrder(t *testing.T) {
+	node := func(idx int32, name string) client.NodeDetailsResp {
+		return client.NodeDetailsResp{
+			NodeIdx: &idx, NodeName: &name, CloudInfo: &client.CloudSpecificInfo{},
+		}
+	}
+	var got []string
+	for _, n := range flattenNodeDetailsSet([]client.NodeDetailsResp{
+		node(10, "n10"), node(2, "n2"), node(1, "n1"),
+	}) {
+		got = append(got, *n.(map[string]interface{})["node_name"].(*string))
+	}
+	if want := []string{"n1", "n2", "n10"}; !slices.Equal(got, want) {
+		t.Errorf("node order = %v, want %v", got, want)
 	}
 }

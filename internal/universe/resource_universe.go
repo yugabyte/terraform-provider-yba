@@ -500,10 +500,11 @@ func ResourceUniverse() *schema.Resource {
 				},
 			},
 			"node_details_set": {
-				Type:        schema.TypeList,
-				Computed:    true,
-				Elem:        nodeDetailsSetSchema(),
-				Description: "Nodes of the universe, with their placement, addresses and state.",
+				Type:     schema.TypeList,
+				Computed: true,
+				Elem:     nodeDetailsSetSchema(),
+				Description: "Nodes of the universe, with their placement, addresses and state, " +
+					"listed by `node_idx`.",
 			},
 			"db_version_upgrade_options": {
 				Type:     schema.TypeList,
