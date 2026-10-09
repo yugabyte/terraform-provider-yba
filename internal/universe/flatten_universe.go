@@ -420,20 +420,14 @@ func flattenSpecificGFlags(sg *client.SpecificGFlags) []interface{} {
 	out := map[string]interface{}{
 		"inherit_from_primary": sg.GetInheritFromPrimary(),
 		"gflag_groups":         sg.GetGflagGroups(),
-		"per_process":          []interface{}{},
-		"per_az":               []interface{}{},
-	}
-	if sg.PerProcessFlags != nil {
-		ppf := map[string]interface{}{}
-		if m, ok := sg.PerProcessFlags.Value["MASTER"]; ok && len(m) > 0 {
-			ppf["master_gflags"] = m
-		}
-		if t, ok := sg.PerProcessFlags.Value["TSERVER"]; ok && len(t) > 0 {
-			ppf["tserver_gflags"] = t
-		}
-		if len(ppf) > 0 {
-			out["per_process"] = []interface{}{ppf}
-		}
+		// YBA drops PerProcessFlags when both maps are empty, so always emit
+		// the block: an empty one in config then plans clean, and as a
+		// Computed block it never diffs against a config that omits it.
+		"per_process": []interface{}{map[string]interface{}{
+			"master_gflags":  sg.GetPerProcessFlags().Value["MASTER"],
+			"tserver_gflags": sg.GetPerProcessFlags().Value["TSERVER"],
+		}},
+		"per_az": []interface{}{},
 	}
 	if sg.PerAZ != nil && len(*sg.PerAZ) > 0 {
 		az := make([]interface{}, 0, len(*sg.PerAZ))
@@ -751,92 +745,6 @@ func pruneSpecificGFlagsByConfig(
 		}
 		ui["specific_gflags"] = []interface{}{}
 	}
-}
-
-// restoreEmptyPerProcess keeps an empty specific_gflags.per_process block in
-// state when the customer authored one (raw config) or prior state already
-// tracks one. YBA returns no PerProcessFlags when both maps are empty, so
-// flattenSpecificGFlags emits no block; against a config that declares
-// `per_process { master_gflags = {} tserver_gflags = {} }` that shows a
-// never-ending `+ per_process` diff whose apply is a no-op. Raw config is null
-// on refresh, so prior state carries the block between applies.
-func restoreEmptyPerProcess(
-	newClusters []map[string]interface{},
-	oldClusters []interface{},
-	rawConfig cty.Value,
-) {
-	oldByUUID := make(map[string]map[string]interface{}, len(oldClusters))
-	for _, oc := range oldClusters {
-		ocm, ok := oc.(map[string]interface{})
-		if !ok {
-			continue
-		}
-		uuid, _ := ocm["uuid"].(string)
-		if uuid != "" {
-			oldByUUID[uuid] = ocm
-		}
-	}
-	for i, nc := range newClusters {
-		sg := specificGFlagsFromState(nc)
-		if sg == nil {
-			continue
-		}
-		if pp, _ := sg["per_process"].([]interface{}); len(pp) > 0 {
-			continue
-		}
-		uuid, _ := nc["uuid"].(string)
-		var oldCluster map[string]interface{}
-		if uuid != "" {
-			oldCluster = oldByUUID[uuid]
-		}
-		if oldCluster == nil && i < len(oldClusters) {
-			oldCluster, _ = oldClusters[i].(map[string]interface{})
-		}
-		tracked := rawConfigHasPerProcess(rawConfig, i)
-		if !tracked && oldCluster != nil {
-			if oldSG := specificGFlagsFromState(oldCluster); oldSG != nil {
-				oldPP, _ := oldSG["per_process"].([]interface{})
-				tracked = len(oldPP) > 0
-			}
-		}
-		if !tracked {
-			continue
-		}
-		sg["per_process"] = []interface{}{map[string]interface{}{
-			"master_gflags":  map[string]interface{}{},
-			"tserver_gflags": map[string]interface{}{},
-		}}
-	}
-}
-
-// specificGFlagsFromState returns the specific_gflags map of a flattened (or
-// prior-state) cluster, or nil when the block is absent.
-func specificGFlagsFromState(cluster map[string]interface{}) map[string]interface{} {
-	uiList, _ := cluster["user_intent"].([]interface{})
-	if len(uiList) == 0 {
-		return nil
-	}
-	ui, _ := uiList[0].(map[string]interface{})
-	if ui == nil {
-		return nil
-	}
-	sgList, _ := ui["specific_gflags"].([]interface{})
-	if len(sgList) == 0 {
-		return nil
-	}
-	sg, _ := sgList[0].(map[string]interface{})
-	return sg
-}
-
-func rawConfigHasPerProcess(rawConfig cty.Value, i int) bool {
-	if rawConfig == cty.NilVal || !rawConfig.IsKnown() || rawConfig.IsNull() {
-		return false
-	}
-	sg, ok := specificGFlagsFromClusterHCL(rawConfig, i)
-	if !ok {
-		return false
-	}
-	return ctyHasNonEmptyBlock(sg, "per_process")
 }
 
 func rawConfigHasSpecificGFlags(rawConfig cty.Value, i int) bool {

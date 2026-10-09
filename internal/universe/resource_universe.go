@@ -3048,7 +3048,6 @@ func resourceUniverseRead(
 	alignClustersCloudList(newClusters, oldClusters)
 	restoreDedicatedMasterFields(newClusters, oldClusters, u.Clusters, d.GetRawConfig())
 	pruneSpecificGFlagsByConfig(newClusters, d.GetRawConfig())
-	restoreEmptyPerProcess(newClusters, oldClusters, d.GetRawConfig())
 	if err = d.Set("clusters", newClusters); err != nil {
 		return diag.FromErr(err)
 	}
