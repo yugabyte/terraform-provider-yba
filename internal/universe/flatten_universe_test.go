@@ -99,15 +99,23 @@ func TestRestoreEmptyPerProcess(t *testing.T) {
 		})
 	}
 
-	// The restored block must plan clean against the reported config.
+	// What Read writes after an apply of the reported config (YBA returns no
+	// PerProcessFlags, no prior block, config authors one) must plan clean.
+	newClusters := []map[string]interface{}{{
+		"uuid": "c1",
+		"user_intent": []interface{}{map[string]interface{}{
+			"specific_gflags": flattenSpecificGFlags(client.NewSpecificGFlags()),
+		}},
+	}}
+	restoreEmptyPerProcess(newClusters, nil, configWithPP)
 	r := &schema.Resource{Schema: map[string]*schema.Schema{
 		"specific_gflags": userIntentSchema().Schema["specific_gflags"],
 	}}
 	d := r.TestResourceData()
 	d.SetId("x")
-	if err := d.Set("specific_gflags", []interface{}{map[string]interface{}{
-		"per_process": emptyPP,
-	}}); err != nil {
+	if err := d.Set("specific_gflags", []interface{}{
+		specificGFlagsFromState(newClusters[0]),
+	}); err != nil {
 		t.Fatal(err)
 	}
 	cfg := terraform.NewResourceConfigRaw(map[string]interface{}{
