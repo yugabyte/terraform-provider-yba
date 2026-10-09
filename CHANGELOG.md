@@ -47,10 +47,12 @@ YugabyteDB Anywhere marks the APIs of telemetry export, `yba_ybdb_release`, and 
 - `yba_installer`: after you upgrade from v1.0.0, the first plan shows an in-place update with no changed attributes for each `yba_installer`. This update only marks the new sensitive arguments in the state. It does not connect to the host.
 - `yba_installer`: the resource can no longer be imported. The provider does not read the installation back from the host, so after an import the next plan replaced the installation.
 - `yba_installer`: a TLS certificate or key without `application_settings` or `application_settings_file` now fails at plan time. Before, YugabyteDB Anywhere ignored the files on create, and a later change failed at apply time.
+- `yba_universe`: after you upgrade from v1.0.0, the first plan for a universe that is in `PreFinalize` with `finalize = true` and `yb_software_version` set to the pending version shows `db_version_upgrade_state` changing from `PreFinalize` to `Ready`, and the apply finalizes the DB upgrade. A finalized upgrade cannot be rolled back. To keep such a universe in `PreFinalize`, set `finalize = false` before you apply.
 
 ### Bug fixes
 
 - `yba_universe`: a DB version upgrade or a systemd upgrade no longer resets the load balancer and log export settings of the universe.
+- `yba_universe`: with `finalize = true`, the next apply finalizes a DB upgrade that an earlier apply left in `PreFinalize`, for example because the apply was interrupted or timed out after the upgrade task. Before, no later plan showed a change and the upgrade stayed unfinalized.
 - `yba_cloud_provider` (deprecated): Azure regions now send and read `vnet_name`, `yb_image`, and `security_group_id`.
 - `yba_cloud_provider` (deprecated): create no longer sends an empty access key, so YugabyteDB Anywhere generates a key pair when you give none.
 - `yba_cloud_provider` (deprecated): GCP create no longer crashes when optional `gcp_config_settings` fields are not set.

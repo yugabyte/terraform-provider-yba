@@ -41,6 +41,11 @@ failure this project can ship.
   apply after the upgrade do to a setup that Terraform manages entirely?
   Any answer but "nothing" is a finding. New behaviour is opt-in through a
   new argument whose default is the old behaviour, never a changed default.
+- A fix that reaches a state the configuration already asks for, which an
+  earlier release could fail to reach, is a bug fix and not new behaviour.
+  The first plan may show that change, as long as the plan shows it before
+  anything happens and the configuration can keep the old state. The
+  changelog's Behavior changes section names what that first plan shows.
 - An out-of-band edit is outside that question. When a new attribute lets
   `Read` see a change that Terraform did not make, the first plan shows it
   as drift and the apply reverts it, as for any other out-of-band edit.
