@@ -237,7 +237,7 @@ universe is deleted.
 
 - `db_version_upgrade_state` (String) Current DB version upgrade state reported by YugabyteDB Anywhere. Possible values: Ready, Upgrading, UpgradeFailed, PreFinalize, Finalizing, FinalizeFailed, RollingBack, RollbackFailed.
 - `id` (String) The ID of this resource.
-- `node_details_set` (List of Object) Nodes of the universe, with their placement, addresses and state. (see [below for nested schema](#nestedatt--node_details_set))
+- `node_details_set` (List of Object) Nodes of the universe, with their placement, addresses and state, listed by `node_idx`. (see [below for nested schema](#nestedatt--node_details_set))
 
 <a id="nestedblock--clusters"></a>
 
@@ -687,3 +687,12 @@ configuration sets a trigger, the first apply after import reads it as a new val
 that rotation. A `cert_rotation` rotation restarts every node. To import without a rotation,
 leave the triggers out of the configuration, and add a trigger when you want the next
 rotation.
+
+### The config form of `specific_gflags.per_az` is not imported
+
+YugabyteDB Anywhere stores only the `per_az` entries that set flags, and in no order. On
+import, state holds those entries sorted by `az_uuid`. If your configuration lists `per_az`
+entries in another order, or has an entry that sets no flags, the first plan after import
+shows a `per_az` change. An apply clears it without a YugabyteDB Anywhere task, and plans are
+clean after that. To import with a clean plan, list `per_az` entries sorted by `az_uuid` and
+leave out the entries that set no flags.

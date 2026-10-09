@@ -35,12 +35,17 @@ import (
 // The universe runs on a yba_ybdb_release that the test registers. Only this test
 // may use tfManagedReleaseVersion: YBA allows one release per version.
 //
-// The last step covers an apply that ended between the DB upgrade task and its
+// The third step covers an apply that ended between the DB upgrade task and its
 // finalize (Ctrl-C, timeout, network error): the universe is in PreFinalize
 // while state holds the new version and finalize = true. PreConfig runs that
 // upgrade outside Terraform, to the fixture's own build (preview, like
 // tfManagedReleaseVersion: YBA refuses an upgrade across the stable and preview
 // tracks), and the apply must finalize it.
+//
+// The config declares an empty per_process block and a per_az entry with no
+// flags, which never reach YBA. The plan after each apply checks that state
+// keeps both. Import cannot recover the per_az entry, so the import step
+// ignores per_az.
 func TestAccLong_Universe_GCP_UpdatePrimaryNodes(t *testing.T) {
 	var universe client.UniverseResp
 
@@ -84,6 +89,28 @@ func TestAccLong_Universe_GCP_UpdatePrimaryNodes(t *testing.T) {
 						return nil
 					},
 				),
+			},
+			{
+				// Read on import has no raw config and no prior state, and must
+				// still write the per_process block. db_version_upgrade_options
+				// is config-only, YBA returns the passwords redacted, and the
+				// per_az entry sets no flags, so it never reaches YBA.
+				ResourceName:      "yba_universe.gcp",
+				ImportState:       true,
+				ImportStateVerify: true,
+				ImportStateVerifyIgnore: []string{
+					"db_version_upgrade_options",
+					"clusters.0.user_intent.0.ysql_password",
+					"clusters.0.user_intent.0.ycql_password",
+					"clusters.0.user_intent.0.specific_gflags.0.per_az",
+				},
+				ImportStateCheck: func(s []*terraform.InstanceState) error {
+					k := "clusters.0.user_intent.0.specific_gflags.0.per_process.#"
+					if n := s[0].Attributes[k]; n != "1" {
+						return fmt.Errorf("imported %s = %q, want 1", k, n)
+					}
+					return nil
+				},
 			},
 		},
 	})
@@ -349,7 +376,8 @@ const tfManagedReleaseExpr = "yba_ybdb_release.gcp.version"
 
 // universeGcpConfigWithTFRelease is universeGcpConfigWithNodes with the
 // yba_ybdb_release registered and the universe on softwareVersion, with
-// finalize = true. The nodes download package_url themselves.
+// finalize = true, an empty per_process block, and a per_az entry with no flags.
+// The nodes download package_url themselves.
 func universeGcpConfigWithTFRelease(name string, nodes int, softwareVersion string) string {
 	return acctest.YBAProviderBlock("GCP") + cloudProviderGCPConfig(name+"-provider") +
 		fmt.Sprintf(`
@@ -367,7 +395,16 @@ func universeGcpConfigWithTFRelease(name string, nodes int, softwareVersion stri
   		db_version_upgrade_options {
   			finalize = true
   		}
-`, softwareVersion)
+`, `
+				specific_gflags {
+					per_process {
+						master_gflags  = {}
+						tserver_gflags = {}
+					}
+					per_az {
+						az_uuid = yba_cloud_provider.gcp.regions[0].zones[0].uuid
+					}
+				}`, softwareVersion)
 }
 
 // upgradeUniverseOutOfBand upgrades the universe to the fixture's own build
@@ -485,14 +522,16 @@ func universeConfigWithProviderWithNodes(p string, name string, nodes int) strin
 func universeConfigWithProviderWithNodesAndExtra(
 	p string, name string, nodes int, extra string,
 ) string {
-	return universeConfigWithSoftwareVersion(p, name, nodes, extra,
+	return universeConfigWithSoftwareVersion(p, name, nodes, extra, "",
 		"data.yba_release_version.release_version.id")
 }
 
 // universeConfigWithSoftwareVersion is universeConfigWithProviderWithNodesAndExtra
-// with yb_software_version set to the HCL expression softwareVersion.
+// with yb_software_version set to the HCL expression softwareVersion, and
+// userIntentExtra placed inside user_intent.
 func universeConfigWithSoftwareVersion(
-	p string, name string, nodes int, extra string, softwareVersion string,
+	p string, name string, nodes int, extra string, userIntentExtra string,
+	softwareVersion string,
 ) string {
 	return fmt.Sprintf(`
 	data "yba_provider_key" "%[1]s_key" {
@@ -542,13 +581,14 @@ func universeConfigWithSoftwareVersion(
 					"yb_task"   = "dev"
 					"yb_dept"   = "dev"
 				}
+				%[8]s
     		}
   		}
   		%[6]s
   		communication_ports {}
 	}
 `, p, name, nodes, getUniverseInstanceType(p), getUniverseStorageType(p), extra,
-		softwareVersion)
+		softwareVersion, userIntentExtra)
 }
 
 func getUniverseStorageType(p string) string {
