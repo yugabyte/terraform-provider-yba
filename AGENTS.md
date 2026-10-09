@@ -31,6 +31,10 @@ incidental churn. Keep reviews focused; run formatters on files you
 actually touch unless the operator explicitly asked for a repo-wide
 cleanup.
 
+A bug in the same class as the one you fix (the same cause in a sibling
+field, block, or resource) is in scope: fix it in the same change, with
+one rule that removes the class rather than a patch for each instance.
+
 ## License
 
 Use the **MPL-2.0** boilerplate at the top of every Go, shell, and Markdown
@@ -106,8 +110,11 @@ than leaving the build red.
   substring-match YBA's error body in the resource layer.
 - When YBA returns a value in another form than the configuration (masked,
   re-encoded), reconcile it in code: keep the state value in `Read`, or
-  add a `DiffSuppressFunc`. A doc escape (`ignore_changes`) is only for a
-  value that the provider cannot read back or reconcile at all.
+  add a `DiffSuppressFunc`. Judge the two forms equal by the rule that
+  `Update` uses to decide whether to send the change, so a plan shows only
+  what an apply changes (`keepEquivalentSpecificGFlags` reuses
+  `gflagsChanged`). A doc escape (`ignore_changes`) is only for a value
+  that the provider cannot read back or reconcile at all.
 
 ## Error & Task Handling
 
