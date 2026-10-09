@@ -18,6 +18,8 @@ package universe
 import (
 	"context"
 	"fmt"
+	"maps"
+	"slices"
 	"strings"
 	"time"
 
@@ -431,7 +433,9 @@ func flattenSpecificGFlags(sg *client.SpecificGFlags) []interface{} {
 	}
 	if sg.PerAZ != nil && len(*sg.PerAZ) > 0 {
 		az := make([]interface{}, 0, len(*sg.PerAZ))
-		for uuid, ppf := range *sg.PerAZ {
+		// Sorted: Go randomizes map order, and state must not change on its own.
+		for _, uuid := range slices.Sorted(maps.Keys(*sg.PerAZ)) {
+			ppf := (*sg.PerAZ)[uuid]
 			entry := map[string]interface{}{"az_uuid": uuid}
 			if m, ok := ppf.Value["MASTER"]; ok && len(m) > 0 {
 				entry["master_gflags"] = m
@@ -719,6 +723,71 @@ func rawConfigHasDedicatedMasterFields(rawConfig cty.Value, i int) (hasIT, hasDI
 		}
 	}
 	return
+}
+
+// keepEquivalentSpecificGFlags keeps the prior specific_gflags block, in its
+// config form, when YBA holds the same flags by gflagsChanged: the rule Update
+// uses to decide whether to dispatch a GFlags upgrade. YBA returns per_az as a
+// map, with no order, and buildSpecificGFlags never sends an entry or a map that
+// sets no flags, so YBA's form would plan a change that the apply never makes.
+// After an import, or when the flags changed outside Terraform, the flattened
+// block stays.
+//
+// Cluster matching mirrors restoreRedactedPasswords: UUID-first, then index.
+func keepEquivalentSpecificGFlags(
+	newClusters []map[string]interface{},
+	oldClusters []interface{},
+	apiClusters []client.Cluster,
+) {
+	oldByUUID := make(map[string]map[string]interface{}, len(oldClusters))
+	for _, oc := range oldClusters {
+		ocm, ok := oc.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if uuid, _ := ocm["uuid"].(string); uuid != "" {
+			oldByUUID[uuid] = ocm
+		}
+	}
+	for i, nc := range newClusters {
+		newUI := userIntentMap(nc)
+		if newUI == nil || i >= len(apiClusters) {
+			continue
+		}
+		uuid, _ := nc["uuid"].(string)
+		oldCluster := oldByUUID[uuid]
+		if oldCluster == nil && i < len(oldClusters) {
+			oldCluster, _ = oldClusters[i].(map[string]interface{})
+		}
+		oldSG, _ := userIntentMap(oldCluster)["specific_gflags"].([]interface{})
+		if len(oldSG) == 0 {
+			continue
+		}
+		prior, ok := oldSG[0].(map[string]interface{})
+		if !ok || gflagsChanged(apiClusters[i].UserIntent,
+			client.UserIntent{SpecificGFlags: buildSpecificGFlags(oldSG)}) {
+			continue
+		}
+		// State from earlier releases can lack per_process, and the SDK reads an
+		// empty block whose fields were unknown at plan as [nil]. YBA's flags
+		// are the same, so the empty block the flattener always writes is right.
+		if pp, _ := prior["per_process"].([]interface{}); len(pp) == 0 || pp[0] == nil {
+			prior["per_process"] = []interface{}{map[string]interface{}{
+				"master_gflags":  map[string]interface{}{},
+				"tserver_gflags": map[string]interface{}{},
+			}}
+		}
+		newUI["specific_gflags"] = oldSG
+	}
+}
+
+func userIntentMap(cluster map[string]interface{}) map[string]interface{} {
+	l, _ := cluster["user_intent"].([]interface{})
+	if len(l) == 0 {
+		return nil
+	}
+	ui, _ := l[0].(map[string]interface{})
+	return ui
 }
 
 // pruneSpecificGFlagsByConfig clears specific_gflags on clusters where the

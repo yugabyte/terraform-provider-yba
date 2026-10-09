@@ -42,8 +42,10 @@ import (
 // tfManagedReleaseVersion: YBA refuses an upgrade across the stable and preview
 // tracks), and the apply must finalize it.
 //
-// The config declares an empty per_process block. The plan after each apply
-// and the import step check that state keeps it.
+// The config declares an empty per_process block and a per_az entry with no
+// flags, which never reach YBA. The plan after each apply checks that state
+// keeps both. Import cannot recover the per_az entry, so the import step
+// ignores per_az.
 func TestAccLong_Universe_GCP_UpdatePrimaryNodes(t *testing.T) {
 	var universe client.UniverseResp
 
@@ -91,7 +93,8 @@ func TestAccLong_Universe_GCP_UpdatePrimaryNodes(t *testing.T) {
 			{
 				// Read on import has no raw config and no prior state, and must
 				// still write the per_process block. db_version_upgrade_options
-				// is config-only, and YBA returns the passwords redacted.
+				// is config-only, YBA returns the passwords redacted, and the
+				// per_az entry sets no flags, so it never reaches YBA.
 				ResourceName:      "yba_universe.gcp",
 				ImportState:       true,
 				ImportStateVerify: true,
@@ -99,6 +102,7 @@ func TestAccLong_Universe_GCP_UpdatePrimaryNodes(t *testing.T) {
 					"db_version_upgrade_options",
 					"clusters.0.user_intent.0.ysql_password",
 					"clusters.0.user_intent.0.ycql_password",
+					"clusters.0.user_intent.0.specific_gflags.0.per_az",
 				},
 				ImportStateCheck: func(s []*terraform.InstanceState) error {
 					k := "clusters.0.user_intent.0.specific_gflags.0.per_process.#"
@@ -372,7 +376,7 @@ const tfManagedReleaseExpr = "yba_ybdb_release.gcp.version"
 
 // universeGcpConfigWithTFRelease is universeGcpConfigWithNodes with the
 // yba_ybdb_release registered and the universe on softwareVersion, with
-// finalize = true and an empty per_process block, which YBA does not return.
+// finalize = true, an empty per_process block, and a per_az entry with no flags.
 // The nodes download package_url themselves.
 func universeGcpConfigWithTFRelease(name string, nodes int, softwareVersion string) string {
 	return acctest.YBAProviderBlock("GCP") + cloudProviderGCPConfig(name+"-provider") +
@@ -396,6 +400,9 @@ func universeGcpConfigWithTFRelease(name string, nodes int, softwareVersion stri
 					per_process {
 						master_gflags  = {}
 						tserver_gflags = {}
+					}
+					per_az {
+						az_uuid = yba_cloud_provider.gcp.regions[0].zones[0].uuid
 					}
 				}`, softwareVersion)
 }

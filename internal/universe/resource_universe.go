@@ -3047,6 +3047,7 @@ func resourceUniverseRead(
 	diags = append(diags, restoreRedactedPasswords(ctx, newClusters, oldClusters)...)
 	alignClustersCloudList(newClusters, oldClusters)
 	restoreDedicatedMasterFields(newClusters, oldClusters, u.Clusters, d.GetRawConfig())
+	keepEquivalentSpecificGFlags(newClusters, oldClusters, u.Clusters)
 	pruneSpecificGFlagsByConfig(newClusters, d.GetRawConfig())
 	if err = d.Set("clusters", newClusters); err != nil {
 		return diag.FromErr(err)
@@ -3148,12 +3149,22 @@ func gflagsChanged(oldUI, newUI client.UserIntent) bool {
 	if oldInherit != newInherit {
 		return true
 	}
-	if len(oldPerAZ) > 0 || len(newPerAZ) > 0 {
-		if !reflect.DeepEqual(oldPerAZ, newPerAZ) {
-			return true
+	return !samePerAZ(oldPerAZ, newPerAZ)
+}
+
+// samePerAZ reports whether a and b set the same flags in each AZ. An AZ entry
+// or a process map that sets no flags equals a missing one.
+func samePerAZ(a, b map[string]client.PerProcessFlags) bool {
+	for _, p := range [][2]map[string]client.PerProcessFlags{{a, b}, {b, a}} {
+		for az, f := range p[0] {
+			for proc, m := range f.Value {
+				if !utils.SameStringMap(m, p[1][az].Value[proc]) {
+					return false
+				}
+			}
 		}
 	}
-	return false
+	return true
 }
 
 // applyGFlagsOnto overlays src's gflag fields onto dst without touching the
