@@ -35,6 +35,11 @@ A bug in the same class as the one you fix (the same cause in a sibling
 field, block, or resource) is in scope: fix it in the same change, with
 one rule that removes the class rather than a patch for each instance.
 
+Change code for a review comment, from a teammate or a review bot, only
+when the comment shows a correctness or functionality bug. Otherwise
+reply on the thread with the evidence (the YBA source, the Terraform
+refresh flow) and leave the code as it is.
+
 ## License
 
 Use the **MPL-2.0** boilerplate at the top of every Go, shell, and Markdown

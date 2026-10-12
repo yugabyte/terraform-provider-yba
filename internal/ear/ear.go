@@ -275,8 +275,9 @@ type earSpec struct {
 	// the create body. The factory adds the name.
 	buildCreate func(d *schema.ResourceData) (map[string]interface{}, error)
 	// buildEdit maps only the editable arguments onto the edit body. YBA's
-	// EncryptionAtRestController.editKMSConfig copies the non-editable keys
-	// from the stored configuration and replaces it with the merged body.
+	// EncryptionAtRestController merges the body with the stored
+	// configuration by a rule that differs per provider; each builder states
+	// its provider's rule.
 	buildEdit func(d *schema.ResourceData) (map[string]interface{}, error)
 	// flatten writes the non-secret settings YBA lists into state.
 	flatten       func(d *schema.ResourceData, settings map[string]interface{}) error
