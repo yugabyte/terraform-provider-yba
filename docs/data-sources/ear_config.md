@@ -1,12 +1,12 @@
 ---
 page_title: "yba_ear_config Data Source - YugabyteDB Anywhere"
 description: |-
-  Looks up a YugabyteDB Anywhere encryption-at-rest configuration by name, for any KMS provider. Use it to reference a configuration created in the YugabyteDB Anywhere UI from a universe's encryption_at_rest block, or to find the UUID to import into yba_gcp_ear_config.
+  Looks up a YugabyteDB Anywhere encryption-at-rest configuration by name, for any KMS provider. Use it to reference a configuration created in the YugabyteDB Anywhere UI from a universe's encryption_at_rest block, or to find the UUID to import into yba_aws_ear_config or yba_gcp_ear_config.
 ---
 
 # yba_ear_config (Data Source)
 
-Looks up a YugabyteDB Anywhere encryption-at-rest configuration by name, for any KMS provider. Use it to reference a configuration created in the YugabyteDB Anywhere UI from a universe's `encryption_at_rest` block, or to find the UUID to import into `yba_gcp_ear_config`.
+Looks up a YugabyteDB Anywhere encryption-at-rest configuration by name, for any KMS provider. Use it to reference a configuration created in the YugabyteDB Anywhere UI from a universe's `encryption_at_rest` block, or to find the UUID to import into `yba_aws_ear_config` or `yba_gcp_ear_config`.
 
 ## Example Usage
 

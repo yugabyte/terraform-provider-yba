@@ -11,8 +11,8 @@
 #     the VM's role instead of a key.
 #
 # Both carry the same permissions: provision universe EC2 (instances, volumes,
-# SGs, key pairs), manage NLBs for the load-balancer attach tests, and
-# read/write backups in the fixture's S3 bucket.
+# SGs, key pairs), manage NLBs for the load-balancer attach tests, read/write
+# backups in the fixture's S3 bucket, and use the encryption-at-rest KMS key.
 
 # EC2 to provision universe nodes; S3 scoped to the backups bucket for the
 # storage-config tests. EC2 actions are not resource-scopable in a way YBA's
@@ -55,6 +55,20 @@ data "aws_iam_policy_document" "yba" {
       variable = "iam:AWSServiceName"
       values   = ["elasticloadbalancing.amazonaws.com"]
     }
+  }
+
+  # Encryption at rest (kms.tf): YBA makes these calls on the key when it
+  # creates or edits a yba_aws_ear_config.
+  statement {
+    sid    = "EARKey"
+    effect = "Allow"
+    actions = [
+      "kms:DescribeKey",
+      "kms:GenerateDataKeyWithoutPlaintext",
+      "kms:Encrypt",
+      "kms:Decrypt",
+    ]
+    resources = [aws_kms_key.ear.arn]
   }
 
   statement {

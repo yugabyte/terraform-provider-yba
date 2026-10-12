@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
@@ -59,12 +60,12 @@ func TestAccGCPEARConfig_ServiceAccount(t *testing.T) {
 	resource.ParallelTest(t, resource.TestCase{
 		PreCheck:          func() { testAccPreCheckGCPEAR(t) },
 		ProviderFactories: acctest.ProviderFactories,
-		CheckDestroy:      testAccCheckEARConfigDestroy,
+		CheckDestroy:      testAccCheckEARConfigDestroy("GCP"),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccGCPEARConfigServiceAccount(rName),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckEARConfigExists(res),
+					testAccCheckEARConfigExists("GCP", res),
 					resource.TestCheckResourceAttr(res, "name", rName),
 					resource.TestCheckResourceAttr(res, "use_gcp_iam", "false"),
 					resource.TestCheckResourceAttr(res, "in_use", "false"),
@@ -82,7 +83,8 @@ func TestAccGCPEARConfig_ServiceAccount(t *testing.T) {
 				ImportStateVerifyIgnore: []string{"credentials"},
 			},
 			{
-				Config: testAccGCPEARConfigServiceAccount(rName) + testAccEARConfigDataSource(),
+				Config: testAccGCPEARConfigServiceAccount(rName) +
+					testAccEARConfigDataSource("yba_gcp_ear_config"),
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttrPair(
 						"data.yba_ear_config.test", "uuid", res, "uuid"),
@@ -122,12 +124,12 @@ func TestAccGCPEARConfig_HostIdentity(t *testing.T) {
 			}
 		},
 		ProviderFactories: acctest.ProviderFactories,
-		CheckDestroy:      testAccCheckEARConfigDestroy,
+		CheckDestroy:      testAccCheckEARConfigDestroy("GCP"),
 		Steps: []resource.TestStep{
 			{
 				Config: testAccGCPEARConfigHostIdentity(rName),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckEARConfigExists(res),
+					testAccCheckEARConfigExists("GCP", res),
 					resource.TestCheckResourceAttr(res, "use_gcp_iam", "true"),
 					resource.TestCheckNoResourceAttr(res, "credentials"),
 				),
@@ -141,7 +143,69 @@ func TestAccGCPEARConfig_HostIdentity(t *testing.T) {
 	})
 }
 
-func testAccCheckEARConfigExists(name string) resource.TestCheckFunc {
+// The AWS EAR test points at the fixture's KMS key (acctest/aws/kms.tf): a
+// configuration without cmk_id makes YBA create a KMS key that nothing
+// deletes.
+const envAWSEARKeyARN = "TF_VAR_AWS_EAR_KEY_ARN"
+
+// TestAccAWSEARConfig creates the configuration with access keys and then
+// switches it in place to the host identity, the AWS fixture YBA's instance
+// profile. Both identities hold the KMS grants (acctest/aws/iam.tf).
+func TestAccAWSEARConfig(t *testing.T) {
+	rName := acctest.RandomName("aws-ear")
+	res := "yba_aws_ear_config.test"
+	var configUUID string
+
+	resource.ParallelTest(t, resource.TestCase{
+		PreCheck: func() {
+			acctest.TestAccPreCheckCloudYBA(t, "AWS")
+			for _, v := range []string{"TF_VAR_AWS_ACCESS_KEY_ID",
+				"TF_VAR_AWS_SECRET_ACCESS_KEY", envAWSEARKeyARN} {
+				if os.Getenv(v) == "" {
+					t.Skipf("%s not set; skipping AWS encryption at rest acceptance tests", v)
+				}
+			}
+		},
+		ProviderFactories: acctest.ProviderFactories,
+		CheckDestroy:      testAccCheckEARConfigDestroy("AWS"),
+		Steps: []resource.TestStep{
+			{
+				Config: testAccAWSEARConfig(rName, true),
+				Check: resource.ComposeTestCheckFunc(
+					testAccCheckEARConfigExists("AWS", res),
+					// YBA stores the endpoint as given and adds the scheme
+					// only when it builds the client.
+					resource.TestCheckResourceAttr(res, "kms_endpoint",
+						"kms.us-west-2.amazonaws.com"),
+					resource.TestCheckResourceAttr(res, "in_use", "false"),
+					func(s *terraform.State) error {
+						configUUID = s.RootModule().Resources[res].Primary.ID
+						return nil
+					},
+				),
+			},
+			{
+				ResourceName:            res,
+				ImportState:             true,
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"access_key_id", "secret_access_key"},
+			},
+			{
+				Config: testAccAWSEARConfig(rName, false) +
+					testAccEARConfigDataSource("yba_aws_ear_config"),
+				Check: resource.ComposeTestCheckFunc(
+					// Same UUID: the switch is an edit, not a replacement.
+					resource.TestCheckResourceAttrPtr(res, "id", &configUUID),
+					resource.TestCheckResourceAttr(res, "kms_endpoint", ""),
+					resource.TestCheckResourceAttr(
+						"data.yba_ear_config.test", "key_provider", "AWS"),
+				),
+			},
+		},
+	})
+}
+
+func testAccCheckEARConfigExists(cloud, name string) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
 		r, ok := s.RootModule().Resources[name]
 		if !ok {
@@ -150,7 +214,7 @@ func testAccCheckEARConfigExists(name string) resource.TestCheckFunc {
 		if r.Primary.ID == "" {
 			return errors.New("no ID is set for the encryption at rest config")
 		}
-		found, err := earConfigListed(r.Primary.ID)
+		found, err := earConfigListed(cloud, r.Primary.ID)
 		if err != nil {
 			return err
 		}
@@ -161,24 +225,26 @@ func testAccCheckEARConfigExists(name string) resource.TestCheckFunc {
 	}
 }
 
-func testAccCheckEARConfigDestroy(s *terraform.State) error {
-	for _, r := range s.RootModule().Resources {
-		if r.Type != "yba_gcp_ear_config" {
-			continue
+func testAccCheckEARConfigDestroy(cloud string) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		for _, r := range s.RootModule().Resources {
+			if r.Type != "yba_"+strings.ToLower(cloud)+"_ear_config" {
+				continue
+			}
+			found, err := earConfigListed(cloud, r.Primary.ID)
+			if err != nil {
+				return err
+			}
+			if found {
+				return fmt.Errorf("encryption at rest config %s still exists", r.Primary.ID)
+			}
 		}
-		found, err := earConfigListed(r.Primary.ID)
-		if err != nil {
-			return err
-		}
-		if found {
-			return fmt.Errorf("encryption at rest config %s still exists", r.Primary.ID)
-		}
+		return nil
 	}
-	return nil
 }
 
-func earConfigListed(configUUID string) (bool, error) {
-	apiClient, err := acctest.APIClientForCloud("GCP")
+func earConfigListed(cloud, configUUID string) (bool, error) {
+	apiClient, err := acctest.APIClientForCloud(cloud)
 	if err != nil {
 		return false, err
 	}
@@ -242,10 +308,43 @@ resource "yba_gcp_ear_config" "test" {
 `, name)
 }
 
-func testAccEARConfigDataSource() string {
-	return `
-data "yba_ear_config" "test" {
-  name = yba_gcp_ear_config.test.name
+// testAccAWSEARConfig authenticates with the fixture's access keys and a
+// custom endpoint, or as the YBA host when withKeys is false.
+func testAccAWSEARConfig(name string, withKeys bool) string {
+	auth := ""
+	if withKeys {
+		auth = `
+  access_key_id     = var.AWS_ACCESS_KEY_ID
+  secret_access_key = var.AWS_SECRET_ACCESS_KEY
+  kms_endpoint      = "kms.us-west-2.amazonaws.com"`
+	}
+	return acctest.YBAProviderBlock("AWS") + fmt.Sprintf(`
+variable "AWS_ACCESS_KEY_ID" {
+  type      = string
+  sensitive = true
 }
-`
+
+variable "AWS_SECRET_ACCESS_KEY" {
+  type      = string
+  sensitive = true
+}
+
+variable "AWS_EAR_KEY_ARN" {
+  type = string
+}
+
+resource "yba_aws_ear_config" "test" {
+  name   = "%s"
+  region = "us-west-2"
+  cmk_id = var.AWS_EAR_KEY_ARN%s
+}
+`, name, auth)
+}
+
+func testAccEARConfigDataSource(resourceType string) string {
+	return fmt.Sprintf(`
+data "yba_ear_config" "test" {
+  name = %s.test.name
+}
+`, resourceType)
 }

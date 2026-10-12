@@ -1,0 +1,34 @@
+---
+page_title: "{{.Name}} {{.Type}} - {{.RenderedProviderName}}"
+description: |-
+{{ index (split (trimspace .Description) "\n\n") 0 | plainmarkdown | trimspace | prefixlines "  " }}
+---
+
+# {{.Name}} ({{.Type}})
+
+{{ .Description | trimspace }}
+
+Use the configuration in a universe through its `encryption_at_rest` block. The
+[Encryption at Rest](../guides/universe-edit-actions.md#encryption-at-rest) section of the
+Universe Edit Actions guide describes how to enable encryption, rotate the master key or the
+universe key, and disable encryption. For the YugabyteDB Anywhere side, see
+[Create an AWS KMS configuration](https://docs.yugabyte.com/stable/yugabyte-platform/security/create-kms-config/aws-kms/).
+
+## Example Usage
+
+{{ tffile "examples/resources/yba_aws_ear_config/resource.tf" }}
+
+{{ .SchemaMarkdown | trimspace }}
+
+## Import
+
+Import an AWS KMS configuration with its UUID. The `yba_ear_config` data source returns the
+UUID for a configuration name:
+
+```sh
+terraform import yba_aws_ear_config.access_keys <config-uuid>
+```
+
+Import fails for a configuration of another KMS provider, and the error names that provider.
+YugabyteDB Anywhere never returns `access_key_id` or `secret_access_key`, so they stay empty
+after import. When the configuration sets them, the first apply sends the keys again.

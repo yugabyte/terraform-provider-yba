@@ -37,6 +37,7 @@ import (
 
 // YBA KeyProvider names: the create path segment and the list metadata value.
 const (
+	providerAWS = "AWS"
 	providerGCP = "GCP"
 )
 
@@ -266,10 +267,9 @@ type earSpec struct {
 	apiProvider string // YBA KeyProvider, e.g. GCP
 	description string // provider-specific lead of the resource docs
 	fields      map[string]*schema.Schema
-	// credentialFields are the arguments YBA lets an edit change: the
-	// credential itself and the switches that select it. A failed update
-	// reverts them to their prior state, because Read cannot restore a
-	// secret from the server (the list masks it).
+	// credentialFields are the arguments that carry or select the
+	// credential. A failed update reverts them to their prior state, because
+	// Read cannot restore a secret from the server (the list masks it).
 	credentialFields []string
 	// buildCreate maps the resource arguments onto YBA's authConfig keys for
 	// the create body. The factory adds the name.
@@ -339,14 +339,14 @@ func earResource(s earSpec) *schema.Resource {
 // earSharedNotes holds the lifecycle callouts every provider's resource
 // shares; these strings ship verbatim into the user-facing docs. Import
 // behaviour goes in each resource's template Import section.
-const earSharedNotes = "~> **Note:** Only the credential arguments can change in place. A " +
-	"change to any other argument forces replacement. YugabyteDB Anywhere does not delete a " +
-	"configuration that a universe has used: it keeps the universe's key history, also after " +
-	"encryption is disabled or the universe moves to another configuration, until the " +
+const earSharedNotes = "~> **Note:** Only the arguments whose description says so can change in " +
+	"place. A change to any other argument forces replacement. YugabyteDB Anywhere does not " +
+	"delete a configuration that a universe has used: it keeps the universe's key history, also " +
+	"after encryption is disabled or the universe moves to another configuration, until the " +
 	"universe is deleted. A destroy of such a configuration fails, and the error names the " +
 	"universes. To move universes to a new configuration, create it, change " +
-	"`encryption_at_rest.kms_config_uuid` on each universe, and keep the old configuration " +
-	"(or remove it from state) until its universes are deleted. Give the new configuration " +
+	"`encryption_at_rest.kms_config_uuid` on each universe, and keep the old configuration (or " +
+	"remove it from state) until its universes are deleted. Give the new configuration " +
 	"`depends_on` on the old one, so that `terraform destroy` deletes the universe before the " +
 	"old configuration.\n\n" +
 	"~> **Note:** Terraform refreshes `in_use` and the non-secret settings. YugabyteDB " +
@@ -424,9 +424,10 @@ func earRead(s earSpec) schema.ReadContextFunc {
 	}
 }
 
-// earUpdate is reached only for credential changes: every other argument is
-// ForceNew. A failed edit reverts the credential fields, which Read cannot
-// restore from the server; the deferred Read then refreshes the rest.
+// earUpdate is reached only for the arguments YBA lets an edit change: every
+// other argument is ForceNew. A failed edit reverts the credential fields,
+// which Read cannot restore from the server; the deferred Read then refreshes
+// the rest.
 func earUpdate(s earSpec) schema.UpdateContextFunc {
 	return func(
 		ctx context.Context, d *schema.ResourceData, meta interface{},

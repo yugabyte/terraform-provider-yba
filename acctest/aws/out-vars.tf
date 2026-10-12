@@ -23,6 +23,7 @@ locals {
     TF_VAR_AWS_AMI_ID_NEW='${data.aws_ami.almalinux.id}'
     TF_VAR_AWS_AMI_ID_OLD='${data.aws_ami.almalinux_prev.id}'
     TF_VAR_S3_BACKUP_LOCATION='s3://${aws_s3_bucket.backups.bucket}'
+    TF_VAR_AWS_EAR_KEY_ARN='${aws_kms_key.ear.arn}'
     TF_VAR_AWS_YBA_HOST='${aws_eip.yba.public_ip}'
     TF_VAR_AWS_YBA_API_KEY='${yba_customer_resource.customer.api_token}'
     AWS_ACCESS_KEY_ID='${aws_iam_access_key.yba.id}'
