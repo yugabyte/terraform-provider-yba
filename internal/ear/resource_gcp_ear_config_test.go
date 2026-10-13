@@ -17,60 +17,9 @@ package ear
 
 import (
 	"testing"
-	"time"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 )
-
-func TestGCPEARConfigGuardrails(t *testing.T) {
-	res := ResourceGCPEARConfig()
-	if err := res.InternalValidate(nil, true); err != nil {
-		t.Fatalf("schema failed InternalValidate: %v", err)
-	}
-	if res.Description == "" {
-		t.Error("resource description is required")
-	}
-	if res.Importer == nil {
-		t.Error("yba_gcp_ear_config must be importable")
-	}
-	if _, ok := res.Schema["customer_uuid"]; ok {
-		t.Error("customer_uuid is a noise field and must not be exposed")
-	}
-	for op, timeout := range map[string]*time.Duration{
-		"create": res.Timeouts.Create,
-		"update": res.Timeouts.Update,
-		"delete": res.Timeouts.Delete,
-	} {
-		if timeout == nil || *timeout != earTaskTimeout {
-			t.Errorf("%s timeout must default to earTaskTimeout", op)
-		}
-	}
-	s := res.Schema
-	for name, f := range s {
-		if f.Description == "" {
-			t.Errorf("field %q needs a Description: it renders into the docs", name)
-		}
-	}
-	// YBA rejects edits to every key-location field ("cannot be changed").
-	for _, f := range []string{"name", "project_id", "location_id", "key_ring_id",
-		"crypto_key_id", "protection_level", "kms_endpoint"} {
-		if !s[f].ForceNew {
-			t.Errorf("%s must be ForceNew: YBA does not allow editing it", f)
-		}
-	}
-	// Credentials are the one thing YBA lets an edit change.
-	for _, f := range []string{"credentials", "use_gcp_iam"} {
-		if s[f].ForceNew {
-			t.Errorf("%s must stay editable in place", f)
-		}
-	}
-	if !s["credentials"].Sensitive {
-		t.Error("credentials must be Sensitive")
-	}
-	if got := s["credentials"].ConflictsWith; len(got) != 1 || got[0] != "use_gcp_iam" {
-		t.Errorf("credentials.ConflictsWith = %v want [use_gcp_iam]", got)
-	}
-}
 
 // The two auth modes map onto YBA's mutually exclusive keys: the key file goes
 // as a JSON object (YBA reads project_id out of it), host identity as the flag

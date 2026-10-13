@@ -40,6 +40,12 @@ when the comment shows a correctness or functionality bug. Otherwise
 reply on the thread with the evidence (the YBA source, the Terraform
 refresh flow) and leave the code as it is.
 
+That rule is for comments after the PR opens. Before it opens, review the
+change against `REVIEW.md` yourself and add what `REVIEW.md` or this file
+asks for (a `Test<X>Guardrails` test, a test for the rule that a code comment
+claims). Leave out a test only when it would catch nothing; do not leave a
+required test for the reviewer to ask for and then decline it.
+
 ## License
 
 Use the **MPL-2.0** boilerplate at the top of every Go, shell, and Markdown

@@ -1,0 +1,37 @@
+---
+page_title: "{{.Name}} {{.Type}} - {{.RenderedProviderName}}"
+description: |-
+{{ index (split (trimspace .Description) "\n\n") 0 | plainmarkdown | trimspace | prefixlines "  " }}
+---
+
+# {{.Name}} ({{.Type}})
+
+{{ .Description | trimspace }}
+
+Use the configuration in a universe through its `encryption_at_rest` block. The
+[Encryption at Rest](../guides/universe-edit-actions.md#encryption-at-rest) section of the
+Universe Edit Actions guide describes how to enable encryption, rotate the master key or the
+universe key, and disable encryption. For the YugabyteDB Anywhere side, see
+[Create a KMS configuration using Azure](https://docs.yugabyte.com/stable/yugabyte-platform/security/create-kms-config/azure-kms/).
+
+## Example Usage
+
+{{ tffile "examples/resources/yba_azure_ear_config/resource.tf" }}
+
+{{ .SchemaMarkdown | trimspace }}
+
+## Import
+
+Import an Azure Key Vault configuration with its UUID. The `yba_ear_config` data source
+returns the UUID for a configuration name:
+
+```sh
+terraform import yba_azure_ear_config.client_secret <config-uuid>
+```
+
+Import fails for a configuration of another KMS provider, and the error names that provider.
+YugabyteDB Anywhere never returns `client_secret`, so it stays empty after import. When the
+configuration sets `client_secret`, the first apply sends the secret again. When the
+configuration leaves `client_secret` unset, Terraform cannot see a secret that the imported
+configuration stores, and YugabyteDB Anywhere keeps authenticating with that secret until an
+apply changes `client_id` or `tenant_id`.

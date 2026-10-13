@@ -37,8 +37,9 @@ import (
 
 // YBA KeyProvider names: the create path segment and the list metadata value.
 const (
-	providerAWS = "AWS"
-	providerGCP = "GCP"
+	providerAWS   = "AWS"
+	providerAzure = "AZU"
+	providerGCP   = "GCP"
 )
 
 // earEntityName labels errors from the shared helpers.
@@ -193,8 +194,10 @@ func createEARConfig(
 }
 
 // editEARConfig submits the edit task with the changed settings and waits for
-// it. YBA re-validates the merged configuration against every universe that
-// uses it before storing anything.
+// it. YBA checks the merged configuration against every universe that uses
+// it, stores it, and then checks it with the KMS (EditKMSConfig,
+// EncryptionAtRestService.updateAuthConfig). A failure in the KMS check fails
+// the task but leaves the merged configuration stored.
 func editEARConfig(
 	ctx context.Context, c *client.APIClient, cUUID string,
 	configUUID string, settings map[string]interface{}, timeout time.Duration,

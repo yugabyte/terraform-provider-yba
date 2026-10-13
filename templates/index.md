@@ -38,6 +38,8 @@ The YugabyteDB Anywhere Provider currently supports the following YugabyteDB Any
   - GCP Cloud Provider (yba_gcp_provider)
   - Customer (yba_customer_resource)
   - Custom Hooks (yba_hook)
+  - Encryption at Rest Configuration - AWS KMS (yba_aws_ear_config)
+  - Encryption at Rest Configuration - Azure Key Vault (yba_azure_ear_config)
   - Encryption at Rest Configuration - Google Cloud KMS (yba_gcp_ear_config)
   - Encryption in Transit Certificate - Custom Server Certificate (yba_custom_server_certificate)
   - Encryption in Transit Certificate - Self-Signed (yba_self_signed_certificate)
@@ -170,7 +172,7 @@ terraform plan
 
 Resources managed by this provider can also be modified directly through the YugabyteDB Anywhere UI or API. When that happens, the live state in YBA drifts from the configuration in your Terraform files. Terraform treats its own configuration as the source of truth, so a subsequent `terraform apply` will revert those out-of-band changes unless drift is reconciled first.
 
-Drift is unavoidable for operations that this provider does not expose, for example YSQL and YCQL password rotation, or encryption at rest configurations for a key management service other than Google Cloud KMS. Perform these operations through the YBA UI or API, and then update the corresponding `.tf` fields (or a `lifecycle.ignore_changes` block).
+Drift is unavoidable for operations that this provider does not expose, for example YSQL and YCQL password rotation, or encryption at rest configurations for a key management service other than AWS KMS, Azure Key Vault or Google Cloud KMS. Perform these operations through the YBA UI or API, and then update the corresponding `.tf` fields (or a `lifecycle.ignore_changes` block).
 
 ~> **Warning:** When you mix UI, API, or CLI changes with Terraform-managed resources, do **not** use `terraform apply -auto-approve`. The `-auto-approve` flag suppresses the confirmation prompt that would otherwise show the reverting changes, allowing accidental overwrites of out-of-band edits.
 

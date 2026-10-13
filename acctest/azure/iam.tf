@@ -1,10 +1,13 @@
 # Copyright 2026 YugabyteDB, Inc.
 # SPDX-License-Identifier: MPL-2.0
 #
-# Identity for the Azure acceptance-test fixture: a single service principal that
-# YBA uses to provision universe VMs and manage the network it needs. Its
-# client id/secret are surfaced via the test_env output (out-vars.tf) for the
-# yba_azure_provider tests, and destroyed on teardown.
+# Identities for the Azure acceptance-test fixture:
+#   - A service principal that YBA uses to provision universe VMs and manage the
+#     network it needs. Its client id/secret are surfaced via the test_env
+#     output (out-vars.tf) for the yba_azure_provider tests, and destroyed on
+#     teardown.
+#   - A user-assigned managed identity on the YBA VM (yba.tf), so that the
+#     yba_azure_ear_config test can authenticate as the YBA host.
 
 data "azuread_client_config" "current" {}
 
@@ -33,4 +36,14 @@ resource "azurerm_role_assignment" "yba_contributor" {
   scope                = azurerm_resource_group.main.id
   role_definition_name = "Contributor"
   principal_id         = azuread_service_principal.yba.object_id
+}
+
+# Managed identity of the YBA VM. YBA authenticates as it when an Azure
+# encryption-at-rest configuration has no client secret and names this
+# identity's client id. Its only permissions are on the key vault key (kms.tf).
+resource "azurerm_user_assigned_identity" "yba" {
+  name                = "${var.prefix}-yba"
+  location            = azurerm_resource_group.main.location
+  resource_group_name = azurerm_resource_group.main.name
+  tags                = var.tags
 }

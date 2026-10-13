@@ -101,4 +101,6 @@ terraform import yba_aws_ear_config.access_keys <config-uuid>
 
 Import fails for a configuration of another KMS provider, and the error names that provider.
 YugabyteDB Anywhere never returns `access_key_id` or `secret_access_key`, so they stay empty
-after import. When the configuration sets them, the first apply sends the keys again.
+after import. When the configuration sets them, the first apply sends the keys again. When the
+configuration leaves them unset, Terraform cannot see access keys that the imported
+configuration stores, and YugabyteDB Anywhere keeps authenticating with those keys.

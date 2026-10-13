@@ -150,7 +150,7 @@ make -C acctest push-github-secrets
 | Path                 | What                                                          |
 | -------------------- | ------------------------------------------------------------- |
 | `gcp/`               | GCP fixture: VPC, IAM, a YBA VM + install, a backups bucket, a Cloud KMS key for encryption at rest. |
-| `azure/`             | Azure fixture: RG, VNet, service principal, a YBA VM + install, a backups account. |
+| `azure/`             | Azure fixture: RG, VNet, service principal, a YBA VM with a managed identity + install, a backups account, a key vault key for encryption at rest. |
 | `aws/`               | AWS fixture: VPC, IAM (key user + instance role), a YBA VM + install, a backups bucket, a KMS key for encryption at rest. |
 | `resources/`         | Shared install assets (`yba-ctl.yml`, VM startup scripts).    |
 | `auth.sh`            | Logs in to GCP, Azure and AWS for byoc-dev.                   |

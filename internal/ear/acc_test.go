@@ -205,6 +205,91 @@ func TestAccAWSEARConfig(t *testing.T) {
 	})
 }
 
+// The Azure EAR test points at the fixture's key vault key
+// (acctest/azure/kms.tf), so no test run creates keys in the vault.
+const (
+	envAzureEARVaultURL         = "TF_VAR_AZURE_EAR_VAULT_URL"
+	envAzureEARKeyName          = "TF_VAR_AZURE_EAR_KEY_NAME"
+	envAzureYBAIdentityClientID = "TF_VAR_AZURE_YBA_IDENTITY_CLIENT_ID"
+)
+
+// TestAccAzureEARConfig creates the configuration with the fixture's service
+// principal, imports it, switches it in place to the managed identity of the
+// Azure fixture YBA's VM, and back. Both identities have the key permissions
+// (acctest/azure/kms.tf). YBA checks the credentials with the KMS on every
+// edit, so each edit step fails when YBA cannot authenticate. The switch runs
+// on imported state, which has no client_secret: it must still remove the
+// secret that YBA stores, or YBA authenticates with that secret and the
+// managed identity's client ID.
+func TestAccAzureEARConfig(t *testing.T) {
+	rName := acctest.RandomName("azure-ear")
+	res := "yba_azure_ear_config.test"
+	var configUUID string
+
+	resource.ParallelTest(t, resource.TestCase{
+		PreCheck: func() {
+			acctest.TestAccPreCheckCloudYBA(t, "AZURE")
+			for _, v := range []string{"TF_VAR_AZURE_CLIENT_ID", "TF_VAR_AZURE_CLIENT_SECRET",
+				"TF_VAR_AZURE_TENANT_ID", envAzureEARVaultURL, envAzureEARKeyName,
+				envAzureYBAIdentityClientID} {
+				if os.Getenv(v) == "" {
+					t.Skipf("%s not set; skipping Azure encryption at rest acceptance tests", v)
+				}
+			}
+		},
+		ProviderFactories: acctest.ProviderFactories,
+		CheckDestroy:      testAccCheckEARConfigDestroy("AZURE"),
+		Steps: []resource.TestStep{
+			{
+				Config: testAccAzureEARConfig(rName, true),
+				Check: resource.ComposeTestCheckFunc(
+					testAccCheckEARConfigExists("AZURE", res),
+					resource.TestCheckResourceAttr(res, "key_size", "2048"),
+					resource.TestCheckResourceAttr(res, "in_use", "false"),
+					func(s *terraform.State) error {
+						configUUID = s.RootModule().Resources[res].Primary.ID
+						return nil
+					},
+				),
+			},
+			{
+				ResourceName:            res,
+				ImportState:             true,
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"client_secret"},
+			},
+			{
+				// Forget the configuration without deleting it, and import it
+				// again into state.
+				Config: testAccEARConfigRemoved("AZURE"),
+			},
+			{
+				Config:             testAccAzureEARConfig(rName, true),
+				ResourceName:       res,
+				ImportState:        true,
+				ImportStateIdFunc:  func(*terraform.State) (string, error) { return configUUID, nil },
+				ImportStatePersist: true,
+			},
+			{
+				Config: testAccAzureEARConfig(rName, false) +
+					testAccEARConfigDataSource("yba_azure_ear_config"),
+				Check: resource.ComposeTestCheckFunc(
+					// Same UUID: the switch is an edit, not a replacement.
+					resource.TestCheckResourceAttrPtr(res, "id", &configUUID),
+					resource.TestCheckResourceAttr(res, "client_id",
+						os.Getenv(envAzureYBAIdentityClientID)),
+					resource.TestCheckResourceAttr(
+						"data.yba_ear_config.test", "key_provider", "AZU"),
+				),
+			},
+			{
+				Config: testAccAzureEARConfig(rName, true),
+				Check:  resource.TestCheckResourceAttrPtr(res, "id", &configUUID),
+			},
+		},
+	})
+}
+
 func testAccCheckEARConfigExists(cloud, name string) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
 		r, ok := s.RootModule().Resources[name]
@@ -339,6 +424,65 @@ resource "yba_aws_ear_config" "test" {
   cmk_id = var.AWS_EAR_KEY_ARN%s
 }
 `, name, auth)
+}
+
+// testAccAzureEARConfig authenticates with the fixture's service principal,
+// or as the managed identity of the YBA VM when withSecret is false.
+func testAccAzureEARConfig(name string, withSecret bool) string {
+	auth := `
+  client_id = var.AZURE_YBA_IDENTITY_CLIENT_ID`
+	if withSecret {
+		auth = `
+  client_id     = var.AZURE_CLIENT_ID
+  client_secret = var.AZURE_CLIENT_SECRET`
+	}
+	return acctest.YBAProviderBlock("AZURE") + fmt.Sprintf(`
+variable "AZURE_CLIENT_ID" {
+  type = string
+}
+
+variable "AZURE_CLIENT_SECRET" {
+  type      = string
+  sensitive = true
+}
+
+variable "AZURE_TENANT_ID" {
+  type = string
+}
+
+variable "AZURE_YBA_IDENTITY_CLIENT_ID" {
+  type = string
+}
+
+variable "AZURE_EAR_VAULT_URL" {
+  type = string
+}
+
+variable "AZURE_EAR_KEY_NAME" {
+  type = string
+}
+
+resource "yba_azure_ear_config" "test" {
+  name      = "%s"
+  tenant_id = var.AZURE_TENANT_ID
+  vault_url = var.AZURE_EAR_VAULT_URL
+  key_name  = var.AZURE_EAR_KEY_NAME%s
+}
+`, name, auth)
+}
+
+// testAccEARConfigRemoved removes the cloud's test configuration from state
+// and leaves it in YBA.
+func testAccEARConfigRemoved(cloud string) string {
+	return acctest.YBAProviderBlock(cloud) + fmt.Sprintf(`
+removed {
+  from = yba_%s_ear_config.test
+
+  lifecycle {
+    destroy = false
+  }
+}
+`, strings.ToLower(cloud))
 }
 
 func testAccEARConfigDataSource(resourceType string) string {

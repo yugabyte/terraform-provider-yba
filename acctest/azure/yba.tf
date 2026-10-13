@@ -71,6 +71,12 @@ resource "azurerm_linux_virtual_machine" "yba" {
 
   network_interface_ids = [azurerm_network_interface.yba.id]
 
+  # The managed identity (iam.tf) that the encryption-at-rest test uses.
+  identity {
+    type         = "UserAssigned"
+    identity_ids = [azurerm_user_assigned_identity.yba.id]
+  }
+
   # custom_data runs the mount/preflight script on first boot (cloud-init runs
   # an executable custom_data payload directly).
   custom_data = base64encode(file("${path.module}/../resources/azure-mount-data-disk.sh"))
