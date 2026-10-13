@@ -18,7 +18,7 @@ There are two authentication modes. Set `credentials` to a service-account key, 
 
 ~> **Note:** Only the arguments whose description says so can change in place. A change to any other argument forces replacement. YugabyteDB Anywhere does not delete a configuration that a universe has used: it keeps the universe's key history, also after encryption is disabled or the universe moves to another configuration, until the universe is deleted. A destroy of such a configuration fails, and the error names the universes. To move universes to a new configuration, create it, change `encryption_at_rest.kms_config_uuid` on each universe, and keep the old configuration (or remove it from state) until its universes are deleted. Give the new configuration `depends_on` on the old one, so that `terraform destroy` deletes the universe before the old configuration.
 
-~> **Note:** Terraform refreshes `in_use` and the non-secret settings. YugabyteDB Anywhere masks credentials, so a credential changed outside Terraform, for example in the YugabyteDB Anywhere UI, does not show as drift. An apply without a change to the credential in the configuration does not send it again.
+~> **Note:** Terraform refreshes `in_use` and the non-secret settings. YugabyteDB Anywhere masks credentials, so a credential changed outside Terraform, for example in the YugabyteDB Anywhere UI, does not show as drift. An apply sends a credential again only when the credential or the authentication mode changes.
 
 Use the configuration in a universe through its `encryption_at_rest` block. The
 [Encryption at Rest](../guides/universe-edit-actions.md#encryption-at-rest) section of the

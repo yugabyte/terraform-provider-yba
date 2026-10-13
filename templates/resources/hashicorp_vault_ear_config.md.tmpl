@@ -1,0 +1,37 @@
+---
+page_title: "{{.Name}} {{.Type}} - {{.RenderedProviderName}}"
+description: |-
+{{ index (split (trimspace .Description) "\n\n") 0 | plainmarkdown | trimspace | prefixlines "  " }}
+---
+
+# {{.Name}} ({{.Type}})
+
+{{ .Description | trimspace }}
+
+Use the configuration in a universe through its `encryption_at_rest` block. The
+[Encryption at Rest](../guides/universe-edit-actions.md#encryption-at-rest) section of the
+Universe Edit Actions guide describes how to enable encryption, rotate the master key or the
+universe key, and disable encryption. For the Vault setup, and a sample policy for the token or
+the AppRole, see
+[Create a KMS configuration using HashiCorp Vault](https://docs.yugabyte.com/stable/yugabyte-platform/security/create-kms-config/hashicorp-kms/).
+
+## Example Usage
+
+{{ tffile "examples/resources/yba_hashicorp_vault_ear_config/resource.tf" }}
+
+{{ .SchemaMarkdown | trimspace }}
+
+## Import
+
+Import a HashiCorp Vault configuration with its UUID. The `yba_ear_config` data source returns
+the UUID for a configuration name:
+
+```sh
+terraform import yba_hashicorp_vault_ear_config.token <config-uuid>
+```
+
+Import fails for a configuration of another KMS provider, and the error names that provider.
+Import reads every argument except `token` and `secret_id`. YugabyteDB Anywhere masks them when
+it lists a configuration, so import leaves them empty. When the configuration sets `token` or
+`secret_id`, the first plan after the import shows one in-place update, and the apply sends the
+credentials from your configuration.

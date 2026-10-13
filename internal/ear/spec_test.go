@@ -31,9 +31,13 @@ var earResources = map[string]struct {
 	spec    func() earSpec
 	secrets []string
 }{
-	"yba_aws_ear_config":   {awsEARSpec, []string{"access_key_id", "secret_access_key"}},
-	"yba_azure_ear_config": {azureEARSpec, []string{"client_secret"}},
-	"yba_gcp_ear_config":   {gcpEARSpec, []string{"credentials"}},
+	"yba_aws_ear_config":         {awsEARSpec, []string{"access_key_id", "secret_access_key"}},
+	"yba_azure_ear_config":       {azureEARSpec, []string{"client_secret"}},
+	"yba_ciphertrust_ear_config": {cipherTrustEARSpec, []string{"password", "refresh_token"}},
+	"yba_gcp_ear_config":         {gcpEARSpec, []string{"credentials"}},
+	"yba_hashicorp_vault_ear_config": {
+		hashicorpVaultEARSpec, []string{"token", "secret_id"},
+	},
 }
 
 // Shared guardrails for every EAR resource. The shared docs note says that
@@ -155,11 +159,63 @@ func plannedData(
 // absent marks a key that the edit body must leave out.
 var absent = struct{}{}
 
-// YBA's AWS and AZU edit merges keep a stored key that the body leaves out.
-// So a secret goes only when the configuration changes it, and a configuration
-// without a secret clears it with "". For Azure, "" goes on every edit without
-// a configured secret: imported state has no secret, so a change does not
-// show, while YBA may still store one.
+// vaultState is an AppRole configuration in the namespace ns1 with the secret
+// ID "old".
+var vaultState = map[string]string{
+	"name": "vault", "vault_address": "https://vault.example.com:8200", "role_id": "role",
+	"secret_id": "old", "auth_namespace": "ns1", "mount_path": "ns1/transit/",
+	"key_name": "key_yugabyte",
+}
+
+// vaultConfig is the configuration of vaultState with the auth arguments.
+func vaultConfig(auth map[string]interface{}) map[string]interface{} {
+	raw := map[string]interface{}{
+		"name": "vault", "vault_address": "https://vault.example.com:8200",
+		"mount_path": "ns1/transit/", "key_name": "key_yugabyte",
+	}
+	for k, v := range auth {
+		raw[k] = v
+	}
+	return raw
+}
+
+// ctState is a PASSWORD configuration with the password "old".
+var ctState = map[string]string{
+	"name": "ct", "manager_url": "https://ct.example.com", "auth_type": "PASSWORD",
+	"username": "yba", "password": "old", "key_name": "yb-key", "key_size": "256",
+}
+
+// ctConfig is the configuration of ctState with the auth arguments.
+func ctConfig(auth map[string]interface{}) map[string]interface{} {
+	raw := map[string]interface{}{
+		"name": "ct", "manager_url": "https://ct.example.com", "key_name": "yb-key",
+	}
+	for k, v := range auth {
+		raw[k] = v
+	}
+	return raw
+}
+
+// withState returns base with the attributes in overrides.
+func withState(base, overrides map[string]string) map[string]string {
+	out := map[string]string{}
+	for k, v := range base {
+		out[k] = v
+	}
+	for k, v := range overrides {
+		out[k] = v
+	}
+	return out
+}
+
+// Every edit merge keeps a stored credential that the body leaves out. So a
+// secret goes only when the configuration changes it, or changes the
+// authentication mode, and a configuration without a secret clears it with
+// "". For Azure, "" goes on every edit without a configured secret: imported
+// state has no secret, so a change does not show, while YBA may still store
+// one. A mode that YBA holds after a change outside Terraform shows in a
+// non-secret attribute (Vault role_id, CipherTrust auth_type), and the edit
+// back sends the secret.
 func TestEARBuildEditSecretRule(t *testing.T) {
 	importedAzureState := map[string]string{}
 	for k, v := range azureState {
@@ -209,6 +265,56 @@ func TestEARBuildEditSecretRule(t *testing.T) {
 			state: awsState, raw: awsConfig(false, ""),
 			want: map[string]interface{}{
 				awsKeyKMSEndpoint: "", awsKeyAccessKeyID: "", awsKeySecretAccessKey: "",
+			},
+		},
+		{
+			name: "vault namespace removal keeps the stored secret ID",
+			spec: hashicorpVaultEARSpec(), state: vaultState,
+			raw: vaultConfig(map[string]interface{}{"role_id": "role", "secret_id": "old"}),
+			want: map[string]interface{}{
+				hcvKeyAddress: "https://vault.example.com:8200", hcvKeyAuthNamespace: "",
+				hcvKeyRoleID: absent, hcvKeySecretID: absent, hcvKeyToken: absent,
+			},
+		},
+		{
+			// YBA's merge puts the stored role ID back into a body without
+			// the secret ID.
+			name: "vault role ID change sends both AppRole keys",
+			spec: hashicorpVaultEARSpec(), state: vaultState,
+			raw: vaultConfig(map[string]interface{}{
+				"role_id": "role-2", "secret_id": "old", "auth_namespace": "ns1",
+			}),
+			want: map[string]interface{}{hcvKeyRoleID: "role-2", hcvKeySecretID: "old"},
+		},
+		{
+			name: "vault token after a switch to AppRole outside Terraform",
+			spec: hashicorpVaultEARSpec(),
+			state: withState(vaultState, map[string]string{
+				"token": "tok", "secret_id": "",
+			}),
+			raw: vaultConfig(map[string]interface{}{"token": "tok"}),
+			want: map[string]interface{}{
+				hcvKeyToken: "tok", hcvKeyAuthNamespace: "", hcvKeyRoleID: absent,
+			},
+		},
+		{
+			name: "ciphertrust user name change keeps the stored password",
+			spec: cipherTrustEARSpec(), state: ctState,
+			raw: ctConfig(map[string]interface{}{"username": "yba-2", "password": "old"}),
+			want: map[string]interface{}{
+				ctKeyAuthType: "PASSWORD", ctKeyUsername: "yba-2", ctKeyPassword: absent,
+			},
+		},
+		{
+			name: "ciphertrust password after a switch outside Terraform",
+			spec: cipherTrustEARSpec(),
+			state: withState(ctState, map[string]string{
+				"auth_type": "REFRESH_TOKEN", "username": "",
+			}),
+			raw: ctConfig(map[string]interface{}{"username": "yba", "password": "old"}),
+			want: map[string]interface{}{
+				ctKeyAuthType: "PASSWORD", ctKeyUsername: "yba", ctKeyPassword: "old",
+				ctKeyRefreshToken: absent,
 			},
 		},
 	}

@@ -1,0 +1,36 @@
+---
+page_title: "{{.Name}} {{.Type}} - {{.RenderedProviderName}}"
+description: |-
+{{ index (split (trimspace .Description) "\n\n") 0 | plainmarkdown | trimspace | prefixlines "  " }}
+---
+
+# {{.Name}} ({{.Type}})
+
+{{ .Description | trimspace }}
+
+Use the configuration in a universe through its `encryption_at_rest` block. The
+[Encryption at Rest](../guides/universe-edit-actions.md#encryption-at-rest) section of the
+Universe Edit Actions guide describes how to enable encryption, rotate the master key or the
+universe key, and disable encryption. For the YugabyteDB Anywhere side, see
+[Create a KMS configuration using CipherTrust](https://docs.yugabyte.com/stable/yugabyte-platform/security/create-kms-config/ciphertrust-kms/).
+
+## Example Usage
+
+{{ tffile "examples/resources/yba_ciphertrust_ear_config/resource.tf" }}
+
+{{ .SchemaMarkdown | trimspace }}
+
+## Import
+
+Import a CipherTrust configuration with its UUID. The `yba_ear_config` data source returns the
+UUID for a configuration name:
+
+```sh
+terraform import yba_ciphertrust_ear_config.password <config-uuid>
+```
+
+Import fails for a configuration of another KMS provider, and the error names that provider.
+Import reads every argument except `password` and `refresh_token`. YugabyteDB Anywhere masks
+them when it lists a configuration, so import leaves them empty. When the configuration sets
+`password` or `refresh_token`, the first plan after the import shows one in-place update, and
+the apply sends the credential from your configuration.

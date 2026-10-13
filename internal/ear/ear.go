@@ -25,6 +25,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -39,9 +40,11 @@ import (
 
 // YBA KeyProvider names: the create path segment and the list metadata value.
 const (
-	providerAWS   = "AWS"
-	providerAzure = "AZU"
-	providerGCP   = "GCP"
+	providerAWS         = "AWS"
+	providerAzure       = "AZU"
+	providerCipherTrust = "CIPHERTRUST"
+	providerGCP         = "GCP"
+	providerHashicorp   = "HASHICORP"
 )
 
 // earEntityName labels errors from the shared helpers.
@@ -242,44 +245,69 @@ func editSaved(
 	return true, nil
 }
 
-// resourceEARConfigDelete is the DeleteContext shared by every provider's
-// resource. A configuration that is already gone succeeds. A configuration
-// with key history fails before the API call: YBA accepts the delete request
-// and only fails the task, with a message that names neither the universes
-// nor the reason the history persists.
-func resourceEARConfigDelete(
-	ctx context.Context, d *schema.ResourceData, meta interface{},
-) diag.Diagnostics {
-	c := meta.(*api.APIClient).YugawareClient
-	cUUID := meta.(*api.APIClient).CustomerID
+// earDelete is the DeleteContext of every provider's resource. A
+// configuration that is already gone succeeds. A configuration with key
+// history fails before the API call: YBA accepts the delete request and only
+// fails the task, with a message that names neither the universes nor the
+// reason the history persists.
+func earDelete(s earSpec) schema.DeleteContextFunc {
+	return func(
+		ctx context.Context, d *schema.ResourceData, meta interface{},
+	) diag.Diagnostics {
+		apiClient := meta.(*api.APIClient)
+		c := apiClient.YugawareClient
+		cUUID := apiClient.CustomerID
 
-	cfg, err := getEARConfig(ctx, c, cUUID, d.Id())
-	if err != nil {
-		return diag.FromErr(err)
-	}
-	if cfg == nil {
-		tflog.Warn(ctx, fmt.Sprintf(
-			"Encryption at rest config %s already removed from YugabyteDB Anywhere", d.Id()))
+		cfg, err := getEARConfig(ctx, c, cUUID, d.Id())
+		if err != nil {
+			return diag.FromErr(err)
+		}
+		if cfg == nil {
+			tflog.Warn(ctx, fmt.Sprintf(
+				"Encryption at rest config %s already removed from YugabyteDB Anywhere", d.Id()))
+			d.SetId("")
+			return nil
+		}
+		if cfg.InUse {
+			return diag.Errorf(
+				"encryption at rest config %q (%s) holds key history for universe(s) %s and "+
+					"cannot be deleted", cfg.Name, d.Id(), formatUniverseRefs(cfg.Universes))
+		}
+		if err = s.checkRuntimeFlag(ctx, apiClient); err != nil {
+			return diag.FromErr(err)
+		}
+
+		task, response, err := c.EncryptionAtRestAPI.DeleteKMSConfig(ctx, cUUID, d.Id()).
+			Execute()
+		if err != nil {
+			return diag.FromErr(utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
+				earEntityName, "Delete"))
+		}
+		if err = utils.WaitForTask(ctx, task.GetTaskUUID(), cUUID, c,
+			d.Timeout(schema.TimeoutDelete)); err != nil {
+			return diag.FromErr(err)
+		}
 		d.SetId("")
 		return nil
 	}
-	if cfg.InUse {
-		return diag.Errorf(
-			"encryption at rest config %q (%s) holds key history for universe(s) %s and "+
-				"cannot be deleted", cfg.Name, d.Id(), formatUniverseRefs(cfg.Universes))
-	}
+}
 
-	task, response, err := c.EncryptionAtRestAPI.DeleteKMSConfig(ctx, cUUID, d.Id()).Execute()
+// setIntSetting writes an integer setting into attr, and leaves attr alone
+// when YBA does not list the key. YBA lists a JSON number, or a string when a
+// client created the configuration with one.
+func setIntSetting(
+	d *schema.ResourceData, attr string, settings map[string]interface{}, key string,
+) error {
+	v := utils.StringValue(settings[key])
+	if v == "" {
+		return nil
+	}
+	n, err := strconv.Atoi(v)
 	if err != nil {
-		return diag.FromErr(utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
-			earEntityName, "Delete"))
+		return fmt.Errorf("encryption at rest config %s: %s %q is not an integer",
+			d.Id(), key, v)
 	}
-	if err = utils.WaitForTask(ctx, task.GetTaskUUID(), cUUID, c,
-		d.Timeout(schema.TimeoutDelete)); err != nil {
-		return diag.FromErr(err)
-	}
-	d.SetId("")
-	return nil
+	return d.Set(attr, n)
 }
 
 func formatUniverseRefs(refs []universeRef) string {
@@ -320,6 +348,29 @@ type earSpec struct {
 	// warnings, when set, returns the diagnostics that a successful Create or
 	// Update adds, such as a preview warning for the arguments in use.
 	warnings func(d *schema.ResourceData) diag.Diagnostics
+	// runtimeFlag, when set, is the global runtime config key that YBA
+	// requires to be true before it creates, edits or deletes a configuration
+	// of this provider. The resource reads it before each of these writes.
+	runtimeFlag string
+}
+
+// checkRuntimeFlag fails when the spec's runtime flag is false. YBA rejects
+// the write too, but the failed edit then also fails editSaved, which reads
+// the configuration through a route that the flag also blocks.
+func (s earSpec) checkRuntimeFlag(ctx context.Context, apiClient *api.APIClient) error {
+	if s.runtimeFlag == "" {
+		return nil
+	}
+	enabled, err := utils.GetGlobalRuntimeConfigBool(
+		ctx, apiClient.YugawareClient, apiClient.CustomerID, s.runtimeFlag)
+	if err != nil {
+		return err
+	}
+	if !enabled {
+		return fmt.Errorf("%s encryption at rest config requires global runtime config "+
+			"%s=true (%s=false)", s.displayName, s.runtimeFlag, s.runtimeFlag)
+	}
+	return nil
 }
 
 func earResource(s earSpec) *schema.Resource {
@@ -354,7 +405,7 @@ func earResource(s earSpec) *schema.Resource {
 		CreateContext: earCreate(s),
 		ReadContext:   earRead(s),
 		UpdateContext: earUpdate(s),
-		DeleteContext: resourceEARConfigDelete,
+		DeleteContext: earDelete(s),
 
 		CustomizeDiff: s.customizeDiff,
 
@@ -387,8 +438,8 @@ const earSharedNotes = "~> **Note:** Only the arguments whose description says s
 	"old configuration.\n\n" +
 	"~> **Note:** Terraform refreshes `in_use` and the non-secret settings. YugabyteDB " +
 	"Anywhere masks credentials, so a credential changed outside Terraform, for example in " +
-	"the YugabyteDB Anywhere UI, does not show as drift. An apply without a change to the " +
-	"credential in the configuration does not send it again."
+	"the YugabyteDB Anywhere UI, does not show as drift. An apply sends a credential again " +
+	"only when the credential or the authentication mode changes."
 
 func earCreate(s earSpec) schema.CreateContextFunc {
 	return func(
@@ -399,6 +450,9 @@ func earCreate(s earSpec) schema.CreateContextFunc {
 
 		settings, err := s.buildCreate(d)
 		if err != nil {
+			return diag.FromErr(err)
+		}
+		if err = s.checkRuntimeFlag(ctx, apiClient); err != nil {
 			return diag.FromErr(err)
 		}
 		tflog.Info(ctx, fmt.Sprintf("Creating %s encryption at rest config %q",
@@ -483,6 +537,9 @@ func earUpdate(s earSpec) schema.UpdateContextFunc {
 		}()
 
 		settings, err := s.buildEdit(d)
+		if err == nil {
+			err = s.checkRuntimeFlag(ctx, apiClient)
+		}
 		if err != nil {
 			utils.RevertFields(d, s.credentialFields...)
 			return diag.FromErr(err)

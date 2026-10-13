@@ -194,7 +194,7 @@ func TestDeleteEARConfigInUseFailsBeforeAPICall(t *testing.T) {
 	d := ResourceGCPEARConfig().TestResourceData()
 	d.SetId(testConfigUUID)
 
-	diags := resourceEARConfigDelete(context.Background(), d, f.apiClient(t))
+	diags := earDelete(gcpEARSpec())(context.Background(), d, f.apiClient(t))
 	if !diags.HasError() {
 		t.Fatal("expected an error for a config with key history")
 	}
@@ -217,7 +217,7 @@ func TestDeleteEARConfigAlreadyGone(t *testing.T) {
 	d := ResourceGCPEARConfig().TestResourceData()
 	d.SetId(testConfigUUID)
 
-	if diags := resourceEARConfigDelete(context.Background(), d, f.apiClient(t)); diags.HasError() {
+	if diags := earDelete(gcpEARSpec())(context.Background(), d, f.apiClient(t)); diags.HasError() {
 		t.Fatalf("delete of a missing config must succeed, got %v", diags)
 	}
 	if f.deleteCalled {

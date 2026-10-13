@@ -291,6 +291,144 @@ func TestAccAzureEARConfig(t *testing.T) {
 	})
 }
 
+// The HashiCorp Vault EAR test points at the dev-mode Vault of the GCP
+// fixture (acctest/gcp/vault.tf): its transit key, and a token and an AppRole
+// whose policy covers the transit mount.
+var envVault = []string{"TF_VAR_VAULT_ADDRESS", "TF_VAR_VAULT_TOKEN", "TF_VAR_VAULT_ROLE_ID",
+	"TF_VAR_VAULT_SECRET_ID", "TF_VAR_VAULT_MOUNT_PATH", "TF_VAR_VAULT_KEY_NAME"}
+
+// TestAccHashicorpVaultEARConfig creates the configuration with a token,
+// imports it, switches it in place to the AppRole, and back to the token. YBA
+// checks the credentials with Vault on every edit, so an edit step fails when
+// the body does not carry the credentials of the new mode, and the plan after
+// it shows any credential that YBA kept from the old mode.
+func TestAccHashicorpVaultEARConfig(t *testing.T) {
+	rName := acctest.RandomName("vault-ear")
+	res := "yba_hashicorp_vault_ear_config.test"
+	var configUUID string
+
+	resource.ParallelTest(t, resource.TestCase{
+		PreCheck: func() {
+			acctest.TestAccPreCheckCloudYBA(t, "GCP")
+			for _, v := range envVault {
+				if os.Getenv(v) == "" {
+					t.Skipf("%s not set; skipping HashiCorp Vault encryption at rest "+
+						"acceptance tests", v)
+				}
+			}
+		},
+		ProviderFactories: acctest.ProviderFactories,
+		CheckDestroy: testAccCheckEARConfigTypeDestroy("GCP",
+			"yba_hashicorp_vault_ear_config"),
+		Steps: append(append([]resource.TestStep{
+			{
+				Config: testAccVaultEARConfig(rName, false, true),
+				Check: resource.ComposeTestCheckFunc(
+					testAccCheckEARConfigExists("GCP", res),
+					resource.TestCheckResourceAttr(res, "role_id", ""),
+					resource.TestCheckResourceAttr(res, "in_use", "false"),
+					func(s *terraform.State) error {
+						configUUID = s.RootModule().Resources[res].Primary.ID
+						return nil
+					},
+				),
+			},
+		}, acctest.ImportPlanSteps(t, res, testAccVaultEARConfig(rName, false, true),
+			acctest.ImportPlanOptions{
+				// YBA lists the token masked (see testAccVaultEARConfig).
+				VerifyIgnore: []string{"token"},
+			})...),
+			resource.TestStep{
+				Config: testAccVaultEARConfig(rName, true, false) +
+					testAccEARConfigDataSource("yba_hashicorp_vault_ear_config"),
+				Check: resource.ComposeTestCheckFunc(
+					// Same UUID: the switch is an edit, not a replacement.
+					resource.TestCheckResourceAttrPtr(res, "id", &configUUID),
+					resource.TestCheckResourceAttr(res, "role_id",
+						os.Getenv("TF_VAR_VAULT_ROLE_ID")),
+					resource.TestCheckResourceAttr(
+						"data.yba_ear_config.test", "key_provider", "HASHICORP"),
+				),
+			},
+			resource.TestStep{
+				Config: testAccVaultEARConfig(rName, false, false),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttrPtr(res, "id", &configUUID),
+					resource.TestCheckResourceAttr(res, "role_id", ""),
+				),
+			}),
+	})
+}
+
+// The CipherTrust EAR test needs a CipherTrust Manager that the GCP fixture
+// YBA can reach, with an existing AES key and a user that has both a password
+// and a refresh token. No fixture provides one, so the test runs only when the
+// env sets these variables.
+var envCipherTrust = []string{"TF_VAR_CIPHERTRUST_MANAGER_URL", "TF_VAR_CIPHERTRUST_USERNAME",
+	"TF_VAR_CIPHERTRUST_PASSWORD", "TF_VAR_CIPHERTRUST_REFRESH_TOKEN",
+	"TF_VAR_CIPHERTRUST_KEY_NAME"}
+
+// TestAccCipherTrustEARConfig creates the configuration with a password and
+// without key_size, imports it, switches it in place to the refresh token,
+// and back to the password. YBA records the existing key's actual size, so
+// the plans after create and import show whether Read reconciles it.
+func TestAccCipherTrustEARConfig(t *testing.T) {
+	rName := acctest.RandomName("ct-ear")
+	res := "yba_ciphertrust_ear_config.test"
+	var configUUID string
+
+	resource.ParallelTest(t, resource.TestCase{
+		PreCheck: func() {
+			acctest.TestAccPreCheckCloudYBA(t, "GCP")
+			for _, v := range envCipherTrust {
+				if os.Getenv(v) == "" {
+					t.Skipf("%s not set; skipping CipherTrust encryption at rest "+
+						"acceptance tests", v)
+				}
+			}
+		},
+		ProviderFactories: acctest.ProviderFactories,
+		CheckDestroy: testAccCheckEARConfigTypeDestroy("GCP",
+			"yba_ciphertrust_ear_config"),
+		Steps: append(append([]resource.TestStep{
+			{
+				Config: testAccCipherTrustEARConfig(rName, "PASSWORD", true),
+				Check: resource.ComposeTestCheckFunc(
+					testAccCheckEARConfigExists("GCP", res),
+					resource.TestCheckResourceAttrSet(res, "key_size"),
+					resource.TestCheckResourceAttr(res, "in_use", "false"),
+					func(s *terraform.State) error {
+						configUUID = s.RootModule().Resources[res].Primary.ID
+						return nil
+					},
+				),
+			},
+		}, acctest.ImportPlanSteps(t, res, testAccCipherTrustEARConfig(rName, "PASSWORD", true),
+			acctest.ImportPlanOptions{
+				// YBA lists the password masked (see testAccCipherTrustEARConfig).
+				VerifyIgnore: []string{"password"},
+			})...),
+			resource.TestStep{
+				Config: testAccCipherTrustEARConfig(rName, "REFRESH_TOKEN", false) +
+					testAccEARConfigDataSource("yba_ciphertrust_ear_config"),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttrPtr(res, "id", &configUUID),
+					resource.TestCheckResourceAttr(res, "username", ""),
+					resource.TestCheckResourceAttr(
+						"data.yba_ear_config.test", "key_provider", "CIPHERTRUST"),
+				),
+			},
+			resource.TestStep{
+				Config: testAccCipherTrustEARConfig(rName, "PASSWORD", false),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttrPtr(res, "id", &configUUID),
+					resource.TestCheckResourceAttr(res, "username",
+						os.Getenv("TF_VAR_CIPHERTRUST_USERNAME")),
+				),
+			}),
+	})
+}
+
 // testAccCheckAzureEARSecret checks that YBA holds the configured client
 // secret. The list masks it, so the check reads the by-UUID GET. Its error
 // never shows the secret.
@@ -334,9 +472,15 @@ func testAccCheckEARConfigExists(cloud, name string) resource.TestCheckFunc {
 }
 
 func testAccCheckEARConfigDestroy(cloud string) resource.TestCheckFunc {
+	return testAccCheckEARConfigTypeDestroy(cloud, "yba_"+strings.ToLower(cloud)+"_ear_config")
+}
+
+// testAccCheckEARConfigTypeDestroy checks that the cloud's fixture YBA no
+// longer lists the configurations of resourceType.
+func testAccCheckEARConfigTypeDestroy(cloud, resourceType string) resource.TestCheckFunc {
 	return func(s *terraform.State) error {
 		for _, r := range s.RootModule().Resources {
-			if r.Type != "yba_"+strings.ToLower(cloud)+"_ear_config" {
+			if r.Type != resourceType {
 				continue
 			}
 			found, err := earConfigListed(cloud, r.Primary.ID)
@@ -520,6 +664,116 @@ resource "yba_azure_ear_config" "test" {
   tenant_id = var.AZURE_TENANT_ID
   vault_url = var.AZURE_EAR_VAULT_URL
   key_name  = var.AZURE_EAR_KEY_NAME%s
+}
+`, name, auth)
+}
+
+// testAccVaultEARConfig authenticates with the fixture Vault's token, or with
+// its AppRole when appRole is true. The create and import steps set
+// ignoreToken; the steps that switch the mode do not.
+func testAccVaultEARConfig(name string, appRole, ignoreToken bool) string {
+	auth := `
+  token = var.VAULT_TOKEN`
+	if appRole {
+		auth = `
+  role_id   = var.VAULT_ROLE_ID
+  secret_id = var.VAULT_SECRET_ID`
+	}
+	if ignoreToken {
+		auth += `
+
+  # YBA lists the token masked (EncryptionAtRestController.listKMSConfigs:
+  # CommonUtils.maskConfig masks HC_VAULT_TOKEN), so an import cannot read it
+  # back.
+  lifecycle {
+    ignore_changes = [token]
+  }`
+	}
+	return acctest.YBAProviderBlock("GCP") + fmt.Sprintf(`
+variable "VAULT_ADDRESS" {
+  type = string
+}
+
+variable "VAULT_TOKEN" {
+  type      = string
+  sensitive = true
+}
+
+variable "VAULT_ROLE_ID" {
+  type = string
+}
+
+variable "VAULT_SECRET_ID" {
+  type      = string
+  sensitive = true
+}
+
+variable "VAULT_MOUNT_PATH" {
+  type = string
+}
+
+variable "VAULT_KEY_NAME" {
+  type = string
+}
+
+resource "yba_hashicorp_vault_ear_config" "test" {
+  name          = "%s"
+  vault_address = var.VAULT_ADDRESS
+  mount_path    = var.VAULT_MOUNT_PATH
+  key_name      = var.VAULT_KEY_NAME%s
+}
+`, name, auth)
+}
+
+// testAccCipherTrustEARConfig authenticates with the user's password or
+// refresh token, as authType says. The create and import steps set
+// ignoreSecret; the steps that switch the type do not.
+func testAccCipherTrustEARConfig(name, authType string, ignoreSecret bool) string {
+	auth := `
+  auth_type = "PASSWORD"
+  username  = var.CIPHERTRUST_USERNAME
+  password  = var.CIPHERTRUST_PASSWORD`
+	if authType == "REFRESH_TOKEN" {
+		auth = `
+  auth_type     = "REFRESH_TOKEN"
+  refresh_token = var.CIPHERTRUST_REFRESH_TOKEN`
+	}
+	if ignoreSecret {
+		auth += `
+
+  # YBA lists the password masked (EncryptionAtRestController.listKMSConfigs:
+  # CommonUtils.maskConfig masks PASSWORD), so an import cannot read it back.
+  lifecycle {
+    ignore_changes = [password]
+  }`
+	}
+	return acctest.YBAProviderBlock("GCP") + fmt.Sprintf(`
+variable "CIPHERTRUST_MANAGER_URL" {
+  type = string
+}
+
+variable "CIPHERTRUST_USERNAME" {
+  type = string
+}
+
+variable "CIPHERTRUST_PASSWORD" {
+  type      = string
+  sensitive = true
+}
+
+variable "CIPHERTRUST_REFRESH_TOKEN" {
+  type      = string
+  sensitive = true
+}
+
+variable "CIPHERTRUST_KEY_NAME" {
+  type = string
+}
+
+resource "yba_ciphertrust_ear_config" "test" {
+  name        = "%s"
+  manager_url = var.CIPHERTRUST_MANAGER_URL
+  key_name    = var.CIPHERTRUST_KEY_NAME%s
 }
 `, name, auth)
 }

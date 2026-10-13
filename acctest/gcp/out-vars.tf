@@ -37,6 +37,12 @@ locals {
     TF_VAR_GCP_EAR_LOCATION_ID='${google_kms_key_ring.ear.location}'
     TF_VAR_GCP_EAR_KEY_RING_ID='${google_kms_key_ring.ear.name}'
     TF_VAR_GCP_EAR_CRYPTO_KEY_ID='${google_kms_crypto_key.ear.name}'
+    TF_VAR_VAULT_ADDRESS='http://${google_compute_instance.vault.network_interface[0].network_ip}:8200'
+    TF_VAR_VAULT_TOKEN='${random_password.vault_token.result}'
+    TF_VAR_VAULT_ROLE_ID='${random_uuid.vault_role_id.result}'
+    TF_VAR_VAULT_SECRET_ID='${random_password.vault_secret_id.result}'
+    TF_VAR_VAULT_MOUNT_PATH='${local.vault_mount_path}'
+    TF_VAR_VAULT_KEY_NAME='${local.vault_key_name}'
     TF_VAR_GCP_YBA_HOST='${local.yba_api_host}'
     TF_VAR_GCP_YBA_API_KEY='${yba_customer_resource.customer.api_token}'
     YBA_HOST='${local.yba_api_host}'
@@ -50,7 +56,7 @@ locals {
 output "test_env" {
   description = "Acceptance-test env (TF_VAR_GCP_*, YBA endpoint) as KEY='value' lines."
   value       = local.test_env
-  sensitive   = true # contains GCP_CREDENTIALS, YBA API tokens, and the YBA VM SSH key
+  sensitive   = true # contains GCP_CREDENTIALS, YBA API tokens, the YBA VM SSH key and Vault credentials
 }
 
 output "yba_url" {

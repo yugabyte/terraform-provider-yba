@@ -56,9 +56,10 @@ func encryptionAtRestSchema() *schema.Schema {
 		MaxItems: 1,
 		Description: "Encryption at rest for the universe, with the master key from an " +
 			"encryption-at-rest configuration (`yba_aws_ear_config`, " +
-			"`yba_azure_ear_config`, `yba_gcp_ear_config`, or one that `yba_ear_config` " +
-			"finds). Set the block at creation to encrypt from the first " +
-			"write, or add it to an existing universe to enable encryption in place. When " +
+			"`yba_azure_ear_config`, `yba_ciphertrust_ear_config`, `yba_gcp_ear_config`, " +
+			"`yba_hashicorp_vault_ear_config`, or one that `yba_ear_config` finds). Set " +
+			"the block at creation to encrypt from the first write, or add it to an " +
+			"existing universe to enable encryption in place. When " +
 			"the block is omitted, Terraform reads it from the universe, so removing the " +
 			"block changes nothing; set `enabled = false` to disable encryption. None of " +
 			"these changes restart nodes.",

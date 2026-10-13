@@ -8,7 +8,9 @@ This release adds resources for encryption in transit and certificate rotation, 
 - `yba_custom_server_certificate` - a root certificate from your organization's CA, with a server certificate and key, for client-to-node encryption.
 - `yba_aws_ear_config` - an encryption at rest configuration that uses an AWS KMS key.
 - `yba_azure_ear_config` - an encryption at rest configuration that uses an Azure Key Vault key.
+- `yba_ciphertrust_ear_config` - an encryption at rest configuration that uses an AES key in CipherTrust Manager. Requires YugabyteDB Anywhere 2025.1.0.0 or later.
 - `yba_gcp_ear_config` - an encryption at rest configuration that uses a Google Cloud KMS key. The `use_gcp_iam` and `project_id` arguments use a preview YugabyteDB Anywhere API.
+- `yba_hashicorp_vault_ear_config` - an encryption at rest configuration that uses a key of the HashiCorp Vault transit secrets engine.
 - `yba_ybdb_release` - a YugabyteDB release. Upload release packages from the machine that runs Terraform, or give package or Helm chart URLs.
 - `yba_datadog_telemetry_provider`, `yba_otlp_telemetry_provider`, `yba_aws_cloudwatch_telemetry_provider`, `yba_gcp_cloud_monitoring_telemetry_provider`, `yba_splunk_telemetry_provider`, `yba_dynatrace_telemetry_provider`, `yba_s3_telemetry_provider` - a destination for universe logs or metrics.
 - `yba_universe_telemetry_config` - the audit logs, query logs, server logs, and metrics that a universe exports, and the telemetry providers that receive them.

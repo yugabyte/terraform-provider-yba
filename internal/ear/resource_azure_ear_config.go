@@ -16,9 +16,6 @@
 package ear
 
 import (
-	"fmt"
-	"strconv"
-
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 
@@ -191,23 +188,12 @@ func azureBuildEdit(d *schema.ResourceData) (map[string]interface{}, error) {
 }
 
 // azureFlatten writes the listed non-secret settings into state. The client
-// secret is never read back (the list masks it). YBA stores AZU_KEY_SIZE as
-// the create body sent it: a JSON number from the UI, yba-cli and this
-// provider, but a string from a client that sends one.
+// secret is never read back (the list masks it).
 func azureFlatten(d *schema.ResourceData, settings map[string]interface{}) error {
 	for attr, key := range azureSettingAttrs {
 		if err := d.Set(attr, utils.StringValue(settings[key])); err != nil {
 			return err
 		}
 	}
-	size := utils.StringValue(settings[azureKeySize])
-	if size == "" {
-		return nil
-	}
-	n, err := strconv.Atoi(size)
-	if err != nil {
-		return fmt.Errorf("encryption at rest config %s: %s %q is not an integer",
-			d.Id(), azureKeySize, size)
-	}
-	return d.Set("key_size", n)
+	return setIntSetting(d, "key_size", settings, azureKeySize)
 }
