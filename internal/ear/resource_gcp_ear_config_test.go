@@ -19,6 +19,7 @@ import (
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
 )
 
 // The two auth modes map onto YBA's mutually exclusive keys: the key file goes
@@ -65,6 +66,17 @@ func TestGCPBuildAuthModes(t *testing.T) {
 		if _, has := body[absent]; has {
 			t.Errorf("%s must not be in the body", absent)
 		}
+	}
+
+	// gcpBuildAuth checks use_gcp_iam first and would drop the key file, so the
+	// plan must reject both modes at once.
+	both := map[string]interface{}{"credentials": withKey["credentials"]}
+	for k, v := range withHost {
+		both[k] = v
+	}
+	diags := ResourceGCPEARConfig().Validate(terraform.NewResourceConfigRaw(both))
+	if !diags.HasError() {
+		t.Error("want a plan error when credentials and use_gcp_iam are both set")
 	}
 }
 

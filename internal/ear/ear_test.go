@@ -43,6 +43,7 @@ type fakeYBA struct {
 	createBody     map[string]interface{}
 	createResponse map[string]interface{} // nil: {"taskUUID": testTaskUUID}
 	deleteCalled   bool
+	taskFails      bool // every task ends in Failure
 }
 
 func (f *fakeYBA) handler(t *testing.T) http.HandlerFunc {
@@ -65,11 +66,21 @@ func (f *fakeYBA) handler(t *testing.T) http.HandlerFunc {
 		case r.Method == http.MethodDelete && strings.Contains(path, "/kms_configs/"):
 			f.deleteCalled = true
 			_ = json.NewEncoder(w).Encode(task)
+		case r.Method == http.MethodPost && strings.HasSuffix(path, "/edit"):
+			_ = json.NewEncoder(w).Encode(task)
+		case r.Method == http.MethodGet && strings.HasSuffix(path, "/app_version"):
+			_, _ = w.Write([]byte(`{"version": "2024.2.0.0-b145"}`))
+		case r.Method == http.MethodGet && strings.HasSuffix(path, "/failed_subtasks"):
+			_, _ = w.Write([]byte(`{"failedSubTasks": []}`))
 		case r.Method == http.MethodGet && strings.Contains(path, "/tasks/"):
+			status := "Success"
+			if f.taskFails {
+				status = "Failure"
+			}
 			_ = json.NewEncoder(w).Encode(map[string]interface{}{
 				"title":   "CreateKMSConfig",
 				"percent": 100.0,
-				"status":  "Success",
+				"status":  status,
 				"details": map[string]interface{}{"taskDetails": []interface{}{}},
 			})
 		default:
@@ -250,6 +261,38 @@ func TestReadGoneClearsID(t *testing.T) {
 	}
 	if d.Id() != "" {
 		t.Error("a config YBA no longer lists must be removed from state")
+	}
+}
+
+// --- update -----------------------------------------------------------------
+
+// YBA stores an edit before its KMS check and keeps it when the check fails.
+// After a failed switch to the managed identity, YBA holds the identity's
+// client ID and no secret, so a return to the service principal must send
+// its secret again, although state had that secret before the switch.
+func TestEARUpdateFailureResendsSecret(t *testing.T) {
+	f := &fakeYBA{
+		listBody: listOf(listEntry(testConfigUUID, "vault", providerAzure, false, `{
+			"CLIENT_ID": "mi", "TENANT_ID": "tenant", "CLIENT_SECRET": "********",
+			"AZU_VAULT_URL": "https://v.vault.azure.net/", "AZU_KEY_NAME": "yb-key",
+			"AZU_KEY_ALGORITHM": "RSA", "AZU_KEY_SIZE": 2048}`)),
+		taskFails: true,
+	}
+	spec := azureEARSpec()
+	res := earResource(spec)
+
+	d := plannedData(t, res, azureState, azureConfig("mi", ""))
+	if diags := earUpdate(spec)(context.Background(), d, f.apiClient(t)); !diags.HasError() {
+		t.Fatal("want the failed edit task as an error")
+	}
+
+	d = plannedData(t, res, d.State().Attributes, azureConfig("app", "old"))
+	body, err := spec.buildEdit(d)
+	if err != nil {
+		t.Fatalf("build: %v", err)
+	}
+	if got := body[azureKeyClientSecret]; got != "old" {
+		t.Errorf("CLIENT_SECRET = %v want old: YBA stored no secret", got)
 	}
 }
 

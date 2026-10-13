@@ -90,6 +90,48 @@ func TestEARConfigGuardrails(t *testing.T) {
 	}
 }
 
+// azureState is a service principal configuration with the secret "old".
+var azureState = map[string]string{
+	"name": "vault", "client_id": "app", "tenant_id": "tenant", "client_secret": "old",
+	"vault_url": "https://v.vault.azure.net/", "key_name": "yb-key", "key_size": "2048",
+}
+
+// azureConfig is the configuration of azureState with clientID and secret;
+// an empty secret leaves client_secret unset.
+func azureConfig(clientID, secret string) map[string]interface{} {
+	raw := map[string]interface{}{
+		"name": "vault", "client_id": clientID, "tenant_id": "tenant",
+		"vault_url": "https://v.vault.azure.net/", "key_name": "yb-key",
+	}
+	if secret != "" {
+		raw["client_secret"] = secret
+	}
+	return raw
+}
+
+// plannedData returns the ResourceData that Update gets for a plan from the
+// state attrs to the configuration raw.
+func plannedData(
+	t *testing.T, res *schema.Resource, attrs map[string]string, raw map[string]interface{},
+) *schema.ResourceData {
+	t.Helper()
+	state := &terraform.InstanceState{
+		ID: testConfigUUID, Attributes: map[string]string{"id": testConfigUUID},
+	}
+	for k, v := range attrs {
+		state.Attributes[k] = v
+	}
+	diff, err := res.Diff(context.Background(), state, terraform.NewResourceConfigRaw(raw), nil)
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+	d, err := schema.InternalMap(res.Schema).Data(state, diff)
+	if err != nil {
+		t.Fatalf("data: %v", err)
+	}
+	return d
+}
+
 // absent marks a key that the edit body must leave out.
 var absent = struct{}{}
 
@@ -99,20 +141,6 @@ var absent = struct{}{}
 // a configured secret: imported state has no secret, so a change does not
 // show, while YBA may still store one.
 func TestEARBuildEditSecretRule(t *testing.T) {
-	azureState := map[string]string{
-		"name": "vault", "client_id": "app", "tenant_id": "tenant", "client_secret": "old",
-		"vault_url": "https://v.vault.azure.net/", "key_name": "yb-key", "key_size": "2048",
-	}
-	azureConfig := func(clientID, secret string) map[string]interface{} {
-		raw := map[string]interface{}{
-			"name": "vault", "client_id": clientID, "tenant_id": "tenant",
-			"vault_url": "https://v.vault.azure.net/", "key_name": "yb-key",
-		}
-		if secret != "" {
-			raw["client_secret"] = secret
-		}
-		return raw
-	}
 	awsState := map[string]string{
 		"name": "kms", "region": "us-west-2", "cmk_id": "key", "access_key_id": "AKIA",
 		"secret_access_key": "old", "kms_endpoint": "kms-a.example.com",
@@ -181,21 +209,7 @@ func TestEARBuildEditSecretRule(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			res := earResource(tc.spec)
-			attrs := map[string]string{"id": testConfigUUID}
-			for k, v := range tc.state {
-				attrs[k] = v
-			}
-			state := &terraform.InstanceState{ID: testConfigUUID, Attributes: attrs}
-			diff, err := res.Diff(context.Background(), state,
-				terraform.NewResourceConfigRaw(tc.raw), nil)
-			if err != nil {
-				t.Fatalf("plan: %v", err)
-			}
-			d, err := schema.InternalMap(res.Schema).Data(state, diff)
-			if err != nil {
-				t.Fatalf("data: %v", err)
-			}
+			d := plannedData(t, earResource(tc.spec), tc.state, tc.raw)
 			body, err := tc.spec.buildEdit(d)
 			if err != nil {
 				t.Fatalf("build: %v", err)

@@ -271,8 +271,8 @@ type earSpec struct {
 	description string // provider-specific lead of the resource docs
 	fields      map[string]*schema.Schema
 	// credentialFields are the arguments that carry or select the
-	// credential. A failed update reverts them to their prior state, because
-	// Read cannot restore a secret from the server (the list masks it).
+	// credential. Read cannot restore them from the server (the list masks
+	// secrets), so earUpdate sets them on failure.
 	credentialFields []string
 	// buildCreate maps the resource arguments onto YBA's authConfig keys for
 	// the create body. The factory adds the name.
@@ -429,9 +429,11 @@ func earRead(s earSpec) schema.ReadContextFunc {
 }
 
 // earUpdate is reached only for the arguments YBA lets an edit change: every
-// other argument is ForceNew. A failed edit reverts the credential fields,
-// which Read cannot restore from the server; the deferred Read then refreshes
-// the rest.
+// other argument is ForceNew. A failed build reverts the credential fields,
+// because nothing was sent. A failed edit clears them, because YBA may have
+// stored the edit (see editEARConfig): the next plan then shows a change for a
+// configured credential, and the next apply sends it again. The deferred Read
+// refreshes the rest.
 func earUpdate(s earSpec) schema.UpdateContextFunc {
 	return func(
 		ctx context.Context, d *schema.ResourceData, meta interface{},
@@ -457,7 +459,9 @@ func earUpdate(s earSpec) schema.UpdateContextFunc {
 			s.displayName, d.Id()))
 		if err := editEARConfig(ctx, apiClient.YugawareClient, apiClient.CustomerID, d.Id(),
 			settings, d.Timeout(schema.TimeoutUpdate)); err != nil {
-			utils.RevertFields(d, s.credentialFields...)
+			for _, f := range s.credentialFields {
+				_ = d.Set(f, nil)
+			}
 			return diag.FromErr(err)
 		}
 		return s.successWarnings(d)
