@@ -43,11 +43,9 @@ func ResourceDatadogTelemetryProvider() *schema.Resource {
 				Description: "Datadog API key.",
 			},
 		},
-		buildConfig: func(d *schema.ResourceData) map[string]interface{} {
-			return map[string]interface{}{
-				"site":   d.Get("site"),
-				"apiKey": d.Get("api_key"),
-			}
+		configPaths: map[string]string{
+			"site":    "site",
+			"api_key": "apiKey",
 		},
 	})
 }

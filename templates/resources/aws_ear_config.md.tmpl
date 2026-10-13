@@ -30,10 +30,12 @@ terraform import yba_aws_ear_config.access_keys <config-uuid>
 ```
 
 Import fails for a configuration of another KMS provider, and the error names that provider.
-YugabyteDB Anywhere never returns `access_key_id` or `secret_access_key`, so they stay empty
-after import. When the configuration sets them, the first apply sends the keys again. When the
-configuration leaves them unset, Terraform cannot see access keys that the imported
-configuration stores, and YugabyteDB Anywhere keeps authenticating with those keys. To make
-YugabyteDB Anywhere authenticate as its host, set `access_key_id` and `secret_access_key` to a
-valid key pair and apply, then remove both and apply again. YugabyteDB Anywhere checks the
-keys with AWS before it accepts the first edit, so the key pair must be valid.
+Import reads every argument except `access_key_id` and `secret_access_key`. YugabyteDB
+Anywhere masks the access keys when it lists a configuration, so import leaves them empty.
+When the configuration sets them, the first plan after the import shows one in-place update,
+and the apply sends the keys from your configuration. When the configuration leaves them
+unset, Terraform cannot see access keys that the imported configuration stores, and
+YugabyteDB Anywhere keeps authenticating with those keys. To make YugabyteDB Anywhere
+authenticate as its host, set `access_key_id` and `secret_access_key` to a valid key pair and
+apply, then remove both and apply again. YugabyteDB Anywhere checks the keys with AWS before
+it accepts the first edit, so the key pair must be valid.

@@ -22,6 +22,7 @@ import (
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
 	clientv2 "github.com/yugabyte/platform-go-client/v2"
 
 	"github.com/yugabyte/terraform-provider-yba/internal/utils"
@@ -294,6 +295,85 @@ func TestUniverseTelemetryConfigReadReplacesDrift(t *testing.T) {
 	if got := d.Get("metrics.0.exporter.0.exporter_uuid"); got != "B" {
 		t.Errorf("read must replace state with the server value: "+
 			"exporter_uuid = %v want B", got)
+	}
+}
+
+// YBA stores no node_restart_settings, so import cannot read them. A config
+// that omits the block plans clean. A config with a block, even one of the
+// default values, plans one update, and that apply sends nothing to YBA, so
+// no node restarts.
+func TestUniverseTelemetryConfigNodeRestartSettingsAfterImport(t *testing.T) {
+	cases := []struct {
+		name     string
+		upgrade  []interface{} // nil omits the block
+		wantDiff bool
+	}{
+		{"block omitted", nil, false},
+		{"block of default values", []interface{}{map[string]interface{}{}}, true},
+		{"faster restarts", []interface{}{map[string]interface{}{
+			"sleep_after_master_restart_millis":  5000,
+			"sleep_after_tserver_restart_millis": 5000,
+		}}, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			res := ResourceUniverseTelemetryConfig()
+			raw := map[string]interface{}{
+				"universe_uuid": "uni-1",
+				"metrics": []interface{}{map[string]interface{}{
+					"exporter": []interface{}{map[string]interface{}{"exporter_uuid": "exp-1"}},
+				}},
+			}
+			if tc.upgrade != nil {
+				raw["node_restart_settings"] = tc.upgrade
+			}
+			// YBA holds the pipelines that the config sends.
+			f := &fakeYBA{getConfig: buildExportTelemetryConfigSpec(
+				schema.TestResourceDataRaw(t, res.Schema, raw)).TelemetryConfig}
+			apiClient := newDetachTestClient(t, f)
+			d := res.TestResourceData()
+			d.SetId("uni-1")
+			imported, err := res.Importer.StateContext(context.Background(), d, apiClient)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if diags := res.ReadContext(
+				context.Background(), imported[0], apiClient); diags.HasError() {
+				t.Fatalf("read: %v", diags)
+			}
+			state := imported[0].State()
+
+			diff, err := res.Diff(
+				context.Background(), state, terraform.NewResourceConfigRaw(raw), nil)
+
+			if err != nil {
+				t.Fatal(err)
+			}
+			var changed []string
+			if diff != nil {
+				for k := range diff.Attributes {
+					changed = append(changed, k)
+				}
+			}
+			if (len(changed) > 0) != tc.wantDiff {
+				t.Fatalf("plan changes %v, want a change: %t", changed, tc.wantDiff)
+			}
+			if !tc.wantDiff {
+				return
+			}
+			planned, err := schema.InternalMap(res.Schema).Data(state, diff)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if diags := res.UpdateContext(
+				context.Background(), planned, apiClient); diags.HasError() {
+				t.Fatalf("update: %v", diags)
+			}
+			if len(f.configuredUnis) != 0 {
+				t.Errorf("a node_restart_settings change reconfigured universes %v",
+					f.configuredUnis)
+			}
+		})
 	}
 }
 

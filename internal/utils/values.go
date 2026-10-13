@@ -41,6 +41,32 @@ func StringValue(in interface{}) string {
 	return fmt.Sprintf("%v", in)
 }
 
+// IsYBAMaskOf reports whether masked is how YBA reads back value under key.
+// Mirrors YBA's CommonUtils.getMaskedValue: a key that contains PASSWORD, or a
+// value under 5 characters, reads back as ********; any other value keeps its
+// first and last two characters and masks the rest, at the same length. An
+// empty value matches nothing: callers keep a state value that YBA masked,
+// and after an import there is no state value to keep.
+func IsYBAMaskOf(key, masked, value string) bool {
+	v := []rune(value)
+	if value == "" {
+		return false
+	}
+	if strings.Contains(strings.ToUpper(key), "PASSWORD") || len(v) < 5 {
+		return masked == "********"
+	}
+	m := []rune(masked)
+	if len(m) != len(v) {
+		return false
+	}
+	for i := range m {
+		if m[i] != v[i] && (m[i] != '*' || i < 2 || i >= len(v)-2) {
+			return false
+		}
+	}
+	return true
+}
+
 // BoolValue reads a boolean setting that clients may have stored as a JSON
 // boolean or as the strings "true"/"false". Anything else is false.
 func BoolValue(in interface{}) bool {

@@ -24,6 +24,7 @@ func TestValidateArtifactSpecs(t *testing.T) {
 	cases := []struct {
 		name    string
 		specs   []artifactSpec
+		prior   []artifactSpec
 		wantErr string
 	}{
 		{
@@ -45,6 +46,23 @@ func TestValidateArtifactSpecs(t *testing.T) {
 		{
 			name:    "no source set",
 			specs:   []artifactSpec{{Platform: "LINUX", Architecture: "x86_64"}},
+			wantErr: "exactly one of local_file or package_url",
+		},
+		{
+			// After an import, ignore_changes puts the empty state source into
+			// the configuration.
+			name:  "imported artifact with its source ignored",
+			specs: []artifactSpec{{Platform: "LINUX", Architecture: "x86_64"}},
+			prior: []artifactSpec{
+				{Platform: "LINUX", Architecture: "x86_64", PackageFileID: "f1"},
+			},
+		},
+		{
+			name:  "source removed from an artifact that the state holds with one",
+			specs: []artifactSpec{{Platform: "LINUX", Architecture: "x86_64"}},
+			prior: []artifactSpec{
+				{Platform: "LINUX", Architecture: "x86_64", LocalFile: "/tmp/x.tar.gz"},
+			},
 			wantErr: "exactly one of local_file or package_url",
 		},
 		{
@@ -71,7 +89,7 @@ func TestValidateArtifactSpecs(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			err := validateArtifactSpecs(tc.specs)
+			err := validateArtifactSpecs(tc.specs, tc.prior)
 			if tc.wantErr == "" {
 				if err != nil {
 					t.Fatalf("expected valid specs, got %v", err)

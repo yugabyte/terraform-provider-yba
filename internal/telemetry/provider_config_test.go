@@ -16,9 +16,11 @@
 package telemetry
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	clientv2 "github.com/yugabyte/platform-go-client/v2"
 )
 
 // assertConfig checks every want key is present with the exact value and every
@@ -113,31 +115,53 @@ func TestHelpersTolerateWeirdInput(t *testing.T) {
 	}
 }
 
-// TestBuildUpgradeOptionsVariants: a zero sleep is omitted so YBA keeps its own
-// default rather than restarting with no pause.
-func TestBuildUpgradeOptionsVariants(t *testing.T) {
-	nonRolling := buildUpgradeOptions([]interface{}{map[string]interface{}{
-		"rolling_upgrade":                    false,
-		"sleep_after_master_restart_millis":  1000,
-		"sleep_after_tserver_restart_millis": 2000,
-	}})
-	if nonRolling.RollingUpgrade == nil || *nonRolling.RollingUpgrade {
-		t.Error("rolling_upgrade=false must propagate as false")
+// node_restart_settings reaches YBA as written, with the schema defaults for
+// the values that the block leaves out, on apply and on destroy, which reads
+// the block from the state. Without a block, Terraform sends no upgrade
+// options, so YBA applies its own defaults and can skip the restart.
+func TestUpgradeOptionsFollowNodeRestartSettings(t *testing.T) {
+	cases := []struct {
+		name  string
+		block map[string]interface{} // nil: no node_restart_settings block
+		want  string                 // the upgrade_options that YBA receives
+	}{
+		{"no block", nil, "null"},
+		{"empty block", map[string]interface{}{},
+			`{"rolling_upgrade":true,"sleep_after_master_restart_millis":180000,` +
+				`"sleep_after_tserver_restart_millis":180000}`},
+		{"non-rolling with no waits", map[string]interface{}{
+			"upgrade_option":                     "Non-Rolling",
+			"sleep_after_master_restart_millis":  0,
+			"sleep_after_tserver_restart_millis": 0,
+		}, `{"rolling_upgrade":false,"sleep_after_master_restart_millis":0,` +
+			`"sleep_after_tserver_restart_millis":0}`},
 	}
-	if nonRolling.SleepAfterMasterRestartMillis == nil ||
-		*nonRolling.SleepAfterMasterRestartMillis != 1000 {
-		t.Errorf("master sleep = %v", nonRolling.SleepAfterMasterRestartMillis)
-	}
-	if nonRolling.SleepAfterTserverRestartMillis == nil ||
-		*nonRolling.SleepAfterTserverRestartMillis != 2000 {
-		t.Errorf("tserver sleep = %v", nonRolling.SleepAfterTserverRestartMillis)
-	}
+	res := ResourceUniverseTelemetryConfig()
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			raw := map[string]interface{}{"universe_uuid": "uni-1"}
+			if tc.block != nil {
+				raw["node_restart_settings"] = []interface{}{tc.block}
+			}
+			applied := schema.TestResourceDataRaw(t, res.Schema, raw)
+			applied.SetId("uni-1")
+			destroyed, err := schema.InternalMap(res.Schema).Data(applied.State(), nil)
+			if err != nil {
+				t.Fatal(err)
+			}
 
-	zeroSleep := buildUpgradeOptions([]interface{}{map[string]interface{}{
-		"rolling_upgrade":                   true,
-		"sleep_after_master_restart_millis": 0,
-	}})
-	if zeroSleep.SleepAfterMasterRestartMillis != nil {
-		t.Error("a zero sleep must be omitted (let YBA pick its default)")
+			for step, spec := range map[string]clientv2.ExportTelemetryConfigSpec{
+				"apply":   buildExportTelemetryConfigSpec(applied),
+				"destroy": buildDisableSpec(destroyed),
+			} {
+				got, err := json.Marshal(spec.UpgradeOptions)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if string(got) != tc.want {
+					t.Errorf("%s sends upgrade_options %s, want %s", step, got, tc.want)
+				}
+			}
+		})
 	}
 }

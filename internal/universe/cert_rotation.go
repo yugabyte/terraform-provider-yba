@@ -136,13 +136,13 @@ func planCertRotations(
 	return plan
 }
 
-// triggerFired reports whether the given cert_rotation trigger changed to a
-// non-empty value in this update. First-time set fires; clearing does not.
+// triggerFired reports whether the given rotation trigger changed from one
+// non-empty value to another in this update. YBA stores no trigger, so a first
+// value (set at create, added later, or met after an import, where the state
+// holds "") is only recorded, and clearing a trigger does nothing.
 func triggerFired(d *schema.ResourceData, key string) bool {
-	if !d.HasChange(key) {
-		return false
-	}
-	return d.Get(key).(string) != ""
+	o, n := d.GetChange(key)
+	return o.(string) != "" && n.(string) != "" && o.(string) != n.(string)
 }
 
 // performCertRotations runs at the tail of resourceUniverseUpdate — after all

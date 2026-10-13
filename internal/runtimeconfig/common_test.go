@@ -111,6 +111,25 @@ func testAccCheckRuntimeConfigValue(scope, key, expected string) resource.TestCh
 	}
 }
 
+// setOnGlobalScope reports whether key has its own value on the global scope.
+// A GET of the key cannot tell: YBA answers an unset key with its default.
+func setOnGlobalScope(key string) (bool, error) {
+	c := acctest.APIClient
+	cfg, response, err := c.YugawareClient.RuntimeConfigurationAPI.
+		GetConfig(context.Background(), c.CustomerID, globalScope).
+		IncludeInherited(false).Execute()
+	if err != nil {
+		return false, utils.ErrorFromHTTPResponse(response, err, utils.TestEntity,
+			"Runtime Config", "List")
+	}
+	for _, e := range cfg.ConfigEntries {
+		if e.GetKey() == key {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 // testAccCheckRuntimeConfigValueAbsent asserts that after destroy a key is no
 // longer at the test value — i.e. the delete path reset it to its YBA-side
 // default. A 404 (key fully removed from the scope) is an equally valid

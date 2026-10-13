@@ -30,8 +30,10 @@ terraform import yba_azure_ear_config.client_secret <config-uuid>
 ```
 
 Import fails for a configuration of another KMS provider, and the error names that provider.
-YugabyteDB Anywhere never returns `client_secret`, so it stays empty after import. When the
-configuration sets `client_secret`, the first apply sends the secret again. When the
-configuration leaves `client_secret` unset, Terraform cannot see a secret that the imported
-configuration stores, and YugabyteDB Anywhere keeps authenticating with that secret until an
-apply changes `client_id` or `tenant_id`.
+Import reads every argument except `client_secret`. YugabyteDB Anywhere masks the client
+secret when it lists a configuration, so import leaves `client_secret` empty. When the
+configuration sets `client_secret`, the first plan after the import shows one in-place update,
+and the apply sends the secret from your configuration. When the configuration leaves
+`client_secret` unset, Terraform cannot see a secret that the imported configuration stores,
+and YugabyteDB Anywhere keeps authenticating with that secret until an apply changes
+`client_id` or `tenant_id`.

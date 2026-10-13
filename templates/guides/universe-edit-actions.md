@@ -327,8 +327,8 @@ resource "yba_universe" "example" {
 ## Certificate Rotation
 
 **Trigger:** `root_ca` or `client_root_ca` changes to a different certificate UUID, or a
-`cert_rotation` trigger (`server_cert_trigger` or `client_cert_trigger`) changes to a new
-non-empty value.
+`cert_rotation` trigger (`server_cert_trigger` or `client_cert_trigger`) changes from one
+non-empty value to another.
 
 **Task name:** Updating Certificates
 
@@ -357,8 +357,11 @@ non-empty value.
   issues new server certificates for each node, signed with the key of the self-signed root
   certificate. By default these server certificates expire after 1 year, so this is the
   rotation that you do regularly. It changes nothing that Terraform can read from the
-  universe, so a trigger value starts it: the first value set on a trigger starts a
-  rotation, each change starts another one, and removing the trigger does nothing. When one
+  universe, so a trigger starts it: a change of a trigger from one value to another starts
+  a rotation. The first value of a trigger is only recorded, whether you set it at creation,
+  add it to an existing universe, or import a universe whose configuration has it. To rotate
+  a universe that has no trigger yet, add the trigger, apply, and then change it. Removing
+  the trigger does nothing. When one
   root certificate serves node-to-node and client-to-node encryption, a change of either
   trigger re-issues the server certificates for both in the same task. Use a
   [`time_rotating`](https://registry.terraform.io/providers/hashicorp/time/latest/docs/resources/rotating)
@@ -443,7 +446,8 @@ resource "yba_universe" "example" {
 
 **Trigger:** the `encryption_at_rest` block is added with `enabled = true`,
 `encryption_at_rest.kms_config_uuid` changes on an enabled universe,
-`encryption_at_rest.universe_key_rotation_trigger` changes to a new non-empty value, or
+`encryption_at_rest.universe_key_rotation_trigger` changes from one non-empty value to
+another, or
 `encryption_at_rest.enabled` changes.
 
 **Task name:** Enabling encryption at rest, Rotating encryption at rest (master key or
@@ -455,7 +459,7 @@ universe key), or Disabling encryption at rest
 |---|---|
 | `encryption_at_rest.enabled` | Whether the universe encrypts data at rest. Required in the block: `true` enables encryption, `false` disables it in place. |
 | `encryption_at_rest.kms_config_uuid` | The encryption-at-rest configuration (`yba_aws_ear_config`, `yba_azure_ear_config`, `yba_gcp_ear_config`, or one that `yba_ear_config` finds) whose master key wraps the universe keys. A change rotates the master key. It can change only when `enabled` is true. |
-| `encryption_at_rest.universe_key_rotation_trigger` | A change to a new non-empty value rotates the universe key under the current master key. |
+| `encryption_at_rest.universe_key_rotation_trigger` | A change from one non-empty value to another rotates the universe key under the current master key. |
 
 **Behavior:** YugabyteDB encrypts each data file with its own data key, and wraps the data
 keys with a universe key. YugabyteDB Anywhere wraps the universe key with the master key in
@@ -475,9 +479,11 @@ masters.
 - **Universe key rotation:** a changed `universe_key_rotation_trigger`. YugabyteDB Anywhere
   generates a new universe key under the current master key and makes it active. New files
   use it, and the earlier keys stay available for the files that they encrypted.
-  YugabyteDB Anywhere does not store the trigger, so its value has no meaning: the first
-  value set starts a rotation, each change starts another one, and removing the trigger
-  does nothing. Use a
+  YugabyteDB Anywhere does not store the trigger, so its value has no meaning: a change from
+  one value to another starts a rotation. The first value is only recorded, whether you set
+  it at creation, add it to an existing universe, or import a universe whose configuration
+  has it. To rotate a universe that has no trigger yet, add the trigger, apply, and then
+  change it. Removing the trigger does nothing. Use a
   [`time_rotating`](https://registry.terraform.io/providers/hashicorp/time/latest/docs/resources/rotating)
   value as the trigger to rotate on a schedule. A trigger change in the apply that enables
   encryption does not run a separate rotation, because the enable already generates a new
@@ -561,7 +567,7 @@ resource "yba_universe" "existing" {
 The plan shows only the new block. The apply runs one task, Enabling encryption at rest,
 with no node restarts. Data written after that is encrypted, and existing files are
 encrypted when compactions write them again. A `universe_key_rotation_trigger` added in the
-same apply does not run a separate rotation; set it later to rotate the key.
+same apply is only recorded; change it later to rotate the key.
 
 ---
 

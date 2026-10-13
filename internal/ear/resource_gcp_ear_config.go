@@ -191,8 +191,9 @@ func gcpEARSpec() earSpec {
 }
 
 // gcpCustomizeDiff rejects a key-file configuration without a key at plan
-// time, when the value is known. Unknown values (a key read at apply time)
-// are checked again in gcpBuildAuth. It also gates use_gcp_iam and project_id
+// time, when the plan sends the key (create, or a change to the
+// authentication) and the value is known. Unknown values (a key read at apply
+// time) are checked again in gcpBuildAuth. It also gates use_gcp_iam and project_id
 // on the YBA version, but only when the plan sets or changes them, so an
 // unchanged configuration plans as before.
 func gcpCustomizeDiff(ctx context.Context, d *schema.ResourceDiff, meta interface{}) error {
@@ -209,7 +210,10 @@ func gcpCustomizeDiff(ctx context.Context, d *schema.ResourceDiff, meta interfac
 			return err
 		}
 	}
-	if d.Get("use_gcp_iam").(bool) || !d.NewValueKnown("credentials") {
+	// After an import, the state holds no key (YBA lists it masked), and
+	// ignore_changes plans that empty value: an unchanged plan sends nothing.
+	if d.Get("use_gcp_iam").(bool) || !d.NewValueKnown("credentials") ||
+		(d.Id() != "" && !d.HasChanges("credentials", "use_gcp_iam")) {
 		return nil
 	}
 	if d.Get("credentials").(string) == "" {

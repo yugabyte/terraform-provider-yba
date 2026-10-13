@@ -510,7 +510,7 @@ func testCertPEM(t *testing.T, cn string) string {
 }
 
 // testCAAndServerPEM mints a CA and a server certificate signed by it; only
-// the CA carries basic constraints CA=true, the property caCertsPEM keys on.
+// the CA carries basic constraints CA=true, where Read splits the chain.
 func testCAAndServerPEM(t *testing.T) (caPEM, serverPEM string) {
 	t.Helper()
 	caKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -555,56 +555,47 @@ func testCAAndServerPEM(t *testing.T) (caPEM, serverPEM string) {
 	return caPEM, serverPEM
 }
 
-// YBA's stored file for a CustomServerCert is the server certificate(s)
-// prepended to the uploaded CA chain, and that is what /download returns.
-func TestCACertsPEM(t *testing.T) {
+// The download is the server certificate in front of the CA chain, or, with
+// YBA's upload validation off, the CA chain alone. State that holds the same
+// chain stays as written; without state, Read splits at the first CA.
+func TestCustomServerReadSplitsDownloadedChain(t *testing.T) {
 	caPEM, serverPEM := testCAAndServerPEM(t)
-	ca2PEM, _ := testCAAndServerPEM(t)
-	garbage := string(pem.EncodeToMemory(&pem.Block{
-		Type: "CERTIFICATE", Bytes: []byte("not der")}))
+	rewrappedCA := rewrapPEM(t, caPEM, 76)
 
 	cases := []struct {
-		name, in, want string
+		name, stateServer, stateRoot, download string
+		wantServer, wantRoot                   string
 	}{
-		{"server cert prepended to CA is dropped", serverPEM + caPEM, caPEM},
-		{"CA-only bundle is unchanged", caPEM, caPEM},
-		{"multi-member CA chain keeps order", serverPEM + caPEM + ca2PEM, caPEM + ca2PEM},
-		{"bundle with no CA member is unchanged", serverPEM, serverPEM},
-		{"unparseable member leaves whole bundle unchanged",
-			serverPEM + caPEM + garbage, serverPEM + caPEM + garbage},
-		{"non-PEM content is unchanged", "not pem at all", "not pem at all"},
-		{"empty input stays empty", "", ""},
+		{"import", "", "", serverPEM + caPEM, serverPEM, caPEM},
+		{"state from create", serverPEM, rewrappedCA, serverPEM + caPEM, serverPEM, rewrappedCA},
+		{"validation off", serverPEM, caPEM, caPEM, serverPEM, caPEM},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := caCertsPEM(tc.in); got != tc.want {
-				t.Errorf("caCertsPEM() =\n%s\nwant:\n%s", got, tc.want)
+			f := &fakeYBA{
+				listBody:    listWith(testCertUUID, "c2n", "CustomServerCert", false),
+				downloadPEM: tc.download,
+			}
+			d := schema.TestResourceDataRaw(t, ResourceCustomServerCertificate().Schema,
+				map[string]interface{}{
+					"label":              "c2n",
+					"server_certificate": tc.stateServer,
+					"root_certificate":   tc.stateRoot,
+				})
+			d.SetId(testCertUUID)
+
+			if diags := resourceCustomServerCertificateRead(
+				context.Background(), d, f.apiClient(t)); diags.HasError() {
+				t.Fatalf("read diags: %v", diags)
+			}
+
+			if got := d.Get("server_certificate").(string); got != tc.wantServer {
+				t.Errorf("server_certificate =\n%s\nwant:\n%s", got, tc.wantServer)
+			}
+			if got := d.Get("root_certificate").(string); got != tc.wantRoot {
+				t.Errorf("root_certificate =\n%s\nwant:\n%s", got, tc.wantRoot)
 			}
 		})
-	}
-}
-
-// Regression guard: a verbatim read-back stores server+CA in root_certificate,
-// which differs from every config (chain count) and plans a replacement the
-// in-use guard blocks.
-func TestCustomServerReadFiltersServerCertFromDownload(t *testing.T) {
-	caPEM, serverPEM := testCAAndServerPEM(t)
-	f := &fakeYBA{
-		listBody:    listWith(testCertUUID, "c2n", "CustomServerCert", false),
-		downloadPEM: serverPEM + caPEM,
-	}
-	meta := f.apiClient(t)
-
-	d := schema.TestResourceDataRaw(t, ResourceCustomServerCertificate().Schema,
-		map[string]interface{}{"label": "c2n"})
-	d.SetId(testCertUUID)
-
-	if diags := resourceCustomServerCertificateRead(
-		context.Background(), d, meta); diags.HasError() {
-		t.Fatalf("read diags: %v", diags)
-	}
-	if got := d.Get("root_certificate").(string); got != caPEM {
-		t.Errorf("root_certificate must hold only the CA chain, got:\n%s", got)
 	}
 }
 

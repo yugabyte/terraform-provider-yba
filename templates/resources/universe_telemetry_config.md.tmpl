@@ -47,8 +47,6 @@ Import the telemetry configuration of a universe with the universe UUID:
 terraform import yba_universe_telemetry_config.main <universe-uuid>
 ```
 
-Import reads every pipeline. It does not read `upgrade_options`, because YBA
-does not return them. If the configuration sets `upgrade_options`, the first
-plan after import shows an update that adds them, and YBA rejects that update
-because no pipeline changes. To get a clean plan after import, leave
-`upgrade_options` out of the configuration until the next change to a pipeline.
+Import reads every pipeline. YBA does not store `node_restart_settings`, so it
+is empty after import. If your configuration sets it, the first plan after
+import shows it as added, and the apply makes no change in YBA.

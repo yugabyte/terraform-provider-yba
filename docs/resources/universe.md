@@ -222,14 +222,14 @@ universe is deleted.
 ### Optional
 
 - `arch` (String) The architecture of the universe nodes. Allowed values are x86_64 and aarch64.
-- `cert_rotation` (Block List, Max: 1) Triggers that re-issue the server certificates of each node from the current root certificate, which must be a self-signed certificate. YugabyteDB Anywhere issues these server certificates with a 1-year lifetime by default. A change of a trigger to any new non-empty value rotates the certificates on the next apply. A trigger set at universe creation does not rotate, but a trigger added to an existing universe does. Removing a trigger does nothing. Nodes restart according to `node_restart_settings`. To move to another root certificate, change `root_ca` or `client_root_ca` instead, and do not change a trigger in the same apply: that runs a second rotation, with a second restart of every node. (see [below for nested schema](#nestedblock--cert_rotation))
+- `cert_rotation` (Block List, Max: 1) Triggers that re-issue the server certificates of each node from the current root certificate, which must be a self-signed certificate. YugabyteDB Anywhere issues these server certificates with a 1-year lifetime by default. A change of a trigger from one non-empty value to another rotates the certificates on the next apply. The first value of a trigger, at creation, on an existing universe or after an import, does not rotate: to rotate a universe that has no trigger yet, add the trigger, apply, and then change it. Removing a trigger does nothing. Nodes restart according to `node_restart_settings`. To move to another root certificate, change `root_ca` or `client_root_ca` instead, and do not change a trigger in the same apply: that runs a second rotation, with a second restart of every node. (see [below for nested schema](#nestedblock--cert_rotation))
 - `client_root_ca` (String) The UUID of the clientRootCA to be used to generate client certificates and facilitate TLS communication between server and client. When set to a different value than root_ca, separate certificates are used for node-to-node and client-to-node TLS. May be set without root_ca (e.g. when node-to-node encryption is disabled but client-to-node encryption is enabled); in that case YBA auto-generates a root CA for node-to-node if needed and uses the provided value for client-to-node. When not set, root_ca is reused for client-to-node TLS. A change on an existing universe rotates client-to-node encryption to the new certificate. Nodes restart according to `node_restart_settings`. When the certificate is a Terraform resource, set `lifecycle { create_before_destroy = true }` on it, as for `root_ca`.
 - `communication_ports` (Block List, Max: 1) Communication ports. See the universe edit actions guide for which ports can be changed after creation and which trigger a full move when edited. (see [below for nested schema](#nestedblock--communication_ports))
 - `db_version_upgrade_options` (Block List, Max: 1) Options controlling the DB version upgrade path (UpgradeDBVersion). By default finalize = false pauses the upgrade in PreFinalize state for a monitoring phase; flip to true and re-apply to commit, or set rollback = true to revert to the previous DB version. (see [below for nested schema](#nestedblock--db_version_upgrade_options))
 - `delete_options` (Block List, Max: 1) Options that YugabyteDB Anywhere applies when Terraform destroys the universe. (see [below for nested schema](#nestedblock--delete_options))
 - `encryption_at_rest` (Block List, Max: 1) Encryption at rest for the universe, with the master key from an encryption-at-rest configuration (`yba_aws_ear_config`, `yba_azure_ear_config`, `yba_gcp_ear_config`, or one that `yba_ear_config` finds). Set the block at creation to encrypt from the first write, or add it to an existing universe to enable encryption in place. When the block is omitted, Terraform reads it from the universe, so removing the block changes nothing; set `enabled = false` to disable encryption. None of these changes restart nodes. (see [below for nested schema](#nestedblock--encryption_at_rest))
 - `full_move` (Block List, Max: 1) Block controlling whether and how full-move-triggering edits are permitted. A full move provisions new nodes with the new configuration, migrates data from the old nodes, and decommissions the old nodes; it requires temporary 2x node capacity during migration and takes significantly longer than in-place operations. (see [below for nested schema](#nestedblock--full_move))
-- `node_restart_settings` (Block List, Max: 1) Controls how node restarts are performed during upgrade operations (DB version, GFlags, Systemd, Finalize, Rollback, certificate rotation). When omitted, YugabyteDB Anywhere platform defaults apply: Rolling strategy with 180000 ms (3 minutes) sleep after each master and TServer restart. (see [below for nested schema](#nestedblock--node_restart_settings))
+- `node_restart_settings` (Block List, Max: 1) Controls how node restarts are performed during upgrade operations (DB version, GFlags, Systemd, Finalize, Rollback, certificate rotation). When omitted, YugabyteDB Anywhere platform defaults apply: Rolling strategy with 180000 ms (3 minutes) sleep after each master and TServer restart. YugabyteDB Anywhere does not store these settings: Terraform keeps them in the state and sends them with each request that restarts nodes. A change to this block alone makes no change in YugabyteDB Anywhere. (see [below for nested schema](#nestedblock--node_restart_settings))
 - `root_ca` (String) The UUID of the rootCA used for node-to-node TLS encryption. When not set, YBA creates and assigns a root CA automatically. A change on an existing universe rotates node-to-node encryption to the new certificate, and also client-to-node encryption when one root certificate serves both and `client_root_ca` is not set. Nodes restart according to `node_restart_settings`. When the certificate is a Terraform resource, set `lifecycle { create_before_destroy = true }` on it, so that the new certificate exists before Terraform deletes the old one.
 - `timeouts` (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))
 
@@ -490,7 +490,7 @@ Required:
 Optional:
 
 - `kms_config_uuid` (String) UUID of the encryption-at-rest configuration whose master key wraps the universe keys. Required when `enabled` is true. A change on an enabled universe rotates the master key. It can change only when `enabled` is true. After a disable, YugabyteDB Anywhere still reports the last configuration here.
-- `universe_key_rotation_trigger` (String) Change this value to rotate the universe key: on the next apply, YugabyteDB Anywhere generates a new universe key under the current master key. Any new non-empty value rotates the key, also the first value set on an existing universe; removing the value does nothing. Requires `enabled = true`. A value set at creation, or in the apply that enables encryption, does not run a separate rotation: the enable already generates a new key. The exception is an enable with a different configuration from the one last used: that enable keeps the earlier universe key, so the rotation runs after it. Use a date, or a `time_rotating` value to rotate on a schedule.
+- `universe_key_rotation_trigger` (String) Change this value to rotate the universe key: on the next apply, YugabyteDB Anywhere generates a new universe key under the current master key. A change from one non-empty value to another rotates the key. The first value, at creation, on an existing universe or after an import, does not rotate: to rotate a universe that has no trigger yet, add the trigger, apply, and then change it. Removing the value does nothing. A rotation requires `enabled = true`. A change in the apply that enables encryption does not run a separate rotation: the enable already generates a new key. The exception is an enable with a different configuration from the one last used: that enable keeps the earlier universe key, so the rotation runs after it. Use a date, or a `time_rotating` value to rotate on a schedule.
 
 <a id="nestedblock--full_move"></a>
 
@@ -507,8 +507,8 @@ Optional:
 
 Optional:
 
-- `sleep_after_master_restart_millis` (Number) Milliseconds to sleep after each master node restart. Must be 0 or a positive integer. Defaults to 180000 (3 minutes), matching the YugabyteDB Anywhere platform default.
-- `sleep_after_tserver_restart_millis` (Number) Milliseconds to sleep after each TServer node restart. Must be 0 or a positive integer. Defaults to 180000 (3 minutes), matching the YugabyteDB Anywhere platform default.
+- `sleep_after_master_restart_millis` (Number) Milliseconds to sleep after each master node restart. Must be 0 or a positive integer; 0 means no wait. Defaults to 180000 (3 minutes), matching the YugabyteDB Anywhere platform default.
+- `sleep_after_tserver_restart_millis` (Number) Milliseconds to sleep after each TServer node restart. Must be 0 or a positive integer; 0 means no wait. Defaults to 180000 (3 minutes), matching the YugabyteDB Anywhere platform default.
 - `upgrade_option` (String) Node restart strategy applied to all upgrade operations. Allowed values: Rolling, Non-Rolling, Non-Restart. Defaults to Rolling (YugabyteDB Anywhere platform default). TLS toggle always uses Non-Rolling; ResizeNode and VMImageUpgrade always use Rolling, regardless of this setting.
 
 <a id="nestedblock--timeouts"></a>
@@ -683,10 +683,14 @@ Choose one of the following to resolve this:
 
 YugabyteDB Anywhere does not store the `cert_rotation` triggers or
 `encryption_at_rest.universe_key_rotation_trigger`, so they are empty after import. If your
-configuration sets a trigger, the first apply after import reads it as a new value and runs
-that rotation. A `cert_rotation` rotation restarts every node. To import without a rotation,
-leave the triggers out of the configuration, and add a trigger when you want the next
-rotation.
+configuration sets a trigger, the first plan after import shows it as added. The apply only
+records the value and runs no rotation. Change the trigger later to rotate.
+
+### `node_restart_settings` is not imported
+
+YugabyteDB Anywhere does not store `node_restart_settings`, so it is empty after import. If
+your configuration sets it, the first plan after import shows it as added, and the apply makes
+no change in YugabyteDB Anywhere.
 
 ### The config form of `specific_gflags.per_az` is not imported
 

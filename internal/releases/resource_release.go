@@ -18,10 +18,12 @@ package releases
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/hashicorp/go-cty/cty"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
@@ -152,9 +154,8 @@ func ResourceRelease() *schema.Resource {
 					"block, the provider deletes that artifact from the release. When the " +
 					"`local_file` or `package_url` of a block changes, the provider deletes " +
 					"the artifact and adds it again. The provider matches blocks to artifacts " +
-					"by platform and architecture. If you only change the order of the " +
-					"blocks, the plan shows a change, but the apply does not change the " +
-					"release.",
+					"by platform and architecture, so the order of the blocks does not matter.",
+				DiffSuppressFunc: suppressArtifactReorder,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
 						"platform": {
@@ -228,24 +229,39 @@ func suppressSubSecondDateDiff(_, oldValue, newValue string, _ *schema.ResourceD
 	return o/1000 == n/1000
 }
 
-// Unknown artifact values skip plan-time validation; Create and Update
-// re-validate.
+// Validates the configuration, not the plan: after a suppressed reorder,
+// diff.Get mixes planned and prior blocks. Terraform sends the configuration
+// with the state value at each ignore_changes path, so an imported artifact
+// whose source is ignored has no source here; the prior state exempts it, as
+// in Update. Unknown artifact values skip plan-time validation; Create and
+// Update re-validate.
 func resourceReleaseDiff(_ context.Context, diff *schema.ResourceDiff, _ interface{}) error {
-	if !diff.NewValueKnown("artifact") {
+	cfg := diff.GetRawConfig()
+	if cfg == cty.NilVal || !cfg.IsKnown() || cfg.IsNull() {
 		return nil
 	}
-	raw, ok := diff.Get("artifact").([]interface{})
-	if !ok {
+	raw := cfg.GetAttr("artifact")
+	if !raw.IsWhollyKnown() || raw.IsNull() {
 		return nil
 	}
-	for i := range raw {
-		for _, field := range []string{"platform", "architecture", "local_file", "package_url"} {
-			if !diff.NewValueKnown(fmt.Sprintf("artifact.%d.%s", i, field)) {
-				return nil
-			}
+	str := func(v cty.Value) string {
+		if v.IsNull() {
+			return ""
 		}
+		return v.AsString()
 	}
-	return validateArtifactSpecs(expandArtifactSpecs(raw))
+	specs := make([]artifactSpec, 0, raw.LengthInt())
+	for it := raw.ElementIterator(); it.Next(); {
+		_, v := it.Element()
+		specs = append(specs, artifactSpec{
+			Platform:     str(v.GetAttr("platform")),
+			Architecture: str(v.GetAttr("architecture")),
+			LocalFile:    str(v.GetAttr("local_file")),
+			PackageURL:   str(v.GetAttr("package_url")),
+		})
+	}
+	prior, _ := diff.GetChange("artifact")
+	return validateArtifactSpecs(specs, expandArtifactSpecs(prior.([]interface{})))
 }
 
 func resourceReleaseCreate(
@@ -263,7 +279,7 @@ func resourceReleaseCreate(
 
 	version := d.Get("version").(string)
 	specs := expandArtifactSpecs(d.Get("artifact").([]interface{}))
-	if err := validateArtifactSpecs(specs); err != nil {
+	if err := validateArtifactSpecs(specs, nil); err != nil {
 		return diag.FromErr(err)
 	}
 	configuredState := d.Get("state").(string)
@@ -418,14 +434,20 @@ func resourceReleaseRead(
 			PackageURL:    packageURL,
 		})
 	}
+	unmatched := make([]client.Artifact, 0, len(r.Artifacts))
 	for _, artifact := range r.Artifacts {
 		key := artifactSpec{
 			Platform:     artifact.Platform,
 			Architecture: artifact.Architecture,
 		}.key()
-		if matched[key] {
-			continue
+		if !matched[key] {
+			unmatched = append(unmatched, artifact)
 		}
+	}
+	sort.SliceStable(unmatched, func(i, j int) bool {
+		return artifactRank(unmatched[i]) < artifactRank(unmatched[j])
+	})
+	for _, artifact := range unmatched {
 		// Added out-of-band or first Read after import.
 		specs = append(specs, artifactSpec{
 			Platform:      artifact.Platform,
@@ -465,7 +487,9 @@ func resourceReleaseUpdate(
 
 	version := d.Get("version").(string)
 	planSpecs := expandArtifactSpecs(d.Get("artifact").([]interface{}))
-	if err := validateArtifactSpecs(planSpecs); err != nil {
+	oldRaw, _ := d.GetChange("artifact")
+	oldSpecs := expandArtifactSpecs(oldRaw.([]interface{}))
+	if err := validateArtifactSpecs(planSpecs, oldSpecs); err != nil {
 		return diag.FromErr(err)
 	}
 	// YBA applies state before artifacts, so adding the first LINUX artifact
@@ -474,8 +498,6 @@ func resourceReleaseUpdate(
 		return diag.Errorf("state cannot change while the release is INCOMPLETE")
 	}
 
-	oldRaw, _ := d.GetChange("artifact")
-	oldSpecs := expandArtifactSpecs(oldRaw.([]interface{}))
 	oldByKey := map[string]artifactSpec{}
 	for _, old := range oldSpecs {
 		oldByKey[old.key()] = old
@@ -505,9 +527,10 @@ func resourceReleaseUpdate(
 	for i := range planSpecs {
 		spec := &planSpecs[i]
 		if old, existed := oldByKey[spec.key()]; existed && !replaced[spec.key()] {
-			// A URL artifact omits the chart file ID that YBA may have cached.
+			// A URL artifact omits the chart file ID that YBA may have cached. An
+			// imported artifact whose source is ignored keeps its file ID.
 			spec.PackageFileID = ""
-			if spec.LocalFile != "" {
+			if spec.PackageURL == "" {
 				spec.PackageFileID = old.PackageFileID
 			}
 			spec.Sha256 = old.Sha256

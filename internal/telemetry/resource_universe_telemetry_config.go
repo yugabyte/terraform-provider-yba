@@ -154,14 +154,17 @@ func ResourceUniverseTelemetryConfig() *schema.Resource {
 			"the data.\n\n" +
 			"~> **Note:** " + versionNote("This resource requires", unifiedTelemetryAPIMin) +
 			"\n\n" +
-			"~> **Note:** Each create and each update restarts the yb-master and " +
-			"yb-tserver processes on every node of the universe. By default, YBA " +
-			"restarts one server at a time and waits 3 minutes after each restart, " +
-			"so a universe with 3 masters and 9 tservers waits 36 minutes in total. " +
-			"Use `upgrade_options` to change the wait or to restart all nodes at " +
-			"once. Destroy turns off every pipeline on the universe, which also " +
-			"restarts it. If the universe has no telemetry configuration at that " +
-			"time, destroy only removes the resource from the state.\n\n" +
+			"~> **Note:** Each create, and each update that changes a pipeline, " +
+			"restarts the yb-master and yb-tserver processes on every node of the " +
+			"universe. By default, YBA restarts one server at a time and waits 3 " +
+			"minutes after each restart, so a universe with 3 masters and 9 " +
+			"tservers waits 36 minutes in total. Use `node_restart_settings` to " +
+			"change the wait or to restart all nodes at once. Without " +
+			"`node_restart_settings`, YBA can skip the restart when the change " +
+			"needs none; with it, YBA always restarts the nodes. Destroy turns off " +
+			"every pipeline on the universe, which also restarts it. If the " +
+			"universe has no telemetry configuration at that time, destroy only " +
+			"removes the resource from the state.\n\n" +
 			"~> **Note:** YBA stores one telemetry configuration per universe, and " +
 			"this resource replaces all of it on each apply. A pipeline that the " +
 			"configuration does not declare is turned off, also when it was set up " +
@@ -226,48 +229,16 @@ func ResourceUniverseTelemetryConfig() *schema.Resource {
 			"node_agent_logs":    serverLogsSchema("Node agent", vmOnlyLogsNote),
 			"ynp_logs":           serverLogsSchema("YNP (node provisioning)", vmOnlyLogsNote),
 			"controller_logs":    serverLogsSchema("YB-Controller", kubernetesLogsNote),
-			"upgrade_options": {
-				Type:     schema.TypeList,
-				Optional: true,
-				MaxItems: 1,
-				Description: "Options for the restart that applies each change. YBA " +
-					"uses them only with a change to a pipeline, and rejects an apply " +
-					"that changes only `upgrade_options`. Lower the wait times to " +
-					"apply a change faster on a universe with a light load, and raise " +
-					"them for a universe under heavy load.",
-				Elem: &schema.Resource{
-					Schema: map[string]*schema.Schema{
-						"rolling_upgrade": {
-							Type:     schema.TypeBool,
-							Optional: true,
-							Default:  true,
-							Description: "Restart one server at a time. Set to `false` " +
-								"to restart all nodes at once, which makes the universe " +
-								"unavailable during the restart. Defaults to `true`.",
-						},
-						"sleep_after_master_restart_millis": {
-							Type:         schema.TypeInt,
-							Optional:     true,
-							Default:      180000,
-							ValidateFunc: validation.IntBetween(0, math.MaxInt32),
-							Description: "Time, in milliseconds, that YBA waits after it " +
-								"restarts each yb-master. Defaults to `180000` (3 minutes). " +
-								"`0` uses the YBA runtime config " +
-								"`yb.upgrade.sleep_after_master_restart_ms`.",
-						},
-						"sleep_after_tserver_restart_millis": {
-							Type:         schema.TypeInt,
-							Optional:     true,
-							Default:      180000,
-							ValidateFunc: validation.IntBetween(0, math.MaxInt32),
-							Description: "Time, in milliseconds, that YBA waits after it " +
-								"restarts each yb-tserver. Defaults to `180000` (3 minutes). " +
-								"`0` uses the YBA runtime config " +
-								"`yb.upgrade.sleep_after_tserver_restart_ms`.",
-						},
-					},
-				},
-			},
+			"node_restart_settings": utils.NodeRestartSettingsSchema(
+				"How YBA restarts the nodes of the universe to apply a change to a "+
+					"pipeline, and to turn off the pipelines on destroy. Lower the waits "+
+					"to apply a change faster on a universe with a light load, and raise "+
+					"them for a universe under heavy load. When omitted, YBA uses its "+
+					"defaults, and can skip the restart when the change needs none.",
+				"Node restart strategy: `Rolling` restarts one server at a time, and "+
+					"`Non-Rolling` restarts all nodes at once, which makes the universe "+
+					"unavailable during the restart. Defaults to `Rolling`.",
+				utils.UpgradeOptionRolling, utils.UpgradeOptionNonRolling),
 		},
 	}
 }
@@ -1078,20 +1049,18 @@ func buildExportTelemetryConfigSpec(d *schema.ResourceData) clientv2.ExportTelem
 			}
 		}
 	}
-	upgrade := buildUpgradeOptions(d.Get("upgrade_options"))
 	return clientv2.ExportTelemetryConfigSpec{
 		TelemetryConfig: &tc,
-		UpgradeOptions:  &upgrade,
+		UpgradeOptions:  buildUpgradeOptions(d),
 	}
 }
 
 // buildDisableSpec builds an empty telemetry_config body, which YBA treats as
 // "disable every exporter".
 func buildDisableSpec(d *schema.ResourceData) clientv2.ExportTelemetryConfigSpec {
-	upgrade := buildUpgradeOptions(d.Get("upgrade_options"))
 	return clientv2.ExportTelemetryConfigSpec{
 		TelemetryConfig: &clientv2.TelemetryConfig{},
-		UpgradeOptions:  &upgrade,
+		UpgradeOptions:  buildUpgradeOptions(d),
 	}
 }
 
@@ -1365,26 +1334,20 @@ func buildServerLogsExporters(in interface{}) []clientv2.UniverseServerLogsExpor
 	return out
 }
 
-// buildUpgradeOptions translates the optional upgrade_options block. When absent,
-// only RollingUpgrade is sent (true) and YBA picks its own restart sleeps.
-func buildUpgradeOptions(in interface{}) clientv2.ExportTelemetryUpgradeOptions {
-	out := clientv2.ExportTelemetryUpgradeOptions{
-		RollingUpgrade: utils.GetBoolPointer(true),
+// buildUpgradeOptions returns node_restart_settings as YBA's upgrade options,
+// or nil when the resource has no block, so that YBA applies its own defaults
+// and can skip the restart. Destroy reads the block from the state.
+func buildUpgradeOptions(d *schema.ResourceData) *clientv2.ExportTelemetryUpgradeOptions {
+	restart, ok := utils.GetNodeRestartSettings(d)
+	if !ok {
+		return nil
 	}
-	m := firstMap(in)
-	if len(m) == 0 {
-		return out
+	return &clientv2.ExportTelemetryUpgradeOptions{
+		RollingUpgrade: utils.GetBoolPointer(
+			restart.UpgradeOption == utils.UpgradeOptionRolling),
+		SleepAfterMasterRestartMillis:  &restart.SleepAfterMasterMillis,
+		SleepAfterTserverRestartMillis: &restart.SleepAfterTServerMillis,
 	}
-	if v, ok := m["rolling_upgrade"].(bool); ok {
-		out.RollingUpgrade = utils.GetBoolPointer(v)
-	}
-	if v, ok := m["sleep_after_master_restart_millis"].(int); ok && v > 0 {
-		out.SleepAfterMasterRestartMillis = utils.GetInt32Pointer(int32(v))
-	}
-	if v, ok := m["sleep_after_tserver_restart_millis"].(int); ok && v > 0 {
-		out.SleepAfterTserverRestartMillis = utils.GetInt32Pointer(int32(v))
-	}
-	return out
 }
 
 func resourceUniverseTelemetryConfigCreate(
@@ -1410,6 +1373,11 @@ func resourceUniverseTelemetryConfigCreate(
 func resourceUniverseTelemetryConfigUpdate(
 	ctx context.Context, d *schema.ResourceData, meta interface{},
 ) diag.Diagnostics {
+	// YBA uses node_restart_settings only to apply a pipeline change, so a
+	// change to them alone stays in the state for the next one.
+	if !d.HasChangeExcept("node_restart_settings") {
+		return nil
+	}
 	apiClient := meta.(*api.APIClient)
 	spec := buildExportTelemetryConfigSpec(d)
 	if diags := dispatchExportTelemetryConfig(

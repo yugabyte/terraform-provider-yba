@@ -91,7 +91,7 @@ func ResourceOTLPTelemetryProvider() *schema.Resource {
 				Optional: true,
 				ForceNew: true,
 				Description: "User name for `BasicAuth`. Required when " +
-					"`auth_type = \"BasicAuth\"`, and ignored otherwise.",
+					"`auth_type = \"BasicAuth\"`, and not allowed otherwise.",
 			},
 			"basic_auth_password": {
 				Type:      schema.TypeString,
@@ -99,7 +99,7 @@ func ResourceOTLPTelemetryProvider() *schema.Resource {
 				ForceNew:  true,
 				Sensitive: true,
 				Description: "Password for `BasicAuth`. Required when " +
-					"`auth_type = \"BasicAuth\"`, and ignored otherwise.",
+					"`auth_type = \"BasicAuth\"`, and not allowed otherwise.",
 			},
 			"bearer_token": {
 				Type:      schema.TypeString,
@@ -107,7 +107,7 @@ func ResourceOTLPTelemetryProvider() *schema.Resource {
 				ForceNew:  true,
 				Sensitive: true,
 				Description: "Token for `BearerToken` authentication. Required when " +
-					"`auth_type = \"BearerToken\"`, and ignored otherwise.",
+					"`auth_type = \"BearerToken\"`, and not allowed otherwise.",
 			},
 			"headers": {
 				Type:     schema.TypeMap,
@@ -116,8 +116,11 @@ func ResourceOTLPTelemetryProvider() *schema.Resource {
 				Description: "Additional headers to send with each export request. " +
 					"Terraform shows the header values in plan output. For credentials, " +
 					"use `bearer_token` or `basic_auth_password` when the endpoint " +
-					"accepts them.",
-				Elem: &schema.Schema{Type: schema.TypeString},
+					"accepts them. As for `tags`, YBA masks the value of a header whose " +
+					"name looks like a credential, such as `X-Api-Key`, and Terraform " +
+					"does not show the mask as a change.",
+				Elem:             &schema.Schema{Type: schema.TypeString},
+				DiffSuppressFunc: suppressMaskedMapValue,
 			},
 			"logs_endpoint": {
 				Type:     schema.TypeString,
@@ -134,36 +137,21 @@ func ResourceOTLPTelemetryProvider() *schema.Resource {
 					"`endpoint` for metrics. Requires `protocol = \"HTTP\"`.",
 			},
 		},
-		buildConfig:   buildOTLPConfig,
+		configPaths: map[string]string{
+			"endpoint":            "endpoint",
+			"auth_type":           "authType",
+			"protocol":            "protocol",
+			"compression":         "compression",
+			"timeout_seconds":     "timeoutSeconds",
+			"basic_auth_username": "basicAuth.username",
+			"basic_auth_password": "basicAuth.password",
+			"bearer_token":        "bearerToken.token",
+			"headers":             "headers",
+			"logs_endpoint":       "logsEndpoint",
+			"metrics_endpoint":    "metricsEndpoint",
+		},
 		customizeDiff: validateOTLPConfig,
 	})
-}
-
-func buildOTLPConfig(d *schema.ResourceData) map[string]interface{} {
-	out := map[string]interface{}{
-		"endpoint":       d.Get("endpoint"),
-		"authType":       d.Get("auth_type"),
-		"protocol":       d.Get("protocol"),
-		"compression":    d.Get("compression"),
-		"timeoutSeconds": d.Get("timeout_seconds"),
-	}
-	setIfNonEmpty(out, "logsEndpoint", d.Get("logs_endpoint"))
-	setIfNonEmpty(out, "metricsEndpoint", d.Get("metrics_endpoint"))
-	if h, ok := d.Get("headers").(map[string]interface{}); ok && len(h) > 0 {
-		out["headers"] = h
-	}
-	switch d.Get("auth_type") {
-	case "BasicAuth":
-		out["basicAuth"] = map[string]string{
-			"username": stringValue(d.Get("basic_auth_username")),
-			"password": stringValue(d.Get("basic_auth_password")),
-		}
-	case "BearerToken":
-		out["bearerToken"] = map[string]string{
-			"token": stringValue(d.Get("bearer_token")),
-		}
-	}
-	return out
 }
 
 // validateOTLPConfig rejects OTLP misconfigs at plan time, before YBA rejects
@@ -171,7 +159,19 @@ func buildOTLPConfig(d *schema.ResourceData) map[string]interface{} {
 func validateOTLPConfig(
 	_ context.Context, d *schema.ResourceDiff, _ interface{},
 ) error {
-	switch stringValue(d.Get("auth_type")) {
+	authType := stringValue(d.Get("auth_type"))
+	// YBA rejects a credential of another auth type (AuthCredentials).
+	for _, c := range []struct{ field, authType string }{
+		{"basic_auth_username", "BasicAuth"},
+		{"basic_auth_password", "BasicAuth"},
+		{"bearer_token", "BearerToken"},
+	} {
+		if authType != c.authType && stringValue(d.Get(c.field)) != "" {
+			return fmt.Errorf("%s requires auth_type = %q (auth_type = %q)",
+				c.field, c.authType, authType)
+		}
+	}
+	switch authType {
 	case "BasicAuth":
 		if stringValue(d.Get("basic_auth_username")) == "" ||
 			stringValue(d.Get("basic_auth_password")) == "" {

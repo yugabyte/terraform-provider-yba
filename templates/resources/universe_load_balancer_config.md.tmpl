@@ -21,3 +21,9 @@ Universe load balancer configs can be imported using the universe UUID:
 ```sh
 terraform import yba_universe_load_balancer_config.main <universe-uuid>
 ```
+
+Import writes one `load_balancer` block for each region of each cluster: `lb_name` is the load
+balancer that most zones of the region use (in a tie, the load balancer of the first zone), and
+`az_overrides` lists the other zones. Terraform compares the blocks by the load balancer that
+they give each zone, so a configuration in another shape plans clean when it gives each zone
+the same load balancer.

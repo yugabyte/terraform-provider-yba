@@ -30,5 +30,8 @@ terraform import yba_gcp_ear_config.service_account <config-uuid>
 ```
 
 Import fails for a configuration of another KMS provider, and the error names that provider.
-YugabyteDB Anywhere never returns `credentials`, so it stays empty after import. When the
-configuration sets `credentials`, the first apply sends the key again.
+Import reads every argument except `credentials`. YugabyteDB Anywhere masks the private key
+when it lists a configuration, so import leaves `credentials` empty. When the configuration
+sets `credentials`, the first plan after the import shows one in-place update, and the apply
+sends the key from your configuration.
+

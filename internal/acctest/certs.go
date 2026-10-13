@@ -44,6 +44,20 @@ type TestCA struct {
 // key-usage set, so YBA can sign or verify per-node server certs against it.
 func NewTestCA(t *testing.T, cn string) *TestCA {
 	t.Helper()
+	return newCA(t, cn, nil)
+}
+
+// IssueIntermediateCA issues a CA certificate signed by ca. Its
+// IssueServerCert gives a server certificate whose chain is the server
+// certificate, CertPEM of the intermediate, then CertPEM of ca.
+func (ca *TestCA) IssueIntermediateCA(t *testing.T, cn string) *TestCA {
+	t.Helper()
+	return newCA(t, cn, ca)
+}
+
+// newCA mints a self-signed CA when parent is nil, else one signed by parent.
+func newCA(t *testing.T, cn string, parent *TestCA) *TestCA {
+	t.Helper()
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
 		t.Fatal(err)
@@ -58,7 +72,11 @@ func NewTestCA(t *testing.T, cn string) *TestCA {
 		KeyUsage: x509.KeyUsageCertSign | x509.KeyUsageCRLSign |
 			x509.KeyUsageDigitalSignature,
 	}
-	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
+	signer, signerKey := tmpl, key
+	if parent != nil {
+		signer, signerKey = parent.cert, parent.key
+	}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, signer, &key.PublicKey, signerKey)
 	if err != nil {
 		t.Fatal(err)
 	}

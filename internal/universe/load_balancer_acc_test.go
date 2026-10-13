@@ -264,23 +264,7 @@ func testAccCheckUniverseLBDisabled(cloud, resName string) resource.TestCheckFun
 	}
 }
 
-func importCheckSingleLB(states []*terraform.InstanceState) error {
-	if len(states) != 1 {
-		return fmt.Errorf("expected 1 imported state, got %d", len(states))
-	}
-	st := states[0]
-	if st.Attributes["universe_uuid"] != st.ID {
-		return fmt.Errorf("imported universe_uuid = %q, want ID %q",
-			st.Attributes["universe_uuid"], st.ID)
-	}
-	if st.Attributes["load_balancer.#"] != "1" {
-		return fmt.Errorf("imported load_balancer count = %q, want 1",
-			st.Attributes["load_balancer.#"])
-	}
-	return nil
-}
-
-// lbTestSteps: attach with checks, import, update in place (attachRemapped
+// lbTestSteps: attach with checks, import with a clean plan, update in place (attachRemapped
 // points lb_name at the second in-test load balancer, making YBA move node
 // membership between live load balancers), then drop only the LB config to
 // prove destroy detaches without touching the surviving universe.
@@ -288,11 +272,11 @@ func importCheckSingleLB(states []*terraform.InstanceState) error {
 // equal the remapped lb_name in state (the name is generated on AWS, so the
 // check is an attr pair, not a literal).
 func lbTestSteps(
-	cloud, uniLabel, base, lbHCL, attach, attachRemapped, remapLBRes string,
+	t *testing.T, cloud, uniLabel, base, lbHCL, attach, attachRemapped, remapLBRes string,
 ) []resource.TestStep {
 	uniRes := "yba_universe." + uniLabel
 	resName := "yba_universe_load_balancer_config.test"
-	return []resource.TestStep{
+	steps := []resource.TestStep{
 		{
 			Config: base + lbHCL + attach,
 			Check: resource.ComposeTestCheckFunc(
@@ -300,11 +284,10 @@ func lbTestSteps(
 				resource.TestCheckResourceAttr(resName, "load_balancer.#", "1"),
 			),
 		},
-		{
-			ResourceName:     resName,
-			ImportState:      true,
-			ImportStateCheck: importCheckSingleLB,
-		},
+	}
+	steps = append(steps, acctest.ImportPlanSteps(t, resName, base+lbHCL+attach,
+		acctest.ImportPlanOptions{})...)
+	return append(steps, []resource.TestStep{
 		{
 			Config: base + lbHCL + attachRemapped,
 			Check: resource.ComposeTestCheckFunc(
@@ -317,7 +300,7 @@ func lbTestSteps(
 			Config: base + lbHCL,
 			Check:  testAccCheckUniverseLBDisabled(cloud, uniRes),
 		},
-	}
+	}...)
 }
 
 // Named *Long so the short tier's `-skip '^TestAccLong'` skips these; they
@@ -340,7 +323,7 @@ func TestAccLong_UniverseLoadBalancerConfig_AWS(t *testing.T) {
 			"aws": {Source: "hashicorp/aws"},
 		},
 		CheckDestroy: testAccCheckDestroyProviderAndUniverse("AWS"),
-		Steps: lbTestSteps("AWS", "aws", base, awsLBConfig(), attach, attachRemapped,
+		Steps: lbTestSteps(t, "AWS", "aws", base, awsLBConfig(), attach, attachRemapped,
 			"aws_lb.test2"),
 	})
 }
@@ -364,7 +347,7 @@ func TestAccLong_UniverseLoadBalancerConfig_GCP(t *testing.T) {
 			"google": {Source: "hashicorp/google"},
 		},
 		CheckDestroy: testAccCheckDestroyProviderAndUniverse("GCP"),
-		Steps: lbTestSteps("GCP", "gcp", base, gcpLBConfig(rName), attach, attachRemapped,
+		Steps: lbTestSteps(t, "GCP", "gcp", base, gcpLBConfig(rName), attach, attachRemapped,
 			"google_compute_region_backend_service.test2"),
 	})
 }
@@ -385,7 +368,7 @@ func TestAccLong_UniverseLoadBalancerConfig_Azure(t *testing.T) {
 			"azurerm": {Source: "hashicorp/azurerm"},
 		},
 		CheckDestroy: testAccCheckDestroyProviderAndUniverse("AZURE"),
-		Steps: lbTestSteps("AZURE", "azu", base, azureLBConfig(rName), attach,
+		Steps: lbTestSteps(t, "AZURE", "azu", base, azureLBConfig(rName), attach,
 			attachRemapped, "azurerm_lb.test2"),
 	})
 }

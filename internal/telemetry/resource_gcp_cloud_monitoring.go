@@ -54,12 +54,9 @@ func ResourceGCPCloudMonitoringTelemetryProvider() *schema.Resource {
 					"the project.",
 			},
 		},
-		buildConfig: func(d *schema.ResourceData) map[string]interface{} {
-			out := map[string]interface{}{
-				"credentialsString": d.Get("credentials_json"),
-			}
-			setIfNonEmpty(out, "project", d.Get("project"))
-			return out
+		configPaths: map[string]string{
+			"project":          "project",
+			"credentials_json": "credentialsString",
 		},
 	})
 }

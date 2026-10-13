@@ -142,10 +142,14 @@ Choose one of the following to resolve this:
 
 YugabyteDB Anywhere does not store the `cert_rotation` triggers or
 `encryption_at_rest.universe_key_rotation_trigger`, so they are empty after import. If your
-configuration sets a trigger, the first apply after import reads it as a new value and runs
-that rotation. A `cert_rotation` rotation restarts every node. To import without a rotation,
-leave the triggers out of the configuration, and add a trigger when you want the next
-rotation.
+configuration sets a trigger, the first plan after import shows it as added. The apply only
+records the value and runs no rotation. Change the trigger later to rotate.
+
+### `node_restart_settings` is not imported
+
+YugabyteDB Anywhere does not store `node_restart_settings`, so it is empty after import. If
+your configuration sets it, the first plan after import shows it as added, and the apply makes
+no change in YugabyteDB Anywhere.
 
 ### The config form of `specific_gflags.per_az` is not imported
 

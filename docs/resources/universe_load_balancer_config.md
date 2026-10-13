@@ -73,11 +73,11 @@ resource "yba_universe_load_balancer_config" "main" {
 
 ### Required
 
-- `load_balancer` (Block Set, Min: 1) Load balancer for one region of one cluster. The block applies `lb_name` to every availability zone of the region, except the zones in `az_overrides`. Add one block per region of each cluster. (see [below for nested schema](#nestedblock--load_balancer))
 - `universe_uuid` (String) UUID of the universe. The resource ID is this UUID. Changing it replaces the resource.
 
 ### Optional
 
+- `load_balancer` (Block Set) Load balancer for one region of one cluster. The block applies `lb_name` to every availability zone of the region, except the zones in `az_overrides`. Add one block per region of each cluster; at least one block is required. Terraform compares the blocks by the load balancer that they give each availability zone, so two configurations that give each zone the same load balancer plan no change. (see [below for nested schema](#nestedblock--load_balancer))
 - `timeouts` (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))
 
 ### Read-Only
@@ -95,7 +95,7 @@ Required:
 
 Optional:
 
-- `az_overrides` (Map of String) Map of availability zone name to load balancer name, for zones that use a different load balancer than `lb_name`. Set `lb_name` to the load balancer that most zones of the region use, and list only the other zones here.
+- `az_overrides` (Map of String) Map of availability zone name to load balancer name, for zones that use a different load balancer than `lb_name`. Each key must be a zone of the region. After an import, `lb_name` is the load balancer that most zones of the region use, and this map lists the other zones.
 - `read_replica` (Boolean) Attach the load balancer to the read replica cluster instead of the primary cluster. A universe has at most one read replica cluster. Defaults to `false`.
 
 <a id="nestedblock--timeouts"></a>
@@ -115,3 +115,9 @@ Universe load balancer configs can be imported using the universe UUID:
 ```sh
 terraform import yba_universe_load_balancer_config.main <universe-uuid>
 ```
+
+Import writes one `load_balancer` block for each region of each cluster: `lb_name` is the load
+balancer that most zones of the region use (in a tie, the load balancer of the first zone), and
+`az_overrides` lists the other zones. Terraform compares the blocks by the load balancer that
+they give each zone, so a configuration in another shape plans clean when it gives each zone
+the same load balancer.

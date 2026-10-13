@@ -14,7 +14,7 @@ Manages a Datadog telemetry provider in YugabyteDB Anywhere. Universes send logs
 
 ~> **Note:** YBA cannot change a telemetry provider in place, so a change to any argument replaces the resource. Before Terraform deletes a telemetry provider, it removes the telemetry provider from every universe that uses it. Each of those universes goes through a rolling restart. The universes are not deleted.
 
-~> **Note:** Terraform reads back only `name` and `tags`. YBA cannot edit a telemetry provider after it creates one, so the other arguments change only when Terraform replaces the telemetry provider.
+~> **Note:** When YBA reads a telemetry provider, it masks the credentials, and the values of tags whose keys look like credentials, such as `api_owner`. When YBA returns the mask of the value in the state, Terraform keeps the value in the state.
 
 ~> **Security Note:** Terraform stores the credentials of this telemetry provider in the state file, marked sensitive. Use a secure backend and restrict access to the state file.
 
@@ -98,20 +98,22 @@ The import fails when the telemetry provider is not a Datadog telemetry
 provider. The error names its type. Import it with the resource for that type
 instead.
 
-Import reads only `name` and `tags`. The other arguments are not in the state
-after import, so the next plan replaces the telemetry provider, and each
-universe that uses it restarts. To keep the imported telemetry provider, add the
-other arguments to `ignore_changes`:
+Import reads every argument. YBA masks credentials when it reads a telemetry
+provider, so import cannot recover them, and the next plan replaces the
+telemetry provider. Each universe that uses it restarts. To keep the imported
+telemetry provider, add the credentials to `ignore_changes`:
 
 ```terraform
 resource "yba_datadog_telemetry_provider" "datadog" {
   # ...
 
   lifecycle {
-    ignore_changes = [site, api_key]
+    ignore_changes = [
+      api_key,
+    ]
   }
 }
 ```
 
-Remove the `lifecycle` block when you want Terraform to manage these arguments
-again. The next apply then replaces the telemetry provider.
+Remove the `lifecycle` block when you change a credential. The next apply then
+replaces the telemetry provider.

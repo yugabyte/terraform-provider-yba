@@ -120,12 +120,15 @@ than leaving the build red.
   error that names the referencing resources instead. Either way, do not
   substring-match YBA's error body in the resource layer.
 - When YBA returns a value in another form than the configuration (masked,
-  re-encoded), reconcile it in code: keep the state value in `Read`, or
-  add a `DiffSuppressFunc`. Judge the two forms equal by the rule that
-  `Update` uses to decide whether to send the change, so a plan shows only
-  what an apply changes (`keepEquivalentSpecificGFlags` reuses
-  `gflagsChanged`). A doc escape (`ignore_changes`) is only for a value
-  that the provider cannot read back or reconcile at all.
+  re-encoded, split, or merged with other values), reconcile it in code on
+  refresh and on import: keep the state value in `Read`, or add a
+  `DiffSuppressFunc`. After an import, `Read` has no state to compare, so
+  compare at plan time (`CustomizeDiff` or a `DiffSuppressFunc`). Judge the
+  two forms equal by the rule that `Update` uses to decide whether to send
+  the change, so a plan shows only what an apply changes
+  (`keepEquivalentSpecificGFlags` reuses `gflagsChanged`). A doc escape
+  (`ignore_changes`) is only for a value that YBA cannot return, such as a
+  masked credential.
 
 ## Error & Task Handling
 
@@ -238,10 +241,21 @@ re-encodes on read fails there. For each user-controlled string or map,
 find YBA's transform rules in the yugabyte-db source and put a value that
 triggers each rule into the config. Examples: a map key that YBA masks as a
 credential (`api_owner`, `team_key`), a value shorter than five characters,
-PEM or JSON that YBA re-encodes, mixed case, and a reordered list. Cover
-import with an `ImportStatePersist` step and then a `PlanOnly` step.
-`ImportStateVerify` compares state only, so it cannot show that the next
-plan replaces the resource.
+PEM or JSON that YBA re-encodes, a certificate chain with an intermediate
+CA, a config shape where a majority or tie rule applies, mixed case, and a
+reordered list.
+
+Cover import in every importable resource's acceptance test with
+`acctest.ImportPlanSteps` and the config that created the resource. The
+steps import, compare the imported state with the created state, and plan
+the same config, which fails on any diff. A test asserts a clean plan after
+import; keep the create config unchanged for the import, with no added
+`lifecycle` block. An `ImportPlanOptions.VerifyIgnore` entry, or an
+`ignore_changes` in docs or tests, is only for a value that YBA cannot
+return (a masked credential, a value that only the config holds). Put the
+evidence in a code or test comment at the entry: the YBA GET response, or
+the yugabyte-db source line that masks or omits the value. The public docs
+state only the consequence and the workaround.
 
 ## Git
 
@@ -253,6 +267,9 @@ plan replaces the resource.
 - **critical: rebase feature branches on `main`; a merge commit is never
   acceptable.** Amending or rewriting pushed commits on a feature branch for
   a cleaner history is fine; force-push the branch with `--force-with-lease`.
+- After a rebase, check each resource that the rebase brings in against the
+  rules that the branch adds to `AGENTS.md` or `REVIEW.md`, and fix the gaps
+  in the branch.
 - Never force-push to `main`, never `--no-verify` without explicit operator
   approval.
 

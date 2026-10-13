@@ -19,11 +19,15 @@ package loadbalancer
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
+	"slices"
 	"time"
 
+	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	client "github.com/yugabyte/platform-go-client"
@@ -78,6 +82,8 @@ func ResourceUniverseLoadBalancerConfig() *schema.Resource {
 		UpdateContext: resourceUniverseLoadBalancerConfigUpdate,
 		DeleteContext: resourceUniverseLoadBalancerConfigDelete,
 
+		CustomizeDiff: customizeLoadBalancerDiff,
+
 		Importer: &schema.ResourceImporter{
 			StateContext: schema.ImportStatePassthroughContext,
 		},
@@ -97,13 +103,20 @@ func ResourceUniverseLoadBalancerConfig() *schema.Resource {
 					"UUID. Changing it replaces the resource.",
 			},
 			"load_balancer": {
-				Type:     schema.TypeSet,
-				Required: true,
-				MinItems: 1,
+				Type: schema.TypeSet,
+				// Computed so that CustomizeDiff can clear a diff between two
+				// blocks that give each AZ the same load balancer.
+				Optional:     true,
+				Computed:     true,
+				AtLeastOneOf: []string{"load_balancer"},
+				MinItems:     1,
 				Description: "Load balancer for one region of one cluster. The " +
 					"block applies `lb_name` to every availability zone of the region, " +
 					"except the zones in `az_overrides`. Add one block per region of " +
-					"each cluster.",
+					"each cluster; at least one block is required. Terraform compares " +
+					"the blocks by the load balancer that they give each availability " +
+					"zone, so two configurations that give each zone the same load " +
+					"balancer plan no change.",
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
 						"region": {
@@ -133,9 +146,10 @@ func ResourceUniverseLoadBalancerConfig() *schema.Resource {
 							Elem:     &schema.Schema{Type: schema.TypeString},
 							Description: "Map of availability zone name to load " +
 								"balancer name, for zones that use a different load " +
-								"balancer than `lb_name`. Set `lb_name` to the load " +
-								"balancer that most zones of the region use, and list only " +
-								"the other zones here.",
+								"balancer than `lb_name`. Each key must be a zone of the " +
+								"region. After an import, `lb_name` is the load balancer " +
+								"that most zones of the region use, and this map lists " +
+								"the other zones.",
 						},
 					},
 				},
@@ -288,12 +302,18 @@ func stampRegionLB(cluster *client.Cluster, block map[string]interface{}) error 
 			if region.GetCode() != regionCode {
 				continue
 			}
+			unknown := maps.Clone(*azOverrides)
 			for a := range region.AzList {
 				name := lbName
 				if override, ok := (*azOverrides)[region.AzList[a].GetName()]; ok {
 					name = override
 				}
+				delete(unknown, region.AzList[a].GetName())
 				region.AzList[a].LbName = utils.GetStringPointer(name)
+			}
+			if len(unknown) > 0 {
+				return fmt.Errorf("load_balancer for region %q: %w %q",
+					regionCode, errUnknownOverrideAZ, slices.Sorted(maps.Keys(unknown)))
 			}
 			return nil
 		}
@@ -320,11 +340,95 @@ func resourceUniverseLoadBalancerConfigRead(
 	if err := d.Set("universe_uuid", d.Id()); err != nil {
 		return diag.FromErr(err)
 	}
-	if err := d.Set("load_balancer",
-		flattenLoadBalancerConfig(uni.UniverseDetails.Clusters)); err != nil {
+	clusters := uni.UniverseDetails.Clusters
+	blocks := flattenLoadBalancerConfig(clusters)
+	// State in another shape that gives each AZ the same load balancer stays.
+	prior := d.Get("load_balancer").(*schema.Set).List()
+	if want, err := lbAssignment(clusters, prior); err == nil && len(prior) > 0 &&
+		maps.Equal(want, lbNamesByAZ(clusters)) {
+		blocks = prior
+	}
+	if err := d.Set("load_balancer", blocks); err != nil {
 		return diag.FromErr(err)
 	}
 	return nil
+}
+
+var errUnknownOverrideAZ = errors.New("the region has no availability zone in az_overrides")
+
+// customizeLoadBalancerDiff checks the az_overrides keys against the universe
+// placement, and clears the diff when the config and the state give each AZ
+// the same load balancer. A universe that is not known or not readable at plan
+// time, and a region or read replica that the same apply adds to the universe,
+// are checked at apply time.
+func customizeLoadBalancerDiff(
+	ctx context.Context, d *schema.ResourceDiff, meta interface{},
+) error {
+	apiClient, ok := meta.(*api.APIClient)
+	if !ok || !d.HasChange("load_balancer") || !d.NewValueKnown("universe_uuid") {
+		return nil
+	}
+	uni, err := getUniverse(ctx, apiClient, d.Get("universe_uuid").(string), "Plan")
+	if err != nil {
+		tflog.Warn(ctx, fmt.Sprintf("load_balancer is checked at apply: %v", err))
+		return nil
+	}
+	clusters := uni.UniverseDetails.Clusters
+	o, n := d.GetChange("load_balancer")
+	want, err := lbAssignment(clusters, n.(*schema.Set).List())
+	if errors.Is(err, errUnknownOverrideAZ) {
+		return err
+	}
+	if have, oldErr := lbAssignment(clusters, o.(*schema.Set).List()); err == nil &&
+		oldErr == nil && d.Id() != "" && maps.Equal(want, have) {
+		return d.Clear("load_balancer")
+	}
+	return nil
+}
+
+// lbAssignment returns the load balancer that blocks give each AZ of the
+// clusters, as lbNamesByAZ keys them.
+func lbAssignment(clusters []client.Cluster, blocks []interface{}) (map[string]string, error) {
+	// ResourceDiff reads a set element that the plan removes as a block with an
+	// empty region; an unknown region also reads as "".
+	blocks = slices.DeleteFunc(slices.Clone(blocks), func(b interface{}) bool {
+		m, _ := b.(map[string]interface{})
+		return m == nil || m["region"] == ""
+	})
+	var copied []client.Cluster
+	b, err := json.Marshal(clusters)
+	if err == nil {
+		err = json.Unmarshal(b, &copied)
+	}
+	if err != nil {
+		return nil, err
+	}
+	desired, err := buildDesiredClusters(copied, blocks)
+	if err != nil {
+		return nil, err
+	}
+	return lbNamesByAZ(desired), nil
+}
+
+// lbNamesByAZ maps "<cluster type>/<region>/<AZ>" to the load balancer name,
+// for each AZ of a cluster with load balancing on.
+func lbNamesByAZ(clusters []client.Cluster) map[string]string {
+	out := map[string]string{}
+	for _, cl := range clusters {
+		if !cl.UserIntent.GetEnableLB() || cl.PlacementInfo == nil {
+			continue
+		}
+		for _, pc := range cl.PlacementInfo.CloudList {
+			for _, region := range pc.RegionList {
+				for _, az := range region.AzList {
+					if name := az.GetLbName(); name != "" {
+						out[cl.ClusterType+"/"+region.GetCode()+"/"+az.GetName()] = name
+					}
+				}
+			}
+		}
+	}
+	return out
 }
 
 // flattenLoadBalancerConfig inverts applyLoadBalancerConfig; the unconditional

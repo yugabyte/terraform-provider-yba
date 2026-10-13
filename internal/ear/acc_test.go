@@ -62,7 +62,7 @@ func TestAccGCPEARConfig_ServiceAccount(t *testing.T) {
 		PreCheck:          func() { testAccPreCheckGCPEAR(t) },
 		ProviderFactories: acctest.ProviderFactories,
 		CheckDestroy:      testAccCheckEARConfigDestroy("GCP"),
-		Steps: []resource.TestStep{
+		Steps: append(append([]resource.TestStep{
 			{
 				Config: testAccGCPEARConfigServiceAccount(rName),
 				Check: resource.ComposeTestCheckFunc(
@@ -75,15 +75,12 @@ func TestAccGCPEARConfig_ServiceAccount(t *testing.T) {
 					resource.TestCheckResourceAttrSet(res, "protection_level"),
 				),
 			},
-			{
-				// Credentials never come back from YBA, so they stay empty after
-				// import; the first apply after import re-submits them.
-				ResourceName:            res,
-				ImportState:             true,
-				ImportStateVerify:       true,
-				ImportStateVerifyIgnore: []string{"credentials"},
-			},
-			{
+		}, acctest.ImportPlanSteps(t, res, testAccGCPEARConfigServiceAccount(rName),
+			acctest.ImportPlanOptions{
+				// YBA lists the key masked (see testAccGCPEARConfigServiceAccount).
+				VerifyIgnore: []string{"credentials"},
+			})...),
+			resource.TestStep{
 				Config: testAccGCPEARConfigServiceAccount(rName) +
 					testAccEARConfigDataSource("yba_gcp_ear_config"),
 				Check: resource.ComposeTestCheckFunc(
@@ -96,8 +93,7 @@ func TestAccGCPEARConfig_ServiceAccount(t *testing.T) {
 					),
 					resource.TestCheckResourceAttr("data.yba_ear_config.test", "in_use", "false"),
 				),
-			},
-		},
+			}),
 	})
 }
 
@@ -126,7 +122,7 @@ func TestAccGCPEARConfig_HostIdentity(t *testing.T) {
 		},
 		ProviderFactories: acctest.ProviderFactories,
 		CheckDestroy:      testAccCheckEARConfigDestroy("GCP"),
-		Steps: []resource.TestStep{
+		Steps: append([]resource.TestStep{
 			{
 				Config: testAccGCPEARConfigHostIdentity(rName),
 				Check: resource.ComposeTestCheckFunc(
@@ -135,12 +131,8 @@ func TestAccGCPEARConfig_HostIdentity(t *testing.T) {
 					resource.TestCheckNoResourceAttr(res, "credentials"),
 				),
 			},
-			{
-				ResourceName:      res,
-				ImportState:       true,
-				ImportStateVerify: true,
-			},
-		},
+		}, acctest.ImportPlanSteps(t, res, testAccGCPEARConfigHostIdentity(rName),
+			acctest.ImportPlanOptions{})...),
 	})
 }
 
@@ -169,7 +161,7 @@ func TestAccAWSEARConfig(t *testing.T) {
 		},
 		ProviderFactories: acctest.ProviderFactories,
 		CheckDestroy:      testAccCheckEARConfigDestroy("AWS"),
-		Steps: []resource.TestStep{
+		Steps: append(append([]resource.TestStep{
 			{
 				Config: testAccAWSEARConfig(rName, true),
 				Check: resource.ComposeTestCheckFunc(
@@ -185,13 +177,12 @@ func TestAccAWSEARConfig(t *testing.T) {
 					},
 				),
 			},
-			{
-				ResourceName:            res,
-				ImportState:             true,
-				ImportStateVerify:       true,
-				ImportStateVerifyIgnore: []string{"access_key_id", "secret_access_key"},
-			},
-			{
+		}, acctest.ImportPlanSteps(t, res, testAccAWSEARConfig(rName, true),
+			acctest.ImportPlanOptions{
+				// YBA lists the keys masked (see testAccAWSEARConfig).
+				VerifyIgnore: []string{"access_key_id", "secret_access_key"},
+			})...),
+			resource.TestStep{
 				Config: testAccAWSEARConfig(rName, false) +
 					testAccEARConfigDataSource("yba_aws_ear_config"),
 				Check: resource.ComposeTestCheckFunc(
@@ -201,8 +192,7 @@ func TestAccAWSEARConfig(t *testing.T) {
 					resource.TestCheckResourceAttr(
 						"data.yba_ear_config.test", "key_provider", "AWS"),
 				),
-			},
-		},
+			}),
 	})
 }
 
@@ -241,9 +231,9 @@ func TestAccAzureEARConfig(t *testing.T) {
 		},
 		ProviderFactories: acctest.ProviderFactories,
 		CheckDestroy:      testAccCheckEARConfigDestroy("AZURE"),
-		Steps: []resource.TestStep{
+		Steps: append(append([]resource.TestStep{
 			{
-				Config: testAccAzureEARConfig(rName, azureSecret),
+				Config: testAccAzureEARConfig(rName, azureSecret, true),
 				Check: resource.ComposeTestCheckFunc(
 					testAccCheckEARConfigExists("AZURE", res),
 					resource.TestCheckResourceAttr(res, "key_size", "2048"),
@@ -254,26 +244,25 @@ func TestAccAzureEARConfig(t *testing.T) {
 					},
 				),
 			},
-			{
-				ResourceName:            res,
-				ImportState:             true,
-				ImportStateVerify:       true,
-				ImportStateVerifyIgnore: []string{"client_secret"},
-			},
-			{
+		}, acctest.ImportPlanSteps(t, res, testAccAzureEARConfig(rName, azureSecret, true),
+			acctest.ImportPlanOptions{
+				// YBA lists the secret masked (see testAccAzureEARConfig).
+				VerifyIgnore: []string{"client_secret"},
+			})...),
+			resource.TestStep{
 				// Forget the configuration without deleting it, and import it
 				// again into state.
 				Config: testAccEARConfigRemoved("AZURE"),
 			},
-			{
-				Config:             testAccAzureEARConfig(rName, azureSecret),
+			resource.TestStep{
+				Config:             testAccAzureEARConfig(rName, azureSecret, true),
 				ResourceName:       res,
 				ImportState:        true,
 				ImportStateIdFunc:  func(*terraform.State) (string, error) { return configUUID, nil },
 				ImportStatePersist: true,
 			},
-			{
-				Config: testAccAzureEARConfig(rName, "") +
+			resource.TestStep{
+				Config: testAccAzureEARConfig(rName, "", false) +
 					testAccEARConfigDataSource("yba_azure_ear_config"),
 				Check: resource.ComposeTestCheckFunc(
 					// Same UUID: the switch is an edit, not a replacement.
@@ -284,22 +273,21 @@ func TestAccAzureEARConfig(t *testing.T) {
 						"data.yba_ear_config.test", "key_provider", "AZU"),
 				),
 			},
-			{
-				Config: testAccAzureEARConfig(rName, azureSecret),
+			resource.TestStep{
+				Config: testAccAzureEARConfig(rName, azureSecret, false),
 				Check:  resource.TestCheckResourceAttrPtr(res, "id", &configUUID),
 			},
-			{
+			resource.TestStep{
 				// The edit task fails, after YBA saved the wrong secret.
-				Config:      testAccAzureEARConfig(rName, azureWrongSecret),
+				Config:      testAccAzureEARConfig(rName, azureWrongSecret, false),
 				ExpectError: regexp.MustCompile(`State: Failure`),
 			},
-			{
+			resource.TestStep{
 				// State holds the wrong secret, so the return to the right one
 				// plans a change and sends it.
-				Config: testAccAzureEARConfig(rName, azureSecret),
+				Config: testAccAzureEARConfig(rName, azureSecret, false),
 				Check:  testAccCheckAzureEARSecret(res),
-			},
-		},
+			}),
 	})
 }
 
@@ -412,6 +400,12 @@ resource "yba_gcp_ear_config" "test" {
   location_id   = var.GCP_EAR_LOCATION_ID
   key_ring_id   = var.GCP_EAR_KEY_RING_ID
   crypto_key_id = var.GCP_EAR_CRYPTO_KEY_ID
+
+  # YBA lists the key file masked (EncryptionAtRestController.listKMSConfigs:
+  # CommonUtils.maskConfig masks private_key), so an import cannot read it back.
+  lifecycle {
+    ignore_changes = [credentials]
+  }
 }
 `, name)
 }
@@ -436,7 +430,13 @@ func testAccAWSEARConfig(name string, withKeys bool) string {
 		auth = `
   access_key_id     = var.AWS_ACCESS_KEY_ID
   secret_access_key = var.AWS_SECRET_ACCESS_KEY
-  kms_endpoint      = "kms.us-west-2.amazonaws.com"`
+  kms_endpoint      = "kms.us-west-2.amazonaws.com"
+
+  # YBA lists the keys masked (EncryptionAtRestController.listKMSConfigs:
+  # CommonUtils.maskConfig), so an import cannot read them back.
+  lifecycle {
+    ignore_changes = [access_key_id, secret_access_key]
+  }`
 	}
 	return acctest.YBAProviderBlock("AWS") + fmt.Sprintf(`
 variable "AWS_ACCESS_KEY_ID" {
@@ -469,14 +469,25 @@ const (
 )
 
 // testAccAzureEARConfig authenticates as the fixture's service principal with
-// secret, or as the managed identity of the YBA VM when secret is "".
-func testAccAzureEARConfig(name, secret string) string {
+// secret, or as the managed identity of the YBA VM when secret is "". The
+// create and import steps set ignoreSecret; the steps that change the secret
+// do not.
+func testAccAzureEARConfig(name, secret string, ignoreSecret bool) string {
 	auth := `
   client_id = var.AZURE_YBA_IDENTITY_CLIENT_ID`
 	if secret != "" {
 		auth = `
   client_id     = var.AZURE_CLIENT_ID
   client_secret = ` + secret
+	}
+	if ignoreSecret {
+		auth += `
+
+  # YBA lists the secret masked (EncryptionAtRestController.listKMSConfigs:
+  # CommonUtils.maskConfig), so an import cannot read it back.
+  lifecycle {
+    ignore_changes = [client_secret]
+  }`
 	}
 	return acctest.YBAProviderBlock("AZURE") + fmt.Sprintf(`
 variable "AZURE_CLIENT_ID" {

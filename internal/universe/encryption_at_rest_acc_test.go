@@ -66,7 +66,7 @@ func TestAccLong_Universe_GCP_EncryptionAtRest(t *testing.T) {
 			testAccCheckDestroyProviderAndUniverse("GCP"),
 			testAccCheckEARConfigsDestroyed,
 		),
-		Steps: []resource.TestStep{
+		Steps: append(append([]resource.TestStep{
 			{
 				// Plain universe; configuration A exists but is not attached.
 				Config: universeGcpConfigWithEAR(rName, 1, ""),
@@ -85,7 +85,18 @@ func TestAccLong_Universe_GCP_EncryptionAtRest(t *testing.T) {
 					testAccCheckUniverseKeyCount(&universe, 1),
 				),
 			},
-			{
+		}, acctest.ImportPlanSteps(t, uni, universeGcpConfigWithEAR(rName, 1,
+			earBlock("yba_gcp_ear_config.a.uuid", "", true)), acctest.ImportPlanOptions{})...),
+			resource.TestStep{
+				// The first trigger value is only recorded.
+				Config: universeGcpConfigWithEAR(rName, 1,
+					earBlock("yba_gcp_ear_config.a.uuid", "rotate-0", true)),
+				Check: resource.ComposeTestCheckFunc(
+					testAccCheckUniverseExists("GCP", uni, &universe),
+					testAccCheckUniverseKeyCount(&universe, 1),
+				),
+			},
+			resource.TestStep{
 				// Universe key rotation: a second key under the same master key.
 				Config: universeGcpConfigWithEAR(rName, 1,
 					earBlock("yba_gcp_ear_config.a.uuid", "rotate-1", true)),
@@ -95,7 +106,7 @@ func TestAccLong_Universe_GCP_EncryptionAtRest(t *testing.T) {
 					testAccCheckUniverseKeyCount(&universe, 2),
 				),
 			},
-			{
+			resource.TestStep{
 				// Master key rotation to configuration B; the trigger is unchanged.
 				Config: universeGcpConfigWithEAR(rName, 2,
 					earBlock("yba_gcp_ear_config.b.uuid", "rotate-1", true)),
@@ -104,7 +115,7 @@ func TestAccLong_Universe_GCP_EncryptionAtRest(t *testing.T) {
 					testAccCheckUniverseEAR(&universe, true, "yba_gcp_ear_config.b"),
 				),
 			},
-			{
+			resource.TestStep{
 				// Disable; YBA keeps reporting the last configuration.
 				Config: universeGcpConfigWithEAR(rName, 2,
 					earBlock("yba_gcp_ear_config.b.uuid", "rotate-1", false)),
@@ -112,8 +123,7 @@ func TestAccLong_Universe_GCP_EncryptionAtRest(t *testing.T) {
 					testAccCheckUniverseExists("GCP", uni, &universe),
 					testAccCheckUniverseEAR(&universe, false, "yba_gcp_ear_config.b"),
 				),
-			},
-		},
+			}),
 	})
 }
 

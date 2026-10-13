@@ -318,7 +318,7 @@ func TestTelemetryPipelinesMatchSchema(t *testing.T) {
 		}
 	}
 	for name, s := range res.Schema {
-		if name == "universe_uuid" || name == "upgrade_options" {
+		if name == "universe_uuid" || name == "node_restart_settings" {
 			continue
 		}
 		if s.MaxItems != 1 {

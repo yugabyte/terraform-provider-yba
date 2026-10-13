@@ -14,7 +14,7 @@ This release adds resources for encryption in transit and certificate rotation, 
 - `yba_universe_telemetry_config` - the audit logs, query logs, server logs, and metrics that a universe exports, and the telemetry providers that receive them.
 - `yba_universe_load_balancer_config` - attach existing AWS, GCP, or Azure load balancers to a universe. YugabyteDB Anywhere keeps the universe nodes in the load balancers.
 - `yba_hook` - a custom hook: a Bash or Python script that YugabyteDB Anywhere runs on universe nodes when a trigger fires.
-- `yba_runtime_config` - a runtime configuration key on the global, customer, provider, or universe scope.
+- `yba_runtime_config` - a runtime configuration key on the global, customer, provider, or universe scope. Set a secret key with `sensitive_value`, which hides the value in plan output.
 - `yba_perf_advisor_endpoint` - an external Perf Advisor that receives universe data in `ONLINE` mode. Uses a preview YugabyteDB Anywhere API.
 - `yba_universe_perf_advisor_registration` - register a universe with a Perf Advisor collector. Uses a preview YugabyteDB Anywhere API.
 
@@ -56,6 +56,7 @@ YugabyteDB Anywhere marks the APIs of telemetry export, `yba_ybdb_release`, and 
 - `yba_universe`: a DB version upgrade or a systemd upgrade no longer resets the load balancer and log export settings of the universe.
 - `yba_universe`: with `finalize = true`, the next apply finalizes a DB upgrade that an earlier apply left in `PreFinalize`, for example because the apply was interrupted or timed out after the upgrade task. Before, no later plan showed a change and the upgrade stayed unfinalized.
 - `yba_universe`: `specific_gflags` no longer shows a diff when YugabyteDB Anywhere holds the same flags in another form: a `per_process` block or a `per_az` entry that sets no flags, or `per_az` entries in another order. If the state already holds `per_az` in another form, the next plan shows the diff once more, and an apply clears it without a YugabyteDB Anywhere task. After `terraform import`, the first plan can show the same `per_az` diff once; see the Import section of the `yba_universe` page.
+- `yba_universe`: `sleep_after_master_restart_millis = 0` and `sleep_after_tserver_restart_millis = 0` now wait 0 milliseconds. Before, the provider sent 180000 for an explicit `0`.
 - `yba_universe`: `node_details_set` lists the nodes by `node_idx`. Before, the order changed on every refresh, so a reference such as `node_details_set[0]` could name a different node each time.
 - `yba_cloud_provider` (deprecated): Azure regions now send and read `vnet_name`, `yb_image`, and `security_group_id`.
 - `yba_cloud_provider` (deprecated): create no longer sends an empty access key, so YugabyteDB Anywhere generates a key pair when you give none.

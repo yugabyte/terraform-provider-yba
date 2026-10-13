@@ -74,46 +74,58 @@ func writeSyntheticReleaseTarball(
 	return path
 }
 
-func releaseConfig(version, tag, x86Tarball string) string {
-	return fmt.Sprintf(`
-resource "yba_ybdb_release" "test" {
-  version     = %q
-  release_tag = %q
-
-  artifact {
-    platform     = "LINUX"
-    architecture = "x86_64"
-    local_file   = %q
-  }
-}
-`, version, tag, x86Tarball)
-}
-
-func releaseConfigMultiArch(version, tag, x86Tarball, armTarball string) string {
-	return fmt.Sprintf(`
-resource "yba_ybdb_release" "test" {
-  version     = %q
-  release_tag = %q
-
-  artifact {
-    platform     = "LINUX"
-    architecture = "x86_64"
-    local_file   = %q
-  }
-
+// releaseConfig keeps the uploaded x86_64 tarball at index 0 in every step,
+// because ignore_changes matches blocks by position. arm is the source line of
+// a LINUX aarch64 block in front of the KUBERNETES block, or "" for none. YBA
+// lists an artifact that an update adds after the earlier ones, so with arm
+// set the config order differs from YBA's.
+func releaseConfig(version, tag, x86Tarball, arm string) string {
+	armBlock := ""
+	if arm != "" {
+		armBlock = fmt.Sprintf(`
   artifact {
     platform     = "LINUX"
     architecture = "aarch64"
-    local_file   = %q
+    %s
+  }
+`, arm)
+	}
+	return fmt.Sprintf(`
+resource "yba_ybdb_release" "test" {
+  version       = %[1]q
+  release_tag   = %[2]q
+  release_notes = <<-EOT
+    Acceptance test release: héllo ✓
+    Second line.
+  EOT
+
+  artifact {
+    platform     = "LINUX"
+    architecture = "x86_64"
+    local_file   = %[3]q
+  }
+%[4]s
+  artifact {
+    platform    = "KUBERNETES"
+    package_url = "https://Charts.Example.COM/yugabyte/yugabyte-%[1]s.tgz?v=1"
+  }
+
+  # YBA does not return local_file: the GET lists only the path of the file on
+  # the YBA host (ReleasesController.releaseToResponseRelease), so an import
+  # cannot read it back.
+  lifecycle {
+    ignore_changes = [artifact[0].local_file]
   }
 }
+`, version, tag, x86Tarball, armBlock)
+}
 
+const releaseARMLookup = `
 data "yba_release_version" "aarch64" {
   version         = yba_ybdb_release.test.version
   deployment_type = "aarch64"
 }
-`, version, tag, x86Tarball, armTarball)
-}
+`
 
 func TestAccRelease(t *testing.T) {
 	// YBA allows one release per version and rejects versions newer than itself.
@@ -125,16 +137,20 @@ func TestAccRelease(t *testing.T) {
 	armTarball := writeSyntheticReleaseTarball(t, dir, versionNumber, "1", "aarch64")
 	resourceName := "yba_ybdb_release.test"
 	var fixtureVersion string
+	armURL := fmt.Sprintf(
+		`package_url = "https://Downloads.Example.COM/yugabyte-%s-linux-aarch64.tar.gz?v=1"`,
+		version)
+	multiArch := releaseConfig(version, "Acc Multi-Arch", x86Tarball, armURL)
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:          func() { acctest.TestAccPreCheck(t) },
 		ProviderFactories: acctest.ProviderFactories,
 		CheckDestroy:      testAccCheckReleaseDestroy,
-		Steps: []resource.TestStep{
+		Steps: append(append([]resource.TestStep{
 			{
-				Config: releaseConfig(version, "acc-x86", x86Tarball),
+				Config: releaseConfig(version, "Acc X86", x86Tarball, ""),
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckReleaseExists(resourceName, 1),
+					testAccCheckReleaseExists(resourceName, 2),
 					resource.TestCheckResourceAttr(resourceName, "version", version),
 					resource.TestCheckResourceAttr(resourceName, "release_type", "PREVIEW"),
 					resource.TestCheckResourceAttr(resourceName, "state", "ACTIVE"),
@@ -144,12 +160,27 @@ func TestAccRelease(t *testing.T) {
 				),
 			},
 			{
-				Config: releaseConfigMultiArch(version, "acc-multi", x86Tarball, armTarball),
+				// YBA lists the added aarch64 artifact last, after KUBERNETES.
+				Config: multiArch,
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckReleaseExists(resourceName, 2),
-					resource.TestCheckResourceAttr(resourceName, "release_tag", "acc-multi"),
+					testAccCheckReleaseExists(resourceName, 3),
+					resource.TestCheckResourceAttr(
+						resourceName, "release_tag", "Acc Multi-Arch"),
 					resource.TestCheckResourceAttr(
 						resourceName, "artifact.1.architecture", "aarch64"),
+				),
+			},
+		}, acctest.ImportPlanSteps(t, resourceName, multiArch, acctest.ImportPlanOptions{
+			// YBA returns neither local_file nor sha256 (see releaseConfig;
+			// ResponseRelease.Artifact has no sha256).
+			VerifyIgnore: []string{"artifact.0.local_file", "artifact.0.sha256"},
+		})...),
+			resource.TestStep{
+				// Replacing the aarch64 URL with a tarball uploads it on update.
+				Config: releaseConfig(version, "Acc Multi-Arch", x86Tarball,
+					fmt.Sprintf("local_file   = %q", armTarball)) + releaseARMLookup,
+				Check: resource.ComposeTestCheckFunc(
+					testAccCheckReleaseExists(resourceName, 3),
 					resource.TestCheckResourceAttrSet(
 						resourceName, "artifact.1.package_file_id"),
 					resource.TestCheckResourceAttrSet(resourceName, "artifact.1.sha256"),
@@ -157,18 +188,11 @@ func TestAccRelease(t *testing.T) {
 						"data.yba_release_version.aarch64", "selected_version", version),
 				),
 			},
-			{
-				// GET omits local_file and sha256, and orders artifacts itself.
-				ResourceName:            resourceName,
-				ImportState:             true,
-				ImportStateVerify:       true,
-				ImportStateVerifyIgnore: []string{"artifact"},
-			},
-			{
+			resource.TestStep{
 				// A release registered outside Terraform. The step does not
 				// persist the import, so the test never destroys the release. Its
 				// config drops the aarch64 lookup, which matches nothing here.
-				Config:       releaseConfig(version, "acc-x86", x86Tarball),
+				Config:       releaseConfig(version, "Acc X86", x86Tarball, ""),
 				ResourceName: resourceName,
 				ImportState:  true,
 				ImportStateIdFunc: func(*terraform.State) (string, error) {
@@ -188,8 +212,7 @@ func TestAccRelease(t *testing.T) {
 					}
 					return nil
 				},
-			},
-		},
+			}),
 	})
 }
 

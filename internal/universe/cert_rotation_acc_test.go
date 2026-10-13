@@ -48,6 +48,7 @@ import (
 func TestAccLong_Universe_GCP_CertRotation(t *testing.T) {
 	var universe client.UniverseResp
 	var oldCertBUUID, certOneUUID string
+	tasks := acctest.UniverseTaskWatch{Resource: "yba_universe.gcp"}
 
 	rName := acctest.RandomName("cert-uni")
 	certA := mintedCertConfig("a", rName+"-ca-a")
@@ -61,7 +62,7 @@ func TestAccLong_Universe_GCP_CertRotation(t *testing.T) {
 		acctest.MangledPEM(t, orgCA.CertPEM), serverOne, keyOne)
 	certTwo := customCertConfig("two", rName+"-c2n-2", orgCA.CertPEM, serverTwo, keyTwo)
 
-	// Constant from step 4 on so later applies never re-fire it.
+	// Constant from step 5 on so later applies never re-fire it.
 	trigger := `
 					cert_rotation {
 						server_cert_trigger = "epoch-2"
@@ -80,7 +81,7 @@ func TestAccLong_Universe_GCP_CertRotation(t *testing.T) {
 		},
 		ProviderFactories: acctest.ProviderFactories,
 		CheckDestroy:      testAccCheckDestroyCertRotationFixtures,
-		Steps: []resource.TestStep{
+		Steps: append(append([]resource.TestStep{
 			{
 				// 1: shared CA at create; a trigger set at create records without rotating.
 				Config: certRotationUniverseConfig(rName, certA+certB, `
@@ -125,11 +126,34 @@ func TestAccLong_Universe_GCP_CertRotation(t *testing.T) {
 				Check: resource.ComposeTestCheckFunc(
 					testAccCheckUniverseExists("GCP", "yba_universe.gcp", &universe),
 					testAccCheckCertsRotateTaskCount(&universe, 1),
+					tasks.Mark,
 				),
 			},
-			{
-				// 4: adding a trigger to a managed universe fires a same-CA server-cert
-				// rotation.
+		}, acctest.ImportPlanSteps(t, "yba_universe.gcp",
+			certRotationUniverseConfig(rName, certA+certB,
+				`root_ca = yba_self_signed_certificate.b.uuid`),
+			acctest.ImportPlanOptions{
+				// YBA does not store node_restart_settings: each upgrade request
+				// carries them (UpgradeTaskParams.upgradeOption). The first plan
+				// after the import adds them, and that apply runs no task.
+				VerifyIgnore: []string{"node_restart_settings"},
+				ApplyCheck:   tasks.NoNewTask,
+			})...),
+			resource.TestStep{
+				// 4: adding a trigger to a managed universe only records it.
+				Config: certRotationUniverseConfig(rName, certA+certB, `
+					root_ca = yba_self_signed_certificate.b.uuid
+
+					cert_rotation {
+						server_cert_trigger = "epoch-1"
+					}`),
+				Check: resource.ComposeTestCheckFunc(
+					testAccCheckUniverseExists("GCP", "yba_universe.gcp", &universe),
+					testAccCheckCertsRotateTaskCount(&universe, 1),
+				),
+			},
+			resource.TestStep{
+				// 4b: changing the trigger fires a same-CA server-cert rotation.
 				Config: certRotationUniverseConfig(rName, certA+certB,
 					`root_ca = yba_self_signed_certificate.b.uuid`+trigger),
 				Check: resource.ComposeTestCheckFunc(
@@ -140,7 +164,7 @@ func TestAccLong_Universe_GCP_CertRotation(t *testing.T) {
 					testAccCheckCertsRotateTaskCount(&universe, 2),
 				),
 			},
-			{
+			resource.TestStep{
 				// 5: create_before_destroy replacement (the documented SelfSigned
 				// rotation): new label mints a new config, the universe rotates to
 				// it, the old one is deleted once out of use.
@@ -157,7 +181,7 @@ func TestAccLong_Universe_GCP_CertRotation(t *testing.T) {
 					testAccCheckCertificateGone(&oldCertBUUID),
 				),
 			},
-			{
+			resource.TestStep{
 				// 6: split the channels onto an org-issued CustomServerCert. certOne
 				// carries CRLF/76-column PEM: the post-apply empty-plan check proves
 				// the semantic PEM diff against YBA's re-encoded read-back.
@@ -175,7 +199,7 @@ func TestAccLong_Universe_GCP_CertRotation(t *testing.T) {
 						&certOneUUID),
 				),
 			},
-			{
+			resource.TestStep{
 				// 7: repoint to a re-issued server cert from the same org CA (the
 				// documented CustomServerCert rotation). certOne stays in config:
 				// Terraform destroys removed resources before updating their
@@ -190,7 +214,7 @@ func TestAccLong_Universe_GCP_CertRotation(t *testing.T) {
 					testAccCheckCertsRotateTaskCount(&universe, 5),
 				),
 			},
-			{
+			resource.TestStep{
 				// 8: drop the unused certOne; change root_ca with client_root_ca
 				// pinned: explicit config wins, only node-to-node moves.
 				Config: certRotationUniverseConfig(rName, certA+certB2+certTwo,
@@ -204,7 +228,7 @@ func TestAccLong_Universe_GCP_CertRotation(t *testing.T) {
 					testAccCheckCertificateGone(&certOneUUID),
 				),
 			},
-			{
+			resource.TestStep{
 				// 9: tainting the in-use client cert must fail with an error naming
 				// the referencing universe, not corrupt state.
 				Config: certRotationUniverseConfig(rName, certA+certB2+certTwo,
@@ -212,8 +236,7 @@ func TestAccLong_Universe_GCP_CertRotation(t *testing.T) {
 				Taint: []string{"yba_custom_server_certificate.two"},
 				ExpectError: regexp.MustCompile(
 					`in use by universe\(s\) ` + regexp.QuoteMeta(rName)),
-			},
-		},
+			}),
 	})
 }
 

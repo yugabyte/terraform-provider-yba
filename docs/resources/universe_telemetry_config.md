@@ -14,7 +14,7 @@ YBA runs an OpenTelemetry Collector on the universe nodes to export the data.
 
 ~> **Note:** This resource requires YugabyteDB Anywhere 2026.1.2.0 or later. `terraform plan` fails on an older YBA.
 
-~> **Note:** Each create and each update restarts the yb-master and yb-tserver processes on every node of the universe. By default, YBA restarts one server at a time and waits 3 minutes after each restart, so a universe with 3 masters and 9 tservers waits 36 minutes in total. Use `upgrade_options` to change the wait or to restart all nodes at once. Destroy turns off every pipeline on the universe, which also restarts it. If the universe has no telemetry configuration at that time, destroy only removes the resource from the state.
+~> **Note:** Each create, and each update that changes a pipeline, restarts the yb-master and yb-tserver processes on every node of the universe. By default, YBA restarts one server at a time and waits 3 minutes after each restart, so a universe with 3 masters and 9 tservers waits 36 minutes in total. Use `node_restart_settings` to change the wait or to restart all nodes at once. Without `node_restart_settings`, YBA can skip the restart when the change needs none; with it, YBA always restarts the nodes. Destroy turns off every pipeline on the universe, which also restarts it. If the universe has no telemetry configuration at that time, destroy only removes the resource from the state.
 
 ~> **Note:** YBA stores one telemetry configuration per universe, and this resource replaces all of it on each apply. A pipeline that the configuration does not declare is turned off, also when it was set up in the YBA UI. Manage all pipelines of a universe in one `yba_universe_telemetry_config` resource. The provider rejects a second resource for the same `universe_uuid` in one configuration at plan time. It cannot detect a second resource in another Terraform state.
 
@@ -178,8 +178,8 @@ resource "yba_universe_telemetry_config" "main" {
   }
 
   # Restart one server at a time, and wait 1 minute after each restart.
-  upgrade_options {
-    rolling_upgrade                    = true
+  node_restart_settings {
+    upgrade_option                     = "Rolling"
     sleep_after_master_restart_millis  = 60000
     sleep_after_tserver_restart_millis = 60000
   }
@@ -225,10 +225,10 @@ resource "yba_universe_telemetry_config" "main" {
 - `master_logs` (Block List, Max: 1) yb-master log export. Omit the block to turn it off. On a Kubernetes universe, YBA also requires YugabyteDB 2026.1.2.0 or later on the universe. (see [below for nested schema](#nestedblock--master_logs))
 - `metrics` (Block List, Max: 1) Metric export. Omit the block to turn off metric export. (see [below for nested schema](#nestedblock--metrics))
 - `node_agent_logs` (Block List, Max: 1) Node agent log export. Omit the block to turn it off. Not available on a Kubernetes universe. (see [below for nested schema](#nestedblock--node_agent_logs))
+- `node_restart_settings` (Block List, Max: 1) How YBA restarts the nodes of the universe to apply a change to a pipeline, and to turn off the pipelines on destroy. Lower the waits to apply a change faster on a universe with a light load, and raise them for a universe under heavy load. When omitted, YBA uses its defaults, and can skip the restart when the change needs none. YugabyteDB Anywhere does not store these settings: Terraform keeps them in the state and sends them with each request that restarts nodes. A change to this block alone makes no change in YugabyteDB Anywhere. (see [below for nested schema](#nestedblock--node_restart_settings))
 - `query_logs` (Block List, Max: 1) Query logging and query log export. Omit the block to turn off query logging and its export. (see [below for nested schema](#nestedblock--query_logs))
 - `timeouts` (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))
 - `tserver_logs` (Block List, Max: 1) yb-tserver log export. Omit the block to turn it off. On a Kubernetes universe, YBA also requires YugabyteDB 2026.1.2.0 or later on the universe. (see [below for nested schema](#nestedblock--tserver_logs))
-- `upgrade_options` (Block List, Max: 1) Options for the restart that applies each change. YBA uses them only with a change to a pipeline, and rejects an apply that changes only `upgrade_options`. Lower the wait times to apply a change faster on a universe with a light load, and raise them for a universe under heavy load. (see [below for nested schema](#nestedblock--upgrade_options))
 - `ynp_logs` (Block List, Max: 1) YNP (node provisioning) log export. Omit the block to turn it off. Not available on a Kubernetes universe. (see [below for nested schema](#nestedblock--ynp_logs))
 - `ysql_conn_mgr_logs` (Block List, Max: 1) YSQL Connection Manager log export. Omit the block to turn it off. On a Kubernetes universe, YBA also requires YugabyteDB 2026.1.2.0 or later on the universe. (see [below for nested schema](#nestedblock--ysql_conn_mgr_logs))
 
@@ -396,6 +396,16 @@ Optional:
 - `send_batch_size` (Number) Number of records after which the collector sends a batch to this exporter, before `send_batch_timeout_seconds` passes. Defaults to `100`.
 - `send_batch_timeout_seconds` (Number) Seconds after which the collector sends a batch, whatever its size. Defaults to `10`.
 
+<a id="nestedblock--node_restart_settings"></a>
+
+### Nested Schema for `node_restart_settings`
+
+Optional:
+
+- `sleep_after_master_restart_millis` (Number) Milliseconds to sleep after each master node restart. Must be 0 or a positive integer; 0 means no wait. Defaults to 180000 (3 minutes), matching the YugabyteDB Anywhere platform default.
+- `sleep_after_tserver_restart_millis` (Number) Milliseconds to sleep after each TServer node restart. Must be 0 or a positive integer; 0 means no wait. Defaults to 180000 (3 minutes), matching the YugabyteDB Anywhere platform default.
+- `upgrade_option` (String) Node restart strategy: `Rolling` restarts one server at a time, and `Non-Rolling` restarts all nodes at once, which makes the universe unavailable during the restart. Defaults to `Rolling`.
+
 <a id="nestedblock--query_logs"></a>
 
 ### Nested Schema for `query_logs`
@@ -474,16 +484,6 @@ Optional:
 - `send_batch_size` (Number) Number of records after which the collector sends a batch to this exporter, before `send_batch_timeout_seconds` passes. Defaults to `100`.
 - `send_batch_timeout_seconds` (Number) Seconds after which the collector sends a batch, whatever its size. Defaults to `10`.
 
-<a id="nestedblock--upgrade_options"></a>
-
-### Nested Schema for `upgrade_options`
-
-Optional:
-
-- `rolling_upgrade` (Boolean) Restart one server at a time. Set to `false` to restart all nodes at once, which makes the universe unavailable during the restart. Defaults to `true`.
-- `sleep_after_master_restart_millis` (Number) Time, in milliseconds, that YBA waits after it restarts each yb-master. Defaults to `180000` (3 minutes). `0` uses the YBA runtime config `yb.upgrade.sleep_after_master_restart_ms`.
-- `sleep_after_tserver_restart_millis` (Number) Time, in milliseconds, that YBA waits after it restarts each yb-tserver. Defaults to `180000` (3 minutes). `0` uses the YBA runtime config `yb.upgrade.sleep_after_tserver_restart_ms`.
-
 <a id="nestedblock--ynp_logs"></a>
 
 ### Nested Schema for `ynp_logs`
@@ -542,8 +542,6 @@ Import the telemetry configuration of a universe with the universe UUID:
 terraform import yba_universe_telemetry_config.main <universe-uuid>
 ```
 
-Import reads every pipeline. It does not read `upgrade_options`, because YBA
-does not return them. If the configuration sets `upgrade_options`, the first
-plan after import shows an update that adds them, and YBA rejects that update
-because no pipeline changes. To get a clean plan after import, leave
-`upgrade_options` out of the configuration until the next change to a pipeline.
+Import reads every pipeline. YBA does not store `node_restart_settings`, so it
+is empty after import. If your configuration sets it, the first plan after
+import shows it as added, and the apply makes no change in YBA.

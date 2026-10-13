@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
 	client "github.com/yugabyte/platform-go-client"
 	clientv2 "github.com/yugabyte/platform-go-client/v2"
 
@@ -218,8 +219,8 @@ func TestResourceGuardrails(t *testing.T) {
 	}
 
 	lb := res.Schema["load_balancer"]
-	if !lb.Required {
-		t.Error("load_balancer must be Required")
+	if len(lb.AtLeastOneOf) != 1 || lb.AtLeastOneOf[0] != "load_balancer" {
+		t.Error("the config must require a load_balancer block")
 	}
 	if lb.ForceNew {
 		t.Error("load_balancer must be updatable in place, not ForceNew")
@@ -699,5 +700,111 @@ func TestCreateAttachesLoadBalancerToPrimaryCluster(t *testing.T) {
 		if az.GetLbName() != "my-nlb" {
 			t.Errorf("az %s lbName = %q, want %q", az.GetName(), az.GetLbName(), "my-nlb")
 		}
+	}
+}
+
+// regionCluster returns a primary cluster placed in us-west-2 across azs, with
+// no load balancer attached.
+func regionCluster(azs ...string) client.Cluster {
+	cl := primaryCluster()
+	list := make([]client.PlacementAZ, len(azs))
+	for i, az := range azs {
+		list[i] = client.PlacementAZ{
+			Name: utils.GetStringPointer(az), Uuid: utils.GetStringPointer("uuid-" + az),
+		}
+	}
+	cl.PlacementInfo.CloudList[0].RegionList[0].AzList = list
+	return cl
+}
+
+// YBA stores a load balancer name per AZ, so the provider compares configs by
+// the names they give each AZ. Every shape plans clean after create, and after
+// an import, where Read writes the majority name as lb_name.
+func TestLoadBalancerShapesPlanClean(t *testing.T) {
+	cases := []struct {
+		name      string
+		azs       []string
+		lbName    string
+		overrides map[string]interface{}
+	}{
+		{"tie, lb_name from the later AZ", []string{"us-west-2a", "us-west-2b"},
+			"lb-b", map[string]interface{}{"us-west-2a": "lb-a"}},
+		{"single AZ with an override", []string{"us-west-2a"},
+			"lb-x", map[string]interface{}{"us-west-2a": "lb-y"}},
+		{"redundant override", []string{"us-west-2a", "us-west-2b"},
+			"lb", map[string]interface{}{"us-west-2a": "lb"}},
+		{"majority", []string{"us-west-2a", "us-west-2b", "us-west-2c"},
+			"lb-1", map[string]interface{}{"us-west-2c": "lb-2"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f := &fakeYBA{clusters: []client.Cluster{regionCluster(tc.azs...)}}
+			apiClient := newTestClient(t, f)
+			res := ResourceUniverseLoadBalancerConfig()
+			raw := map[string]interface{}{
+				"universe_uuid": testUniverse,
+				"load_balancer": []interface{}{map[string]interface{}{
+					"region": "us-west-2", "lb_name": tc.lbName, "az_overrides": tc.overrides,
+				}},
+			}
+			created := schema.TestResourceDataRaw(t, res.Schema, raw)
+			if diags := res.CreateContext(
+				context.Background(),
+				created,
+				apiClient,
+			); diags.HasError() {
+				t.Fatalf("create: %v", diags)
+			}
+			imported := res.TestResourceData()
+			imported.SetId(testUniverse)
+			if diags := res.ReadContext(
+				context.Background(),
+				imported,
+				apiClient,
+			); diags.HasError() {
+				t.Fatalf("import read: %v", diags)
+			}
+
+			// After create, the state keeps the config's shape, so the plan
+			// needs no universe read (nil meta). After an import, the plan
+			// reads the universe to compare the shapes.
+			for when, plan := range map[string]struct {
+				state *terraform.InstanceState
+				meta  interface{}
+			}{
+				"create": {created.State(), nil},
+				"import": {imported.State(), apiClient},
+			} {
+				diff, err := res.Diff(context.Background(), plan.state,
+					terraform.NewResourceConfigRaw(raw), plan.meta)
+
+				if err != nil {
+					t.Fatalf("plan after %s: %v", when, err)
+				}
+				if diff != nil && len(diff.Attributes) > 0 {
+					t.Errorf("after %s, the plan changes %v", when, diff.Attributes)
+				}
+			}
+		})
+	}
+}
+
+// A typo in an az_overrides key fails the plan instead of passing silently.
+func TestAZOverrideOutsideRegionFailsPlan(t *testing.T) {
+	f := &fakeYBA{clusters: []client.Cluster{primaryCluster()}}
+	res := ResourceUniverseLoadBalancerConfig()
+	raw := map[string]interface{}{
+		"universe_uuid": testUniverse,
+		"load_balancer": []interface{}{map[string]interface{}{
+			"region": "us-west-2", "lb_name": "lb",
+			"az_overrides": map[string]interface{}{"us-west-2z": "lb-z"},
+		}},
+	}
+
+	_, err := res.Diff(context.Background(), nil, terraform.NewResourceConfigRaw(raw),
+		newTestClient(t, f))
+
+	if err == nil || !strings.Contains(err.Error(), `"us-west-2z"`) {
+		t.Errorf("plan error = %v, want one that names us-west-2z", err)
 	}
 }
