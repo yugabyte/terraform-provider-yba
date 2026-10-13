@@ -43,6 +43,11 @@ type fakeYBA struct {
 	createBody     map[string]interface{}
 	createResponse map[string]interface{} // nil: {"taskUUID": testTaskUUID}
 	deleteCalled   bool
+	taskFails      bool // every task ends in Failure
+	editRejected   bool // the edit answers 400, as for an edit YBA rejects before it saves
+	// savedConfig answers the by-UUID GET: the stored settings with
+	// credentials in clear. "" answers 500.
+	savedConfig string
 }
 
 func (f *fakeYBA) handler(t *testing.T) http.HandlerFunc {
@@ -65,11 +70,32 @@ func (f *fakeYBA) handler(t *testing.T) http.HandlerFunc {
 		case r.Method == http.MethodDelete && strings.Contains(path, "/kms_configs/"):
 			f.deleteCalled = true
 			_ = json.NewEncoder(w).Encode(task)
+		case r.Method == http.MethodPost && strings.HasSuffix(path, "/edit"):
+			if f.editRejected {
+				w.WriteHeader(http.StatusBadRequest)
+				_, _ = w.Write([]byte(`{"success": false, "error": "Invalid AWS Credentials"}`))
+				return
+			}
+			_ = json.NewEncoder(w).Encode(task)
+		case r.Method == http.MethodGet && strings.Contains(path, "/kms_configs/"):
+			if f.savedConfig == "" {
+				w.WriteHeader(http.StatusInternalServerError)
+				return
+			}
+			_, _ = w.Write([]byte(f.savedConfig))
+		case r.Method == http.MethodGet && strings.HasSuffix(path, "/app_version"):
+			_, _ = w.Write([]byte(`{"version": "2024.2.0.0-b145"}`))
+		case r.Method == http.MethodGet && strings.HasSuffix(path, "/failed_subtasks"):
+			_, _ = w.Write([]byte(`{"failedSubTasks": []}`))
 		case r.Method == http.MethodGet && strings.Contains(path, "/tasks/"):
+			status := "Success"
+			if f.taskFails {
+				status = "Failure"
+			}
 			_ = json.NewEncoder(w).Encode(map[string]interface{}{
 				"title":   "CreateKMSConfig",
 				"percent": 100.0,
-				"status":  "Success",
+				"status":  status,
 				"details": map[string]interface{}{"taskDetails": []interface{}{}},
 			})
 		default:
@@ -250,6 +276,84 @@ func TestReadGoneClearsID(t *testing.T) {
 	}
 	if d.Id() != "" {
 		t.Error("a config YBA no longer lists must be removed from state")
+	}
+}
+
+// --- update -----------------------------------------------------------------
+
+// YBA rejects some edits before it saves them. It saves others before its KMS
+// check, which then fails the task but keeps the edit. After a failed edit,
+// the credential fields in state hold what YBA saved, so the next plan shows
+// what an apply changes.
+func TestEARUpdateFailureKeepsWhatYBASaved(t *testing.T) {
+	azureSaved := func(clientID, secret string) string {
+		return fmt.Sprintf(`{"CLIENT_ID": %q, "TENANT_ID": "tenant", "CLIENT_SECRET": %q,
+			"AZU_VAULT_URL": "https://v.vault.azure.net/", "AZU_KEY_NAME": "yb-key",
+			"AZU_KEY_ALGORITHM": "RSA", "AZU_KEY_SIZE": 2048}`, clientID, secret)
+	}
+	awsKeys := `{"AWS_REGION": "us-west-2", "cmk_id": "key", "AWS_ACCESS_KEY_ID": "AKIA",
+		"AWS_SECRET_ACCESS_KEY": "old", "AWS_KMS_ENDPOINT": "kms-a.example.com"}`
+
+	cases := []struct {
+		name       string
+		spec       earSpec
+		state      map[string]string
+		raw        map[string]interface{}
+		rejected   bool   // YBA answers the edit with 400; else the task fails
+		saved      string // the settings YBA holds after the failed edit
+		unreadable bool   // the by-UUID GET fails
+		want       map[string]string
+	}{
+		{
+			// The KMS check fails after the save. A return to the service
+			// principal must then send its secret again.
+			name: "azure switch to the managed identity saved", spec: azureEARSpec(),
+			state: azureState, raw: azureConfig("mi", ""), saved: azureSaved("mi", ""),
+			want: map[string]string{"client_secret": ""},
+		},
+		{
+			// EditKMSConfig checks a universe's active key before the save.
+			name: "azure rotation not saved", spec: azureEARSpec(),
+			state: azureState, raw: azureConfig("app", "new"), saved: azureSaved("app", "old"),
+			want: map[string]string{"client_secret": "old"},
+		},
+		{
+			// isValidCredsKms rejects the host identity. The next plan must
+			// try the removal again.
+			name: "aws key removal rejected", spec: awsEARSpec(),
+			state: awsState, raw: awsConfig(false, ""), rejected: true, saved: awsKeys,
+			want: map[string]string{"access_key_id": "AKIA", "secret_access_key": "old"},
+		},
+		{
+			name: "saved settings unreadable", spec: azureEARSpec(),
+			state: azureState, raw: azureConfig("app", "new"), saved: azureSaved("app", "old"),
+			unreadable: true,
+			want:       map[string]string{"client_secret": "old"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f := &fakeYBA{
+				listBody: listOf(listEntry(testConfigUUID, "cfg", tc.spec.apiProvider, false,
+					tc.saved)),
+				editRejected: tc.rejected,
+				taskFails:    !tc.rejected,
+				savedConfig:  tc.saved,
+			}
+			if tc.unreadable {
+				f.savedConfig = ""
+			}
+			d := plannedData(t, earResource(tc.spec), tc.state, tc.raw)
+			update := earUpdate(tc.spec)
+			if diags := update(context.Background(), d, f.apiClient(t)); !diags.HasError() {
+				t.Fatal("want the failed edit as an error")
+			}
+			for field, want := range tc.want {
+				if got := d.Get(field); got != want {
+					t.Errorf("%s = %q want %q", field, got, want)
+				}
+			}
+		})
 	}
 }
 

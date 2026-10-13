@@ -454,7 +454,7 @@ universe key), or Disabling encryption at rest
 | Field | Purpose |
 |---|---|
 | `encryption_at_rest.enabled` | Whether the universe encrypts data at rest. Required in the block: `true` enables encryption, `false` disables it in place. |
-| `encryption_at_rest.kms_config_uuid` | The encryption-at-rest configuration (`yba_gcp_ear_config`, or one that `yba_ear_config` finds) whose master key wraps the universe keys. A change rotates the master key. It can change only when `enabled` is true. |
+| `encryption_at_rest.kms_config_uuid` | The encryption-at-rest configuration (`yba_aws_ear_config`, `yba_azure_ear_config`, `yba_gcp_ear_config`, or one that `yba_ear_config` finds) whose master key wraps the universe keys. A change rotates the master key. It can change only when `enabled` is true. |
 | `encryption_at_rest.universe_key_rotation_trigger` | A change to a new non-empty value rotates the universe key under the current master key. |
 
 **Behavior:** YugabyteDB encrypts each data file with its own data key, and wraps the data
@@ -536,8 +536,9 @@ resource "yba_universe" "example" {
 For a universe that Terraform already manages, add the block and change nothing else. Import
 a universe that was created in the YugabyteDB Anywhere UI first. After the import, its state
 holds the current encryption settings (`enabled = false`, no configuration), and the next
-apply adds the block. The configuration can be a `yba_gcp_ear_config` resource or, as here,
-a configuration created in the UI and found by name.
+apply adds the block. The configuration can be a resource (`yba_aws_ear_config`,
+`yba_azure_ear_config` or `yba_gcp_ear_config`) or, as here, a configuration created in the UI
+and found by name.
 
 ```sh
 terraform import yba_universe.existing <universe-uuid>

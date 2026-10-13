@@ -235,7 +235,10 @@ a third form is a finding.
 - Create and Update end with `return resource<X>Read(ctx, d, meta)`. A Create
   that returns `nil` after `d.SetId` leaves computed fields unset.
 - An Update that writes credentials uses a named `diags` return, a deferred
-  Read, and `utils.RevertFields` before every error return.
+  Read, and `utils.RevertFields` before every error return. When YBA can save
+  the write before the step that fails, the Update asks YBA what it saved and
+  reverts only when YBA did not save the write, so state holds what YBA holds.
+  A placeholder that forces the next plan to resend is a finding.
 - Long-running operations take their timeouts from named constants in
   hours, defined once per package so every CRUD timeout shares one source
   of truth. An inline duration is a finding.
