@@ -20,6 +20,7 @@ package runtimeconfig
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -65,16 +66,20 @@ func ResourceRuntimeConfig() *schema.Resource {
 			"scope, or the default of the key.\n\n" +
 			"~> **Note:** Only a Super Admin user can set or remove a key on " +
 			"the global scope.\n\n" +
-			"~> **Note:** YBA masks the value of a secret key, such as " +
-			"`yb.security.ldap.ldap_service_account_password`, when it reads " +
-			"the key. For such a key, Terraform shows a change on every plan. " +
-			"The `value` attribute is not marked sensitive, so Terraform also " +
-			"shows the value in plan output.",
+			"~> **Security Note:** Set a secret key, such as " +
+			"`yb.security.ldap.ldap_service_account_password`, with " +
+			"`sensitive_value`, which Terraform hides in plan output. Terraform " +
+			"stores the value in the state file, so use a secure backend and " +
+			"restrict access to the state file. YBA masks the value of a secret " +
+			"key when it reads the key. When YBA returns the mask of the value in " +
+			"the state, Terraform keeps the value in the state.",
 
 		CreateContext: resourceRuntimeConfigCreateOrUpdate,
 		ReadContext:   resourceRuntimeConfigRead,
 		UpdateContext: resourceRuntimeConfigCreateOrUpdate,
 		DeleteContext: resourceRuntimeConfigDelete,
+
+		CustomizeDiff: rejectSensitiveKeyInValue,
 
 		Importer: &schema.ResourceImporter{
 			StateContext: resourceRuntimeConfigImport,
@@ -106,15 +111,61 @@ func ResourceRuntimeConfig() *schema.Resource {
 					"`yb.telemetry.allow_s3`. Changing it replaces the resource.",
 			},
 			"value": {
-				Type:     schema.TypeString,
-				Required: true,
+				Type:         schema.TypeString,
+				Optional:     true,
+				ExactlyOneOf: valueArguments,
 				Description: "Value of the key, as a string. Write booleans, " +
 					"numbers, durations and lists as strings, for example `\"true\"` " +
 					"or `\"3 hours\"`. YBA checks the value against the type of the " +
-					"key and stores it as written.",
+					"key and stores it as written. Set exactly one of `value` and " +
+					"`sensitive_value`.",
+			},
+			"sensitive_value": {
+				Type:         schema.TypeString,
+				Optional:     true,
+				Sensitive:    true,
+				ExactlyOneOf: valueArguments,
+				Description: "Value of the key, as for `value`, hidden in plan " +
+					"output. A key whose value YBA masks, " +
+					"`" + strings.Join(sensitiveKeys, "` or `") + "`, takes its " +
+					"value only from this argument. Set exactly one of `value` and " +
+					"`sensitive_value`.",
 			},
 		},
 	}
+}
+
+var valueArguments = []string{"value", "sensitive_value"}
+
+// sensitiveKeys mirrors YBA's RuntimeConfService.sensitiveKeys: YBA masks the
+// value of these keys when it reads them.
+var sensitiveKeys = []string{
+	"yb.security.ldap.ldap_service_account_password",
+	"yb.security.secret",
+}
+
+// rejectSensitiveKeyInValue keeps a secret key out of the plan output of
+// value.
+func rejectSensitiveKeyInValue(
+	_ context.Context, d *schema.ResourceDiff, _ interface{},
+) error {
+	key := d.Get("key").(string)
+	if d.Get("value").(string) != "" && slices.Contains(sensitiveKeys, key) {
+		return fmt.Errorf("YBA masks the value of %s: set it with sensitive_value, not value",
+			key)
+	}
+	return nil
+}
+
+// valueArgument is the argument that holds the value in state. Without one,
+// after an import, it is the argument that the key needs.
+func valueArgument(d *schema.ResourceData) string {
+	if d.Get("value").(string) == "" &&
+		(d.Get("sensitive_value").(string) != "" ||
+			slices.Contains(sensitiveKeys, d.Get("key").(string))) {
+		return "sensitive_value"
+	}
+	return "value"
 }
 
 // fetchRuntimeConfigValue reads the value of a runtime config key on a scope.
@@ -147,7 +198,7 @@ func resourceRuntimeConfigCreateOrUpdate(
 	c := apiClient.YugawareClient
 	scope := d.Get("scope").(string)
 	key := d.Get("key").(string)
-	value := d.Get("value").(string)
+	value := d.Get(valueArgument(d)).(string)
 
 	_, response, err := c.RuntimeConfigurationAPI.
 		SetKey(ctx, apiClient.CustomerID, scope, key).
@@ -178,7 +229,11 @@ func resourceRuntimeConfigRead(
 	if err != nil {
 		return diag.FromErr(err)
 	}
-	if err := d.Set("value", value); err != nil {
+	arg := valueArgument(d)
+	if prior := d.Get(arg).(string); utils.IsYBAMaskOf(key, value, prior) {
+		value = prior
+	}
+	if err := d.Set(arg, value); err != nil {
 		return diag.FromErr(err)
 	}
 	return nil

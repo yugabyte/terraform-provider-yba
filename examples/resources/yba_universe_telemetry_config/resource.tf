@@ -149,8 +149,8 @@ resource "yba_universe_telemetry_config" "main" {
   }
 
   # Restart one server at a time, and wait 1 minute after each restart.
-  upgrade_options {
-    rolling_upgrade                    = true
+  node_restart_settings {
+    upgrade_option                     = "Rolling"
     sleep_after_master_restart_millis  = 60000
     sleep_after_tserver_restart_millis = 60000
   }

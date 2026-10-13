@@ -19,7 +19,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 	"testing"
 
@@ -80,33 +79,40 @@ const otlpTags = `
   }
 `
 
+// otlpProviderConfig sets every argument that YBA returns to a non-default
+// value.
 func otlpProviderConfig(name string) string {
 	return fmt.Sprintf(`
 resource "yba_otlp_telemetry_provider" "test" {
   name = %q
 
-  endpoint = "http://otel-collector.acctest:4317"
-%s}
+  endpoint            = "http://otel-collector.acctest:4318"
+  protocol            = "HTTP"
+  compression         = "zstd"
+  timeout_seconds     = 17
+  auth_type           = "BasicAuth"
+  basic_auth_username = "otel-user"
+  basic_auth_password = "acctest-password"
+  logs_endpoint       = "http://otel-collector.acctest:4318/custom/logs"
+  metrics_endpoint    = "http://otel-collector.acctest:4318/custom/metrics"
+  # YBA masks header values as it masks tags: X-Api-Key keeps its first and
+  # last two characters, X-Org-Key is too short and reads back as ********, and
+  # X-Team is not masked.
+  headers = {
+    X-Api-Key = "otlp-header-secret"
+    X-Org-Key = "42"
+    X-Team    = "db"
+  }
+%s
+  # YBA reads basic_auth_password back as ******** (CommonUtils.maskConfig:
+  # the key contains PASSWORD), so an import cannot recover it.
+  lifecycle {
+    ignore_changes = [basic_auth_password]
+  }
+}
 
 data "yba_telemetry_provider" "lookup" {
   name = yba_otlp_telemetry_provider.test.name
-}
-`, name, otlpTags)
-}
-
-// otlpImportedConfig adds a second address for the same telemetry provider, as
-// the Import section documents it: Read cannot read back the arguments in
-// ignore_changes, but it can reconcile tags.
-func otlpImportedConfig(name string) string {
-	return otlpProviderConfig(name) + fmt.Sprintf(`
-resource "yba_otlp_telemetry_provider" "imported" {
-  name = %q
-
-  endpoint = "http://otel-collector.acctest:4317"
-%s
-  lifecycle {
-    ignore_changes = [endpoint, auth_type, protocol, compression, timeout_seconds]
-  }
 }
 `, name, otlpTags)
 }
@@ -122,7 +128,7 @@ func TestAccTelemetryProvider_OTLP(t *testing.T) {
 		},
 		ProviderFactories: acctest.ProviderFactories,
 		CheckDestroy:      testAccCheckTelemetryProviderDestroy,
-		Steps: []resource.TestStep{
+		Steps: append([]resource.TestStep{
 			{
 				Config: otlpProviderConfig(name),
 				Check: resource.ComposeTestCheckFunc(
@@ -130,46 +136,26 @@ func TestAccTelemetryProvider_OTLP(t *testing.T) {
 					resource.TestCheckResourceAttr(resourceName, "name", name),
 					resource.TestCheckResourceAttr(resourceName, "tags.api_owner", "platform"),
 					resource.TestCheckResourceAttr(resourceName, "tags.team_key", "db"),
+					resource.TestCheckResourceAttr(
+						resourceName, "headers.X-Api-Key", "otlp-header-secret"),
+					resource.TestCheckResourceAttr(resourceName, "headers.X-Org-Key", "42"),
 					resource.TestCheckResourceAttrPair(
 						"data.yba_telemetry_provider.lookup", "id", resourceName, "id"),
 					resource.TestCheckResourceAttr(
 						"data.yba_telemetry_provider.lookup", "type", "OTLP"),
 				),
 			},
-			{
-				// Import the same telemetry provider into a second address and
-				// keep the state, so the next step can plan against it. Config
-				// fields aren't refreshed on Read (YBA masks secrets), so import
-				// verifies only id/name/tags, and a masked tag reads back masked.
-				Config:             otlpImportedConfig(name),
-				ResourceName:       "yba_otlp_telemetry_provider.imported",
-				ImportState:        true,
-				ImportStateIdFunc:  testAccTelemetryProviderID(resourceName),
-				ImportStatePersist: true,
-				ImportStateVerify:  true,
-				ImportStateVerifyIgnore: []string{
-					"endpoint", "auth_type", "protocol", "compression",
-					"timeout_seconds", "tags.api_owner", "tags.team_key",
+		}, acctest.ImportPlanSteps(t, resourceName, otlpProviderConfig(name),
+			acctest.ImportPlanOptions{
+				// YBA masks these (CommonUtils.maskConfig), and import reads
+				// back the masks; ignore_changes and suppressMaskedMapValue keep
+				// the plan clean.
+				VerifyIgnore: []string{
+					"basic_auth_password", "tags.api_owner", "tags.team_key",
+					"headers.X-Api-Key", "headers.X-Org-Key",
 				},
-			},
-			{
-				// The imported telemetry provider plans clean, masked tags
-				// included.
-				Config:   otlpImportedConfig(name),
-				PlanOnly: true,
-			},
-		},
+			})...),
 	})
-}
-
-func testAccTelemetryProviderID(n string) resource.ImportStateIdFunc {
-	return func(s *terraform.State) (string, error) {
-		rs, ok := s.RootModule().Resources[n]
-		if !ok {
-			return "", fmt.Errorf("telemetry provider %q not found in state", n)
-		}
-		return rs.Primary.ID, nil
-	}
 }
 
 func testAccCheckTelemetryProviderExists(n string) resource.TestCheckFunc {
@@ -211,10 +197,10 @@ func testAccCheckTelemetryProviderDestroy(s *terraform.State) error {
 	return nil
 }
 
-// fastUpgradeOptions keeps each reconfigure cheap; the 3-min default per-node
+// fastRestartSettings keeps each reconfigure cheap; the 3-min default per-node
 // sleeps would otherwise dominate every edit step.
-const fastUpgradeOptions = `
-  upgrade_options {
+const fastRestartSettings = `
+  node_restart_settings {
     sleep_after_master_restart_millis  = 5000
     sleep_after_tserver_restart_millis = 5000
   }
@@ -238,10 +224,16 @@ resource "yba_universe_telemetry_config" "test" {
   }
 %s
 }
-`, uniRef, provARef, fastUpgradeOptions)
+`, uniRef, provARef, fastRestartSettings)
 }
 
 func universeTelemetryMultiExporter(uniRef, provARef, provBRef string) string {
+	return universeTelemetryMultiExporterWith(uniRef, provARef, provBRef, fastRestartSettings)
+}
+
+// universeTelemetryMultiExporterWith renders the multi-exporter config with
+// the given node_restart_settings block ("" for none).
+func universeTelemetryMultiExporterWith(uniRef, provARef, provBRef, upgrade string) string {
 	return fmt.Sprintf(`
 resource "yba_universe_telemetry_config" "test" {
   universe_uuid = %s
@@ -281,7 +273,7 @@ resource "yba_universe_telemetry_config" "test" {
   }
 %s
 }
-`, uniRef, provARef, provBRef, provARef, provARef, fastUpgradeOptions)
+`, uniRef, provARef, provBRef, provARef, provARef, upgrade)
 }
 
 func gcpProviderAndUniverse(name string) string {
@@ -380,6 +372,9 @@ func TestAccLong_UniverseTelemetryConfig_GCP(t *testing.T) {
 	provB := otlpProviderHCL("b", nameB)
 	uniRef := "yba_universe.gcp.id"
 	resourceName := "yba_universe_telemetry_config.test"
+	defaultOptionsConfig := base + provA + provB + universeTelemetryMultiExporterWith(uniRef,
+		"yba_otlp_telemetry_provider.a.id", "yba_otlp_telemetry_provider.b.id", "")
+	tasks := acctest.UniverseTaskWatch{Resource: "yba_universe.gcp"}
 
 	resource.Test(t, resource.TestCase{
 		PreCheck: func() {
@@ -389,7 +384,7 @@ func TestAccLong_UniverseTelemetryConfig_GCP(t *testing.T) {
 		},
 		ProviderFactories: acctest.ProviderFactories,
 		CheckDestroy:      testAccCheckTelemetryUniverseDestroy,
-		Steps: []resource.TestStep{
+		Steps: append([]resource.TestStep{
 			{
 				Config: base + provA + universeTelemetryMetricsOnly(
 					uniRef, "yba_otlp_telemetry_provider.a.id"),
@@ -415,39 +410,30 @@ func TestAccLong_UniverseTelemetryConfig_GCP(t *testing.T) {
 						resourceName, "audit_logs.0.exporter.0.additional_tags.env", "acc"),
 					resource.TestCheckResourceAttr(
 						resourceName, "master_logs.0.min_level", "WARNING"),
+					tasks.Mark,
 				),
 			},
 			{
-				ResourceName:     resourceName,
-				ImportState:      true,
-				ImportStateCheck: importedMetricsExporters(2),
+				// A change to node_restart_settings alone runs no universe task.
+				Config: defaultOptionsConfig,
+				Check:  tasks.NoNewTask,
 			},
-			{
+		}, append(acctest.ImportPlanSteps(t, resourceName, defaultOptionsConfig,
+			acctest.ImportPlanOptions{}),
+			resource.TestStep{
+				// Fast options again, so that the disable below restarts fast.
+				Config: base + provA + provB + universeTelemetryMultiExporter(
+					uniRef, "yba_otlp_telemetry_provider.a.id", "yba_otlp_telemetry_provider.b.id"),
+				Check: tasks.NoNewTask,
+			},
+			resource.TestStep{
 				// Remove only the config, keeping the universe: asserts the
 				// disable-on-destroy path leaves the surviving universe with no exporters.
 				Config: base + provA + provB,
 				Check:  testAccCheckUniverseExportDisabled("yba_universe.gcp"),
 			},
-		},
+		)...),
 	})
-}
-
-// importedMetricsExporters checks universe_uuid + exporter count, not full-state
-// equality, so a defaulted field YBA echoes back differently can't make it flaky.
-func importedMetricsExporters(want int) resource.ImportStateCheckFunc {
-	return func(states []*terraform.InstanceState) error {
-		if len(states) != 1 {
-			return fmt.Errorf("expected 1 imported state, got %d", len(states))
-		}
-		attrs := states[0].Attributes
-		if attrs["universe_uuid"] == "" {
-			return errors.New("imported universe_uuid is empty")
-		}
-		if got := attrs["metrics.0.exporter.#"]; got != strconv.Itoa(want) {
-			return fmt.Errorf("imported metrics exporter count = %q, want %d", got, want)
-		}
-		return nil
-	}
 }
 
 func testAccCheckUniverseExportDisabled(uniResource string) resource.TestCheckFunc {

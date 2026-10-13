@@ -86,14 +86,16 @@ func encryptionAtRestSchema() *schema.Schema {
 					Optional: true,
 					Description: "Change this value to rotate the universe key: on the next " +
 						"apply, YugabyteDB Anywhere generates a new universe key under the " +
-						"current master key. Any new non-empty value rotates the key, also the " +
-						"first value set on an existing universe; removing the value does " +
-						"nothing. Requires `enabled = true`. A value set at creation, or in the " +
-						"apply that enables encryption, does not run a separate rotation: the " +
-						"enable already generates a new key. The exception is an enable with a " +
-						"different configuration from the one last used: that enable keeps the " +
-						"earlier universe key, so the rotation runs after it. Use a date, or a " +
-						"`time_rotating` value to rotate on a schedule.",
+						"current master key. A change from one non-empty value to another " +
+						"rotates the key. The first value, at creation, on an existing universe " +
+						"or after an import, does not rotate: to rotate a universe that has no " +
+						"trigger yet, add the trigger, apply, and then change it. Removing the " +
+						"value does nothing. A rotation requires `enabled = true`. A change in " +
+						"the apply that enables encryption does not run a separate rotation: " +
+						"the enable already generates a new key. The exception is an enable " +
+						"with a different configuration from the one last used: that enable " +
+						"keeps the earlier universe key, so the rotation runs after it. Use a " +
+						"date, or a `time_rotating` value to rotate on a schedule.",
 				},
 			},
 		},

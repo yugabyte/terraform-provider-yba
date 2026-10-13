@@ -18,11 +18,15 @@ package telemetry
 import (
 	"context"
 	"encoding/json"
+	"maps"
 	"net/http"
+	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
 )
 
 // createProvider runs the full CreateContext of a per-sink resource against the
@@ -196,6 +200,180 @@ func TestSinkReadMissingRemovesFromState(t *testing.T) {
 			}
 		})
 	}
+}
+
+// Read must give back what create sent. After create, the create config
+// plans clean; after an import, only a credential that YBA masks plans a
+// change. The fake YBA masks and fills defaults as YBA's GET does.
+func TestSinkReadPlansCleanAgainstCreateConfig(t *testing.T) {
+	cases := []struct {
+		name, resource string
+		raw            map[string]interface{}
+		masked         []string
+	}{
+		{
+			"datadog", "yba_datadog_telemetry_provider",
+			map[string]interface{}{
+				"name": "dd", "site": "datadoghq.eu", "api_key": "dd-api-key-0123456789",
+				"tags": map[string]interface{}{"api_owner": "platform", "team_key": "db"},
+			},
+			[]string{"api_key"},
+		},
+		{
+			"otlp basic auth",
+			"yba_otlp_telemetry_provider",
+			map[string]interface{}{
+				"name":                "otlp",
+				"endpoint":            "http://otel.example:4318",
+				"protocol":            "HTTP",
+				"compression":         "zstd",
+				"timeout_seconds":     17,
+				"auth_type":           "BasicAuth",
+				"basic_auth_username": "otel-user",
+				"basic_auth_password": "pw-123456",
+				"headers": map[string]interface{}{
+					"X-Api-Key": "hdr-secret",
+					"X-Team":    "db",
+				},
+				"logs_endpoint":    "http://otel.example:4318/custom/logs",
+				"metrics_endpoint": "http://otel.example:4318/custom/metrics",
+			},
+			[]string{"basic_auth_password"},
+		},
+		{
+			"otlp bearer token", "yba_otlp_telemetry_provider",
+			map[string]interface{}{
+				"name": "otlp", "endpoint": "http://otel.example:4317",
+				"auth_type": "BearerToken", "bearer_token": "tok-abcdefgh",
+			},
+			[]string{"bearer_token"},
+		},
+		{
+			"otlp defaults", "yba_otlp_telemetry_provider",
+			map[string]interface{}{"name": "otlp", "endpoint": "http://otel.example:4317"},
+			nil,
+		},
+		{
+			"aws cloudwatch", "yba_aws_cloudwatch_telemetry_provider",
+			map[string]interface{}{
+				"name": "cw", "log_group": "yb-logs", "log_stream": "yb-stream",
+				"region": "us-west-2", "access_key": "AKIAEXAMPLE12345",
+				"secret_key": "secret/abc+def", "role_arn": "arn:aws:iam::123456789012:role/yb",
+				"endpoint": "https://logs.us-west-2.amazonaws.com",
+			},
+			[]string{"access_key", "secret_key"},
+		},
+		{
+			"gcp cloud monitoring",
+			"yba_gcp_cloud_monitoring_telemetry_provider",
+			map[string]interface{}{
+				"name":             "gcm",
+				"project":          "my-proj",
+				"credentials_json": "{\n  \"type\": \"service_account\",\n  \"project_id\": \"my-proj\"\n}\n",
+			},
+			[]string{"credentials_json"},
+		},
+		{
+			"splunk",
+			"yba_splunk_telemetry_provider",
+			map[string]interface{}{
+				"name":        "sp",
+				"endpoint":    "https://splunk.example:8088",
+				"token":       "splunk-token-123",
+				"source":      "yb",
+				"source_type": "_json",
+				"index":       "main",
+			},
+			[]string{"token"},
+		},
+		{
+			"dynatrace", "yba_dynatrace_telemetry_provider",
+			map[string]interface{}{
+				"name": "dt", "endpoint": "https://abc.live.dynatrace.com",
+				"api_token": "dt0c01.ABCDEFG.HIJKLMNOP",
+			},
+			[]string{"api_token"},
+		},
+		{
+			"s3",
+			"yba_s3_telemetry_provider",
+			map[string]interface{}{
+				"name":                                "s3",
+				"bucket":                              "yb-audit",
+				"region":                              "us-west-2",
+				"access_key":                          "AKIAEXAMPLE12345",
+				"secret_key":                          "secret/abc+def",
+				"directory_prefix":                    "audit/",
+				"file_prefix":                         "yb-",
+				"endpoint":                            "https://s3.example",
+				"role_arn":                            "arn:aws:iam::123456789012:role/yb",
+				"partition":                           "hour",
+				"marshaler":                           "SUMO_IC",
+				"disable_ssl":                         true,
+				"force_path_style":                    true,
+				"include_universe_and_node_in_prefix": true,
+			},
+			[]string{"access_key", "secret_key"},
+		},
+		{
+			"s3 defaults", "yba_s3_telemetry_provider",
+			map[string]interface{}{
+				"name": "s3", "bucket": "yb-audit", "region": "us-west-2",
+				"access_key": "AKIAEXAMPLE12345", "secret_key": "secret/abc+def",
+			},
+			[]string{"access_key", "secret_key"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			res := sinkConstructors[tc.resource]()
+			f := &fakeYBA{}
+			created, _, _, _ := createProvider(t, f, res, tc.raw)
+			imported := res.TestResourceData()
+			imported.SetId("P")
+
+			diags := res.ReadContext(context.Background(), imported, newDetachTestClient(t, f))
+
+			if diags.HasError() {
+				t.Fatalf("import read: %v", diags)
+			}
+			if got := planChanges(t, res, created.State(), tc.raw); len(got) != 0 {
+				t.Errorf("after create, the plan changes %v", got)
+			}
+			// ignore_changes on the masked credentials: Terraform plans with
+			// their state values.
+			ignoring := maps.Clone(tc.raw)
+			for _, arg := range tc.masked {
+				if reflect.DeepEqual(imported.Get(arg), tc.raw[arg]) {
+					t.Errorf("%s reads back unmasked after import", arg)
+				}
+				ignoring[arg] = imported.Get(arg)
+			}
+			if got := planChanges(t, res, imported.State(), ignoring); len(got) != 0 {
+				t.Errorf("after import, with ignore_changes on %v, the plan changes %v",
+					tc.masked, got)
+			}
+		})
+	}
+}
+
+// planChanges returns the attributes that a plan of raw against s changes.
+func planChanges(
+	t *testing.T, res *schema.Resource, s *terraform.InstanceState, raw map[string]interface{},
+) []string {
+	t.Helper()
+	diff, err := res.Diff(context.Background(), s, terraform.NewResourceConfigRaw(raw), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var changed []string
+	if diff != nil {
+		for k := range diff.Attributes {
+			changed = append(changed, k)
+		}
+	}
+	slices.Sort(changed)
+	return changed
 }
 
 // Tracer bullet for the per-sink factory: the Datadog resource creates a
@@ -533,6 +711,29 @@ func TestOTLPValidationPlanTime(t *testing.T) {
 				"basic_auth_username": "u",
 				"basic_auth_password": "pw",
 			},
+		},
+		{
+			// YBA rejects a credential of another auth type, and Create sends
+			// every field that the configuration sets.
+			name: "basic auth credential under NoAuth rejected",
+			raw: map[string]interface{}{
+				"name":                "x",
+				"endpoint":            "https://collector",
+				"basic_auth_username": "u",
+			},
+			wantErr: "basic_auth_username requires auth_type = \"BasicAuth\"",
+		},
+		{
+			name: "bearer token under BasicAuth rejected",
+			raw: map[string]interface{}{
+				"name":                "x",
+				"endpoint":            "https://collector",
+				"auth_type":           "BasicAuth",
+				"basic_auth_username": "u",
+				"basic_auth_password": "pw",
+				"bearer_token":        "tok",
+			},
+			wantErr: "bearer_token requires auth_type = \"BearerToken\"",
 		},
 		{
 			name: "BearerToken missing token",

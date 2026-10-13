@@ -225,5 +225,6 @@ func resourceSelfSignedCertificateRead(
 	// The exported PEM is how minted configurations hand the user the CA for
 	// client distribution; for bring-your-own it keeps state aligned with
 	// YBA's canonical stored form.
-	return readCertificateResource(ctx, d, meta, "certificate", nil)
+	return readCertificateResource(ctx, d, meta,
+		func(d *schema.ResourceData, pem string) error { return d.Set("certificate", pem) })
 }

@@ -61,7 +61,7 @@ resource "yba_ybdb_release" "ybdb_release" {
 
 ### Required
 
-- `artifact` (Block List, Min: 1) Artifacts of the release, at most one for each platform and architecture. The resource manages all the artifacts: when you remove a block, the provider deletes that artifact from the release. When the `local_file` or `package_url` of a block changes, the provider deletes the artifact and adds it again. The provider matches blocks to artifacts by platform and architecture. If you only change the order of the blocks, the plan shows a change, but the apply does not change the release. (see [below for nested schema](#nestedblock--artifact))
+- `artifact` (Block List, Min: 1) Artifacts of the release, at most one for each platform and architecture. The resource manages all the artifacts: when you remove a block, the provider deletes that artifact from the release. When the `local_file` or `package_url` of a block changes, the provider deletes the artifact and adds it again. The provider matches blocks to artifacts by platform and architecture, so the order of the blocks does not matter. (see [below for nested schema](#nestedblock--artifact))
 - `version` (String) YBDB version of the release, for example 2024.2.3.0-b116. This is not a YugabyteDB Anywhere version. YugabyteDB Anywhere allows one release for each version. It rejects a version newer than its own version unless the global runtime config `yb.allow_db_version_more_than_yba_version` or `yb.skip_version_checks` is `true`. YBA cannot change the version of a release, so a change to this field replaces the release.
 
 ### Optional
@@ -117,9 +117,22 @@ terraform import yba_ybdb_release.ybdb_release <release-uuid>
 YugabyteDB Anywhere does not return `local_file` or `sha256`, so both are empty
 after import. YBA also does not return `package_url` after it downloads a
 Kubernetes Helm chart. It does not return an S3 or GCS source either; only the
-legacy release import of YBA adds those. On the next apply, the provider
-deletes and adds again each imported artifact whose `local_file` or
-`package_url` it could not read back. YBA rejects this while a universe uses the
-release. To keep these artifacts as they are, add `artifact` to
-`ignore_changes` in a `lifecycle` block. After import, the order of the
-`artifact` blocks follows YugabyteDB Anywhere, not your configuration.
+legacy release import of YBA adds those. When the configuration sets a source
+that import could not read back, the first plan after import shows a change, and
+the apply deletes that artifact and adds it again. YBA rejects this while a
+universe uses the release. To keep these artifacts as they are, ignore those
+sources:
+
+```terraform
+lifecycle {
+  ignore_changes = [
+    artifact[0].local_file,
+  ]
+}
+```
+
+`ignore_changes` finds a block by its position. After import, the state lists
+the artifacts in this order: LINUX x86_64, LINUX aarch64, KUBERNETES. When you
+ignore a source, list the `artifact` blocks in the same order, and keep the
+position of each block when you change the configuration later. Remove the
+entry when you change that source.

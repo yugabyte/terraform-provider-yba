@@ -263,10 +263,12 @@ func ResourceUniverse() *schema.Resource {
 				Description: "Triggers that re-issue the server certificates of each node " +
 					"from the current root certificate, which must be a self-signed " +
 					"certificate. YugabyteDB Anywhere issues these server certificates with a " +
-					"1-year lifetime by default. A change of a trigger to any new non-empty " +
-					"value rotates the certificates on the next apply. A trigger set at " +
-					"universe creation does not rotate, but a trigger added to an existing " +
-					"universe does. Removing a trigger does nothing. Nodes restart according to " +
+					"1-year lifetime by default. A change of a trigger from one non-empty " +
+					"value to another rotates the certificates on the next apply. The first " +
+					"value of a trigger, at creation, on an existing universe or after an " +
+					"import, does not rotate: to rotate a universe that has no trigger yet, " +
+					"add the trigger, apply, and then change it. Removing a trigger does " +
+					"nothing. Nodes restart according to " +
 					"`node_restart_settings`. To move to another root certificate, change " +
 					"`root_ca` or `client_root_ca` instead, and do not change a trigger in the " +
 					"same apply: that runs a second rotation, with a second restart of every node.",
@@ -540,51 +542,19 @@ func ResourceUniverse() *schema.Resource {
 					},
 				},
 			},
-			"node_restart_settings": {
-				Type:     schema.TypeList,
-				Optional: true,
-				MaxItems: 1,
-				Description: "Controls how node restarts are performed during upgrade operations " +
-					"(DB version, GFlags, Systemd, Finalize, Rollback, certificate rotation). " +
-					"When omitted, " +
-					"YugabyteDB Anywhere platform defaults apply: Rolling strategy with " +
+			"node_restart_settings": utils.NodeRestartSettingsSchema(
+				"Controls how node restarts are performed during upgrade operations "+
+					"(DB version, GFlags, Systemd, Finalize, Rollback, certificate rotation). "+
+					"When omitted, "+
+					"YugabyteDB Anywhere platform defaults apply: Rolling strategy with "+
 					"180000 ms (3 minutes) sleep after each master and TServer restart.",
-				Elem: &schema.Resource{
-					Schema: map[string]*schema.Schema{
-						"upgrade_option": {
-							Type:     schema.TypeString,
-							Optional: true,
-							Default:  "Rolling",
-							ValidateDiagFunc: validation.ToDiagFunc(
-								validation.StringInSlice(
-									[]string{"Rolling", "Non-Rolling", "Non-Restart"}, false)),
-							Description: "Node restart strategy applied to all upgrade operations. " +
-								"Allowed values: Rolling, Non-Rolling, Non-Restart. Defaults to " +
-								"Rolling (YugabyteDB Anywhere platform default). TLS toggle always " +
-								"uses Non-Rolling; ResizeNode and VMImageUpgrade always use Rolling, " +
-								"regardless of this setting.",
-						},
-						"sleep_after_master_restart_millis": {
-							Type:             schema.TypeInt,
-							Optional:         true,
-							Default:          180000,
-							ValidateDiagFunc: validation.ToDiagFunc(validation.IntAtLeast(0)),
-							Description: "Milliseconds to sleep after each master node restart. " +
-								"Must be 0 or a positive integer. Defaults to 180000 (3 minutes), " +
-								"matching the YugabyteDB Anywhere platform default.",
-						},
-						"sleep_after_tserver_restart_millis": {
-							Type:             schema.TypeInt,
-							Optional:         true,
-							Default:          180000,
-							ValidateDiagFunc: validation.ToDiagFunc(validation.IntAtLeast(0)),
-							Description: "Milliseconds to sleep after each TServer node restart. " +
-								"Must be 0 or a positive integer. Defaults to 180000 (3 minutes), " +
-								"matching the YugabyteDB Anywhere platform default.",
-						},
-					},
-				},
-			},
+				"Node restart strategy applied to all upgrade operations. "+
+					"Allowed values: Rolling, Non-Rolling, Non-Restart. Defaults to "+
+					"Rolling (YugabyteDB Anywhere platform default). TLS toggle always "+
+					"uses Non-Rolling; ResizeNode and VMImageUpgrade always use Rolling, "+
+					"regardless of this setting.",
+				utils.UpgradeOptionRolling, utils.UpgradeOptionNonRolling,
+				utils.UpgradeOptionNonRestart),
 			"db_version_upgrade_state": {
 				Type:     schema.TypeString,
 				Computed: true,
@@ -3681,25 +3651,10 @@ func resourceUniverseUpdate(
 	// --- END PRE-FLIGHT CHECK ---
 	// =========================================================================
 
-	// Read node_restart_settings once with explicit fallbacks. When the block is absent,
-	// d.Get returns zero values ("" / 0) rather than the schema defaults, so we apply the
-	// YBA platform defaults here: Rolling strategy, 180000 ms sleep (3 minutes).
-	upgradeOption := d.Get("node_restart_settings.0.upgrade_option").(string)
-	if upgradeOption == "" {
-		upgradeOption = "Rolling"
-	}
-	sleepAfterMasterMs := int32(
-		d.Get("node_restart_settings.0.sleep_after_master_restart_millis").(int),
-	)
-	if sleepAfterMasterMs == 0 {
-		sleepAfterMasterMs = 180000
-	}
-	sleepAfterTServerMs := int32(
-		d.Get("node_restart_settings.0.sleep_after_tserver_restart_millis").(int),
-	)
-	if sleepAfterTServerMs == 0 {
-		sleepAfterTServerMs = 180000
-	}
+	restart, _ := utils.GetNodeRestartSettings(d)
+	upgradeOption := restart.UpgradeOption
+	sleepAfterMasterMs := restart.SleepAfterMasterMillis
+	sleepAfterTServerMs := restart.SleepAfterTServerMillis
 
 	// Rollback is a universe-level operation (not per-cluster): the YBA handler reads
 	// prevYBSoftwareConfig from universe-wide details to determine the version to revert to,

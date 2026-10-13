@@ -113,14 +113,9 @@ func detachFromUniverse(
 		"Detaching telemetry provider %s from universe %s (%s)",
 		providerUUID, ref.Name, ref.UUID))
 
-	// Rolling upgrade with YBA's default sleeps — the telemetry provider
-	// resources have no upgrade_options block, so we don't hard-code a sleep.
-	spec := clientv2.ExportTelemetryConfigSpec{
-		TelemetryConfig: &filtered,
-		UpgradeOptions: &clientv2.ExportTelemetryUpgradeOptions{
-			RollingUpgrade: utils.GetBoolPointer(true),
-		},
-	}
+	// No upgrade options: the telemetry provider resources have no
+	// node_restart_settings block, so YBA applies its own restart defaults and logic.
+	spec := clientv2.ExportTelemetryConfigSpec{TelemetryConfig: &filtered}
 
 	// Retry on a YBA 409 (a ConfigureExportTelemetryConfig task left in
 	// flight by a prior interrupted apply) instead of failing the destroy;

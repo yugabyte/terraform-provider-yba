@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	client "github.com/yugabyte/platform-go-client"
 
 	"github.com/yugabyte/terraform-provider-yba/internal/api"
@@ -89,11 +90,21 @@ func flattenArtifactSpecs(specs []artifactSpec) []map[string]interface{} {
 	return flat
 }
 
-// Mirrors YBA's own artifact checks so a bad config fails at plan.
-func validateArtifactSpecs(specs []artifactSpec) error {
+// Mirrors YBA's own artifact checks so a bad config fails at plan. An artifact
+// with neither source passes when prior holds it with neither: after an
+// import, ignore_changes puts the empty state value of a source that YBA does
+// not return into the configuration and the plan.
+func validateArtifactSpecs(specs, prior []artifactSpec) error {
+	imported := map[string]bool{}
+	for _, p := range prior {
+		if p.LocalFile == "" && p.PackageURL == "" {
+			imported[p.key()] = true
+		}
+	}
 	seen := map[string]int{}
 	for i, spec := range specs {
-		if (spec.LocalFile == "") == (spec.PackageURL == "") {
+		noSource := spec.LocalFile == "" && spec.PackageURL == ""
+		if (noSource && !imported[spec.key()]) || (spec.LocalFile != "" && spec.PackageURL != "") {
 			return fmt.Errorf(
 				"artifact %d: exactly one of local_file or package_url must be set", i)
 		}
@@ -148,6 +159,33 @@ func classifyArtifactChanges(oldSpecs, planSpecs []artifactSpec) (bool, map[stri
 		}
 	}
 	return removed, replaced
+}
+
+// suppressArtifactReorder hides a plan that only reorders the artifact blocks:
+// Update matches artifacts by platform and architecture, so the apply would
+// change nothing.
+func suppressArtifactReorder(_, _, _ string, d *schema.ResourceData) bool {
+	o, n := d.GetChange("artifact")
+	oldSpecs := expandArtifactSpecs(o.([]interface{}))
+	newSpecs := expandArtifactSpecs(n.([]interface{}))
+	if len(oldSpecs) != len(newSpecs) {
+		return false
+	}
+	removed, replaced := classifyArtifactChanges(oldSpecs, newSpecs)
+	return !removed && len(replaced) == 0
+}
+
+// artifactRank is the order in which Read lists the artifacts that the state
+// does not hold yet (after an import, or added outside Terraform). YBA returns
+// them in no fixed order.
+func artifactRank(a client.Artifact) int {
+	switch {
+	case a.Platform == platformKubernetes:
+		return 2
+	case a.Architecture == "aarch64":
+		return 1
+	}
+	return 0
 }
 
 // An imported artifact has no local_file, so declaring one uploads it.

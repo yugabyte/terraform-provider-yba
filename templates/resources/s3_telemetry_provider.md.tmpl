@@ -49,10 +49,10 @@ The import fails when the telemetry provider is not an Amazon S3 telemetry
 provider. The error names its type. Import it with the resource for that type
 instead.
 
-Import reads only `name` and `tags`. The other arguments are not in the state
-after import, so the next plan replaces the telemetry provider, and each
-universe that uses it restarts. To keep the imported telemetry provider, add the
-other arguments to `ignore_changes`:
+Import reads every argument. YBA masks credentials when it reads a telemetry
+provider, so import cannot recover them, and the next plan replaces the
+telemetry provider. Each universe that uses it restarts. To keep the imported
+telemetry provider, add the credentials to `ignore_changes`:
 
 ```terraform
 resource "yba_s3_telemetry_provider" "audit_archive" {
@@ -60,23 +60,12 @@ resource "yba_s3_telemetry_provider" "audit_archive" {
 
   lifecycle {
     ignore_changes = [
-      bucket,
-      region,
       access_key,
       secret_key,
-      directory_prefix,
-      file_prefix,
-      endpoint,
-      role_arn,
-      partition,
-      marshaler,
-      disable_ssl,
-      force_path_style,
-      include_universe_and_node_in_prefix,
     ]
   }
 }
 ```
 
-Remove the `lifecycle` block when you want Terraform to manage these arguments
-again. The next apply then replaces the telemetry provider.
+Remove the `lifecycle` block when you change a credential. The next apply then
+replaces the telemetry provider.

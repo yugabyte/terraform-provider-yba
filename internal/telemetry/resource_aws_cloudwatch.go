@@ -79,17 +79,14 @@ func ResourceAWSCloudWatchTelemetryProvider() *schema.Resource {
 					"default, for example a VPC endpoint.",
 			},
 		},
-		buildConfig: func(d *schema.ResourceData) map[string]interface{} {
-			out := map[string]interface{}{
-				"logGroup":  d.Get("log_group"),
-				"logStream": d.Get("log_stream"),
-				"region":    d.Get("region"),
-				"accessKey": d.Get("access_key"),
-				"secretKey": d.Get("secret_key"),
-			}
-			setIfNonEmpty(out, "roleARN", d.Get("role_arn"))
-			setIfNonEmpty(out, "endpoint", d.Get("endpoint"))
-			return out
+		configPaths: map[string]string{
+			"log_group":  "logGroup",
+			"log_stream": "logStream",
+			"region":     "region",
+			"access_key": "accessKey",
+			"secret_key": "secretKey",
+			"role_arn":   "roleARN",
+			"endpoint":   "endpoint",
 		},
 	})
 }

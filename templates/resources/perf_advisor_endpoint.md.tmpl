@@ -22,7 +22,7 @@ Perf Advisor endpoints can be imported using the endpoint UUID:
 terraform import yba_perf_advisor_endpoint.standalone <endpoint-uuid>
 ```
 
-YugabyteDB Anywhere does not return the passwords, so import leaves both
-`password` fields empty. When the configuration sets a password, the first plan
-after import shows an in-place update. That apply sends the configured passwords
-and changes nothing else.
+Import reads every argument except the two `password` fields. YugabyteDB Anywhere
+does not return the passwords, so import leaves both `password` fields empty. When
+the configuration sets a password, the first plan after import shows an in-place
+update. That apply sends the configured passwords and changes nothing else.

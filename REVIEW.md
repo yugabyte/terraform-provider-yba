@@ -112,11 +112,23 @@ failure this project can ship.
 - A `DiffSuppressFunc` on a value the server re-encodes (PEM, JSON, YAML)
   compares the decoded form, not trimmed text. Trimmed text on a `ForceNew`
   attribute diffs forever.
-- A trigger or counter attribute documents its adoption path: adding it to an
-  already-managed resource counts as a change and fires on the next apply.
-- `terraform import` must give a clean plan. When a `Required + ForceNew`
-  attribute cannot be read back, the Import section states the consequence
-  and the escape (`ignore_changes` or recreate).
+- A trigger or counter attribute that YBA does not store fires only when it
+  changes from one non-empty value to another. Its first value, at create,
+  when it is added to an existing resource, or after an import, is only
+  recorded: an import cannot read the value back, so a first value that fires
+  would run the action on every adopted resource. The `Description` states the
+  adoption path: add the trigger, apply, and then change it.
+- `terraform import` must give a clean plan with the config that created the
+  resource. The workaround (`ignore_changes`, an import-comparison skip) is
+  only for a value that YBA cannot return, and a code or test comment shows
+  the evidence: the YBA GET response, or the source line that masks or omits
+  the value. Each of these is a finding without that evidence: an
+  `ImportPlanOptions.VerifyIgnore` entry, a `lifecycle` block added after
+  import, an `ignore_changes` in docs, and a test that asserts a diff or a
+  replacement after import.
+- Public docs (templates, `Description` strings, examples) state what the
+  user sees and what to do. YBA source names, classes and file lines in
+  public docs are a finding: they belong in code or test comments.
 
 ## Read, delete and drift
 
@@ -137,6 +149,11 @@ failure this project can ship.
 - When YBA cannot change a nested object in place, the resource deletes it
   and adds it again. When YBA blocks that because the object is in use, the
   apply fails with an error that names what uses it.
+- A `Read` that writes YBA's form of a value the user sets (masked,
+  case-changed, trimmed, reordered, split, or merged with other values)
+  reconciles it with the state on refresh and with the config at plan time
+  after an import. A `Read` that writes YBA's form unreconciled is a
+  finding.
 - When the API does not return a value (a local file path, a checksum),
   `Read` keeps it from state. A heuristic that guesses at an out-of-band
   change to it is a finding; the field `Description` states the gap.
@@ -186,6 +203,9 @@ failure this project can ship.
   cannot reach.
 - Every substring marker that detects a server condition has a unit test, so
   a YBA wording change fails a test instead of silently clearing state.
+- An acceptance config uses values that trigger each change YBA makes to a
+  value of that resource: a mask, a re-encoding, a split chain, a majority
+  rule. A config whose values cannot trigger the change is a finding.
 - The test covers the claim in the commit message. "Reconciles drift" needs
   the case where state holds A and the server returns B, not only
   populate-from-empty and clear-on-empty.
@@ -242,9 +262,17 @@ a third form is a finding.
 - Long-running operations take their timeouts from named constants in
   hours, defined once per package so every CRUD timeout shares one source
   of truth. An inline duration is a finding.
+- Every resource whose YBA call restarts universe nodes takes its restart
+  options from `utils.NodeRestartSettingsSchema` and
+  `utils.GetNodeRestartSettings`: one `node_restart_settings` block, with the
+  same fields, defaults and lifecycle in every resource. The block is stored in
+  the state like any other argument, and a change to it alone makes no YBA
+  call. A restart block of another shape, or one that suppresses its own diff,
+  is a finding.
 - Every resource has one `Test<X>Guardrails` test: importer, every
   `Description`, no `customer_uuid`, the timeout constant. An importable
-  resource's acceptance test has an import step with `ImportStateVerify`.
+  resource's acceptance test uses `acctest.ImportPlanSteps` with the config
+  that created the resource.
 
 ## Where to look harder, and what to skip
 

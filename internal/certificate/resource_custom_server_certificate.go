@@ -52,9 +52,13 @@ func ResourceCustomServerCertificate() *schema.Resource {
 			"Anywhere checks at upload that the server certificate and the key match, " +
 			"unless the customer runtime configuration `yb.tls.enable_config_validation` " +
 			"is `false`.\n\n" +
-			"~> **Note:** YugabyteDB Anywhere never returns `server_certificate`, so after " +
-			"`terraform import` the next plan proposes a replacement. The Import section " +
-			"below shows how to keep the imported certificate.",
+			"~> **Note:** YugabyteDB Anywhere returns `server_certificate` and " +
+			"`root_certificate` as one chain: the server certificate first, then the CA " +
+			"certificates. Terraform compares the two arguments as that chain, so an " +
+			"intermediate CA certificate can be at the end of `server_certificate` or at " +
+			"the start of `root_certificate`. Terraform does not detect an edit that only " +
+			"moves an intermediate CA certificate from one argument to the other. To apply " +
+			"such an edit, also change `label`.",
 
 		CreateContext: resourceCustomServerCertificateCreate,
 		ReadContext:   resourceCustomServerCertificateRead,
@@ -81,20 +85,21 @@ func ResourceCustomServerCertificate() *schema.Resource {
 				Type:             schema.TypeString,
 				Required:         true,
 				ForceNew:         true,
-				DiffSuppressFunc: suppressPEMContentDiff,
+				DiffSuppressFunc: suppressSameServerChain,
 				Description: "Root CA certificate in PEM format, inline or from `file(...)`. " +
 					"Clients use it to verify the server certificate. Every certificate in " +
-					"it must be a CA certificate. A change forces replacement.",
+					"it must be a CA certificate, so it can start with intermediate CA " +
+					"certificates. A change forces replacement.",
 			},
 			"server_certificate": {
-				Type:     schema.TypeString,
-				Required: true,
-				ForceNew: true,
+				Type:             schema.TypeString,
+				Required:         true,
+				ForceNew:         true,
+				DiffSuppressFunc: suppressSameServerChain,
 				Description: "Server certificate in PEM format, signed by the root CA, inline " +
-					"or from `file(...)`. YugabyteDB Anywhere places it on every node for " +
-					"client-to-node encryption. YugabyteDB Anywhere never returns it, so an " +
-					"imported resource plans a replacement (see Import). A change forces " +
-					"replacement.",
+					"or from `file(...)`. It can end with intermediate CA certificates. " +
+					"YugabyteDB Anywhere places it on every node for client-to-node " +
+					"encryption. A change forces replacement.",
 			},
 			"server_key": {
 				Type:      schema.TypeString,
@@ -175,8 +180,5 @@ func resourceCustomServerCertificateRead(
 	d *schema.ResourceData,
 	meta interface{}) diag.Diagnostics {
 
-	// Server certificate and key never come back from the API and stay
-	// state-only. The download is YBA's stored bundle (server cert prepended),
-	// so it is filtered to the CA chain root_certificate holds.
-	return readCertificateResource(ctx, d, meta, "root_certificate", caCertsPEM)
+	return readCertificateResource(ctx, d, meta, setServerChain)
 }

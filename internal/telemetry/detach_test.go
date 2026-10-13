@@ -177,13 +177,13 @@ func (f *fakeYBA) handler() http.HandlerFunc {
 				return
 			}
 			w.Header().Set("Content-Type", "application/json")
-			// Echo the last created provider so the read-after-create in the
-			// sink factory sees the type it just sent; default to DATA_DOG.
+			// Return the last created provider as YBA's GET shows it, so the
+			// read-after-create sees the type it just sent; default to DATA_DOG.
 			if n := len(f.createdProviders); n > 0 {
 				resp := map[string]interface{}{}
 				_ = json.Unmarshal(f.createdProviders[n-1], &resp)
 				resp["uuid"] = "P"
-				_ = json.NewEncoder(w).Encode(resp)
+				_ = json.NewEncoder(w).Encode(ybaProviderView(resp))
 				return
 			}
 			_ = json.NewEncoder(w).Encode(map[string]interface{}{
@@ -210,6 +210,47 @@ func (f *fakeYBA) handler() http.HandlerFunc {
 			_, _ = w.Write([]byte(`{"error":"unhandled ` + r.Method + " " + path + `"}`))
 		}
 	}
+}
+
+// ybaProviderView applies what YBA does to a stored telemetry provider before
+// a GET returns it: S3Config fills its defaults, and CommonUtils.maskConfig
+// masks every string under a key that CommonUtils.isSensitiveField matches.
+func ybaProviderView(p map[string]interface{}) map[string]interface{} {
+	if cfg, _ := p["config"].(map[string]interface{}); cfg != nil && cfg["type"] == typeS3 {
+		for k, v := range map[string]interface{}{
+			"directoryPrefix": "yb-logs/", "filePrefix": "yb-otel-", "partition": "minute",
+			"marshaler": "OTLP_JSON", "disableSSL": false, "forcePathStyle": false,
+			"includeUniverseAndNodeInPrefix": false,
+		} {
+			if _, ok := cfg[k]; !ok {
+				cfg[k] = v
+			}
+		}
+	}
+	return maskSensitive(p)
+}
+
+func maskSensitive(m map[string]interface{}) map[string]interface{} {
+	for k, v := range m {
+		switch v := v.(type) {
+		case map[string]interface{}:
+			m[k] = maskSensitive(v)
+		case string:
+			key := strings.ToUpper(k)
+			sensitive := key == "TOKEN"
+			for _, s := range []string{"KEY", "SECRET", "CREDENTIALS", "API", "POLICY", "PASSWORD"} {
+				sensitive = sensitive || strings.Contains(key, s)
+			}
+			switch {
+			case !sensitive:
+			case strings.Contains(key, "PASSWORD") || len(v) < 5:
+				m[k] = "********"
+			default:
+				m[k] = v[:2] + strings.Repeat("*", len(v)-4) + v[len(v)-2:]
+			}
+		}
+	}
+	return m
 }
 
 func newDetachTestClient(t *testing.T, f *fakeYBA) *api.APIClient {

@@ -95,7 +95,6 @@ func TestBuildExportTelemetryConfigSpec(t *testing.T) {
 				Exporters             []map[string]interface{} `json:"exporters"`
 			} `json:"metrics"`
 		} `json:"telemetry_config"`
-		UpgradeOptions map[string]interface{} `json:"upgrade_options"`
 	}
 	if err := json.Unmarshal(payload, &out); err != nil {
 		t.Fatalf("unmarshal payload: %v\n%s", err, payload)
@@ -130,12 +129,6 @@ func TestBuildExportTelemetryConfigSpec(t *testing.T) {
 	mexp := out.TelemetryConfig.Metrics.Exporters[0]
 	if mexp["metrics_prefix"] != "ybdb." {
 		t.Errorf("metrics_prefix: got %v want ybdb.", mexp["metrics_prefix"])
-	}
-	if got, ok := out.UpgradeOptions["rolling_upgrade"].(bool); !ok || !got {
-		t.Errorf(
-			"upgrade_options.rolling_upgrade: got %v want true",
-			out.UpgradeOptions["rolling_upgrade"],
-		)
 	}
 }
 
@@ -352,22 +345,6 @@ func TestResourceUniverseTelemetryConfigSchema(t *testing.T) {
 			t.Errorf("%s timeout = %s want %s",
 				name, *got, telemetryUpgradeTimeout)
 		}
-	}
-}
-
-func TestBuildUpgradeOptionsDefault(t *testing.T) {
-	out := buildUpgradeOptions(nil)
-	if out.RollingUpgrade == nil || !*out.RollingUpgrade {
-		t.Errorf("RollingUpgrade must default to true, got %v",
-			out.RollingUpgrade)
-	}
-	if out.SleepAfterMasterRestartMillis != nil {
-		t.Errorf("SleepAfterMasterRestartMillis must be nil when block "+
-			"absent, got %d", *out.SleepAfterMasterRestartMillis)
-	}
-	if out.SleepAfterTserverRestartMillis != nil {
-		t.Errorf("SleepAfterTserverRestartMillis must be nil when block "+
-			"absent, got %d", *out.SleepAfterTserverRestartMillis)
 	}
 }
 

@@ -41,6 +41,33 @@ func TestBoolValue(t *testing.T) {
 	}
 }
 
+// Cases follow YBA's CommonUtils.getMaskedValue: a PASSWORD key or a value
+// under 5 characters reads back as ********; any other value keeps its first
+// and last two characters, at the same length.
+func TestIsYBAMaskOf(t *testing.T) {
+	cases := []struct {
+		key, masked, value string
+		want               bool
+	}{
+		{"api_owner", "pl****rm", "platform", true},
+		{"api_owner", "px****rm", "platform", false},
+		{"api_owner", "pl***rm", "platform", false},
+		{"api_owner", "********", "platform", false},
+		{"team_key", "********", "abcd", true},
+		{"team_key", "********", "", false},
+		{"team_key", "ab*de", "abcde", true},
+		{"team_key", "********", "abcde", false},
+		{"yb.security.ldap.ldap_service_account_password", "********", "long-secret", true},
+		{"basicAuth.Password", "lo*******et", "long-secret", false},
+	}
+	for _, tc := range cases {
+		if got := IsYBAMaskOf(tc.key, tc.masked, tc.value); got != tc.want {
+			t.Errorf("IsYBAMaskOf(%q, %q, %q) = %t want %t",
+				tc.key, tc.masked, tc.value, got, tc.want)
+		}
+	}
+}
+
 func TestStringValue(t *testing.T) {
 	for in, want := range map[interface{}]string{
 		nil: "", "s": "s", 3: "3", true: "true", 1.5: "1.5",

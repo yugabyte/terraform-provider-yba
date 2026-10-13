@@ -29,5 +29,6 @@ Import a self-signed certificate configuration with its UUID:
 terraform import yba_self_signed_certificate.generated <certificate-uuid>
 ```
 
-YugabyteDB Anywhere never returns `private_key`, so it stays empty after import. This does
-not cause a plan change: Terraform does not store write-only arguments.
+YugabyteDB Anywhere returns `certificate` in its own PEM form. Terraform compares the
+certificates, not the text, so with the configuration that created the certificate, the plan
+after import is clean. `private_key` is write-only, so import does not set it.

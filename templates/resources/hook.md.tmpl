@@ -41,3 +41,10 @@ Hooks can be imported using the hook UUID:
 ```sh
 terraform import yba_hook.mount_volume <hook-uuid>
 ```
+
+Import reads every argument. When YugabyteDB Anywhere lists hooks, it replaces the
+`runtime_args` value of some keys, such as `ysqlPassword`, with `REDACTED`. When the
+configuration sets such a key, the first plan after the import shows one in-place update, and
+the apply sends the values from your configuration. After an import, keep these keys out of
+`ignore_changes`: the state holds `REDACTED`, and the next update of the hook would send it to
+YugabyteDB Anywhere.

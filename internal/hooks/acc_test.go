@@ -104,20 +104,32 @@ resource "yba_hook" "test" {
   hook_text      = %[2]q
   use_sudo       = %[3]t
   runtime_args = {
-    MODE = %[4]q
+    MODE         = %[4]q
+    API_TOKEN    = "tok"
+    team_key     = "abcdef"
+    ysqlPassword = "Pa55-word!"
   }
 
   trigger_type = %[5]q
+
+  # YBA lists runtimeArgs.ysqlPassword as REDACTED (HookController.list:
+  # PlatformResults.withData redacts RedactingService.SECRET_PATHS_FOR_APIS),
+  # so an import cannot read it back.
+  lifecycle {
+    ignore_changes = [runtime_args["ysqlPassword"]]
+  }
 }
 `, name, text, useSudo, mode, trigger)
 }
 
 func TestAccHook_Lifecycle(t *testing.T) {
-	name := acctest.RandomName("hook") + ".sh"
+	name := acctest.RandomName("hook") + "-Mount_Volume.SH"
 	renamed := acctest.RandomName("hook") + "-v2.sh"
-	textV1 := "#!/bin/bash\necho v1\n"
+	// CRLF, a tab, non-ASCII text, trailing spaces, and no final newline.
+	textV1 := "#!/bin/bash\r\nset -eu\r\necho \"héllo ✓\"\r\n\tprintf '%s' \"$1\"  "
 	textV2 := "#!/bin/bash\necho v2\n"
 	hookResource := "yba_hook.test"
+	configV1 := hookConfig(name, textV1, "v1", testTriggerTypes[0], false)
 
 	resource.Test(t, resource.TestCase{
 		PreCheck: func() {
@@ -127,19 +139,26 @@ func TestAccHook_Lifecycle(t *testing.T) {
 		},
 		ProviderFactories: acctest.ProviderFactories,
 		CheckDestroy:      testAccCheckHooksDestroy,
-		Steps: []resource.TestStep{
+		Steps: append(append([]resource.TestStep{
 			{
-				Config: hookConfig(name, textV1, "v1", testTriggerTypes[0], false),
+				Config: configV1,
 				Check: resource.ComposeTestCheckFunc(
 					testAccCheckHookMatches(hookResource, name, textV1, false),
 					testAccCheckHookBoundToGlobalScope(hookResource, testTriggerTypes[0]),
 					resource.TestCheckResourceAttr(hookResource, "execution_lang", "Bash"),
 					resource.TestCheckResourceAttr(hookResource, "runtime_args.MODE", "v1"),
+					// Refresh keeps the value that YBA redacts.
+					resource.TestCheckResourceAttr(
+						hookResource, "runtime_args.ysqlPassword", "Pa55-word!"),
 					resource.TestCheckResourceAttr(
 						hookResource, "trigger_type", testTriggerTypes[0]),
 				),
 			},
-			{
+		}, acctest.ImportPlanSteps(t, hookResource, configV1, acctest.ImportPlanOptions{
+			// YBA lists the value as REDACTED (see hookConfig).
+			VerifyIgnore: []string{"runtime_args.ysqlPassword"},
+		})...),
+			resource.TestStep{
 				// Everything updates in place: rename, new script text, sudo
 				// flipped on, runtime args replaced, and the trigger moved —
 				// which must re-bind the hook and garbage-collect the old scope.
@@ -150,13 +169,7 @@ func TestAccHook_Lifecycle(t *testing.T) {
 					testAccCheckGlobalScopeAbsent(testTriggerTypes[0]),
 					resource.TestCheckResourceAttr(hookResource, "runtime_args.MODE", "v2"),
 				),
-			},
-			{
-				ResourceName:      hookResource,
-				ImportState:       true,
-				ImportStateVerify: true,
-			},
-		},
+			}),
 	})
 }
 

@@ -27,3 +27,10 @@ resource "yba_runtime_config" "lb_health_check_protocol" {
   key   = "yb.universe.network_load_balancer.custom_health_check_protocol"
   value = "TCP"
 }
+
+# A secret key. YBA masks its value when it reads the key, and
+# sensitive_value hides the value in plan output.
+resource "yba_runtime_config" "ldap_service_account_password" {
+  key             = "yb.security.ldap.ldap_service_account_password"
+  sensitive_value = var.ldap_service_account_password
+}

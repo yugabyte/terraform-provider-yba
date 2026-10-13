@@ -21,14 +21,15 @@ import (
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
 
 	"github.com/yugabyte/terraform-provider-yba/internal/acctest"
 )
 
 // TestAccRuntimeConfig_GlobalScope exercises the full lifecycle of a
 // yba_runtime_config resource on the global scope using the Boolean key
-// (boolCase): create, in-place update, import, and the delete path (which resets
-// the key to its YBA-side default).
+// (boolCase): create, in-place update, import with a clean plan, and the
+// delete path (which resets the key to its YBA-side default).
 func TestAccRuntimeConfig_GlobalScope(t *testing.T) {
 	resourceName := "yba_runtime_config.test"
 	id := globalScope + "/" + boolCase.key
@@ -40,7 +41,7 @@ func TestAccRuntimeConfig_GlobalScope(t *testing.T) {
 		ProviderFactories: acctest.ProviderFactories,
 		CheckDestroy: testAccCheckRuntimeConfigValueAbsent(
 			globalScope, boolCase.key, boolCase.value),
-		Steps: []resource.TestStep{
+		Steps: append([]resource.TestStep{
 			{
 				// Create at the default value to exercise the create/set path.
 				Config: runtimeConfigConfig(boolCase.key, "false"),
@@ -61,13 +62,8 @@ func TestAccRuntimeConfig_GlobalScope(t *testing.T) {
 					resource.TestCheckResourceAttr(resourceName, "value", boolCase.value),
 				),
 			},
-			{
-				// Import using the "<scope>/<key>" ID and confirm state round-trips.
-				ResourceName:      resourceName,
-				ImportState:       true,
-				ImportStateVerify: true,
-			},
-		},
+		}, acctest.ImportPlanSteps(t, resourceName,
+			runtimeConfigConfig(boolCase.key, boolCase.value), acctest.ImportPlanOptions{})...),
 	})
 }
 
@@ -75,8 +71,8 @@ func TestAccRuntimeConfig_GlobalScope(t *testing.T) {
 // data types round-trip without drift through a resource whose `value` is a
 // plain string. YBA stores values verbatim and returns them byte-for-byte, so:
 //   - the API reports back exactly the string we set (no type normalization),
-//   - re-applying the identical config is a no-op (PlanOnly step), and
-//   - import round-trips the state.
+//   - re-applying the identical config is a no-op, and
+//   - import with the same config plans clean.
 //
 // It iterates the shared runtimeConfigCases table (see common_test.go), so it
 // covers the same Boolean/Duration/Integer/String keys as the data source test.
@@ -95,7 +91,7 @@ func testRuntimeConfigTypeRoundTrip(t *testing.T, tc runtimeConfigCase) {
 		PreCheck:          func() { acctest.TestAccPreCheck(t) },
 		ProviderFactories: acctest.ProviderFactories,
 		CheckDestroy:      testAccCheckRuntimeConfigValueAbsent(globalScope, tc.key, tc.value),
-		Steps: []resource.TestStep{
+		Steps: append([]resource.TestStep{
 			{
 				Config: runtimeConfigConfig(tc.key, tc.value),
 				Check: resource.ComposeTestCheckFunc(
@@ -105,16 +101,53 @@ func testRuntimeConfigTypeRoundTrip(t *testing.T, tc runtimeConfigCase) {
 					resource.TestCheckResourceAttr(resourceName, "id", id),
 				),
 			},
+		}, acctest.ImportPlanSteps(t, resourceName,
+			runtimeConfigConfig(tc.key, tc.value), acctest.ImportPlanOptions{})...),
+	})
+}
+
+// ldapPasswordKey is a key that YBA masks on read
+// (RuntimeConfService.sensitiveKeys). The fixture does not use LDAP.
+const ldapPasswordKey = "yb.security.ldap.ldap_service_account_password"
+
+// A key that YBA masks fails at plan time through value. Through
+// sensitive_value it plans clean, and a new secret applies.
+func TestAccRuntimeConfig_SensitiveValue(t *testing.T) {
+	resourceName := "yba_runtime_config.test"
+
+	resource.Test(t, resource.TestCase{
+		PreCheck: func() {
+			acctest.TestAccPreCheck(t)
+			if set, err := setOnGlobalScope(ldapPasswordKey); err != nil {
+				t.Fatal(err)
+			} else if set {
+				t.Skipf("%s has a global value on this YBA; the test would overwrite it",
+					ldapPasswordKey)
+			}
+		},
+		ProviderFactories: acctest.ProviderFactories,
+		CheckDestroy: func(*terraform.State) error {
+			return retryRuntimeConfigCheck(func() error {
+				set, err := setOnGlobalScope(ldapPasswordKey)
+				if err == nil && set {
+					err = fmt.Errorf("%s still has a global value after destroy", ldapPasswordKey)
+				}
+				return err
+			})
+		},
+		Steps: []resource.TestStep{
 			{
-				// Re-applying the identical config must be a no-op: the string
-				// value round-trips with zero drift for every data type.
-				Config:   runtimeConfigConfig(tc.key, tc.value),
-				PlanOnly: true,
+				Config:      runtimeConfigConfig(ldapPasswordKey, "tf-acctest-secret-1"),
+				PlanOnly:    true,
+				ExpectError: regexp.MustCompile("sensitive_value"),
 			},
 			{
-				ResourceName:      resourceName,
-				ImportState:       true,
-				ImportStateVerify: true,
+				Config: sensitiveRuntimeConfigConfig(ldapPasswordKey, "tf-acctest-secret-1"),
+			},
+			{
+				Config: sensitiveRuntimeConfigConfig(ldapPasswordKey, "tf-acctest-secret-2"),
+				Check: resource.TestCheckResourceAttr(
+					resourceName, "sensitive_value", "tf-acctest-secret-2"),
 			},
 		},
 	})
@@ -180,6 +213,15 @@ func runtimeConfigConfig(key, value string) string {
 resource "yba_runtime_config" "test" {
   key   = %q
   value = %q
+}
+`, key, value)
+}
+
+func sensitiveRuntimeConfigConfig(key, value string) string {
+	return fmt.Sprintf(`
+resource "yba_runtime_config" "test" {
+  key             = %q
+  sensitive_value = %q
 }
 `, key, value)
 }

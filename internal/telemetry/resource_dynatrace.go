@@ -50,11 +50,9 @@ func ResourceDynatraceTelemetryProvider() *schema.Resource {
 					"`metrics.ingest`, `logs.ingest` and `openTelemetryTrace.ingest`.",
 			},
 		},
-		buildConfig: func(d *schema.ResourceData) map[string]interface{} {
-			return map[string]interface{}{
-				"endpoint": d.Get("endpoint"),
-				"apiToken": d.Get("api_token"),
-			}
+		configPaths: map[string]string{
+			"endpoint":  "endpoint",
+			"api_token": "apiToken",
 		},
 	})
 }

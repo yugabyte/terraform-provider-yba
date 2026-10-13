@@ -419,6 +419,14 @@ func resourceHookRead(
 	if err = d.Set("use_sudo", hook.UseSudo); err != nil {
 		return diag.FromErr(err)
 	}
+	// YBA's API redaction (RedactingService.SECRET_PATHS_FOR_APIS) lists the
+	// values of keys such as ysqlPassword as REDACTED: keep the state value.
+	prior := d.Get("runtime_args").(map[string]interface{})
+	for k, v := range hook.RuntimeArgs {
+		if p, ok := prior[k].(string); ok && v == "REDACTED" {
+			hook.RuntimeArgs[k] = p
+		}
+	}
 	if err = d.Set("runtime_args", hook.RuntimeArgs); err != nil {
 		return diag.FromErr(err)
 	}

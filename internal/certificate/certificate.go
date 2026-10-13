@@ -55,8 +55,10 @@ func normalizePEM(content string) string {
 	return strings.TrimRight(content, "\r\n") + "\n"
 }
 
-// certChainDER returns the DER bytes of every CERTIFICATE block in the PEM
-// input, in order. ok is false when no certificate block is present.
+// certChainDER returns the DER bytes of every certificate block in the PEM
+// input, in order. ok is false when no certificate block is present. YBA
+// parses uploads with the BouncyCastle FIPS provider, which also reads the
+// legacy X509 CERTIFICATE label, and writes the blocks back as CERTIFICATE.
 func certChainDER(content string) (ders [][]byte, ok bool) {
 	rest := []byte(content)
 	for {
@@ -65,7 +67,7 @@ func certChainDER(content string) (ders [][]byte, ok bool) {
 		if block == nil {
 			return ders, len(ders) > 0
 		}
-		if block.Type == "CERTIFICATE" {
+		if block.Type == "CERTIFICATE" || block.Type == "X509 CERTIFICATE" {
 			ders = append(ders, block.Bytes)
 		}
 	}
@@ -80,34 +82,53 @@ func certChainDER(content string) (ders [][]byte, ok bool) {
 // resulting diff proposes a destroy-and-recreate on every plan. Content that
 // does not parse as PEM falls back to a whitespace-insensitive comparison.
 func suppressPEMContentDiff(k, old, new string, d *schema.ResourceData) bool {
-	oldDER, oldOK := certChainDER(old)
-	newDER, newOK := certChainDER(new)
-	if !oldOK || !newOK {
-		return strings.TrimSpace(old) == strings.TrimSpace(new)
+	return sameCertChain(old, new)
+}
+
+func sameCertChain(a, b string) bool {
+	aDER, aOK := certChainDER(a)
+	bDER, bOK := certChainDER(b)
+	if !aOK || !bOK {
+		return strings.TrimSpace(a) == strings.TrimSpace(b)
 	}
-	if len(oldDER) != len(newDER) {
+	if len(aDER) != len(bDER) {
 		return false
 	}
-	for i := range oldDER {
-		if !bytes.Equal(oldDER[i], newDER[i]) {
+	for i := range aDER {
+		if !bytes.Equal(aDER[i], bDER[i]) {
 			return false
 		}
 	}
 	return true
 }
 
-// caCertsPEM reduces a downloaded bundle to its CA certificates, in order.
-// YBA's upload validation prepends the server certificate(s) to a
-// CustomServerCert's CA list in place (CertificateHelper.verifyCertificateConfig),
-// so /download returns server+CA while root_certificate holds the CA chain
-// only: stored verbatim it diffs forever and plans a replacement the in-use
-// guard blocks. YBA requires CA=true on every uploaded root member, so basic
-// constraints recover the chain exactly. A bundle that does not fully parse,
-// or has no CA member, is returned unchanged.
-func caCertsPEM(bundle string) string {
+// suppressSameServerChain compares server_certificate followed by
+// root_certificate, in config and in state, as one chain: YBA stores and
+// returns them as one chain, so the split between the two is not visible.
+func suppressSameServerChain(_, _, _ string, d *schema.ResourceData) bool {
+	oldServer, newServer := d.GetChange("server_certificate")
+	oldRoot, newRoot := d.GetChange("root_certificate")
+	return sameCertChain(oldServer.(string)+"\n"+oldRoot.(string),
+		newServer.(string)+"\n"+newRoot.(string))
+}
+
+// setServerChain writes a CustomServerCert download to server_certificate and
+// root_certificate. With upload validation on, the default, YBA puts the
+// server certificates in front of the CA chain
+// (CertificateHelper.verifyCertificateConfig); with it off, the download is
+// the CA chain alone. State that holds the downloaded chain in either form
+// stays as it is. Otherwise the leading certificates that are not CA
+// certificates go to server_certificate and the rest to root_certificate. A
+// bundle that does not parse, or has no CA certificate, goes to
+// root_certificate unchanged.
+func setServerChain(d *schema.ResourceData, bundle string) error {
+	stateServer := d.Get("server_certificate").(string)
+	stateRoot := d.Get("root_certificate").(string)
+	if sameCertChain(bundle, stateServer+"\n"+stateRoot) || sameCertChain(bundle, stateRoot) {
+		return nil
+	}
+	var server, root []byte
 	rest := []byte(bundle)
-	var kept []byte
-	found := false
 	for {
 		var block *pem.Block
 		block, rest = pem.Decode(rest)
@@ -119,17 +140,22 @@ func caCertsPEM(bundle string) string {
 		}
 		cert, err := x509.ParseCertificate(block.Bytes)
 		if err != nil {
-			return bundle
+			server, root = nil, nil
+			break
 		}
-		if cert.IsCA {
-			kept = append(kept, pem.EncodeToMemory(block)...)
-			found = true
+		if cert.IsCA || len(root) > 0 {
+			root = append(root, pem.EncodeToMemory(block)...)
+		} else {
+			server = append(server, pem.EncodeToMemory(block)...)
 		}
 	}
-	if !found {
-		return bundle
+	if len(root) == 0 {
+		server, root = nil, []byte(bundle)
 	}
-	return string(kept)
+	if err := d.Set("server_certificate", string(server)); err != nil {
+		return err
+	}
+	return d.Set("root_certificate", string(root))
 }
 
 // writeOnlyStringAttr reads a write-only string argument from the raw config.
@@ -228,12 +254,12 @@ func formatCertDate(t *time.Time) string {
 	return t.UTC().Format(time.RFC3339)
 }
 
-// readCertificateResource loads the certificate into state and exports the
-// downloaded root CA PEM into pemAttr, through pemFilter when non-nil.
-// Missing certificates clear the ID (out-of-band delete idempotency).
+// readCertificateResource loads the certificate into state and passes the
+// downloaded PEM to setPEM. Missing certificates clear the ID (out-of-band
+// delete idempotency).
 func readCertificateResource(
-	ctx context.Context, d *schema.ResourceData, meta interface{}, pemAttr string,
-	pemFilter func(string) string,
+	ctx context.Context, d *schema.ResourceData, meta interface{},
+	setPEM func(d *schema.ResourceData, pem string) error,
 ) diag.Diagnostics {
 	c := meta.(*api.APIClient).YugawareClient
 	cUUID := meta.(*api.APIClient).CustomerID
@@ -257,10 +283,7 @@ func readCertificateResource(
 	if err != nil {
 		return diag.FromErr(err)
 	}
-	if pemFilter != nil {
-		pem = pemFilter(pem)
-	}
-	if err = d.Set(pemAttr, pem); err != nil {
+	if err = setPEM(d, pem); err != nil {
 		return diag.FromErr(err)
 	}
 

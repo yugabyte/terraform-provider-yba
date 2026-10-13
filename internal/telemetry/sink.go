@@ -46,8 +46,9 @@ type sinkSpec struct {
 	description  string
 	notes        string
 	fields       map[string]*schema.Schema
-	// Returns YBA's camelCase config; sinkCreate adds "type".
-	buildConfig   func(d *schema.ResourceData) map[string]interface{}
+	// Maps each field to its dot-separated path in YBA's config. Create sends
+	// the fields that the configuration sets, and Read reads every field back.
+	configPaths   map[string]string
 	customizeDiff schema.CustomizeDiffFunc
 }
 
@@ -66,7 +67,7 @@ func sinkResource(s sinkSpec) *schema.Resource {
 			Description: "Tags that YBA adds as attributes to every record that a " +
 				"universe exports to this telemetry provider.",
 			Elem:             &schema.Schema{Type: schema.TypeString},
-			DiffSuppressFunc: suppressMaskedTag,
+			DiffSuppressFunc: suppressMaskedMapValue,
 		},
 	}
 	for k, v := range s.fields {
@@ -112,24 +113,38 @@ func sinkSharedNotes() string {
 		"deletes a telemetry provider, it removes the telemetry provider " +
 		"from every universe that uses it. Each of those universes goes " +
 		"through a rolling restart. The universes are not deleted.\n\n" +
-		"~> **Note:** Terraform reads back only `name` and `tags`. YBA cannot " +
-		"edit a telemetry provider after it creates one, so the other arguments " +
-		"change only when Terraform replaces the telemetry provider.\n\n" +
+		"~> **Note:** When YBA reads a telemetry provider, it masks the " +
+		"credentials, and the values of tags whose keys look like credentials, " +
+		"such as `api_owner`. When YBA returns the mask of the value in the " +
+		"state, Terraform keeps the value in the state.\n\n" +
 		"~> **Security Note:** Terraform stores the credentials of this " +
 		"telemetry provider in the state file, marked sensitive. Use a " +
 		"secure backend and restrict access to the state file."
 }
 
-// Omits "": YBA reads a missing key as its default, and "" pins the field.
-func setIfNonEmpty(out map[string]interface{}, key string, v interface{}) {
-	utils.SetIfNonEmpty(out, key, v)
-}
-
-// Omits false: a missing key keeps YBA's default, which can change; false pins it.
-func setIfTrue(out map[string]interface{}, key string, v interface{}) {
-	if b, ok := v.(bool); ok && b {
-		out[key] = b
+// buildSinkConfig returns YBA's config with each field that the configuration
+// sets at its path in paths. It omits "", false, 0 and an empty map: YBA reads
+// a missing key as its own default, which can change, and a sent value pins it.
+func buildSinkConfig(d *schema.ResourceData, paths map[string]string) map[string]interface{} {
+	out := map[string]interface{}{}
+	for field, path := range paths {
+		v, ok := d.GetOk(field)
+		if !ok {
+			continue
+		}
+		keys := strings.Split(path, ".")
+		m := out
+		for _, k := range keys[:len(keys)-1] {
+			next, ok := m[k].(map[string]interface{})
+			if !ok {
+				next = map[string]interface{}{}
+				m[k] = next
+			}
+			m = next
+		}
+		m[keys[len(keys)-1]] = v
 	}
+	return out
 }
 
 func sinkCreate(s sinkSpec) schema.CreateContextFunc {
@@ -137,7 +152,7 @@ func sinkCreate(s sinkSpec) schema.CreateContextFunc {
 		ctx context.Context, d *schema.ResourceData, meta interface{},
 	) diag.Diagnostics {
 		apiClient := meta.(*api.APIClient)
-		cfg := s.buildConfig(d)
+		cfg := buildSinkConfig(d, s.configPaths)
 		cfg["type"] = s.apiType
 
 		tags := map[string]string{}
@@ -170,8 +185,8 @@ func sinkCreate(s sinkSpec) schema.CreateContextFunc {
 	}
 }
 
-// Reads back only name and tags: YBA masks credentials, and every field is
-// ForceNew. A type mismatch (import into the wrong sink resource) errors.
+// Reads back every field that YBA returns. A type mismatch (import into the
+// wrong sink resource) errors.
 func sinkRead(s sinkSpec) schema.ReadContextFunc {
 	return func(
 		ctx context.Context, d *schema.ResourceData, meta interface{},
@@ -198,52 +213,70 @@ func sinkRead(s sinkSpec) schema.ReadContextFunc {
 		if err := d.Set("name", provider.Name); err != nil {
 			return diag.FromErr(err)
 		}
-		tags := unmaskTags(d.Get("tags").(map[string]interface{}), provider.Tags)
-		if err := d.Set("tags", tags); err != nil {
+		tags := make(map[string]interface{}, len(provider.Tags))
+		for k, v := range provider.Tags {
+			tags[k] = v
+		}
+		if err := d.Set("tags", unmask("tags", tags, d.Get("tags"))); err != nil {
 			return diag.FromErr(err)
+		}
+		for field, path := range s.configPaths {
+			v, ok := configValue(provider.Config, path)
+			if !ok {
+				continue // YBA omits an unset field
+			}
+			key := path[strings.LastIndex(path, ".")+1:]
+			if err := d.Set(field, unmask(key, v, d.Get(field))); err != nil {
+				return diag.FromErr(err)
+			}
 		}
 		return nil
 	}
 }
 
-// YBA masks values of credential-like tag keys (api_owner). Keeps the state
-// value, else ForceNew tags replace the provider on every apply.
-func unmaskTags(state map[string]interface{}, reported map[string]string) map[string]string {
-	tags := make(map[string]string, len(reported))
-	for k, v := range reported {
-		if s, ok := state[k].(string); ok && isYBAMaskOf(k, v, s) {
-			v = s
-		}
-		tags[k] = v
+func configValue(cfg map[string]interface{}, path string) (interface{}, bool) {
+	var v interface{} = cfg
+	for _, k := range strings.Split(path, ".") {
+		m, _ := v.(map[string]interface{})
+		v = m[k]
 	}
-	return tags
+	return v, v != nil
 }
 
-// Import (or an older provider) leaves masked values in state. Known gap: a
-// later change to a value with the same mask stays hidden.
-func suppressMaskedTag(k, oldValue, newValue string, _ *schema.ResourceData) bool {
+// unmask returns YBA's value with every string that YBA masked (credentials,
+// and keys such as api_owner) replaced by the state value it masks: else the
+// ForceNew field replaces the provider on every apply. JSON numbers become
+// ints for TypeInt fields.
+func unmask(key string, v, state interface{}) interface{} {
+	switch v := v.(type) {
+	case string:
+		if s, ok := state.(string); ok && utils.IsYBAMaskOf(key, v, s) {
+			return s
+		}
+	case map[string]interface{}:
+		stateMap, _ := state.(map[string]interface{})
+		out := make(map[string]interface{}, len(v))
+		for k, e := range v {
+			out[k] = unmask(k, e, stateMap[k])
+		}
+		return out
+	case float64:
+		return int(v)
+	}
+	return v
+}
+
+// suppressMaskedMapValue hides the diff of a map value (tags, headers) that YBA
+// masks because its key looks like a credential: import (or an older
+// provider) leaves the mask in state. Known gap: a later change to a value with
+// the same mask stays hidden.
+func suppressMaskedMapValue(k, oldValue, newValue string, _ *schema.ResourceData) bool {
 	if strings.HasSuffix(k, ".%") || newValue == "" || oldValue == newValue {
 		return false
 	}
-	return isYBAMaskOf(strings.TrimPrefix(k, "tags."), oldValue, newValue)
-}
-
-// Mirrors YBA's CommonUtils.getMaskedValue.
-func isYBAMaskOf(key, masked, value string) bool {
-	v := []rune(value)
-	if strings.Contains(strings.ToUpper(key), "PASSWORD") || len(v) < 5 {
-		return masked == "********"
-	}
-	m := []rune(masked)
-	if len(m) != len(v) {
-		return false
-	}
-	for i := range m {
-		if m[i] != v[i] && (m[i] != '*' || i < 2 || i >= len(v)-2) {
-			return false
-		}
-	}
-	return true
+	// k is "<attribute>.<map key>"; the map key can contain dots.
+	_, key, _ := strings.Cut(k, ".")
+	return utils.IsYBAMaskOf(key, oldValue, newValue)
 }
 
 // Detaches first: YBA rejects deleting an in-use provider. A rejected delete

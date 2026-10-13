@@ -22,3 +22,8 @@ for the global scope:
 ```sh
 terraform import yba_runtime_config.allow_s3 00000000-0000-0000-0000-000000000000/yb.telemetry.allow_s3
 ```
+
+YugabyteDB Anywhere masks the value of a secret key, such as
+`yb.security.ldap.ldap_service_account_password`, when it reads the key. Import writes that
+mask to `sensitive_value`, so the first plan after the import shows one in-place update, and
+the apply sets the value from your configuration.

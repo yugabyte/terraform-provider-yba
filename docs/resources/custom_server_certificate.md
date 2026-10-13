@@ -18,7 +18,7 @@ To rotate to a server certificate that the same CA re-issued, change `label`, `s
 
 ~> **Note:** `server_key` is a write-only argument: Terraform never stores it in the plan or the state file, so this resource requires Terraform 1.11 or later. Terraform cannot detect a change to `server_key` alone, so change it together with `server_certificate`, which forces replacement. YugabyteDB Anywhere checks at upload that the server certificate and the key match, unless the customer runtime configuration `yb.tls.enable_config_validation` is `false`.
 
-~> **Note:** YugabyteDB Anywhere never returns `server_certificate`, so after `terraform import` the next plan proposes a replacement. The Import section below shows how to keep the imported certificate.
+~> **Note:** YugabyteDB Anywhere returns `server_certificate` and `root_certificate` as one chain: the server certificate first, then the CA certificates. Terraform compares the two arguments as that chain, so an intermediate CA certificate can be at the end of `server_certificate` or at the start of `root_certificate`. Terraform does not detect an edit that only moves an intermediate CA certificate from one argument to the other. To apply such an edit, also change `label`.
 
 Use the certificate in a universe through `client_root_ca` only. The
 [Certificate Rotation](../guides/universe-edit-actions.md#certificate-rotation) section of the
@@ -55,8 +55,8 @@ resource "yba_custom_server_certificate" "c2n" {
 > **NOTE**: [Write-only arguments](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments) are supported in Terraform 1.11 and later.
 
 - `label` (String) Name of the certificate configuration in YugabyteDB Anywhere. Must be unique per customer. A change forces replacement.
-- `root_certificate` (String) Root CA certificate in PEM format, inline or from `file(...)`. Clients use it to verify the server certificate. Every certificate in it must be a CA certificate. A change forces replacement.
-- `server_certificate` (String) Server certificate in PEM format, signed by the root CA, inline or from `file(...)`. YugabyteDB Anywhere places it on every node for client-to-node encryption. YugabyteDB Anywhere never returns it, so an imported resource plans a replacement (see Import). A change forces replacement.
+- `root_certificate` (String) Root CA certificate in PEM format, inline or from `file(...)`. Clients use it to verify the server certificate. Every certificate in it must be a CA certificate, so it can start with intermediate CA certificates. A change forces replacement.
+- `server_certificate` (String) Server certificate in PEM format, signed by the root CA, inline or from `file(...)`. It can end with intermediate CA certificates. YugabyteDB Anywhere places it on every node for client-to-node encryption. A change forces replacement.
 - `server_key` (String, Sensitive, [Write-only](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments)) Private key of the server certificate in PEM format, inline, from `file(...)`, or from an ephemeral value. It must be an RSA key of 2048 bits or more. Write-only: Terraform never stores it in the plan or state, and it requires Terraform 1.11 or later.
 
 ### Optional
@@ -88,18 +88,18 @@ Import a custom server certificate configuration with its UUID:
 terraform import yba_custom_server_certificate.c2n <certificate-uuid>
 ```
 
-YugabyteDB Anywhere never returns `server_certificate` or `server_key`, so they stay empty
-after import. Because `server_certificate` is required and forces replacement, the next plan
-proposes to replace the imported certificate, and the replacement fails while a universe uses
-the certificate. To keep the imported certificate, ignore the argument that import cannot
-recover:
+YugabyteDB Anywhere returns `server_certificate` and `root_certificate` as one chain, and
+import splits it before the first CA certificate. Terraform compares the two arguments as one
+chain, so with the configuration that created the certificate, the plan after import is clean,
+whichever argument holds the intermediate CA certificates. `server_key` is write-only, so
+import does not set it.
+
+When the customer runtime configuration `yb.tls.enable_config_validation` was `false` at
+upload, the chain that YugabyteDB Anywhere returns holds only the CA certificates, and import
+cannot recover `server_certificate`. To keep such a certificate, ignore that argument:
 
 ```terraform
 lifecycle {
   ignore_changes = [server_certificate]
 }
 ```
-
-Remove the `ignore_changes` entry when you rotate to a re-issued certificate. Or do not
-import: create the certificate again from the original files, and the plan is clean from the
-start.

@@ -63,15 +63,12 @@ func ResourceSplunkTelemetryProvider() *schema.Resource {
 				Description: "Splunk index that receives the events.",
 			},
 		},
-		buildConfig: func(d *schema.ResourceData) map[string]interface{} {
-			out := map[string]interface{}{
-				"endpoint": d.Get("endpoint"),
-				"token":    d.Get("token"),
-			}
-			setIfNonEmpty(out, "source", d.Get("source"))
-			setIfNonEmpty(out, "sourceType", d.Get("source_type"))
-			setIfNonEmpty(out, "index", d.Get("index"))
-			return out
+		configPaths: map[string]string{
+			"endpoint":    "endpoint",
+			"token":       "token",
+			"source":      "source",
+			"source_type": "sourceType",
+			"index":       "index",
 		},
 	})
 }

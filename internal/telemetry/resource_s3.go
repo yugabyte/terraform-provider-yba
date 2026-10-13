@@ -67,6 +67,7 @@ func ResourceS3TelemetryProvider() *schema.Resource {
 			"directory_prefix": {
 				Type:     schema.TypeString,
 				Optional: true,
+				Computed: true,
 				ForceNew: true,
 				Description: "Root directory in the bucket for the objects. " +
 					"YBA uses `yb-logs/` when this is not set.",
@@ -74,6 +75,7 @@ func ResourceS3TelemetryProvider() *schema.Resource {
 			"file_prefix": {
 				Type:     schema.TypeString,
 				Optional: true,
+				Computed: true,
 				ForceNew: true,
 				Description: "Prefix of each object name. YBA uses `yb-otel-` " +
 					"when this is not set.",
@@ -94,6 +96,7 @@ func ResourceS3TelemetryProvider() *schema.Resource {
 			"partition": {
 				Type:     schema.TypeString,
 				Optional: true,
+				Computed: true,
 				ForceNew: true,
 				ValidateFunc: validation.StringInSlice(
 					[]string{"hour", "minute"},
@@ -105,6 +108,7 @@ func ResourceS3TelemetryProvider() *schema.Resource {
 			"marshaler": {
 				Type:     schema.TypeString,
 				Optional: true,
+				Computed: true,
 				ForceNew: true,
 				Description: "Format of the objects: `OTLP_JSON` or `SUMO_IC`. " +
 					"YBA uses `OTLP_JSON` when this is not set.",
@@ -133,24 +137,20 @@ func ResourceS3TelemetryProvider() *schema.Resource {
 					"of each object. Defaults to `false`.",
 			},
 		},
-		buildConfig: func(d *schema.ResourceData) map[string]interface{} {
-			out := map[string]interface{}{
-				"bucket":    d.Get("bucket"),
-				"region":    d.Get("region"),
-				"accessKey": d.Get("access_key"),
-				"secretKey": d.Get("secret_key"),
-			}
-			setIfNonEmpty(out, "directoryPrefix", d.Get("directory_prefix"))
-			setIfNonEmpty(out, "filePrefix", d.Get("file_prefix"))
-			setIfNonEmpty(out, "endpoint", d.Get("endpoint"))
-			setIfNonEmpty(out, "roleArn", d.Get("role_arn"))
-			setIfNonEmpty(out, "partition", d.Get("partition"))
-			setIfNonEmpty(out, "marshaler", d.Get("marshaler"))
-			setIfTrue(out, "disableSSL", d.Get("disable_ssl"))
-			setIfTrue(out, "forcePathStyle", d.Get("force_path_style"))
-			setIfTrue(out, "includeUniverseAndNodeInPrefix",
-				d.Get("include_universe_and_node_in_prefix"))
-			return out
+		configPaths: map[string]string{
+			"bucket":                              "bucket",
+			"region":                              "region",
+			"access_key":                          "accessKey",
+			"secret_key":                          "secretKey",
+			"directory_prefix":                    "directoryPrefix",
+			"file_prefix":                         "filePrefix",
+			"endpoint":                            "endpoint",
+			"role_arn":                            "roleArn",
+			"partition":                           "partition",
+			"marshaler":                           "marshaler",
+			"disable_ssl":                         "disableSSL",
+			"force_path_style":                    "forcePathStyle",
+			"include_universe_and_node_in_prefix": "includeUniverseAndNodeInPrefix",
 		},
 	})
 }

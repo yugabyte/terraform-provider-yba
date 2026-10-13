@@ -26,18 +26,18 @@ Import a custom server certificate configuration with its UUID:
 terraform import yba_custom_server_certificate.c2n <certificate-uuid>
 ```
 
-YugabyteDB Anywhere never returns `server_certificate` or `server_key`, so they stay empty
-after import. Because `server_certificate` is required and forces replacement, the next plan
-proposes to replace the imported certificate, and the replacement fails while a universe uses
-the certificate. To keep the imported certificate, ignore the argument that import cannot
-recover:
+YugabyteDB Anywhere returns `server_certificate` and `root_certificate` as one chain, and
+import splits it before the first CA certificate. Terraform compares the two arguments as one
+chain, so with the configuration that created the certificate, the plan after import is clean,
+whichever argument holds the intermediate CA certificates. `server_key` is write-only, so
+import does not set it.
+
+When the customer runtime configuration `yb.tls.enable_config_validation` was `false` at
+upload, the chain that YugabyteDB Anywhere returns holds only the CA certificates, and import
+cannot recover `server_certificate`. To keep such a certificate, ignore that argument:
 
 ```terraform
 lifecycle {
   ignore_changes = [server_certificate]
 }
 ```
-
-Remove the `ignore_changes` entry when you rotate to a re-issued certificate. Or do not
-import: create the certificate again from the original files, and the plan is clean from the
-start.
