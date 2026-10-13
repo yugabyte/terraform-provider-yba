@@ -21,7 +21,9 @@
 package ear
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -101,7 +103,8 @@ func parseEARConfig(raw map[string]interface{}) (earConfig, bool) {
 
 // listEARConfigs returns every configuration of the customer. This is the only
 // endpoint that carries a configuration's name and provider; the by-UUID GET
-// returns the raw settings with credentials in clear and is never used here.
+// returns the raw settings with credentials in clear, and only editSaved uses
+// it.
 func listEARConfigs(
 	ctx context.Context, c *client.APIClient, cUUID string,
 ) ([]earConfig, error) {
@@ -211,6 +214,34 @@ func editEARConfig(
 	return utils.WaitForTask(ctx, task.GetTaskUUID(), cUUID, c, timeout)
 }
 
+// editSaved reports whether YBA holds every setting that a failed edit sent,
+// that is, whether YBA saved the edit before the step that failed. YBA saves
+// the merged edit body unchanged, so the JSON forms match. The by-UUID GET
+// returns credentials in clear; they are only compared, never logged or
+// stored.
+func editSaved(
+	ctx context.Context, c *api.APIClient, configUUID string, sent map[string]interface{},
+) (bool, error) {
+	stored, err := c.VanillaClient.GetKMSConfig(ctx, c.CustomerID, configUUID, c.APIKey)
+	if err != nil {
+		return false, err
+	}
+	for k, v := range sent {
+		want, err := json.Marshal(v)
+		if err != nil {
+			return false, err
+		}
+		got, err := json.Marshal(stored[k])
+		if err != nil {
+			return false, err
+		}
+		if !bytes.Equal(want, got) {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
 // resourceEARConfigDelete is the DeleteContext shared by every provider's
 // resource. A configuration that is already gone succeeds. A configuration
 // with key history fails before the API call: YBA accepts the delete request
@@ -272,7 +303,8 @@ type earSpec struct {
 	fields      map[string]*schema.Schema
 	// credentialFields are the arguments that carry or select the
 	// credential. Read cannot restore them from the server (the list masks
-	// secrets), so earUpdate sets them on failure.
+	// secrets), so earUpdate reverts them when an edit fails and YBA did not
+	// save it.
 	credentialFields []string
 	// buildCreate maps the resource arguments onto YBA's authConfig keys for
 	// the create body. The factory adds the name.
@@ -429,11 +461,11 @@ func earRead(s earSpec) schema.ReadContextFunc {
 }
 
 // earUpdate is reached only for the arguments YBA lets an edit change: every
-// other argument is ForceNew. A failed build reverts the credential fields,
-// because nothing was sent. A failed edit clears them, because YBA may have
-// stored the edit (see editEARConfig): the next plan then shows a change for a
-// configured credential, and the next apply sends it again. The deferred Read
-// refreshes the rest.
+// other argument is ForceNew. After a failed edit, the credential fields hold
+// what YBA holds: the new values when YBA saved the edit before the step that
+// failed (see editEARConfig), and the prior values when it did not, or when
+// editSaved cannot tell. The next plan then shows what an apply changes. The
+// deferred Read refreshes the rest.
 func earUpdate(s earSpec) schema.UpdateContextFunc {
 	return func(
 		ctx context.Context, d *schema.ResourceData, meta interface{},
@@ -459,10 +491,17 @@ func earUpdate(s earSpec) schema.UpdateContextFunc {
 			s.displayName, d.Id()))
 		if err := editEARConfig(ctx, apiClient.YugawareClient, apiClient.CustomerID, d.Id(),
 			settings, d.Timeout(schema.TimeoutUpdate)); err != nil {
-			for _, f := range s.credentialFields {
-				_ = d.Set(f, nil)
+			diags = diag.FromErr(err)
+			saved, getErr := editSaved(ctx, apiClient, d.Id(), settings)
+			if getErr != nil {
+				diags = append(diags, diag.Errorf(
+					"encryption at rest config %s: read the stored settings after the failed "+
+						"edit: %v", d.Id(), getErr)...)
 			}
-			return diag.FromErr(err)
+			if !saved {
+				utils.RevertFields(d, s.credentialFields...)
+			}
+			return diags
 		}
 		return s.successWarnings(d)
 	}

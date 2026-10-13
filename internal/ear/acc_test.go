@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -220,7 +221,8 @@ const (
 // edit, so each edit step fails when YBA cannot authenticate. The switch runs
 // on imported state, which has no client_secret: it must still remove the
 // secret that YBA stores, or YBA authenticates with that secret and the
-// managed identity's client ID.
+// managed identity's client ID. Last, a rotation to a wrong secret fails after
+// YBA saved it, and a return to the right secret must send it again.
 func TestAccAzureEARConfig(t *testing.T) {
 	rName := acctest.RandomName("azure-ear")
 	res := "yba_azure_ear_config.test"
@@ -241,7 +243,7 @@ func TestAccAzureEARConfig(t *testing.T) {
 		CheckDestroy:      testAccCheckEARConfigDestroy("AZURE"),
 		Steps: []resource.TestStep{
 			{
-				Config: testAccAzureEARConfig(rName, true),
+				Config: testAccAzureEARConfig(rName, azureSecret),
 				Check: resource.ComposeTestCheckFunc(
 					testAccCheckEARConfigExists("AZURE", res),
 					resource.TestCheckResourceAttr(res, "key_size", "2048"),
@@ -264,14 +266,14 @@ func TestAccAzureEARConfig(t *testing.T) {
 				Config: testAccEARConfigRemoved("AZURE"),
 			},
 			{
-				Config:             testAccAzureEARConfig(rName, true),
+				Config:             testAccAzureEARConfig(rName, azureSecret),
 				ResourceName:       res,
 				ImportState:        true,
 				ImportStateIdFunc:  func(*terraform.State) (string, error) { return configUUID, nil },
 				ImportStatePersist: true,
 			},
 			{
-				Config: testAccAzureEARConfig(rName, false) +
+				Config: testAccAzureEARConfig(rName, "") +
 					testAccEARConfigDataSource("yba_azure_ear_config"),
 				Check: resource.ComposeTestCheckFunc(
 					// Same UUID: the switch is an edit, not a replacement.
@@ -283,11 +285,44 @@ func TestAccAzureEARConfig(t *testing.T) {
 				),
 			},
 			{
-				Config: testAccAzureEARConfig(rName, true),
+				Config: testAccAzureEARConfig(rName, azureSecret),
 				Check:  resource.TestCheckResourceAttrPtr(res, "id", &configUUID),
+			},
+			{
+				// The edit task fails, after YBA saved the wrong secret.
+				Config:      testAccAzureEARConfig(rName, azureWrongSecret),
+				ExpectError: regexp.MustCompile(`State: Failure`),
+			},
+			{
+				// State holds the wrong secret, so the return to the right one
+				// plans a change and sends it.
+				Config: testAccAzureEARConfig(rName, azureSecret),
+				Check:  testAccCheckAzureEARSecret(res),
 			},
 		},
 	})
+}
+
+// testAccCheckAzureEARSecret checks that YBA holds the configured client
+// secret. The list masks it, so the check reads the by-UUID GET. Its error
+// never shows the secret.
+func testAccCheckAzureEARSecret(name string) resource.TestCheckFunc {
+	return func(s *terraform.State) error {
+		apiClient, err := acctest.APIClientForCloud("AZURE")
+		if err != nil {
+			return err
+		}
+		id := s.RootModule().Resources[name].Primary.ID
+		stored, err := apiClient.VanillaClient.GetKMSConfig(context.Background(),
+			apiClient.CustomerID, id, apiClient.APIKey)
+		if err != nil {
+			return err
+		}
+		if stored["CLIENT_SECRET"] != os.Getenv("TF_VAR_AZURE_CLIENT_SECRET") {
+			return fmt.Errorf("encryption at rest config %s: YBA holds another client secret", id)
+		}
+		return nil
+	}
 }
 
 func testAccCheckEARConfigExists(cloud, name string) resource.TestCheckFunc {
@@ -426,15 +461,22 @@ resource "yba_aws_ear_config" "test" {
 `, name, auth)
 }
 
-// testAccAzureEARConfig authenticates with the fixture's service principal,
-// or as the managed identity of the YBA VM when withSecret is false.
-func testAccAzureEARConfig(name string, withSecret bool) string {
+// HCL values for the client_secret of testAccAzureEARConfig: the service
+// principal's secret, or a wrong one.
+const (
+	azureSecret      = "var.AZURE_CLIENT_SECRET"
+	azureWrongSecret = `"not-the-client-secret"`
+)
+
+// testAccAzureEARConfig authenticates as the fixture's service principal with
+// secret, or as the managed identity of the YBA VM when secret is "".
+func testAccAzureEARConfig(name, secret string) string {
 	auth := `
   client_id = var.AZURE_YBA_IDENTITY_CLIENT_ID`
-	if withSecret {
+	if secret != "" {
 		auth = `
   client_id     = var.AZURE_CLIENT_ID
-  client_secret = var.AZURE_CLIENT_SECRET`
+  client_secret = ` + secret
 	}
 	return acctest.YBAProviderBlock("AZURE") + fmt.Sprintf(`
 variable "AZURE_CLIENT_ID" {

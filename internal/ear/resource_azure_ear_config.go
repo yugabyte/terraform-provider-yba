@@ -176,12 +176,9 @@ func azureBuildCreate(d *schema.ResourceData) (map[string]interface{}, error) {
 // TENANT_ID that the body leaves out, so an empty string is how the secret is
 // removed: without a secret, YBA authenticates as the host. A configured
 // secret goes only when it changed, so a client_id or tenant_id change does
-// not overwrite a secret changed outside Terraform; after a failed edit,
-// earUpdate clears the secret in state, so the next edit sends it. Without a
-// configured secret, the empty string always goes: state cannot show a secret
-// that YBA still stores (after an import, or after a failed edit, which YBA
-// stores before it checks the credentials), and YBA uses a stored secret with
-// any client_id.
+// not overwrite a secret changed outside Terraform. Without a configured
+// secret, the empty string always goes: imported state cannot show a secret
+// that YBA stores, and YBA uses a stored secret with any client_id.
 func azureBuildEdit(d *schema.ResourceData) (map[string]interface{}, error) {
 	settings := map[string]interface{}{
 		azureKeyClientID: d.Get("client_id").(string),

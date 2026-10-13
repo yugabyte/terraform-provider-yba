@@ -109,6 +109,26 @@ func azureConfig(clientID, secret string) map[string]interface{} {
 	return raw
 }
 
+// awsState is an access-key configuration with the secret key "old".
+var awsState = map[string]string{
+	"name": "kms", "region": "us-west-2", "cmk_id": "key", "access_key_id": "AKIA",
+	"secret_access_key": "old", "kms_endpoint": "kms-a.example.com",
+}
+
+// awsConfig is the configuration of awsState, with its keys or without them
+// (the host identity), and with endpoint unless it is empty.
+func awsConfig(keys bool, endpoint string) map[string]interface{} {
+	raw := map[string]interface{}{"name": "kms", "region": "us-west-2", "cmk_id": "key"}
+	if keys {
+		raw["access_key_id"] = "AKIA"
+		raw["secret_access_key"] = "old"
+	}
+	if endpoint != "" {
+		raw["kms_endpoint"] = endpoint
+	}
+	return raw
+}
+
 // plannedData returns the ResourceData that Update gets for a plan from the
 // state attrs to the configuration raw.
 func plannedData(
@@ -141,21 +161,6 @@ var absent = struct{}{}
 // a configured secret: imported state has no secret, so a change does not
 // show, while YBA may still store one.
 func TestEARBuildEditSecretRule(t *testing.T) {
-	awsState := map[string]string{
-		"name": "kms", "region": "us-west-2", "cmk_id": "key", "access_key_id": "AKIA",
-		"secret_access_key": "old", "kms_endpoint": "kms-a.example.com",
-	}
-	awsConfig := func(keys bool, endpoint string) map[string]interface{} {
-		raw := map[string]interface{}{"name": "kms", "region": "us-west-2", "cmk_id": "key"}
-		if keys {
-			raw["access_key_id"] = "AKIA"
-			raw["secret_access_key"] = "old"
-		}
-		if endpoint != "" {
-			raw["kms_endpoint"] = endpoint
-		}
-		return raw
-	}
 	importedAzureState := map[string]string{}
 	for k, v := range azureState {
 		importedAzureState[k] = v
