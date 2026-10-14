@@ -178,9 +178,11 @@ func New() *schema.Provider {
 			"yba_hook": hooks.ResourceHook(),
 			// Encryption-at-rest configurations, one resource per key management
 			// service. Universes attach one through their encryption_at_rest block.
-			"yba_aws_ear_config":   ear.ResourceAWSEARConfig(),
-			"yba_azure_ear_config": ear.ResourceAzureEARConfig(),
-			"yba_gcp_ear_config":   ear.ResourceGCPEARConfig(),
+			"yba_aws_ear_config":             ear.ResourceAWSEARConfig(),
+			"yba_azure_ear_config":           ear.ResourceAzureEARConfig(),
+			"yba_ciphertrust_ear_config":     ear.ResourceCipherTrustEARConfig(),
+			"yba_gcp_ear_config":             ear.ResourceGCPEARConfig(),
+			"yba_hashicorp_vault_ear_config": ear.ResourceHashicorpVaultEARConfig(),
 		},
 		ConfigureContextFunc: providerConfigure,
 	}

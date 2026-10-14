@@ -223,7 +223,10 @@ failure this project can ship.
 
 - Nothing published from this repo (`Description` strings, `docs/`,
   `templates/`, `examples/`) names an internal ticket or warns that a feature
-  is broken. Docs describe supported behaviour.
+  is broken. Docs describe supported behaviour. A YBA bug that customers have
+  lived with for many releases, and the setting that works around it (a
+  permission, a policy path), stay out of the docs too; a code or test
+  comment records the bug.
 - A version in published docs is a stable release (`2026.1.2.0`), the only
   official kind of YBA release. Preview versions (`2.31.0.0`) and `-bN`
   builds are internal: the code may gate on them, the docs never show them.

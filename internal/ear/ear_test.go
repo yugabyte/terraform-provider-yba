@@ -26,6 +26,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	client "github.com/yugabyte/platform-go-client"
 
 	"github.com/yugabyte/terraform-provider-yba/internal/api"
@@ -48,6 +49,8 @@ type fakeYBA struct {
 	// savedConfig answers the by-UUID GET: the stored settings with
 	// credentials in clear. "" answers 500.
 	savedConfig string
+	// runtimeFlags answers the global runtime config GET of each key.
+	runtimeFlags map[string]string
 }
 
 func (f *fakeYBA) handler(t *testing.T) http.HandlerFunc {
@@ -58,7 +61,16 @@ func (f *fakeYBA) handler(t *testing.T) http.HandlerFunc {
 		switch {
 		case r.Method == http.MethodGet && strings.HasSuffix(path, "/kms_configs"):
 			_, _ = w.Write([]byte(f.listBody))
-		case r.Method == http.MethodPost && strings.HasSuffix(path, "/kms_configs/GCP"):
+		case r.Method == http.MethodGet && strings.Contains(path, "/runtime_config/"):
+			key := path[strings.LastIndex(path, "/key/")+len("/key/"):]
+			v, ok := f.runtimeFlags[key]
+			if !ok {
+				t.Errorf("unexpected runtime config key %q", key)
+			}
+			w.Header().Set("Content-Type", "text/plain")
+			_, _ = w.Write([]byte(v))
+		case r.Method == http.MethodPost && strings.Contains(path, "/kms_configs/") &&
+			!strings.HasSuffix(path, "/edit"):
 			body, _ := io.ReadAll(r.Body)
 			if err := json.Unmarshal(body, &f.createBody); err != nil {
 				t.Errorf("create body is not a JSON object: %s", body)
@@ -194,7 +206,7 @@ func TestDeleteEARConfigInUseFailsBeforeAPICall(t *testing.T) {
 	d := ResourceGCPEARConfig().TestResourceData()
 	d.SetId(testConfigUUID)
 
-	diags := resourceEARConfigDelete(context.Background(), d, f.apiClient(t))
+	diags := earDelete(gcpEARSpec())(context.Background(), d, f.apiClient(t))
 	if !diags.HasError() {
 		t.Fatal("expected an error for a config with key history")
 	}
@@ -217,7 +229,7 @@ func TestDeleteEARConfigAlreadyGone(t *testing.T) {
 	d := ResourceGCPEARConfig().TestResourceData()
 	d.SetId(testConfigUUID)
 
-	if diags := resourceEARConfigDelete(context.Background(), d, f.apiClient(t)); diags.HasError() {
+	if diags := earDelete(gcpEARSpec())(context.Background(), d, f.apiClient(t)); diags.HasError() {
 		t.Fatalf("delete of a missing config must succeed, got %v", diags)
 	}
 	if f.deleteCalled {
@@ -225,6 +237,41 @@ func TestDeleteEARConfigAlreadyGone(t *testing.T) {
 	}
 	if d.Id() != "" {
 		t.Error("ID must be cleared")
+	}
+}
+
+// YBA rejects every write of a CipherTrust configuration while its runtime
+// flag is false. The resource reads the flag first, so neither a create nor a
+// delete is sent.
+func TestEARRuntimeFlagBlocksWrites(t *testing.T) {
+	f := &fakeYBA{
+		listBody: listOf(listEntry(testConfigUUID, "ct", providerCipherTrust, false,
+			`{"AUTH_TYPE": "PASSWORD", "USERNAME": "yba", "KEY_NAME": "yb-key"}`)),
+		runtimeFlags: map[string]string{ctAllowFlag: "false"},
+	}
+	c := f.apiClient(t)
+	spec := cipherTrustEARSpec()
+	res := earResource(spec)
+
+	create := schema.TestResourceDataRaw(t, res.Schema, ctConfig(map[string]interface{}{
+		"username": "yba", "password": "pw",
+	}))
+	diags := earCreate(spec)(context.Background(), create, c)
+	if !diags.HasError() || !strings.Contains(diags[0].Summary, ctAllowFlag) {
+		t.Errorf("create: want an error that names %s, got %v", ctAllowFlag, diags)
+	}
+	if f.createBody != nil {
+		t.Error("create must not be sent while the flag is false")
+	}
+
+	del := res.TestResourceData()
+	del.SetId(testConfigUUID)
+	diags = earDelete(spec)(context.Background(), del, c)
+	if !diags.HasError() || !strings.Contains(diags[0].Summary, ctAllowFlag) {
+		t.Errorf("delete: want an error that names %s, got %v", ctAllowFlag, diags)
+	}
+	if f.deleteCalled || del.Id() != testConfigUUID {
+		t.Error("delete must not be sent while the flag is false, and state must keep the ID")
 	}
 }
 
