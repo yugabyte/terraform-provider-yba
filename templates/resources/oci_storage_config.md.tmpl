@@ -1,0 +1,34 @@
+---
+page_title: "{{.Name}} {{.Type}} - {{.RenderedProviderName}}"
+description: |-
+{{ index (split (trimspace .Description) "\n\n") 0 | plainmarkdown | trimspace | prefixlines "  " }}
+---
+
+# {{.Name}} ({{.Type}})
+
+{{ .Description | trimspace }}
+
+The `yba_backup`, `yba_backup_schedule`, and `yba_restore` resources reference storage
+configurations via the `storage_config_uuid` attribute.
+
+For more details, see the [YugabyteDB Anywhere Configure Storage documentation](https://docs.yugabyte.com/stable/yugabyte-platform/back-up-restore-universes/configure-backup-storage/).
+
+## Example Usage
+
+{{ tffile "examples/resources/yba_oci_storage_config/resource.tf" }}
+
+{{ .SchemaMarkdown | trimspace }}
+
+## Import
+
+OCI storage configurations can be imported using the configuration UUID.
+
+`access_key_id` and `secret_access_key` are write-only, so they are not in
+state after import. An instance-principal configuration plans cleanly. A
+Customer Secret Key configuration plans cleanly when those arguments are still
+in the configuration; Terraform sends them again on the next apply and does
+not store them.
+
+```sh
+terraform import yba_oci_storage_config.example <config-uuid>
+```
