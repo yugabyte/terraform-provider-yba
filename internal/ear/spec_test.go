@@ -41,8 +41,10 @@ var earResources = map[string]struct {
 }
 
 // Shared guardrails for every EAR resource. The shared docs note says that
-// only the arguments whose description says so can change in place, and that
-// a change to any other argument forces replacement; ForceNew must agree.
+// only the arguments whose description says so can change in place, that
+// Terraform ignores a change after creation to the arguments whose
+// description says that, and that a change to any other argument forces
+// replacement; the schema must agree.
 func TestEARConfigGuardrails(t *testing.T) {
 	for name, tc := range earResources {
 		t.Run(name, func(t *testing.T) {
@@ -85,6 +87,18 @@ func TestEARConfigGuardrails(t *testing.T) {
 				}
 				inPlace := strings.Contains(s.Description, "change in place")
 				replaces := strings.Contains(s.Description, "forces replacement")
+				if strings.Contains(s.Description, "ignores a change to this argument after "+
+					"creation") {
+					created := res.TestResourceData()
+					created.SetId(testConfigUUID)
+					if s.DiffSuppressFunc == nil || inPlace || replaces ||
+						!s.DiffSuppressFunc(field, "a", "b", created) ||
+						s.DiffSuppressFunc(field, "a", "b", res.TestResourceData()) {
+						t.Errorf("%s: the Description says Terraform ignores a change after "+
+							"creation, so a diff must show on create only", field)
+					}
+					continue
+				}
 				if s.ForceNew != replaces || s.ForceNew == inPlace {
 					t.Errorf("%s: ForceNew = %t, but the Description says it can change in "+
 						"place: %t, forces replacement: %t", field, s.ForceNew, inPlace, replaces)
@@ -208,14 +222,16 @@ func withState(base, overrides map[string]string) map[string]string {
 	return out
 }
 
-// Every edit merge keeps a stored credential that the body leaves out. So a
-// secret goes only when the configuration changes it, or changes the
-// authentication mode, and a configuration without a secret clears it with
-// "". For Azure, "" goes on every edit without a configured secret: imported
-// state has no secret, so a change does not show, while YBA may still store
-// one. A mode that YBA holds after a change outside Terraform shows in a
-// non-secret attribute (Vault role_id, CipherTrust auth_type), and the edit
-// back sends the secret.
+// YBA's AWS and AZU edit merges keep a stored key that the body leaves out.
+// So a secret goes only when the configuration changes it, and a configuration
+// without a secret clears it with "". For Azure, "" goes on every edit without
+// a configured secret: imported state has no secret, so a change does not
+// show, while YBA may still store one. The HASHICORP and CIPHERTRUST merges
+// copy stored credentials into a body that leaves them out, and replace the
+// stored configuration, which drops the other mode's credentials. So a secret
+// goes when it or the mode changes. A mode that YBA holds after a change
+// outside Terraform shows in a non-secret attribute (Vault role_id,
+// CipherTrust auth_type), and the edit back sends the secret.
 func TestEARBuildEditSecretRule(t *testing.T) {
 	importedAzureState := map[string]string{}
 	for k, v := range azureState {

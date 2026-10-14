@@ -163,15 +163,18 @@ func gcpEARSpec() earSpec {
 					"replacement.",
 			},
 			"protection_level": {
-				Type:         schema.TypeString,
-				Optional:     true,
-				Computed:     true,
-				ForceNew:     true,
-				ValidateFunc: validation.StringInSlice(gcpProtectionLevels, false),
+				Type:             schema.TypeString,
+				Optional:         true,
+				Computed:         true,
+				ForceNew:         true,
+				ValidateFunc:     validation.StringInSlice(gcpProtectionLevels, false),
+				DiffSuppressFunc: ignoreAfterCreate,
 				Description: "`SOFTWARE` or `HSM`: the protection level of a crypto key that " +
-					"YugabyteDB Anywhere creates, `SOFTWARE` when not set. For an existing " +
-					"key, YugabyteDB Anywhere records the key's actual level, so leave this " +
-					"unset or set it to that level. A change forces replacement.",
+					"YugabyteDB Anywhere creates, `SOFTWARE` when not set. YugabyteDB Anywhere " +
+					"uses it only when it creates the crypto key. For an existing key, this " +
+					"attribute returns the key's actual level. A crypto key cannot change its " +
+					"protection level, so Terraform ignores a change to this argument after " +
+					"creation.",
 			},
 			"kms_endpoint": {
 				Type:     schema.TypeString,

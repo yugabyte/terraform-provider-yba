@@ -71,8 +71,9 @@ func TestAccGCPEARConfig_ServiceAccount(t *testing.T) {
 					resource.TestCheckResourceAttr(res, "use_gcp_iam", "false"),
 					resource.TestCheckResourceAttr(res, "in_use", "false"),
 					resource.TestCheckResourceAttrSet(res, "uuid"),
-					// YBA records the existing key's actual protection level.
-					resource.TestCheckResourceAttrSet(res, "protection_level"),
+					// YBA records the existing key's actual protection level
+					// (see testAccGCPEARConfigServiceAccount).
+					resource.TestCheckResourceAttr(res, "protection_level", "SOFTWARE"),
 				),
 			},
 		}, acctest.ImportPlanSteps(t, res, testAccGCPEARConfigServiceAccount(rName),
@@ -300,8 +301,9 @@ var envVault = []string{"TF_VAR_VAULT_ADDRESS", "TF_VAR_VAULT_TOKEN", "TF_VAR_VA
 // TestAccHashicorpVaultEARConfig creates the configuration with a token,
 // imports it, switches it in place to the AppRole, and back to the token. YBA
 // checks the credentials with Vault on every edit, so an edit step fails when
-// the body does not carry the credentials of the new mode, and the plan after
-// it shows any credential that YBA kept from the old mode.
+// the body does not carry the credentials of the new mode. The plan after the
+// switch back to the token shows a role ID that YBA kept; YBA masks the token,
+// so no plan can show a token that YBA kept.
 func TestAccHashicorpVaultEARConfig(t *testing.T) {
 	rName := acctest.RandomName("vault-ear")
 	res := "yba_hashicorp_vault_ear_config.test"
@@ -361,17 +363,18 @@ func TestAccHashicorpVaultEARConfig(t *testing.T) {
 }
 
 // The CipherTrust EAR test needs a CipherTrust Manager that the GCP fixture
-// YBA can reach, with an existing AES key and a user that has both a password
+// YBA can reach, with an existing AES-256 key and a user that has both a password
 // and a refresh token. No fixture provides one, so the test runs only when the
 // env sets these variables.
 var envCipherTrust = []string{"TF_VAR_CIPHERTRUST_MANAGER_URL", "TF_VAR_CIPHERTRUST_USERNAME",
 	"TF_VAR_CIPHERTRUST_PASSWORD", "TF_VAR_CIPHERTRUST_REFRESH_TOKEN",
 	"TF_VAR_CIPHERTRUST_KEY_NAME"}
 
-// TestAccCipherTrustEARConfig creates the configuration with a password and
-// without key_size, imports it, switches it in place to the refresh token,
-// and back to the password. YBA records the existing key's actual size, so
-// the plans after create and import show whether Read reconciles it.
+// TestAccCipherTrustEARConfig creates the configuration with a password, and
+// with a key_size that differs from the existing key's, imports it, switches
+// it in place to the refresh token, and back to the password. YBA records the
+// existing key's actual size, so the plans after create and import show
+// whether Terraform ignores the difference.
 func TestAccCipherTrustEARConfig(t *testing.T) {
 	rName := acctest.RandomName("ct-ear")
 	res := "yba_ciphertrust_ear_config.test"
@@ -395,7 +398,7 @@ func TestAccCipherTrustEARConfig(t *testing.T) {
 				Config: testAccCipherTrustEARConfig(rName, "PASSWORD", true),
 				Check: resource.ComposeTestCheckFunc(
 					testAccCheckEARConfigExists("GCP", res),
-					resource.TestCheckResourceAttrSet(res, "key_size"),
+					resource.TestCheckResourceAttr(res, "key_size", "256"),
 					resource.TestCheckResourceAttr(res, "in_use", "false"),
 					func(s *terraform.State) error {
 						configUUID = s.RootModule().Resources[res].Primary.ID
@@ -544,6 +547,12 @@ resource "yba_gcp_ear_config" "test" {
   location_id   = var.GCP_EAR_LOCATION_ID
   key_ring_id   = var.GCP_EAR_KEY_RING_ID
   crypto_key_id = var.GCP_EAR_CRYPTO_KEY_ID
+
+  # The fixture key is SOFTWARE (acctest/gcp/kms.tf). YBA replaces the level
+  # in the configuration with the existing key's level
+  # (GcpEARServiceUtil.checkCryptoKeyExists), so the plans after create and
+  # after import show whether Terraform ignores the difference.
+  protection_level = "HSM"
 
   # YBA lists the key file masked (EncryptionAtRestController.listKMSConfigs:
   # CommonUtils.maskConfig masks private_key), so an import cannot read it back.
@@ -773,7 +782,11 @@ variable "CIPHERTRUST_KEY_NAME" {
 resource "yba_ciphertrust_ear_config" "test" {
   name        = "%s"
   manager_url = var.CIPHERTRUST_MANAGER_URL
-  key_name    = var.CIPHERTRUST_KEY_NAME%s
+  key_name    = var.CIPHERTRUST_KEY_NAME
+
+  # The fixture key is AES-256. YBA replaces the size in the configuration with
+  # the existing key's (CiphertrustEARServiceUtil.updateAuthConfigFromKeyDetails).
+  key_size = 128%s
 }
 `, name, auth)
 }

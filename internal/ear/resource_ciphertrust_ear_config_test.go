@@ -19,13 +19,16 @@ import (
 	"context"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
 )
 
 // The plan rejects credentials that do not match auth_type, and a missing
 // secret when the apply would send it. After an import, the state holds no
 // secret, and a plan that leaves the secret and auth_type unchanged sends
-// nothing, so it must pass.
+// nothing, so it must pass. A create body repeats the checks, for values that
+// were unknown at plan time: TestResourceDataRaw skips the plan, as an
+// unknown value does.
 func TestCipherTrustAuthTypeGuard(t *testing.T) {
 	imported := withState(ctState, map[string]string{"password": ""})
 	cases := []struct {
@@ -74,6 +77,12 @@ func TestCipherTrustAuthTypeGuard(t *testing.T) {
 				terraform.NewResourceConfigRaw(tc.raw), nil)
 			if (err != nil) != tc.wantErr {
 				t.Errorf("plan error = %v, want an error: %t", err, tc.wantErr)
+			}
+			if tc.state == nil {
+				_, err = ctBuildCreate(schema.TestResourceDataRaw(t, res.Schema, tc.raw))
+				if (err != nil) != tc.wantErr {
+					t.Errorf("create body error = %v, want an error: %t", err, tc.wantErr)
+				}
 			}
 		})
 	}

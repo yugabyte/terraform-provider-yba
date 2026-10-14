@@ -164,15 +164,17 @@ func cipherTrustEARSpec() earSpec {
 					"it does not exist. A change forces replacement.",
 			},
 			"key_size": {
-				Type:         schema.TypeInt,
-				Optional:     true,
-				Computed:     true,
-				ForceNew:     true,
-				ValidateFunc: validation.IntInSlice(ctKeySizes),
+				Type:             schema.TypeInt,
+				Optional:         true,
+				Computed:         true,
+				ForceNew:         true,
+				ValidateFunc:     validation.IntInSlice(ctKeySizes),
+				DiffSuppressFunc: ignoreAfterCreate,
 				Description: "Size in bits of the AES key that YugabyteDB Anywhere creates: " +
-					"`128`, `192` or `256`, and `256` when not set. For an existing key, " +
-					"YugabyteDB Anywhere records the key's actual size, so leave this unset or " +
-					"set it to that size. A change forces replacement.",
+					"`128`, `192` or `256`, and `256` when not set. YugabyteDB Anywhere uses it " +
+					"only when it creates the key. For an existing key, this attribute returns " +
+					"the key's actual size. A key cannot change its size, so Terraform ignores " +
+					"a change to this argument after creation.",
 			},
 		},
 		credentialFields: []string{"password", "refresh_token"},
@@ -199,17 +201,30 @@ func ctCustomizeDiff(ctx context.Context, d *schema.ResourceDiff, meta interface
 		return nil
 	}
 	authType := d.Get("auth_type").(string)
-	for t, fields := range ctAuthFields {
-		for _, f := range fields {
-			if t != authType && d.Get(f).(string) != "" {
-				return fmt.Errorf("%s requires auth_type = %q (auth_type = %q)", f, t, authType)
-			}
-		}
+	if err := ctCheckOtherAuthType(authType, d.Get); err != nil {
+		return err
 	}
 	for _, f := range ctAuthFields[authType] {
 		sent := f == "username" || d.Id() == "" || d.HasChanges("auth_type", f)
 		if sent && d.NewValueKnown(f) && d.Get(f).(string) == "" {
 			return fmt.Errorf("%s is required when auth_type = %q", f, authType)
+		}
+	}
+	return nil
+}
+
+// ctCheckOtherAuthType rejects a credential of an auth type other than
+// authType. YBA rejects it too, but a Create or Update that left it out of the
+// body would succeed, and every later plan would show it as drift.
+func ctCheckOtherAuthType(authType string, get func(string) interface{}) error {
+	for t, fields := range ctAuthFields {
+		if t == authType {
+			continue
+		}
+		for _, f := range fields {
+			if get(f).(string) != "" {
+				return fmt.Errorf("%s requires auth_type = %q (auth_type = %q)", f, t, authType)
+			}
 		}
 	}
 	return nil
@@ -241,11 +256,15 @@ func ctRequireVersion(ctx context.Context, meta interface{}) error {
 
 // ctAuthSettings returns the credentials of auth_type that the body sends.
 // The user name always goes: YBA lists it in clear, so the state holds what
-// YBA holds. A secret goes when send says so; it cannot be empty then.
+// YBA holds. A secret goes when send says so; it cannot be empty then. It
+// repeats the plan's checks for the values that were unknown at plan time.
 func ctAuthSettings(
 	d *schema.ResourceData, send func(field string) bool,
 ) (map[string]interface{}, error) {
 	authType := d.Get("auth_type").(string)
+	if err := ctCheckOtherAuthType(authType, d.Get); err != nil {
+		return nil, err
+	}
 	settings := map[string]interface{}{ctKeyAuthType: authType}
 	keys := map[string]string{
 		"username": ctKeyUsername, "password": ctKeyPassword, "refresh_token": ctKeyRefreshToken,

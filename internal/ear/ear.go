@@ -292,6 +292,17 @@ func earDelete(s earSpec) schema.DeleteContextFunc {
 	}
 }
 
+// ignoreAfterCreate is the DiffSuppressFunc of an argument that YBA uses only
+// when it creates the master key, such as its size. For an existing key, YBA
+// replaces the configured value with the key's own, and Read writes that into
+// state. A key keeps these properties, and a replacement reuses the same key,
+// so a difference after creation can never be applied. The argument keeps
+// ForceNew, which applies on create and when another argument replaces the
+// configuration: the SDK then diffs against an empty state, with no ID.
+func ignoreAfterCreate(_, _, _ string, d *schema.ResourceData) bool {
+	return d.Id() != ""
+}
+
 // setIntSetting writes an integer setting into attr, and leaves attr alone
 // when YBA does not list the key. YBA lists a JSON number, or a string when a
 // client created the configuration with one.
@@ -427,7 +438,8 @@ func earResource(s earSpec) *schema.Resource {
 // shares; these strings ship verbatim into the user-facing docs. Import
 // behaviour goes in each resource's template Import section.
 const earSharedNotes = "~> **Note:** Only the arguments whose description says so can change in " +
-	"place. A change to any other argument forces replacement. YugabyteDB Anywhere does not " +
+	"place, and Terraform ignores a change after creation to the arguments whose description " +
+	"says that. A change to any other argument forces replacement. YugabyteDB Anywhere does not " +
 	"delete a configuration that a universe has used: it keeps the universe's key history, also " +
 	"after encryption is disabled or the universe moves to another configuration, until the " +
 	"universe is deleted. A destroy of such a configuration fails, and the error names the " +
