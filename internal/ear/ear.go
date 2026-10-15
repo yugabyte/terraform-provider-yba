@@ -45,6 +45,7 @@ const (
 	providerCipherTrust = "CIPHERTRUST"
 	providerGCP         = "GCP"
 	providerHashicorp   = "HASHICORP"
+	providerOCI         = "OCI"
 )
 
 // earEntityName labels errors from the shared helpers.
@@ -354,7 +355,11 @@ type earSpec struct {
 	// its provider's rule.
 	buildEdit func(d *schema.ResourceData) (map[string]interface{}, error)
 	// flatten writes the non-secret settings YBA lists into state.
-	flatten       func(d *schema.ResourceData, settings map[string]interface{}) error
+	flatten func(d *schema.ResourceData, settings map[string]interface{}) error
+	// afterRead, when set, runs after flatten. The list masks every field
+	// whose name contains KEY, including identifiers, so a provider can read
+	// those from the by-UUID GET. It must not write a secret into state.
+	afterRead     func(ctx context.Context, d *schema.ResourceData, meta interface{}) error
 	customizeDiff schema.CustomizeDiffFunc
 	// warnings, when set, returns the diagnostics that a successful Create or
 	// Update adds, such as a preview warning for the arguments in use.
@@ -521,6 +526,11 @@ func earRead(s earSpec) schema.ReadContextFunc {
 		}
 		if err := s.flatten(d, cfg.Settings); err != nil {
 			return diag.FromErr(err)
+		}
+		if s.afterRead != nil {
+			if err := s.afterRead(ctx, d, meta); err != nil {
+				return diag.FromErr(err)
+			}
 		}
 		return nil
 	}

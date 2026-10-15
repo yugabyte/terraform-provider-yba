@@ -1,0 +1,38 @@
+---
+page_title: "{{.Name}} {{.Type}} - {{.RenderedProviderName}}"
+description: |-
+{{ index (split (trimspace .Description) "\n\n") 0 | plainmarkdown | trimspace | prefixlines "  " }}
+---
+
+# {{.Name}} ({{.Type}})
+
+{{ .Description | trimspace }}
+
+Use the configuration in a universe through its `encryption_at_rest` block. The
+[Encryption at Rest](../guides/universe-edit-actions.md#encryption-at-rest) section of the
+Universe Edit Actions guide describes how to enable encryption, rotate the master key or the
+universe key, and disable encryption. For the YugabyteDB Anywhere side, see
+[Enable encryption at rest](https://docs.yugabyte.com/stable/yugabyte-platform/security/enable-encryption-at-rest/).
+
+## Example Usage
+
+{{ tffile "examples/resources/yba_oci_ear_config/resource.tf" }}
+
+{{ .SchemaMarkdown | trimspace }}
+
+## Import
+
+Import an OCI KMS configuration with its UUID. The `yba_ear_config` data source returns the
+UUID for a configuration name:
+
+```sh
+terraform import yba_oci_ear_config.api_key <config-uuid>
+```
+
+Import fails for a configuration of another KMS provider, and the error names that provider.
+Import reads every argument except `private_key_content`. YugabyteDB Anywhere masks the
+private key when it lists a configuration, so import leaves `private_key_content` empty.
+When the configuration sets `private_key_content`, the first plan after the import shows
+one in-place update, and the apply sends the key from your configuration. When the
+configuration uses `use_instance_principal`, there is no private key to restore, and the
+next plan is empty.
