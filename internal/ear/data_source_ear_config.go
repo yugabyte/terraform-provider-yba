@@ -32,8 +32,8 @@ func DataSourceEARConfig() *schema.Resource {
 			"name, for any KMS provider. Use it to reference a configuration created in the " +
 			"YugabyteDB Anywhere UI from a universe's `encryption_at_rest` block, or to find " +
 			"the UUID to import into `yba_aws_ear_config`, `yba_azure_ear_config`, " +
-			"`yba_ciphertrust_ear_config`, `yba_gcp_ear_config` or " +
-			"`yba_hashicorp_vault_ear_config`.",
+			"`yba_ciphertrust_ear_config`, `yba_gcp_ear_config`, " +
+			"`yba_hashicorp_vault_ear_config` or `yba_oci_ear_config`.",
 
 		ReadContext: dataSourceEARConfigRead,
 
