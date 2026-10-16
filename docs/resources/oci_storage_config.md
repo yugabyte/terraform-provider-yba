@@ -8,7 +8,7 @@ description: |-
 
 OCI Object Storage configuration for YugabyteDB Anywhere backups. Use either a Customer Secret Key (S3-compatible access key, secret, and host) or instance principal. The two modes are mutually exclusive. Do not put an OCI API signing key here; that credential belongs on the OCI provider.
 
-~> **Note:** `access_key_id` and `secret_access_key` are write-only arguments: Terraform never stores them in the plan or the state file. Setting them requires Terraform 1.11 or later. YugabyteDB Anywhere masks both on read (a value shorter than five characters is replaced entirely; a longer value keeps its first two and last two characters), so this resource does not write them back.
+~> **Security Note:** `access_key_id` and `secret_access_key` are stored in the Terraform state file and marked sensitive. Use a secure state backend and restrict access to state files, or set `use_oci_iam`, which keeps the keys out of Terraform.
 
 ~> **Note:** Requires YugabyteDB Anywhere 2026.1.2.0 or later. `terraform plan` fails on an older YBA.
 
@@ -66,13 +66,11 @@ resource "yba_oci_storage_config" "instance_principal" {
 
 ### Optional
 
-> **NOTE**: [Write-only arguments](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments) are supported in Terraform 1.11 and later.
-
-- `access_key_id` (String, Sensitive, [Write-only](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments)) Customer Secret Key access key. Required, with secret_access_key and host_base, when use_oci_iam is false. Write-only: Terraform never stores it in the plan or state. Setting it requires Terraform 1.11 or later.
+- `access_key_id` (String, Sensitive) Customer Secret Key access key. Required, with secret_access_key and host_base, when use_oci_iam is false. Can change in place.
 - `host_base` (String) S3-compatible endpoint, for example namespace.compat.objectstorage.us-sanjose-1.oraclecloud.com. Required when use_oci_iam is false. YugabyteDB Anywhere applies path-style access for this mode.
 - `namespace` (String) Object Storage namespace. Required when use_oci_iam is true. When set on a native HTTPS backup location, it must match the /n/<namespace>/ segment. Optional for S3-compatible credentials.
 - `region_locations` (Block List) Region-specific backup locations. Each region appears at most once. (see [below for nested schema](#nestedblock--region_locations))
-- `secret_access_key` (String, Sensitive, [Write-only](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments)) Customer Secret Key secret. Required, with access_key_id and host_base, when use_oci_iam is false. Write-only: Terraform never stores it in the plan or state. Setting it requires Terraform 1.11 or later.
+- `secret_access_key` (String, Sensitive) Customer Secret Key secret. Required, with access_key_id and host_base, when use_oci_iam is false. Can change in place.
 - `timeouts` (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))
 - `use_oci_iam` (Boolean) Authenticate with the instance principal of the YugabyteDB Anywhere host and the universe nodes. When true, access_key_id, secret_access_key, and host_base must be omitted, and namespace is required. Default: false.
 
@@ -106,14 +104,14 @@ Optional:
 
 ## Import
 
-OCI storage configurations can be imported using the configuration UUID.
-
-`access_key_id` and `secret_access_key` are write-only, so they are not in
-state after import. An instance-principal configuration plans cleanly. A
-Customer Secret Key configuration plans cleanly when those arguments are still
-in the configuration; Terraform sends them again on the next apply and does
-not store them.
+Import an OCI storage configuration with its configuration UUID:
 
 ```sh
 terraform import yba_oci_storage_config.example <config-uuid>
 ```
+
+Import reads every argument except `access_key_id` and `secret_access_key`.
+YugabyteDB Anywhere masks those keys when it lists a configuration, so import
+leaves them empty. An instance-principal configuration plans cleanly. When
+the configuration sets the keys, the first plan after the import shows one
+in-place update, and the apply sends the keys from the configuration.

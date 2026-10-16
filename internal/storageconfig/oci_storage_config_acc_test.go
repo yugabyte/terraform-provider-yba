@@ -50,11 +50,11 @@ func TestAccOCIStorageConfig(t *testing.T) {
 				"region_locations.#",
 				"2",
 			),
-			resource.TestCheckNoResourceAttr(
+			resource.TestCheckResourceAttrSet(
 				"yba_oci_storage_config.test",
 				"access_key_id",
 			),
-			resource.TestCheckNoResourceAttr(
+			resource.TestCheckResourceAttrSet(
 				"yba_oci_storage_config.test",
 				"secret_access_key",
 			),
@@ -62,7 +62,12 @@ func TestAccOCIStorageConfig(t *testing.T) {
 		),
 	}}
 	steps = append(steps, acctest.ImportPlanSteps(
-		t, "yba_oci_storage_config.test", createCfg, acctest.ImportPlanOptions{})...)
+		t, "yba_oci_storage_config.test", createCfg, acctest.ImportPlanOptions{
+			// YBA lists OCI_S3_ACCESS_KEY_ID and OCI_S3_SECRET_ACCESS_KEY
+			// masked (a field whose name contains KEY or SECRET). Read keeps
+			// the state value, so the imported copy has nothing to compare.
+			VerifyIgnore: []string{"access_key_id", "secret_access_key"},
+		})...)
 	steps = append(steps,
 		resource.TestStep{
 			Config: testAccOCIStorageConfig(rNameUpdated, false),
@@ -164,6 +169,13 @@ resource "yba_oci_storage_config" "test" {
   access_key_id     = var.OCI_ACCESS_KEY_ID
   secret_access_key = var.OCI_SECRET_ACCESS_KEY
   host_base         = var.OCI_HOST_BASE
+
+  # YBA lists OCI_S3_ACCESS_KEY_ID and OCI_S3_SECRET_ACCESS_KEY masked
+  # (a field whose name contains KEY or SECRET), so import cannot read them
+  # back. Without this, the plan after import sends the keys again.
+  lifecycle {
+    ignore_changes = [access_key_id, secret_access_key]
+  }
 %s
 }
 `, name, regions)

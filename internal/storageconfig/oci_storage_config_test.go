@@ -18,6 +18,8 @@ package storageconfig
 import (
 	"context"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -25,6 +27,9 @@ import (
 	"github.com/hashicorp/go-cty/cty"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	client "github.com/yugabyte/platform-go-client"
+
+	"github.com/yugabyte/terraform-provider-yba/internal/api"
 )
 
 func TestValidateOCIStorageSkipsUnknownSecrets(t *testing.T) {
@@ -189,11 +194,11 @@ func TestOCIStorageConfigGuardrails(t *testing.T) {
 	}
 	for _, name := range []string{"access_key_id", "secret_access_key"} {
 		attr := res.Schema[name]
-		if !attr.Sensitive || !attr.WriteOnly {
-			t.Errorf("%s must be Sensitive and WriteOnly", name)
+		if !attr.Sensitive || attr.WriteOnly {
+			t.Errorf("%s must be Sensitive and stored in state, so a change rotates the key", name)
 		}
 		if attr.ForceNew {
-			t.Errorf("%s cannot be ForceNew (the SDK forbids it with WriteOnly)", name)
+			t.Errorf("%s must change in place", name)
 		}
 	}
 	if res.Schema["host_base"].WriteOnly {
@@ -325,6 +330,62 @@ func TestBuildOCIDataAuthModes(t *testing.T) {
 				t.Fatalf("error %v, want substring %q", err, c.wantErr)
 			}
 		})
+	}
+}
+
+func TestOCIStorageReadKeepsConfiguredKeys(t *testing.T) {
+	const configUUID = "1f0a3d0e-8f9b-4a0c-9c1d-2e3f4a5b6c7d"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/customers/cust/configs" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`[{
+			"configName": "oci",
+			"configUUID": "` + configUUID + `",
+			"customerUUID": "cust",
+			"name": "OCI",
+			"type": "STORAGE",
+			"kubernetesOperatorControlled": false,
+			"data": {
+				"BACKUP_LOCATION": "s3://backup-sjc",
+				"OCI_REGION": "us-sanjose-1",
+				"OCI_NAMESPACE": "mytenancy",
+				"USE_OCI_IAM": false,
+				"OCI_S3_HOST_BASE": "ns.compat.objectstorage.us-sanjose-1.oraclecloud.com",
+				"OCI_S3_ACCESS_KEY_ID": "********",
+				"OCI_S3_SECRET_ACCESS_KEY": "se********1"
+			}
+		}]`))
+	}))
+	t.Cleanup(srv.Close)
+	cfg := client.NewConfiguration()
+	cfg.Host = strings.TrimPrefix(srv.URL, "http://")
+	cfg.Scheme = "http"
+	d := schema.TestResourceDataRaw(t, ResourceOCIStorageConfig().Schema, map[string]interface{}{
+		"name":              "oci",
+		"backup_location":   "s3://backup-sjc",
+		"region":            "us-sanjose-1",
+		"namespace":         "mytenancy",
+		"access_key_id":     "AKIArealkey",
+		"secret_access_key": "secret-value-1",
+		"host_base":         "ns.compat.objectstorage.us-sanjose-1.oraclecloud.com",
+	})
+	d.SetId(configUUID)
+
+	diags := resourceOCIStorageConfigRead(context.Background(), d, &api.APIClient{
+		YugawareClient: client.NewAPIClient(cfg),
+		CustomerID:     "cust",
+	})
+	if diags.HasError() {
+		t.Fatalf("read: %v", diags)
+	}
+	if got := d.Get("access_key_id"); got != "AKIArealkey" {
+		t.Errorf("access_key_id = %#v; the masked list value replaced the configured key", got)
+	}
+	if got := d.Get("secret_access_key"); got != "secret-value-1" {
+		t.Errorf("secret_access_key = %#v; the masked list value replaced the configured key", got)
 	}
 }
 

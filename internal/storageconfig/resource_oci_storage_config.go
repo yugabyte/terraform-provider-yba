@@ -56,11 +56,10 @@ func ResourceOCIStorageConfig() *schema.Resource {
 			"Use either a Customer Secret Key (S3-compatible access key, secret, and host) " +
 			"or instance principal. The two modes are mutually exclusive. Do not put an OCI " +
 			"API signing key here; that credential belongs on the OCI provider.\n\n" +
-			"~> **Note:** `access_key_id` and `secret_access_key` are write-only arguments: " +
-			"Terraform never stores them in the plan or the state file. Setting them requires " +
-			"Terraform 1.11 or later. YugabyteDB Anywhere masks both on read (a value shorter " +
-			"than five characters is replaced entirely; a longer value keeps its first two and " +
-			"last two characters), so this resource does not write them back.\n\n" +
+			"~> **Security Note:** `access_key_id` and `secret_access_key` are stored in the " +
+			"Terraform state file and marked sensitive. Use a secure state backend and " +
+			"restrict access to state files, or set `use_oci_iam`, which keeps the keys " +
+			"out of Terraform.\n\n" +
 			"~> **Note:** Requires YugabyteDB Anywhere 2026.1.2.0 or later. " +
 			"`terraform plan` fails on an older YBA.",
 
@@ -123,21 +122,17 @@ func ResourceOCIStorageConfig() *schema.Resource {
 				Type:         schema.TypeString,
 				Optional:     true,
 				Sensitive:    true,
-				WriteOnly:    true,
 				RequiredWith: []string{"secret_access_key"},
 				Description: "Customer Secret Key access key. Required, with secret_access_key " +
-					"and host_base, when use_oci_iam is false. Write-only: Terraform never " +
-					"stores it in the plan or state. Setting it requires Terraform 1.11 or later.",
+					"and host_base, when use_oci_iam is false. Can change in place.",
 			},
 			"secret_access_key": {
 				Type:         schema.TypeString,
 				Optional:     true,
 				Sensitive:    true,
-				WriteOnly:    true,
 				RequiredWith: []string{"access_key_id"},
 				Description: "Customer Secret Key secret. Required, with access_key_id and " +
-					"host_base, when use_oci_iam is false. Write-only: Terraform never stores " +
-					"it in the plan or state. Setting it requires Terraform 1.11 or later.",
+					"host_base, when use_oci_iam is false. Can change in place.",
 			},
 			"host_base": {
 				Type:     schema.TypeString,
@@ -289,6 +284,9 @@ func resourceOCIStorageConfigRead(
 	if err = d.Set("host_base", flat.hostBase); err != nil {
 		return diag.FromErr(err)
 	}
+	// YBA masks OCI_S3_ACCESS_KEY_ID and OCI_S3_SECRET_ACCESS_KEY on list
+	// (a field whose name contains KEY or SECRET). Keep the configured
+	// values, so a change to either key is an in-place update.
 	locations := make([]map[string]interface{}, 0, len(flat.locations))
 	for _, loc := range flat.locations {
 		locations = append(locations, map[string]interface{}{
@@ -339,6 +337,7 @@ func resourceOCIStorageConfigUpdate(
 		Config(req).
 		Execute()
 	if err != nil {
+		utils.RevertFields(d, "access_key_id", "secret_access_key")
 		errMessage := utils.ErrorFromHTTPResponse(response, err, utils.ResourceEntity,
 			"OCI Storage Config", "Update")
 		return diag.FromErr(errMessage)

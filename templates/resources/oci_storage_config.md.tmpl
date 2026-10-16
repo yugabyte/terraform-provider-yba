@@ -21,14 +21,14 @@ For more details, see the [YugabyteDB Anywhere Configure Storage documentation](
 
 ## Import
 
-OCI storage configurations can be imported using the configuration UUID.
-
-`access_key_id` and `secret_access_key` are write-only, so they are not in
-state after import. An instance-principal configuration plans cleanly. A
-Customer Secret Key configuration plans cleanly when those arguments are still
-in the configuration; Terraform sends them again on the next apply and does
-not store them.
+Import an OCI storage configuration with its configuration UUID:
 
 ```sh
 terraform import yba_oci_storage_config.example <config-uuid>
 ```
+
+Import reads every argument except `access_key_id` and `secret_access_key`.
+YugabyteDB Anywhere masks those keys when it lists a configuration, so import
+leaves them empty. An instance-principal configuration plans cleanly. When
+the configuration sets the keys, the first plan after the import shows one
+in-place update, and the apply sends the keys from the configuration.
