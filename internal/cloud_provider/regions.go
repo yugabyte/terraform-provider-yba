@@ -292,6 +292,12 @@ func flattenRegions(regions []client.Region, cloudCode string) (res []map[string
 			r["vnet_name"] = azure.GetVnet()
 			r["yb_image"] = azure.GetYbImage()
 			r["security_group_id"] = azure.GetSecurityGroupId()
+		case "oci":
+			details := region.GetDetails()
+			cloudInfo := details.GetCloudInfo()
+			oci := cloudInfo.GetOci()
+			r["vnet_name"] = oci.GetVnet()
+			r["instance_template"] = oci.GetInstanceTemplate()
 		}
 		res = append(res, r)
 	}

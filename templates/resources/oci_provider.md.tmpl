@@ -1,0 +1,35 @@
+---
+page_title: "{{.Name}} {{.Type}} - {{.RenderedProviderName}}"
+description: |-
+{{ index (split (trimspace .Description) "\n\n") 0 | plainmarkdown | trimspace | prefixlines "  " }}
+---
+
+# {{.Name}} ({{.Type}})
+
+{{ .Description | trimspace }}
+
+## Credentials
+
+API-key authentication is the default. Set `tenancy_id`, `user_id`, `fingerprint`, and exactly one of `private_key_content` or `private_key_file_path`. An explicit `use_instance_principal = false` is the same mode and is set together with those fields. The file is read when the plan is applied. A leading `~` is expanded to the home directory.
+
+Set `use_instance_principal = true` to authenticate as the instance principal of the YugabyteDB Anywhere host, and omit the API-key fields. The provider rejects the API-key fields only when that value is true.
+
+`compartment_id`, `tenancy_id`, `user_id`, `fingerprint`, `hosted_zone_id`, and `use_instance_principal` cannot be changed while a universe uses the provider. YugabyteDB Anywhere rejects the edit. `default_region` and the API private key can be changed.
+
+`private_key_content` and `ssh_private_key_content` are stored in Terraform state. Changing `private_key_content` updates the provider in place.
+
+## Example Usage
+
+{{ tffile "examples/resources/yba_oci_provider/resource.tf" }}
+
+{{ .SchemaMarkdown | trimspace }}
+
+## Import
+
+OCI providers can be imported using the provider UUID:
+
+```sh
+terraform import yba_oci_provider.example <provider-uuid>
+```
+
+An instance-principal provider plans cleanly after import. An API-key provider does not: YugabyteDB Anywhere masks the private key on read, so the key is absent from state after import and the next plan sends it again. Set `private_key_content` or `private_key_file_path` in configuration before that plan. To keep later plans empty, add the key argument to `lifecycle.ignore_changes`.
