@@ -1,14 +1,14 @@
 ---
 page_title: "yba_storage_config_resource Resource - YugabyteDB Anywhere"
 description: |-
-  Create Storage configurations. Deprecated: Use yba_s3_storage_config, yba_gcs_storage_config, yba_azure_storage_config, or yba_nfs_storage_config instead. Kept through the v1.x line; removal is planned for v2.0.0.
+  Create Storage configurations. Deprecated: Use yba_s3_storage_config, yba_gcs_storage_config, yba_azure_storage_config, yba_nfs_storage_config, or yba_oci_storage_config instead. Kept through the v1.x line; removal is planned for v2.0.0.
 ---
 
 # yba_storage_config_resource (Resource)
 
-~> **Deprecated:** Use [`yba_s3_storage_config`](s3_storage_config), [`yba_gcs_storage_config`](gcs_storage_config), [`yba_azure_storage_config`](azure_storage_config), or [`yba_nfs_storage_config`](nfs_storage_config) instead. This resource is kept through the v1.x line; removal is planned for v2.0.0. See the [Upgrading to v1.0.0](../guides/upgrading-to-v1.0.0) guide for migration steps.
+~> **Deprecated:** Use [`yba_s3_storage_config`](s3_storage_config), [`yba_gcs_storage_config`](gcs_storage_config), [`yba_azure_storage_config`](azure_storage_config), [`yba_nfs_storage_config`](nfs_storage_config), or [`yba_oci_storage_config`](oci_storage_config) instead. This resource is kept through the v1.x line; removal is planned for v2.0.0. See the [Upgrading to v1.0.0](../guides/upgrading-to-v1.0.0) guide for migration steps.
 
-Create Storage configurations. **Deprecated**: Use `yba_s3_storage_config`, `yba_gcs_storage_config`, `yba_azure_storage_config`, or `yba_nfs_storage_config` instead. Kept through the v1.x line; removal is planned for v2.0.0.
+Create Storage configurations. **Deprecated**: Use `yba_s3_storage_config`, `yba_gcs_storage_config`, `yba_azure_storage_config`, `yba_nfs_storage_config`, or `yba_oci_storage_config` instead. Kept through the v1.x line; removal is planned for v2.0.0.
 
 The following credentials are required as environment variables (if fields are not set) to configure the corresponding Backup storage configurations:
 

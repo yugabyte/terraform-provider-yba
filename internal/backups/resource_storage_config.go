@@ -38,17 +38,20 @@ import (
 // ResourceStorageConfig defines the schema to maintain the storage config resources.
 //
 // Deprecated: Use yba_s3_storage_config, yba_gcs_storage_config, yba_azure_storage_config,
-// or yba_nfs_storage_config instead. Kept through the v1.x line; removal is planned for v2.0.0.
+// yba_nfs_storage_config, or yba_oci_storage_config instead. Kept through the v1.x line;
+// removal is planned for v2.0.0.
 func ResourceStorageConfig() *schema.Resource {
 	return &schema.Resource{
 		Description: "Create Storage configurations. " +
 			"**Deprecated**: Use `yba_s3_storage_config`, `yba_gcs_storage_config`, " +
-			"`yba_azure_storage_config`, or `yba_nfs_storage_config` instead. " +
+			"`yba_azure_storage_config`, `yba_nfs_storage_config`, or " +
+			"`yba_oci_storage_config` instead. " +
 			"Kept through the v1.x line; removal is planned for v2.0.0.",
 
 		DeprecationMessage: "yba_storage_config_resource is deprecated. " +
 			"Use yba_s3_storage_config, yba_gcs_storage_config, yba_azure_storage_config, " +
-			"or yba_nfs_storage_config instead for cleaner, type-specific schemas. " +
+			"yba_nfs_storage_config, or yba_oci_storage_config instead for cleaner, " +
+			"type-specific schemas. " +
 			"Kept through the v1.x line; removal is planned for v2.0.0.",
 
 		CreateContext: resourceStorageConfigCreate,
