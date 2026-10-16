@@ -25,72 +25,75 @@ import (
 	"github.com/yugabyte/terraform-provider-yba/internal/acctest"
 )
 
-// TestAccOCIStorageConfig covers create, a region add/remove update, import,
-// and a follow-up plan. The keys come from the environment because YBA checks
-// them against the bucket; the short-value mask is covered in the unit test,
-// since a four-character key cannot authenticate.
+// TestAccOCIStorageConfig covers create, a region remove and a region add,
+// import, and a follow-up plan. The create name has surrounding whitespace
+// because YBA stores it trimmed and the provider must plan clean. The keys
+// come from the environment because YBA checks them against the bucket.
 func TestAccOCIStorageConfig(t *testing.T) {
 	rName := acctest.RandomName("oci")
+	rNamePadded := "  " + rName + "  "
 	rNameUpdated := acctest.RandomName("oci-upd")
+	createCfg := testAccOCIStorageConfig(rNamePadded, true)
 
-	resource.Test(t, resource.TestCase{
+	steps := []resource.TestStep{{
+		Config: createCfg,
+		Check: resource.ComposeTestCheckFunc(
+			testAccCheckStorageConfigExists("yba_oci_storage_config.test"),
+			resource.TestCheckResourceAttr("yba_oci_storage_config.test", "name", rName),
+			resource.TestCheckResourceAttr(
+				"yba_oci_storage_config.test",
+				"use_oci_iam",
+				"false",
+			),
+			resource.TestCheckResourceAttr(
+				"yba_oci_storage_config.test",
+				"region_locations.#",
+				"2",
+			),
+			resource.TestCheckNoResourceAttr(
+				"yba_oci_storage_config.test",
+				"access_key_id",
+			),
+			resource.TestCheckNoResourceAttr(
+				"yba_oci_storage_config.test",
+				"secret_access_key",
+			),
+			resource.TestCheckResourceAttrSet("yba_oci_storage_config.test", "config_uuid"),
+		),
+	}}
+	steps = append(steps, acctest.ImportPlanSteps(
+		t, "yba_oci_storage_config.test", createCfg, acctest.ImportPlanOptions{})...)
+	steps = append(steps,
+		resource.TestStep{
+			Config: testAccOCIStorageConfig(rNameUpdated, false),
+			Check: resource.ComposeTestCheckFunc(
+				resource.TestCheckResourceAttr(
+					"yba_oci_storage_config.test",
+					"name",
+					rNameUpdated,
+				),
+				resource.TestCheckResourceAttr(
+					"yba_oci_storage_config.test",
+					"region_locations.#",
+					"1",
+				),
+			),
+		},
+		resource.TestStep{
+			Config: testAccOCIStorageConfig(rNameUpdated, true),
+			Check: resource.TestCheckResourceAttr(
+				"yba_oci_storage_config.test",
+				"region_locations.#",
+				"2",
+			),
+		},
+	)
+
+	resource.ParallelTest(t, resource.TestCase{
 		PreCheck:          func() { testAccPreCheckOCIStorage(t) },
 		ProviderFactories: acctest.ProviderFactories,
 		CheckDestroy:      testAccCheckStorageConfigDestroy,
-		Steps: []resource.TestStep{
-			{
-				Config: testAccOCIStorageConfig(rName, true),
-				Check: resource.ComposeTestCheckFunc(
-					testAccCheckStorageConfigExists("yba_oci_storage_config.test"),
-					resource.TestCheckResourceAttr("yba_oci_storage_config.test", "name", rName),
-					resource.TestCheckResourceAttr(
-						"yba_oci_storage_config.test",
-						"use_oci_iam",
-						"false",
-					),
-					resource.TestCheckResourceAttr(
-						"yba_oci_storage_config.test",
-						"region_locations.#",
-						"2",
-					),
-					resource.TestCheckNoResourceAttr(
-						"yba_oci_storage_config.test",
-						"access_key_id",
-					),
-					resource.TestCheckNoResourceAttr(
-						"yba_oci_storage_config.test",
-						"secret_access_key",
-					),
-					resource.TestCheckResourceAttrSet("yba_oci_storage_config.test", "config_uuid"),
-				),
-			},
-			{
-				Config: testAccOCIStorageConfig(rNameUpdated, false),
-				Check: resource.ComposeTestCheckFunc(
-					resource.TestCheckResourceAttr(
-						"yba_oci_storage_config.test",
-						"name",
-						rNameUpdated,
-					),
-					resource.TestCheckResourceAttr(
-						"yba_oci_storage_config.test",
-						"region_locations.#",
-						"1",
-					),
-				),
-			},
-			{
-				ResourceName:            "yba_oci_storage_config.test",
-				ImportState:             true,
-				ImportStateVerify:       true,
-				ImportStatePersist:      true,
-				ImportStateVerifyIgnore: []string{"access_key_id", "secret_access_key"},
-			},
-			{
-				Config:   testAccOCIStorageConfig(rNameUpdated, false),
-				PlanOnly: true,
-			},
-		},
+		Steps:             steps,
 	})
 }
 

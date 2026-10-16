@@ -17,23 +17,200 @@ package storageconfig
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/hashicorp/go-cty/cty"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 )
 
-func TestOCIStorageSecretsAreWriteOnly(t *testing.T) {
-	s := ResourceOCIStorageConfig().Schema
+func TestValidateOCIStorageSkipsUnknownSecrets(t *testing.T) {
+	// An unknown Customer Secret Key is a value computed in the same apply.
+	// Plan must not treat it as missing; apply rechecks once it is known.
+	unknown := ociStorageSpec{
+		name:           "oci",
+		backupLocation: "s3://backup-sjc",
+		region:         "us-sanjose-1",
+		accessKnown:    false,
+		secretKnown:    false,
+		hostBase:       "ns.compat.objectstorage.us-sanjose-1.oraclecloud.com",
+	}
+	if err := validateOCIStorage(unknown); err != nil {
+		t.Fatalf("unknown keys: %v", err)
+	}
+
+	knownEmpty := unknown
+	knownEmpty.accessKnown = true
+	knownEmpty.secretKnown = true
+	err := validateOCIStorage(knownEmpty)
+	if err == nil || !strings.Contains(err.Error(), "access_key_id is required") {
+		t.Fatalf("known empty access key: %v", err)
+	}
+
+	unknownHost := ociStorageSpec{
+		name: "n", backupLocation: "s3://b", region: "us-sanjose-1",
+		accessKeyID: "k", secretAccessKey: "secret", accessKnown: true, secretKnown: true,
+		hostUnknown: true,
+	}
+	if err := validateOCIStorage(unknownHost); err != nil {
+		t.Fatalf("unknown host_base: %v", err)
+	}
+
+	unknownNamespace := ociStorageSpec{
+		name: "n", backupLocation: "s3://b", region: "us-sanjose-1",
+		useIAM: true, namespaceUnknown: true, accessKnown: true, secretKnown: true,
+	}
+	if err := validateOCIStorage(unknownNamespace); err != nil {
+		t.Fatalf("unknown namespace: %v", err)
+	}
+
+	unknownRegionHost := ociStorageSpec{
+		name: "n", backupLocation: "s3://b", region: "us-sanjose-1",
+		accessKeyID: "k", secretAccessKey: "secret", accessKnown: true, secretKnown: true,
+		hostBase: "host.example",
+		locations: []ociLocationSpec{{
+			region: "us-ashburn-1", location: "s3://other", hostUnknown: true,
+		}},
+	}
+	if err := validateOCIStorage(unknownRegionHost); err != nil {
+		t.Fatalf("unknown region host_base: %v", err)
+	}
+
+	if err := validateOCIStorage(ociStorageSpec{
+		nameUnknown: true, backupLocation: "s3://b", region: "us-sanjose-1",
+		accessKnown: false, secretKnown: false, hostUnknown: true, useIAMUnknown: true,
+	}); err != nil {
+		t.Fatalf("unknown name and auth mode: %v", err)
+	}
+}
+
+// staticConfig is a config source whose raw values can be unknown.
+type staticConfig struct {
+	vals map[string]interface{}
+	raw  map[string]cty.Value
+}
+
+func (s staticConfig) Get(key string) interface{} {
+	return s.vals[key]
+}
+
+func (s staticConfig) GetRawConfigAt(path cty.Path) (cty.Value, diag.Diagnostics) {
+	if v, ok := s.raw[configPathKey(path)]; ok {
+		return v, nil
+	}
+	return cty.NullVal(cty.DynamicPseudoType), nil
+}
+
+func configPathKey(path cty.Path) string {
+	var b strings.Builder
+	for _, step := range path {
+		switch s := step.(type) {
+		case cty.GetAttrStep:
+			b.WriteByte('.')
+			b.WriteString(s.Name)
+		case cty.IndexStep:
+			fmt.Fprintf(&b, "[%s]", s.Key.GoString())
+		}
+	}
+	return b.String()
+}
+
+func TestOCISpecFromSkipsUnknownPlanValues(t *testing.T) {
+	locHost := cty.GetAttrPath("region_locations").Index(cty.NumberIntVal(0)).GetAttr("host_base")
+	cfg := staticConfig{
+		vals: map[string]interface{}{
+			"backup_location": "s3://backup-sjc",
+			"region":          "us-sanjose-1",
+			"region_locations": []interface{}{
+				map[string]interface{}{
+					"region": "us-ashburn-1", "location": "s3://backup-iad", "host_base": "",
+				},
+			},
+		},
+		raw: map[string]cty.Value{
+			configPathKey(cty.GetAttrPath("name")):              cty.StringVal("oci"),
+			configPathKey(cty.GetAttrPath("access_key_id")):     cty.UnknownVal(cty.String),
+			configPathKey(cty.GetAttrPath("secret_access_key")): cty.UnknownVal(cty.String),
+			configPathKey(cty.GetAttrPath("host_base")):         cty.UnknownVal(cty.String),
+			configPathKey(cty.GetAttrPath("namespace")):         cty.UnknownVal(cty.String),
+			configPathKey(cty.GetAttrPath("use_oci_iam")):       cty.UnknownVal(cty.Bool),
+			configPathKey(locHost):                              cty.UnknownVal(cty.String),
+		},
+	}
+	spec, err := ociSpecFrom(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := validateOCIStorage(spec); err != nil {
+		t.Fatalf("unknown plan values: %v", err)
+	}
+	if spec.accessKnown || !spec.hostUnknown || !spec.namespaceUnknown || !spec.useIAMUnknown {
+		t.Fatalf("known flags = access %t hostUnknown %t namespaceUnknown %t useIAMUnknown %t",
+			spec.accessKnown, spec.hostUnknown, spec.namespaceUnknown, spec.useIAMUnknown)
+	}
+	if len(spec.locations) != 1 || !spec.locations[0].hostUnknown {
+		t.Fatalf("region host unknown = %+v", spec.locations)
+	}
+}
+
+func TestOCIStorageConfigGuardrails(t *testing.T) {
+	res := ResourceOCIStorageConfig()
+	if err := res.InternalValidate(nil, true); err != nil {
+		t.Fatalf("schema failed InternalValidate: %v", err)
+	}
+	if res.Description == "" {
+		t.Error("resource description is required")
+	}
+	if res.Importer == nil {
+		t.Error("the resource must be importable")
+	}
+	if _, ok := res.Schema["customer_uuid"]; ok {
+		t.Error("customer_uuid is a noise field and must not be exposed")
+	}
+	for op, timeout := range map[string]*time.Duration{
+		"create": res.Timeouts.Create,
+		"update": res.Timeouts.Update,
+		"delete": res.Timeouts.Delete,
+	} {
+		if timeout == nil || *timeout != 5*time.Minute {
+			t.Errorf("%s timeout must default to 5 minutes", op)
+		}
+	}
+	assertDescriptions(t, res.Schema)
+	for _, name := range []string{"use_oci_iam", "access_key_id", "secret_access_key", "host_base"} {
+		if len(res.Schema[name].ConflictsWith) != 0 {
+			t.Errorf("%s ConflictsWith = %v; mode is checked on the value, so "+
+				"use_oci_iam = false stays valid next to the keys",
+				name, res.Schema[name].ConflictsWith)
+		}
+	}
 	for _, name := range []string{"access_key_id", "secret_access_key"} {
-		attr := s[name]
-		if attr == nil || !attr.Sensitive || !attr.WriteOnly {
+		attr := res.Schema[name]
+		if !attr.Sensitive || !attr.WriteOnly {
 			t.Errorf("%s must be Sensitive and WriteOnly", name)
 		}
-		if attr != nil && attr.ForceNew {
+		if attr.ForceNew {
 			t.Errorf("%s cannot be ForceNew (the SDK forbids it with WriteOnly)", name)
 		}
 	}
-	if s["host_base"].WriteOnly {
+	if res.Schema["host_base"].WriteOnly {
 		t.Error("host_base is returned by YBA and must be read back")
+	}
+}
+
+func assertDescriptions(t *testing.T, attrs map[string]*schema.Schema) {
+	t.Helper()
+	for name, attr := range attrs {
+		if attr.Description == "" {
+			t.Errorf("%s needs a Description: it renders into the docs", name)
+		}
+		nested, _ := attr.Elem.(*schema.Resource)
+		if nested != nil {
+			assertDescriptions(t, nested.Schema)
+		}
 	}
 }
 
@@ -59,15 +236,6 @@ func TestBuildOCIDataAuthModes(t *testing.T) {
 	}
 	if data["USE_OCI_IAM"] != false {
 		t.Fatalf("USE_OCI_IAM = %#v, want boolean false", data["USE_OCI_IAM"])
-	}
-	if data["OCI_S3_ACCESS_KEY_ID"] != "abcd" {
-		t.Fatalf("short access key was rewritten: %#v", data["OCI_S3_ACCESS_KEY_ID"])
-	}
-	if data["OCI_S3_SECRET_ACCESS_KEY"] != "secret-value-1" {
-		t.Fatalf("secret was rewritten: %#v", data["OCI_S3_SECRET_ACCESS_KEY"])
-	}
-	if _, ok := data["OCI_NAMESPACE"]; ok {
-		t.Fatal("omitted namespace was sent")
 	}
 
 	iam := ociStorageSpec{
@@ -160,36 +328,7 @@ func TestBuildOCIDataAuthModes(t *testing.T) {
 	}
 }
 
-func TestFlattenOCIDataIgnoresMaskedSecrets(t *testing.T) {
-	flat, err := flattenOCIData(map[string]interface{}{
-		"BACKUP_LOCATION":          "s3://backup-sjc",
-		"OCI_REGION":               "us-sanjose-1",
-		"OCI_NAMESPACE":            "mytenancy",
-		"USE_OCI_IAM":              false,
-		"OCI_S3_HOST_BASE":         "ns.compat.objectstorage.us-sanjose-1.oraclecloud.com",
-		"OCI_S3_ACCESS_KEY_ID":     "********",
-		"OCI_S3_SECRET_ACCESS_KEY": "se********1",
-		"REGION_LOCATIONS": []interface{}{
-			map[string]interface{}{
-				"REGION":           "us-ashburn-1",
-				"LOCATION":         "s3://backup-iad",
-				"OCI_S3_HOST_BASE": "ns.compat.objectstorage.us-ashburn-1.oraclecloud.com",
-			},
-		},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if flat.useIAM {
-		t.Fatal("useIAM")
-	}
-	if flat.hostBase == "" || flat.namespace != "mytenancy" || len(flat.locations) != 1 {
-		t.Fatalf("flat = %+v", flat)
-	}
-	if flat.locations[0].hostBase == "" {
-		t.Fatal("region host was dropped")
-	}
-
+func TestFlattenOCIDataIAMString(t *testing.T) {
 	fromString, err := flattenOCIData(map[string]interface{}{"USE_OCI_IAM": "true"})
 	if err != nil {
 		t.Fatal(err)

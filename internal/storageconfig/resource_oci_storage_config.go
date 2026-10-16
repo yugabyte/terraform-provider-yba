@@ -115,9 +115,6 @@ func ResourceOCIStorageConfig() *schema.Resource {
 				Type:     schema.TypeBool,
 				Optional: true,
 				Default:  false,
-				ConflictsWith: []string{
-					"access_key_id", "secret_access_key", "host_base",
-				},
 				Description: "Authenticate with the instance principal of the YugabyteDB Anywhere " +
 					"host and the universe nodes. When true, access_key_id, secret_access_key, " +
 					"and host_base must be omitted, and namespace is required. Default: false.",
@@ -128,9 +125,6 @@ func ResourceOCIStorageConfig() *schema.Resource {
 				Sensitive:    true,
 				WriteOnly:    true,
 				RequiredWith: []string{"secret_access_key"},
-				ConflictsWith: []string{
-					"use_oci_iam",
-				},
 				Description: "Customer Secret Key access key. Required, with secret_access_key " +
 					"and host_base, when use_oci_iam is false. Write-only: Terraform never " +
 					"stores it in the plan or state. Setting it requires Terraform 1.11 or later.",
@@ -141,17 +135,13 @@ func ResourceOCIStorageConfig() *schema.Resource {
 				Sensitive:    true,
 				WriteOnly:    true,
 				RequiredWith: []string{"access_key_id"},
-				ConflictsWith: []string{
-					"use_oci_iam",
-				},
 				Description: "Customer Secret Key secret. Required, with access_key_id and " +
 					"host_base, when use_oci_iam is false. Write-only: Terraform never stores " +
 					"it in the plan or state. Setting it requires Terraform 1.11 or later.",
 			},
 			"host_base": {
-				Type:          schema.TypeString,
-				Optional:      true,
-				ConflictsWith: []string{"use_oci_iam"},
+				Type:     schema.TypeString,
+				Optional: true,
 				Description: "S3-compatible endpoint, for example " +
 					"namespace.compat.objectstorage.us-sanjose-1.oraclecloud.com. " +
 					"Required when use_oci_iam is false. YugabyteDB Anywhere applies " +
@@ -362,23 +352,28 @@ type ociConfigSource interface {
 }
 
 type ociLocationSpec struct {
-	region   string
-	location string
-	hostBase string
+	region      string
+	location    string
+	hostBase    string
+	hostUnknown bool
 }
 
 type ociStorageSpec struct {
-	name            string
-	backupLocation  string
-	region          string
-	namespace       string
-	useIAM          bool
-	accessKeyID     string
-	secretAccessKey string
-	accessKnown     bool
-	secretKnown     bool
-	hostBase        string
-	locations       []ociLocationSpec
+	name             string
+	nameUnknown      bool
+	backupLocation   string
+	region           string
+	namespace        string
+	namespaceUnknown bool
+	useIAM           bool
+	useIAMUnknown    bool
+	accessKeyID      string
+	secretAccessKey  string
+	accessKnown      bool
+	secretKnown      bool
+	hostBase         string
+	hostUnknown      bool
+	locations        []ociLocationSpec
 }
 
 type ociStorageFlat struct {
@@ -391,45 +386,75 @@ type ociStorageFlat struct {
 }
 
 func ociSpecFrom(d ociConfigSource) (ociStorageSpec, error) {
-	access, accessKnown, err := rawConfigString(d, "access_key_id")
+	name, nameKnown, err := rawConfigString(d, cty.GetAttrPath("name"))
 	if err != nil {
 		return ociStorageSpec{}, err
 	}
-	secret, secretKnown, err := rawConfigString(d, "secret_access_key")
+	namespace, namespaceKnown, err := rawConfigString(d, cty.GetAttrPath("namespace"))
 	if err != nil {
 		return ociStorageSpec{}, err
 	}
+	host, hostKnown, err := rawConfigString(d, cty.GetAttrPath("host_base"))
+	if err != nil {
+		return ociStorageSpec{}, err
+	}
+	access, accessKnown, err := rawConfigString(d, cty.GetAttrPath("access_key_id"))
+	if err != nil {
+		return ociStorageSpec{}, err
+	}
+	secret, secretKnown, err := rawConfigString(d, cty.GetAttrPath("secret_access_key"))
+	if err != nil {
+		return ociStorageSpec{}, err
+	}
+	useIAM, useIAMKnown, err := rawConfigBool(d, "use_oci_iam")
+	if err != nil {
+		return ociStorageSpec{}, err
+	}
+	backup, _ := d.Get("backup_location").(string)
+	region, _ := d.Get("region").(string)
 	spec := ociStorageSpec{
-		name:            d.Get("name").(string),
-		backupLocation:  d.Get("backup_location").(string),
-		region:          d.Get("region").(string),
-		namespace:       d.Get("namespace").(string),
-		useIAM:          d.Get("use_oci_iam").(bool),
-		accessKeyID:     access,
-		secretAccessKey: secret,
-		accessKnown:     accessKnown,
-		secretKnown:     secretKnown,
-		hostBase:        d.Get("host_base").(string),
+		name:             name,
+		nameUnknown:      !nameKnown,
+		backupLocation:   backup,
+		region:           region,
+		namespace:        namespace,
+		namespaceUnknown: !namespaceKnown,
+		useIAM:           useIAM,
+		useIAMUnknown:    !useIAMKnown,
+		accessKeyID:      access,
+		secretAccessKey:  secret,
+		accessKnown:      accessKnown,
+		secretKnown:      secretKnown,
+		hostBase:         host,
+		hostUnknown:      !hostKnown,
 	}
 	rawLocs, _ := d.Get("region_locations").([]interface{})
-	for _, raw := range rawLocs {
+	for i, raw := range rawLocs {
 		if raw == nil {
 			continue
 		}
 		loc := raw.(map[string]interface{})
+		locHost, locHostKnown, err := rawConfigString(d, cty.GetAttrPath("region_locations").
+			Index(cty.NumberIntVal(int64(i))).GetAttr("host_base"))
+		if err != nil {
+			return ociStorageSpec{}, err
+		}
+		locRegion, _ := loc["region"].(string)
+		locLocation, _ := loc["location"].(string)
 		spec.locations = append(spec.locations, ociLocationSpec{
-			region:   loc["region"].(string),
-			location: loc["location"].(string),
-			hostBase: loc["host_base"].(string),
+			region:      locRegion,
+			location:    locLocation,
+			hostBase:    locHost,
+			hostUnknown: !locHostKnown,
 		})
 	}
 	return spec, nil
 }
 
-func rawConfigString(d ociConfigSource, name string) (string, bool, error) {
-	v, diags := d.GetRawConfigAt(cty.GetAttrPath(name))
+func rawConfigString(d ociConfigSource, path cty.Path) (string, bool, error) {
+	v, diags := d.GetRawConfigAt(path)
 	if diags.HasError() {
-		return "", false, fmt.Errorf("read write-only argument %s: %s", name, diags[0].Summary)
+		return "", false, fmt.Errorf("read argument %s: %s", path, diags[0].Summary)
 	}
 	if v.IsNull() {
 		return "", true, nil
@@ -441,6 +466,24 @@ func rawConfigString(d ociConfigSource, name string) (string, bool, error) {
 		return "", true, nil
 	}
 	return v.AsString(), true, nil
+}
+
+func rawConfigBool(d ociConfigSource, name string) (bool, bool, error) {
+	v, diags := d.GetRawConfigAt(cty.GetAttrPath(name))
+	if diags.HasError() {
+		return false, false, fmt.Errorf("read argument %s: %s", name, diags[0].Summary)
+	}
+	if v.IsNull() {
+		b, _ := d.Get(name).(bool)
+		return b, true, nil
+	}
+	if !v.IsKnown() {
+		return false, false, nil
+	}
+	if v.Type() != cty.Bool {
+		return false, true, nil
+	}
+	return v.True(), true, nil
 }
 
 func validateOCIStorageVersion(ctx context.Context, meta interface{}) error {
@@ -474,27 +517,32 @@ func ociStorageVersionError(ctx context.Context, version string) error {
 }
 
 func validateOCIStorage(spec ociStorageSpec) error {
-	if strings.TrimSpace(spec.name) == "" {
+	if !spec.nameUnknown && strings.TrimSpace(spec.name) == "" {
 		return fmt.Errorf("name must not be empty")
 	}
-	if spec.useIAM {
-		if spec.namespace == "" {
+	// An unknown value is computed in this apply. Require only a known empty
+	// value; buildOCIData checks again at apply, when every value is known.
+	switch {
+	case spec.useIAMUnknown:
+		// The mode is computed in this apply. buildOCIData checks it at apply.
+	case spec.useIAM:
+		if !spec.namespaceUnknown && spec.namespace == "" {
 			return fmt.Errorf("namespace is required when use_oci_iam is true")
 		}
-		if spec.hostBase != "" ||
+		if (!spec.hostUnknown && spec.hostBase != "") ||
 			(spec.accessKnown && spec.accessKeyID != "") ||
 			(spec.secretKnown && spec.secretAccessKey != "") {
 			return fmt.Errorf(
 				"access_key_id, secret_access_key, and host_base conflict with use_oci_iam")
 		}
-	} else {
-		if !spec.accessKnown || spec.accessKeyID == "" {
+	default:
+		if spec.accessKnown && spec.accessKeyID == "" {
 			return fmt.Errorf("access_key_id is required when use_oci_iam is false")
 		}
-		if !spec.secretKnown || spec.secretAccessKey == "" {
+		if spec.secretKnown && spec.secretAccessKey == "" {
 			return fmt.Errorf("secret_access_key is required when use_oci_iam is false")
 		}
-		if spec.hostBase == "" {
+		if !spec.hostUnknown && spec.hostBase == "" {
 			return fmt.Errorf("host_base is required when use_oci_iam is false")
 		}
 	}
@@ -503,7 +551,7 @@ func validateOCIStorage(spec ociStorageSpec) error {
 		return err
 	}
 	for _, loc := range spec.locations {
-		if !spec.useIAM && loc.hostBase == "" {
+		if !spec.useIAMUnknown && !spec.useIAM && !loc.hostUnknown && loc.hostBase == "" {
 			return fmt.Errorf(
 				"region_locations.host_base is required for region %q when use_oci_iam is false",
 				loc.region)
