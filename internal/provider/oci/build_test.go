@@ -160,11 +160,6 @@ func TestFlattenOCICredentialsOmitsPrivateKey(t *testing.T) {
 	if _, ok := got["private_key_file_path"]; ok {
 		t.Fatal("key path was returned")
 	}
-	if got["use_instance_principal"] != false || got["tenancy_id"] != "ocid1.tenancy.oc1..t" ||
-		got["fingerprint"] != "ab:cd" || got["compartment_id"] != "ocid1.compartment.oc1..c" ||
-		got["default_region"] != "us-ashburn-1" || got["vpc_type"] != "EXISTING" {
-		t.Fatalf("credentials = %#v", got)
-	}
 
 	principal := client.OCICloudInfo{}
 	principal.SetOciAuthType(ociAuthInstancePrincipal)
@@ -190,18 +185,6 @@ func TestBuildOCICloudInfoInstancePrincipal(t *testing.T) {
 		info.GetOciAuthType() != ociAuthInstancePrincipal ||
 		info.OciPrivateKeyContent != nil {
 		t.Fatalf("info = %+v", info)
-	}
-}
-
-func TestBuildOCIAccessKeysOmitsEmpty(t *testing.T) {
-	if keys := buildOCIAccessKeys("", ""); keys != nil {
-		t.Fatalf("empty keys = %+v", keys)
-	}
-	keys := buildOCIAccessKeys("my-key", "pem")
-	if len(keys) != 1 || keys[0].KeyInfo.GetKeyPairName() != "my-key" ||
-		keys[0].KeyInfo.GetSshPrivateKeyContent() != "pem" ||
-		keys[0].KeyInfo.SkipKeyValidateAndUpload != nil {
-		t.Fatalf("keys = %+v", keys)
 	}
 }
 

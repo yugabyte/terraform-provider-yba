@@ -146,9 +146,10 @@ func setOCIAuthForCreate(info *client.OCICloudInfo, in ociCloudInput) error {
 }
 
 // setOCIAuthForUpdate writes auth onto an edit. Switching to instance
-// principal clears the API-key fields. When keyChanged is false the private
-// key already stored on info is left in place: YBA restores its stored key
-// when the incoming value contains '*'.
+// principal clears the API-key fields. When keyChanged is false and no
+// private_key_file_path is set, the key already on info stays: YBA restores
+// its stored key when the incoming value contains '*'. A set path is read
+// and stored even when keyChanged is false.
 func setOCIAuthForUpdate(info *client.OCICloudInfo, in ociCloudInput, keyChanged bool) error {
 	if in.UseInstancePrincipal {
 		if apiKeyFieldsSet(in) {
@@ -163,11 +164,18 @@ func setOCIAuthForUpdate(info *client.OCICloudInfo, in ociCloudInput, keyChanged
 		info.SetOciPrivateKeyContent("")
 		return nil
 	}
+	if err := validateOCIAuthInput(in); err != nil {
+		return err
+	}
 	info.SetOciAuthType(ociAuthAPIKey)
 	info.SetOciTenancyId(in.TenancyID)
 	info.SetOciUserId(in.UserID)
 	info.SetOciFingerprint(in.Fingerprint)
-	if !keyChanged {
+	// A path has no content diff. Re-read it on every auth update so a new
+	// fingerprint is not stored with the previous PEM. Content is re-sent
+	// only when keyChanged is true; otherwise YBA still holds the key and
+	// restores it when the request contains '*'.
+	if !keyChanged && in.PrivateKeyFilePath == "" {
 		return nil
 	}
 	key, err := readPrivateKey(in.PrivateKeyContent, in.PrivateKeyFilePath)
@@ -176,4 +184,14 @@ func setOCIAuthForUpdate(info *client.OCICloudInfo, in ociCloudInput, keyChanged
 	}
 	info.SetOciPrivateKeyContent(key)
 	return nil
+}
+
+// storeableOCIPrivateKey reports a PEM from the by-UUID provider GET.
+// The list route masks the key as the first character, '*', and the last
+// character. A masked value must not be written into state.
+func storeableOCIPrivateKey(key string) (string, bool) {
+	if key == "" || strings.Contains(key, "*") || !strings.Contains(key, "PRIVATE KEY") {
+		return "", false
+	}
+	return key, true
 }
