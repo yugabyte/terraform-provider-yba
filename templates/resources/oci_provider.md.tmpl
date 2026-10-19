@@ -10,7 +10,7 @@ description: |-
 
 ## Credentials
 
-API-key authentication is the default. Set `tenancy_id`, `user_id`, `fingerprint`, and exactly one of `private_key_content` or `private_key_file_path`. An explicit `use_instance_principal = false` is the same mode and is set together with those fields. The file is read when the plan is applied. A leading `~` is expanded to the home directory.
+API-key authentication is the default. Set `tenancy_id`, `user_id`, `fingerprint`, and exactly one of `private_key_content` or `private_key_file_path`. An explicit `use_instance_principal = false` is the same mode and is set together with those fields. The file is read when an apply creates the provider or updates any auth field. Overwriting the file without changing the path or another auth field does not plan an update. A leading `~` is expanded to the home directory.
 
 Set `use_instance_principal = true` to authenticate as the instance principal of the YugabyteDB Anywhere host, and omit the API-key fields. The provider rejects the API-key fields only when that value is true.
 
@@ -32,4 +32,8 @@ OCI providers can be imported using the provider UUID:
 terraform import yba_oci_provider.example <provider-uuid>
 ```
 
-An instance-principal provider plans cleanly after import. An API-key provider does not: YugabyteDB Anywhere masks the private key on read, so the key is absent from state after import and the next plan sends it again. Set `private_key_content` or `private_key_file_path` in configuration before that plan. To keep later plans empty, add the key argument to `lifecycle.ignore_changes`.
+An instance-principal provider plans cleanly after import.
+
+An API-key provider that sets `private_key_content` plans cleanly when that PEM matches the key YugabyteDB Anywhere stored. Read fills it from the provider GET when state does not yet have it. The provider list masks the key. A masked response is left unset, and the next plan sends the configured key.
+
+`private_key_file_path` is a local path. YugabyteDB Anywhere does not store it. When the file body matches the PEM Read stored, that path is not planned as a change. Otherwise the next plan reads the file and sends the key. To keep later plans empty, add `private_key_file_path` to `lifecycle.ignore_changes`.

@@ -16,6 +16,10 @@
 package oci
 
 import (
+	"context"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -93,34 +97,52 @@ func TestSetOCIAuthForCreateInstancePrincipalOmitsAPIKey(t *testing.T) {
 	}
 }
 
-func TestSetOCIAuthForCreateAPIKey(t *testing.T) {
-	info := &client.OCICloudInfo{}
-	in := ociCloudInput{
-		TenancyID: "ocid1.tenancy.oc1..t", UserID: "ocid1.user.oc1..u",
-		Fingerprint: "ab:cd", PrivateKeyContent: "pem",
-	}
-	if err := setOCIAuthForCreate(info, in); err != nil {
-		t.Fatal(err)
-	}
-	if info.GetOciAuthType() != ociAuthAPIKey || info.GetOciTenancyId() != in.TenancyID ||
-		info.GetOciUserId() != in.UserID || info.GetOciFingerprint() != in.Fingerprint ||
-		info.GetOciPrivateKeyContent() != "pem" {
-		t.Fatalf("api key payload = %+v", info)
-	}
-}
-
 func TestSetOCIAuthForUpdateKeepsMaskedKey(t *testing.T) {
 	info := &client.OCICloudInfo{}
 	info.SetOciPrivateKeyContent("p***m")
 	in := ociCloudInput{
 		TenancyID: "ocid1.tenancy.oc1..t", UserID: "ocid1.user.oc1..u",
-		Fingerprint: "ab:cd",
+		Fingerprint: "ab:cd", PrivateKeyContent: "pem",
 	}
 	if err := setOCIAuthForUpdate(info, in, false); err != nil {
 		t.Fatal(err)
 	}
 	if info.GetOciPrivateKeyContent() != "p***m" {
 		t.Fatalf("stored key replaced with %q", info.GetOciPrivateKeyContent())
+	}
+}
+
+func TestSetOCIAuthForUpdateRejectsEmptyIdentity(t *testing.T) {
+	info := &client.OCICloudInfo{}
+	info.SetOciPrivateKeyContent("p***m")
+	err := setOCIAuthForUpdate(info, ociCloudInput{
+		Fingerprint: "ab:cd", PrivateKeyContent: "pem",
+	}, true)
+	if err == nil {
+		t.Fatal("empty tenancy and user were accepted")
+	}
+	if info.GetOciPrivateKeyContent() != "p***m" {
+		t.Fatal("rejected update wrote the key")
+	}
+}
+
+func TestSetOCIAuthForUpdateRereadsFileWhenPathUnchanged(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "api.pem")
+	if err := os.WriteFile(path, []byte("new-pem\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	info := &client.OCICloudInfo{}
+	info.SetOciPrivateKeyContent("p***m")
+	err := setOCIAuthForUpdate(info, ociCloudInput{
+		TenancyID: "t", UserID: "u", Fingerprint: "new:fp",
+		PrivateKeyFilePath: path,
+	}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.GetOciPrivateKeyContent() != "new-pem\n" || info.GetOciFingerprint() != "new:fp" {
+		t.Fatalf("info = %+v", info)
 	}
 }
 
@@ -135,6 +157,63 @@ func TestSetOCIAuthForUpdateClearsAPIKeyOnInstancePrincipal(t *testing.T) {
 	if info.GetOciAuthType() != ociAuthInstancePrincipal ||
 		info.GetOciTenancyId() != "" || info.GetOciPrivateKeyContent() != "" {
 		t.Fatalf("fields not cleared: %+v", info)
+	}
+}
+
+func TestOCIContentKeptForFilePath(t *testing.T) {
+	if !ociContentKeptForFilePath("pem", "", "/tmp/k.pem") {
+		t.Fatal("file-path config must keep the PEM Read stored")
+	}
+	if ociContentKeptForFilePath("pem", "other", "/tmp/k.pem") {
+		t.Fatal("a configured PEM must not be suppressed")
+	}
+	if ociContentKeptForFilePath("", "pem", "") {
+		t.Fatal("empty state must not be suppressed")
+	}
+	if ociContentKeptForFilePath("pem", "", "") {
+		t.Fatal("content removal without a path must not be suppressed")
+	}
+}
+
+func TestSuppressOCIPrivateKeyFilePathMatchesBody(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "api.pem")
+	pem := "-----BEGIN PRIVATE KEY-----\nYQ==\n-----END PRIVATE KEY-----\n"
+	if err := os.WriteFile(path, []byte(pem), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if !ociPathMatchesStoredPEM("", path, pem) {
+		t.Fatal("matching file must suppress the path")
+	}
+	if ociPathMatchesStoredPEM("", path, pem+"x") {
+		t.Fatal("different PEM must not suppress the path")
+	}
+	if ociPathMatchesStoredPEM(path, path, pem) {
+		t.Fatal("a path already in state must not be suppressed")
+	}
+}
+
+func TestReadClearOCIPrivateKey(t *testing.T) {
+	pem := "-----BEGIN PRIVATE KEY-----\nYQ==\n-----END PRIVATE KEY-----\n"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/customers/cust/providers/prov" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprintf(w, `{"details":{"cloudInfo":{"oci":{"ociPrivateKeyContent":%q}}}}`, pem)
+	}))
+	defer srv.Close()
+	cfg := client.NewConfiguration()
+	cfg.Servers = client.ServerConfigurations{{URL: srv.URL}}
+	cfg.HTTPClient = srv.Client()
+	got, err := readClearOCIPrivateKey(
+		context.Background(), client.NewAPIClient(cfg), "cust", "prov")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != pem {
+		t.Fatalf("key = %q", got)
 	}
 }
 
@@ -164,5 +243,34 @@ func TestValidateOCIAuthInput(t *testing.T) {
 	both.PrivateKeyFilePath = "/tmp/k.pem"
 	if err := validateOCIAuthInput(both); err == nil {
 		t.Fatal("expected exactly-one key error")
+	}
+}
+
+func TestStoreableOCIPrivateKey(t *testing.T) {
+	pem := "-----BEGIN PRIVATE KEY-----\nYQ==\n-----END PRIVATE KEY-----"
+	if got, ok := storeableOCIPrivateKey(pem); !ok || got != pem {
+		t.Fatalf("pem ok=%v got=%q", ok, got)
+	}
+	if _, ok := storeableOCIPrivateKey("p***m"); ok {
+		t.Fatal("masked key was stored")
+	}
+	if _, ok := storeableOCIPrivateKey(""); ok {
+		t.Fatal("empty key was stored")
+	}
+}
+
+func TestSSHNameConflictSkipsUnchangedName(t *testing.T) {
+	name := "my-key"
+	existing := []client.AccessKey{{
+		KeyInfo: client.KeyInfo{KeyPairName: &name},
+	}}
+	if err := sshNameConflict(false, name, existing); err != nil {
+		t.Fatalf("content rotation: %v", err)
+	}
+	if err := sshNameConflict(true, "other-key", existing); err != nil {
+		t.Fatalf("new name: %v", err)
+	}
+	if err := sshNameConflict(true, name, existing); err == nil {
+		t.Fatal("renaming onto an existing key must fail")
 	}
 }

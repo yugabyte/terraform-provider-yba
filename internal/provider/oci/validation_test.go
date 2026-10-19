@@ -110,6 +110,23 @@ func TestCheckDuplicateRegionsZonesAndArch(t *testing.T) {
 		!strings.Contains(err.Error(), "x86_64") {
 		t.Fatalf("arch err = %v", err)
 	}
+	unknown := []interface{}{
+		map[string]interface{}{
+			"code": "",
+			"zones": []interface{}{
+				map[string]interface{}{"code": ""},
+			},
+		},
+		map[string]interface{}{
+			"code": "",
+			"zones": []interface{}{
+				map[string]interface{}{"code": ""},
+			},
+		},
+	}
+	if err := checkDuplicateRegionsAndZones(unknown); err != nil {
+		t.Fatalf("unknown codes: %v", err)
+	}
 }
 
 func TestRegionsContentChangedIgnoresOrder(t *testing.T) {

@@ -120,12 +120,14 @@ func checkDuplicateRegionsAndZones(regionsRaw []interface{}) error {
 			continue
 		}
 		regionCode, _ := regionMap["code"].(string)
-		if regionCodes[regionCode] {
-			return fmt.Errorf(
-				"duplicate region code %q found: each region must have a unique code",
-				regionCode)
+		if regionCode != "" {
+			if regionCodes[regionCode] {
+				return fmt.Errorf(
+					"duplicate region code %q found: each region must have a unique code",
+					regionCode)
+			}
+			regionCodes[regionCode] = true
 		}
-		regionCodes[regionCode] = true
 		zonesList, _ := regionMap["zones"].([]interface{})
 		zoneCodes := make(map[string]bool, len(zonesList))
 		for _, z := range zonesList {
@@ -134,6 +136,9 @@ func checkDuplicateRegionsAndZones(regionsRaw []interface{}) error {
 				continue
 			}
 			zoneCode, _ := zoneMap["code"].(string)
+			if zoneCode == "" {
+				continue
+			}
 			if zoneCodes[zoneCode] {
 				return fmt.Errorf(
 					"duplicate zone code %q found in region %q: "+
@@ -272,9 +277,10 @@ var ociAPIKeyFieldNames = []string{
 }
 
 // ociAuthPlanError rejects a known-invalid auth combination.
-// An unknown value is not treated as empty: the check waits until apply,
-// where setOCIAuthForCreate sees the real value. An explicit
-// use_instance_principal = false is API-key auth.
+// An unknown value is not treated as empty. Apply calls
+// validateOCIAuthInput from setOCIAuthForCreate and from the API-key
+// branch of setOCIAuthForUpdate. An explicit use_instance_principal = false
+// is API-key auth.
 func ociAuthPlanError(principalKnown, principal bool, fields map[string]authField) error {
 	if !principalKnown {
 		return nil

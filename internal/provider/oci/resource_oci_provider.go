@@ -65,10 +65,9 @@ func ociProviderSchema() map[string]*schema.Schema {
 			inUseRestriction,
 	}
 	s["default_region"] = &schema.Schema{
-		Type:     schema.TypeString,
-		Required: true,
-		Description: "Default OCI region for the provider, for example `us-ashburn-1`. " +
-			"Sent as `ociRegion`.",
+		Type:        schema.TypeString,
+		Required:    true,
+		Description: "Default OCI region for the provider, for example `us-ashburn-1`.",
 	}
 	s["use_instance_principal"] = &schema.Schema{
 		Type:     schema.TypeBool,
@@ -104,28 +103,35 @@ func ociProviderSchema() map[string]*schema.Schema {
 			"Omit it when `use_instance_principal` is true. " + inUseRestriction,
 	}
 	s["private_key_content"] = &schema.Schema{
-		Type:          schema.TypeString,
-		Optional:      true,
-		Sensitive:     true,
-		ConflictsWith: []string{"private_key_file_path"},
+		Type:             schema.TypeString,
+		Optional:         true,
+		Sensitive:        true,
+		ConflictsWith:    []string{"private_key_file_path"},
+		DiffSuppressFunc: suppressOCIPrivateKeyContent,
 		Description: "OCI API private key in PEM form. Set exactly one of `private_key_content` " +
 			"or `private_key_file_path` for API-key authentication, including when " +
 			"`use_instance_principal` is explicitly false. Omit both when " +
 			"`use_instance_principal` is true. " +
-			"YugabyteDB Anywhere masks the key on read, so Terraform does not refresh this value. " +
+			"When state has no value, Read fills this from the provider GET if the response is a PEM. " +
+			"The provider list masks the key, and a masked response is left unset. " +
 			"Changing it updates the provider in place.\n\n" +
 			"~> **Security Note:** This value is stored in Terraform state. Use an encrypted backend.",
 	}
 	s["private_key_file_path"] = &schema.Schema{
-		Type:          schema.TypeString,
-		Optional:      true,
-		ConflictsWith: []string{"private_key_content"},
-		Description: "Path of an OCI API private key PEM file. The provider reads the file at " +
-			"apply time and sends the contents as the API key. A leading `~` is expanded to the " +
-			"home directory. Set exactly one of `private_key_content` or `private_key_file_path` " +
-			"for API-key authentication, including when `use_instance_principal` is explicitly " +
-			"false. Omit both when `use_instance_principal` is true. The path is not sent to " +
-			"YugabyteDB Anywhere and is not read back.",
+		Type:             schema.TypeString,
+		Optional:         true,
+		ConflictsWith:    []string{"private_key_content"},
+		DiffSuppressFunc: suppressOCIPrivateKeyFilePath,
+		Description: "Path of an OCI API private key PEM file. The provider reads the file " +
+			"when the plan is applied and sends the contents as the API key. A leading `~` " +
+			"is expanded to the home directory. Set exactly one of `private_key_content` or " +
+			"`private_key_file_path` for API-key authentication, including when " +
+			"`use_instance_principal` is explicitly false. Omit both when " +
+			"`use_instance_principal` is true. The path is not sent to YugabyteDB Anywhere " +
+			"and is not read back. Overwriting the file at the same path plans an update " +
+			"only when another auth field changes in that apply, because Terraform diffs " +
+			"the path and not the file body. To rotate the key by itself, change the path " +
+			"or set `private_key_content`.",
 	}
 	s["hosted_zone_id"] = &schema.Schema{
 		Type:     schema.TypeString,
@@ -321,14 +327,13 @@ func ociRegionsSchema() *schema.Schema {
 					Type:             schema.TypeString,
 					Required:         true,
 					DiffSuppressFunc: suppressIfOCIRegionsPureReorder,
-					Description:      "OCID of the VCN for this region. Sent as the region vnet.",
+					Description:      "OCID of the VCN for this region.",
 				},
 				"instance_configuration_id": {
 					Type:             schema.TypeString,
 					Optional:         true,
 					DiffSuppressFunc: suppressIfOCIRegionsPureReorder,
-					Description: "OCID of the instance configuration for nodes in this region. " +
-						"Sent as instanceTemplate.",
+					Description:      "OCID of the instance configuration for nodes in this region.",
 				},
 				"zones": ociZonesSchema(),
 			},
@@ -452,6 +457,52 @@ func resourceOCIProviderCreate(
 	return resourceOCIProviderRead(ctx, d, meta)
 }
 
+// readClearOCIPrivateKey calls the by-UUID GET. The list used by Read masks
+// the key. A failure here leaves state unchanged; it does not drop the provider.
+func readClearOCIPrivateKey(
+	ctx context.Context, c *client.APIClient, cUUID, pUUID string,
+) (string, error) {
+	p, response, err := c.CloudProvidersAPI.GetProvider(ctx, cUUID, pUUID).Execute()
+	if err != nil {
+		return "", utils.ErrorFromHTTPResponse(
+			response, err, utils.ResourceEntity, "OCI Provider", "Read")
+	}
+	details := p.GetDetails()
+	cloudInfo := details.GetCloudInfo()
+	ociInfo := cloudInfo.GetOci()
+	return ociInfo.GetOciPrivateKeyContent(), nil
+}
+
+// suppressOCIPrivateKeyContent keeps a PEM that Read stored when the
+// configuration uses private_key_file_path instead of the PEM argument.
+func suppressOCIPrivateKeyContent(k, old, new string, d *schema.ResourceData) bool {
+	path, _ := d.Get("private_key_file_path").(string)
+	return ociContentKeptForFilePath(old, new, path)
+}
+
+func ociContentKeptForFilePath(old, new, path string) bool {
+	return new == "" && old != "" && path != ""
+}
+
+// suppressOCIPrivateKeyFilePath ignores an import of a local path when the
+// file body matches the PEM Read stored. YBA never returns the path.
+func suppressOCIPrivateKeyFilePath(k, old, new string, d *schema.ResourceData) bool {
+	oldContent, _ := d.GetChange("private_key_content")
+	pem, _ := oldContent.(string)
+	return ociPathMatchesStoredPEM(old, new, pem)
+}
+
+func ociPathMatchesStoredPEM(oldPath, newPath, storedPEM string) bool {
+	if oldPath != "" || newPath == "" || storedPEM == "" {
+		return false
+	}
+	body, err := readPrivateKey("", newPath)
+	if err != nil {
+		return false
+	}
+	return body == storedPEM
+}
+
 func resourceOCIProviderRead(
 	ctx context.Context, d *schema.ResourceData, meta interface{},
 ) diag.Diagnostics {
@@ -496,6 +547,18 @@ func resourceOCIProviderRead(
 			return diag.FromErr(err)
 		}
 	}
+	if creds["use_instance_principal"] != true &&
+		d.Get("private_key_content").(string) == "" {
+		key, keyErr := readClearOCIPrivateKey(ctx, c, cUUID, d.Id())
+		if keyErr != nil {
+			tflog.Warn(ctx, fmt.Sprintf(
+				"OCI provider %s: private key was not read back: %v", d.Id(), keyErr))
+		} else if pem, ok := storeableOCIPrivateKey(key); ok {
+			if err = d.Set("private_key_content", pem); err != nil {
+				return diag.FromErr(err)
+			}
+		}
+	}
 	stateRegions, _ := d.Get("regions").([]interface{})
 	alignedRegions := providerutil.AlignRegions(flattenOCIRegions(p.GetRegions()), stateRegions)
 	if err = d.Set("regions", alignedRegions); err != nil {
@@ -520,6 +583,15 @@ func resourceOCIProviderRead(
 		}
 	}
 	return diags
+}
+
+// sshNameConflict rejects a new name that YBA already stores. A content
+// change under the same name is not a conflict: YBA versions that key.
+func sshNameConflict(nameChanged bool, newName string, existing []client.AccessKey) error {
+	if !nameChanged || newName == "" {
+		return nil
+	}
+	return providerutil.ValidateSSHKeypairNameUnique(existing, newName)
 }
 
 func resourceOCIProviderUpdate(
@@ -591,14 +663,11 @@ func resourceOCIProviderUpdate(
 
 	if d.HasChange("ssh_keypair_name") || d.HasChange("ssh_private_key_content") {
 		newName := d.Get("ssh_keypair_name").(string)
-		if newName != "" {
-			if vErr := providerutil.ValidateSSHKeypairNameUnique(
-				p.GetAllAccessKeys(),
-				newName,
-			); vErr != nil {
-				utils.RevertFields(d, writeOnlyOCIFields...)
-				return diag.FromErr(vErr)
-			}
+		if vErr := sshNameConflict(
+			d.HasChange("ssh_keypair_name"), newName, p.GetAllAccessKeys(),
+		); vErr != nil {
+			utils.RevertFields(d, writeOnlyOCIFields...)
+			return diag.FromErr(vErr)
 		}
 		providerReq.SetAllAccessKeys(buildOCIAccessKeys(
 			newName, d.Get("ssh_private_key_content").(string)))
