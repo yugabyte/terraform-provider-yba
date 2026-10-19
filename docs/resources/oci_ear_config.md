@@ -14,7 +14,7 @@ Point the configuration at an existing AES key with `key_name`, or let YugabyteD
 
 There are two authentication modes. Set `tenancy_id`, `user_id`, `fingerprint` and `private_key_content` for an API signing key, or set `use_instance_principal = true` to authenticate as the YugabyteDB Anywhere host. The host must be an OCI compute instance in a dynamic group. Either identity needs policies to use the vault and to use keys in `compartment_id`, and to manage keys when YugabyteDB Anywhere creates the key. YugabyteDB Anywhere checks them when it creates or edits the configuration.
 
-YugabyteDB Anywhere allows OCI KMS unless the runtime configuration `yb.kms.allow_oci` is false.
+An apply fails while the global runtime config `yb.kms.allow_oci` is false. YugabyteDB Anywhere allows OCI KMS when that key is unset or true.
 
 ~> **Security Note:** `private_key_content` is stored in the Terraform state file and marked sensitive. Use a secure state backend and restrict access to state files, or use `use_instance_principal`, which keeps the key out of Terraform.
 

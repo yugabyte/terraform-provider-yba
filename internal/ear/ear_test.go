@@ -244,6 +244,9 @@ func TestDeleteEARConfigAlreadyGone(t *testing.T) {
 // flag is false. The resource reads the flag first, so neither a create nor a
 // delete is sent.
 func TestEARRuntimeFlagBlocksWrites(t *testing.T) {
+	if got := ociEARSpec().runtimeFlag; got != "yb.kms.allow_oci" {
+		t.Fatalf("runtimeFlag = %q, want yb.kms.allow_oci", got)
+	}
 	f := &fakeYBA{
 		listBody: listOf(listEntry(testConfigUUID, "ct", providerCipherTrust, false,
 			`{"AUTH_TYPE": "PASSWORD", "USERNAME": "yba", "KEY_NAME": "yb-key"}`)),

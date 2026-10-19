@@ -946,6 +946,14 @@ resource "yba_oci_ear_config" "test" {
   vault_id             = var.OCI_EAR_VAULT_ID
   region               = var.OCI_REGION
   key_name             = var.OCI_EAR_KEY_NAME
+
+  # YBA lists the private key masked (CommonUtils.isSensitiveField matches
+  # KEY in ociPrivateKeyContent; listKMSConfigs calls maskConfig). Read does
+  # not copy the clear by-UUID value into state, so an import leaves
+  # private_key_content empty and the next plan would update it.
+  lifecycle {
+    ignore_changes = [private_key_content]
+  }
 }
 `, name)
 }

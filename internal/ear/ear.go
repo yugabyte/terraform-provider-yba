@@ -106,9 +106,10 @@ func parseEARConfig(raw map[string]interface{}) (earConfig, bool) {
 }
 
 // listEARConfigs returns every configuration of the customer. This is the only
-// endpoint that carries a configuration's name and provider; the by-UUID GET
-// returns the raw settings with credentials in clear, and only editSaved uses
-// it.
+// endpoint that carries a configuration's name and provider. The by-UUID GET
+// returns the raw settings with credentials in clear. editSaved uses it to
+// compare a failed edit. ociReadKey uses it when state has no key name or key
+// OCID (the read after create, and import). A later OCI refresh does not.
 func listEARConfigs(
 	ctx context.Context, c *client.APIClient, cUUID string,
 ) ([]earConfig, error) {

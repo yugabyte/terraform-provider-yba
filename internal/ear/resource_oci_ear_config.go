@@ -79,15 +79,17 @@ var ociEARMin = utils.YBAMinimumVersion{Preview: "2.31.0.0-b244"}
 const ociEARPreview = "The YugabyteDB Anywhere API behind `yba_oci_ear_config` is in " +
 	"preview. A later YBA release can change it in ways that are not backward compatible."
 
+// ociAllowFlag is the global runtime config YBA requires to be true before
+// it creates, edits, or deletes an OCI KMS configuration. Unset reads as
+// YBA's default, which allows OCI KMS.
+const ociAllowFlag = "yb.kms.allow_oci"
+
 // ResourceOCIEARConfig defines the OCI KMS encryption-at-rest configuration.
 func ResourceOCIEARConfig() *schema.Resource {
 	return earResource(ociEARSpec())
 }
 
 func ociEARSpec() earSpec {
-	apiKeyFields := []string{
-		"tenancy_id", "user_id", "fingerprint", "private_key_content",
-	}
 	return earSpec{
 		displayName: "OCI KMS",
 		apiProvider: providerOCI,
@@ -108,58 +110,54 @@ func ociEARSpec() earSpec {
 			"identity needs policies to use the vault and to use keys in `compartment_id`, " +
 			"and to manage keys when YugabyteDB Anywhere creates the key. YugabyteDB " +
 			"Anywhere checks them when it creates or edits the configuration.\n\n" +
-			"YugabyteDB Anywhere allows OCI KMS unless the runtime configuration " +
-			"`yb.kms.allow_oci` is false.\n\n" +
+			"An apply fails while the global runtime config `yb.kms.allow_oci` is " +
+			"false. YugabyteDB Anywhere allows OCI KMS when that key is unset or " +
+			"true.\n\n" +
 			"~> **Security Note:** `private_key_content` is stored in the Terraform state " +
 			"file and marked sensitive. Use a secure state backend and restrict access to " +
 			"state files, or use `use_instance_principal`, which keeps the key out of " +
 			"Terraform.",
 		fields: map[string]*schema.Schema{
 			"use_instance_principal": {
-				Type:          schema.TypeBool,
-				Optional:      true,
-				Default:       false,
-				ForceNew:      true,
-				ConflictsWith: apiKeyFields,
+				Type:     schema.TypeBool,
+				Optional: true,
+				Default:  false,
+				ForceNew: true,
 				Description: "Authenticate as the YugabyteDB Anywhere host with an OCI " +
 					"instance principal, instead of an API signing key. Uses a preview " +
 					"YugabyteDB Anywhere API. A change forces replacement.",
 			},
 			"tenancy_id": {
-				Type:          schema.TypeString,
-				Optional:      true,
-				RequiredWith:  []string{"user_id", "fingerprint", "private_key_content"},
-				ConflictsWith: []string{"use_instance_principal"},
-				ValidateFunc:  validation.StringIsNotEmpty,
+				Type:         schema.TypeString,
+				Optional:     true,
+				RequiredWith: []string{"user_id", "fingerprint", "private_key_content"},
+				ValidateFunc: validation.StringIsNotEmpty,
 				Description: "OCID of the tenancy that owns the API signing key. Required, " +
 					"with `user_id`, `fingerprint` and `private_key_content`, when " +
 					"`use_instance_principal` is false. Can change in place.",
 			},
 			"user_id": {
-				Type:          schema.TypeString,
-				Optional:      true,
-				RequiredWith:  []string{"tenancy_id", "fingerprint", "private_key_content"},
-				ConflictsWith: []string{"use_instance_principal"},
-				ValidateFunc:  validation.StringIsNotEmpty,
+				Type:         schema.TypeString,
+				Optional:     true,
+				RequiredWith: []string{"tenancy_id", "fingerprint", "private_key_content"},
+				ValidateFunc: validation.StringIsNotEmpty,
 				Description: "OCID of the user that owns the API signing key. Required when " +
 					"`use_instance_principal` is false. Can change in place.",
 			},
 			"fingerprint": {
-				Type:          schema.TypeString,
-				Optional:      true,
-				RequiredWith:  []string{"tenancy_id", "user_id", "private_key_content"},
-				ConflictsWith: []string{"use_instance_principal"},
-				ValidateFunc:  validation.StringIsNotEmpty,
+				Type:         schema.TypeString,
+				Optional:     true,
+				RequiredWith: []string{"tenancy_id", "user_id", "private_key_content"},
+				ValidateFunc: validation.StringIsNotEmpty,
 				Description: "Fingerprint of the API signing key. Required when " +
 					"`use_instance_principal` is false. Can change in place.",
 			},
 			"private_key_content": {
-				Type:          schema.TypeString,
-				Optional:      true,
-				Sensitive:     true,
-				RequiredWith:  []string{"tenancy_id", "user_id", "fingerprint"},
-				ConflictsWith: []string{"use_instance_principal"},
-				ValidateFunc:  validation.StringIsNotEmpty,
+				Type:         schema.TypeString,
+				Optional:     true,
+				Sensitive:    true,
+				RequiredWith: []string{"tenancy_id", "user_id", "fingerprint"},
+				ValidateFunc: validation.StringIsNotEmpty,
 				Description: "PEM contents of the API signing key, inline or from " +
 					"`file(...)`. Required when `use_instance_principal` is false. Can " +
 					"change in place: YugabyteDB Anywhere checks the credentials, the vault " +
@@ -212,23 +210,33 @@ func ociEARSpec() earSpec {
 		afterRead:        ociReadKey,
 		customizeDiff:    ociCustomizeDiff,
 		warnings:         ociPreviewWarnings,
+		runtimeFlag:      ociAllowFlag,
 	}
 }
 
-// ociCustomizeDiff gates the resource on the YBA build, then rejects an
-// API-key configuration that is missing a signing-key argument when the plan
-// knows the value. Unknown values (a key read at apply time) are checked
-// again in ociBuildAuth.
+// ociCustomizeDiff gates the resource on the YBA build, then checks the auth
+// mode against the bool value. ConflictsWith cannot do this: it rejects the
+// attribute when it is present, so an explicit use_instance_principal = false
+// conflicts with the signing-key fields. Unknown signing-key values are
+// checked again in ociBuildAuth.
 func ociCustomizeDiff(ctx context.Context, d *schema.ResourceDiff, meta interface{}) error {
 	if err := ociRequireVersion(ctx, meta); err != nil {
 		return err
 	}
+	fields := []string{"tenancy_id", "user_id", "fingerprint", "private_key_content"}
 	if d.Get("use_instance_principal").(bool) {
+		for _, field := range fields {
+			if !d.NewValueKnown(field) {
+				continue
+			}
+			if d.Get(field).(string) != "" {
+				return fmt.Errorf(
+					"%s cannot be set when use_instance_principal is true", field)
+			}
+		}
 		return nil
 	}
-	for _, field := range []string{
-		"tenancy_id", "user_id", "fingerprint", "private_key_content",
-	} {
+	for _, field := range fields {
 		if !d.NewValueKnown(field) {
 			continue
 		}
@@ -386,9 +394,15 @@ func ociFlatten(d *schema.ResourceData, settings map[string]interface{}) error {
 }
 
 // ociReadKey sets key_name and key_id from the by-UUID GET, which returns
-// them in clear. The list masks both. The private key in that response is
-// not written to state.
+// them in clear. The list masks both because the field names contain KEY.
+// The GET also returns ociPrivateKeyContent in clear, so it runs only when
+// state has no key_id or no key_name: the read after create, and import.
+// A later refresh keeps both from state and does not call the GET. The
+// private key in the response is not written to state.
 func ociReadKey(ctx context.Context, d *schema.ResourceData, meta interface{}) error {
+	if d.Get("key_id").(string) != "" && d.Get("key_name").(string) != "" {
+		return nil
+	}
 	c, ok := meta.(*api.APIClient)
 	if !ok || c == nil || c.VanillaClient == nil {
 		return fmt.Errorf("encryption at rest config %s: no YugabyteDB Anywhere client", d.Id())

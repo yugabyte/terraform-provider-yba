@@ -90,12 +90,6 @@ func TestOCIBuildCreateAuthModes(t *testing.T) {
 		}
 	}
 
-	both := ociAPIKeyConfig()
-	both["use_instance_principal"] = true
-	diags := ResourceOCIEARConfig().Validate(terraform.NewResourceConfigRaw(both))
-	if !diags.HasError() {
-		t.Error("want a plan error when API-key fields and use_instance_principal are both set")
-	}
 }
 
 func TestOCIPlanRequiresAPIKeyFields(t *testing.T) {
@@ -120,6 +114,28 @@ func TestOCIPlanRequiresAPIKeyFields(t *testing.T) {
 		context.Background(), nil, terraform.NewResourceConfigRaw(host), nil)
 	if err != nil {
 		t.Fatalf("instance-principal plan: %v", err)
+	}
+
+	explicitFalse := ociAPIKeyConfig()
+	explicitFalse["use_instance_principal"] = false
+	_, err = ResourceOCIEARConfig().Diff(
+		context.Background(), nil, terraform.NewResourceConfigRaw(explicitFalse), nil)
+	if err != nil {
+		t.Fatalf("explicit use_instance_principal = false with the signing key: %v", err)
+	}
+	// ConflictsWith rejects a set bool, including false. Diff does not run
+	// that check; Validate does.
+	if diags := ResourceOCIEARConfig().Validate(
+		terraform.NewResourceConfigRaw(explicitFalse)); diags.HasError() {
+		t.Fatalf("explicit use_instance_principal = false must validate: %v", diags)
+	}
+
+	both := ociAPIKeyConfig()
+	both["use_instance_principal"] = true
+	_, err = ResourceOCIEARConfig().Diff(
+		context.Background(), nil, terraform.NewResourceConfigRaw(both), nil)
+	if err == nil || !strings.Contains(err.Error(), "use_instance_principal") {
+		t.Fatalf("mixed mode plan error = %v, want one that names use_instance_principal", err)
 	}
 }
 
@@ -241,6 +257,23 @@ func TestOCIReadKeyUsesClearGet(t *testing.T) {
 	}
 	if d.Get("private_key_content") != "" {
 		t.Error("the private key from the clear GET must not enter state")
+	}
+
+	if err := d.Set("key_name", "yb-master"); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.Set("key_id", "ocid1.key.oc1.iad.aaaa"); err != nil {
+		t.Fatal(err)
+	}
+	f.savedConfig = ""
+	if err := ociReadKey(context.Background(), d, f.apiClient(t)); err != nil {
+		t.Fatalf("refresh with the key already in state: %v", err)
+	}
+	if d.Get("key_name") != "yb-master" || d.Get("key_id") != "ocid1.key.oc1.iad.aaaa" {
+		t.Errorf("refresh rewrote the key: name=%v id=%v", d.Get("key_name"), d.Get("key_id"))
+	}
+	if d.Get("private_key_content") != "" {
+		t.Error("refresh must not write the private key")
 	}
 }
 
