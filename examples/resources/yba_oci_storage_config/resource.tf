@@ -5,8 +5,8 @@ resource "yba_oci_storage_config" "s3_compatible" {
   region          = "us-sanjose-1"
   namespace       = "mytenancy"
 
-  access_key_id     = var.oci_access_key_id
-  secret_access_key = var.oci_secret_access_key
+  access_key_id     = "<oci-access-key-id>"
+  secret_access_key = "<oci-secret-access-key>"
   host_base         = "mytenancy.compat.objectstorage.us-sanjose-1.oraclecloud.com"
 
   region_locations {

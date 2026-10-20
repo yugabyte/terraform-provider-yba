@@ -318,10 +318,12 @@ func resourceOCIStorageConfigUpdate(
 
 	spec, err := ociSpecFrom(d)
 	if err != nil {
+		utils.RevertFields(d, "access_key_id", "secret_access_key")
 		return diag.FromErr(err)
 	}
 	data, err := buildOCIData(spec)
 	if err != nil {
+		utils.RevertFields(d, "access_key_id", "secret_access_key")
 		return diag.FromErr(err)
 	}
 
