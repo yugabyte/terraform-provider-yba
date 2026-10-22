@@ -25,29 +25,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/hashicorp/go-cty/cty"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
 	client "github.com/yugabyte/platform-go-client"
 )
-
-func TestExpandHome(t *testing.T) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		t.Fatal(err)
-	}
-	got, err := expandHome("~/keys/api.pem")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got != filepath.Join(home, "keys/api.pem") {
-		t.Fatalf("expandHome(~) = %q", got)
-	}
-	got, err = expandHome("/etc/passwd")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got != "/etc/passwd" {
-		t.Fatalf("absolute path changed to %q", got)
-	}
-}
 
 func TestReadPrivateKeyFileAndTilde(t *testing.T) {
 	dir := t.TempDir()
@@ -214,6 +195,47 @@ func TestReadClearOCIPrivateKey(t *testing.T) {
 	}
 	if got != pem {
 		t.Fatalf("key = %q", got)
+	}
+}
+
+func TestOCIUpdateUsesConfiguredKeyWhenStateHoldsPEM(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "api.pem")
+	pem := "-----BEGIN PRIVATE KEY-----\nYQ==\n-----END PRIVATE KEY-----\n"
+	if err := os.WriteFile(path, []byte("new-pem\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	raw := cty.ObjectVal(map[string]cty.Value{
+		"private_key_content":    cty.NullVal(cty.String),
+		"private_key_file_path":  cty.StringVal(path),
+		"tenancy_id":             cty.StringVal("t"),
+		"user_id":                cty.StringVal("u"),
+		"fingerprint":            cty.StringVal("new:fp"),
+		"use_instance_principal": cty.False,
+	})
+	state := &terraform.InstanceState{
+		ID: "prov",
+		Attributes: map[string]string{
+			"id":                     "prov",
+			"private_key_content":    pem,
+			"tenancy_id":             "t",
+			"user_id":                "u",
+			"fingerprint":            "new:fp",
+			"use_instance_principal": "false",
+		},
+		RawConfig: raw,
+	}
+	in := ociCloudInputFromResource(ResourceOCIProvider().Data(state))
+	if in.PrivateKeyContent != "" || in.PrivateKeyFilePath != path {
+		t.Fatalf("config input = content %q path %q", in.PrivateKeyContent, in.PrivateKeyFilePath)
+	}
+	info := &client.OCICloudInfo{}
+	info.SetOciPrivateKeyContent("p***m")
+	if err := setOCIAuthForUpdate(info, in, false); err != nil {
+		t.Fatal(err)
+	}
+	if info.GetOciPrivateKeyContent() != "new-pem\n" || info.GetOciFingerprint() != "new:fp" {
+		t.Fatalf("info = %+v", info)
 	}
 }
 
