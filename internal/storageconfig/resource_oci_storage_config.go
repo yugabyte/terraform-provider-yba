@@ -192,6 +192,14 @@ func resourceOCIStorageConfigCustomizeDiff(
 	if err != nil {
 		return err
 	}
+	// After an import, state holds no keys (YBA masks them), and ignore_changes
+	// plans that empty value. An unchanged plan sends nothing.
+	if d.Id() != "" && !d.HasChange("access_key_id") && spec.accessKeyID == "" {
+		spec.accessKnown = false
+	}
+	if d.Id() != "" && !d.HasChange("secret_access_key") && spec.secretAccessKey == "" {
+	spec.secretKnown = false
+	}
 	return validateOCIStorage(spec)
 }
 
