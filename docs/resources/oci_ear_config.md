@@ -8,7 +8,7 @@ description: |-
 
 Manages a YugabyteDB Anywhere encryption-at-rest configuration that uses an Oracle Cloud Infrastructure Vault key as the master key. YugabyteDB Anywhere uses the key to wrap and unwrap the universe keys of each universe that uses the configuration.
 
-~> **Preview:** The YugabyteDB Anywhere API behind `yba_oci_ear_config` is in preview. A later YBA release can change it in ways that are not backward compatible.
+~> **Note:** Requires YugabyteDB Anywhere 2026.1.2.0 or later. `terraform plan` fails on an older YBA.
 
 Point the configuration at an existing AES key with `key_name`, or let YugabyteDB Anywhere create an AES-256 key with that display name. Terraform does not manage or delete a key that YugabyteDB Anywhere creates. An existing key must be enabled and use the AES algorithm. The display name must match one key in the compartment.
 
@@ -49,7 +49,7 @@ resource "yba_oci_ear_config" "api_key" {
 # signing key in Terraform or in state. The host must be an OCI compute
 # instance in a dynamic group that can use the vault and the key. YugabyteDB
 # Anywhere creates an AES-256 key when key_name is not already in the
-# compartment. yba_oci_ear_config uses a preview YugabyteDB Anywhere API.
+# compartment. Requires YugabyteDB Anywhere 2026.1.2.0 or later.
 resource "yba_oci_ear_config" "host_identity" {
   name                   = "oci-kms-central"
   use_instance_principal = true
@@ -86,7 +86,7 @@ resource "yba_oci_ear_config" "host_identity" {
 - `private_key_content` (String, Sensitive) PEM contents of the API signing key, inline or from `file(...)`. Required when `use_instance_principal` is false. Can change in place: YugabyteDB Anywhere checks the credentials, the vault and the key before it stores the change.
 - `tenancy_id` (String) OCID of the tenancy that owns the API signing key. Required, with `user_id`, `fingerprint` and `private_key_content`, when `use_instance_principal` is false. Can change in place.
 - `timeouts` (Block, Optional) (see [below for nested schema](#nestedblock--timeouts))
-- `use_instance_principal` (Boolean) Authenticate as the YugabyteDB Anywhere host with an OCI instance principal, instead of an API signing key. Uses a preview YugabyteDB Anywhere API. A change forces replacement.
+- `use_instance_principal` (Boolean) Authenticate as the YugabyteDB Anywhere host with an OCI instance principal, instead of an API signing key. Requires YugabyteDB Anywhere 2026.1.2.0 or later. A change forces replacement.
 - `user_id` (String) OCID of the user that owns the API signing key. Required when `use_instance_principal` is false. Can change in place.
 
 ### Read-Only

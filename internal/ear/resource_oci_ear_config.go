@@ -21,7 +21,6 @@ import (
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-log/tflog"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 
@@ -64,20 +63,16 @@ var ociSettingAttrs = map[string]string{
 	"region":         ociKeyRegion,
 }
 
-// ociEARMin is the first preview build whose OCI KMS auth config this
-// resource sends: camelCase fields plus ociAuthType, including instance
-// principal. yugabyte-db commit 273f9481781, first tagged 2.31.0.0-b244.
-// No stable branch contains that commit. Stable 2026.1 has OCI KMS with
-// different field names (TENANCY_OCID, PRIVATE_KEY, OCI_KEY_NAME) and no
-// instance principal, so Stable stays empty and ociVersionAllowed fails
-// every stable build except an experimental patch build, which passes
-// every gate (utils.IsExperimentalPatchVersion).
-var ociEARMin = utils.YBAMinimumVersion{Preview: "2.31.0.0-b244"}
-
-// ociEARPreview is the preview admonition in the resource description and
-// the detail of the warning that Create and Update return.
-const ociEARPreview = "The YugabyteDB Anywhere API behind `yba_oci_ear_config` is in " +
-	"preview. A later YBA release can change it in ways that are not backward compatible."
+// ociEARMin is the first build whose OCI KMS auth config this resource
+// sends: camelCase fields plus ociAuthType, including instance principal.
+// Preview is yugabyte-db commit 273f9481781, first tagged 2.31.0.0-b244.
+// Stable is [BACKPORT 2026.1][PLAT-21145] (5fc6c4a91e2). The first stable
+// build with that field set is 2026.1.2.0-b49; 2026.1.2.0-b45 does not
+// have it.
+var ociEARMin = utils.YBAMinimumVersion{
+	Stable:  "2026.1.2.0-b49",
+	Preview: "2.31.0.0-b244",
+}
 
 // ociAllowFlag is the global runtime config YBA requires to be true before
 // it creates, edits, or deletes an OCI KMS configuration. Unset reads as
@@ -97,7 +92,8 @@ func ociEARSpec() earSpec {
 			"uses an Oracle Cloud Infrastructure Vault key as the master key. YugabyteDB " +
 			"Anywhere uses the key to wrap and unwrap the universe keys of each universe " +
 			"that uses the configuration.\n\n" +
-			"~> **Preview:** " + ociEARPreview + "\n\n" +
+			"~> **Note:** Requires YugabyteDB Anywhere 2026.1.2.0 or later. " +
+			"`terraform plan` fails on an older YBA.\n\n" +
 			"Point the configuration at an existing AES key with `key_name`, or let " +
 			"YugabyteDB Anywhere create an AES-256 key with that display name. Terraform " +
 			"does not manage or delete a key that YugabyteDB Anywhere creates. An existing " +
@@ -124,8 +120,8 @@ func ociEARSpec() earSpec {
 				Default:  false,
 				ForceNew: true,
 				Description: "Authenticate as the YugabyteDB Anywhere host with an OCI " +
-					"instance principal, instead of an API signing key. Uses a preview " +
-					"YugabyteDB Anywhere API. A change forces replacement.",
+					"instance principal, instead of an API signing key. Requires " +
+					"YugabyteDB Anywhere 2026.1.2.0 or later. A change forces replacement.",
 			},
 			"tenancy_id": {
 				Type:         schema.TypeString,
@@ -209,7 +205,6 @@ func ociEARSpec() earSpec {
 		flatten:          ociFlatten,
 		afterRead:        ociReadKey,
 		customizeDiff:    ociCustomizeDiff,
-		warnings:         ociPreviewWarnings,
 		runtimeFlag:      ociAllowFlag,
 	}
 }
@@ -241,20 +236,14 @@ func ociCustomizeDiff(ctx context.Context, d *schema.ResourceDiff, meta interfac
 			continue
 		}
 		if d.Get(field).(string) == "" {
+			if field == "private_key_content" && d.Id() != "" && !d.HasChange(field) {
+				continue
+			}
 			return fmt.Errorf(
 				"%s is required when use_instance_principal is false", field)
 		}
 	}
 	return nil
-}
-
-func ociPreviewWarnings(*schema.ResourceData) diag.Diagnostics {
-	return diag.Diagnostics{{
-		Severity: diag.Warning,
-		Summary:  "yba_oci_ear_config uses a preview YugabyteDB Anywhere API",
-		Detail: ociEARPreview + " Pin your provider version and read the release notes " +
-			"before you upgrade.",
-	}}
 }
 
 // ociRequireVersion fails the plan when the target YBA lacks the OCI KMS API
@@ -281,17 +270,10 @@ func ociRequireVersion(ctx context.Context, meta interface{}) error {
 	return nil
 }
 
-// ociVersionAllowed is the version decision. Experimental patch builds pass.
-// Every other stable build fails: no stable line has this API. A preview
-// build must be at least ociEARMin.
+// ociVersionAllowed is the version decision. Experimental patch builds pass
+// inside MeetsMinimum. A stable build must be at least 2026.1.2.0-b49, and a
+// preview build must be at least 2.31.0.0-b244.
 func ociVersionAllowed(version string) error {
-	if utils.IsExperimentalPatchVersion(version) {
-		return nil
-	}
-	if utils.IsVersionStable(version) {
-		return fmt.Errorf(
-			"yba_oci_ear_config is not supported by the target YBA (version=%s)", version)
-	}
 	ok, applied, err := utils.MeetsMinimum(version, ociEARMin)
 	if err != nil {
 		return err

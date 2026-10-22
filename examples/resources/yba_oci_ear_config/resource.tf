@@ -16,7 +16,7 @@ resource "yba_oci_ear_config" "api_key" {
 # signing key in Terraform or in state. The host must be an OCI compute
 # instance in a dynamic group that can use the vault and the key. YugabyteDB
 # Anywhere creates an AES-256 key when key_name is not already in the
-# compartment. yba_oci_ear_config uses a preview YugabyteDB Anywhere API.
+# compartment. Requires YugabyteDB Anywhere 2026.1.2.0 or later.
 resource "yba_oci_ear_config" "host_identity" {
   name                   = "oci-kms-central"
   use_instance_principal = true

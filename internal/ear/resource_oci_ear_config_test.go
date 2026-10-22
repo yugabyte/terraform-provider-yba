@@ -282,7 +282,9 @@ func TestOCIVersionAllowed(t *testing.T) {
 		version string
 		wantErr string
 	}{
-		{version: "2026.1.3.0-b69", wantErr: "not supported"},
+		{version: "2026.1.2.0-b45", wantErr: "2026.1.2.0-b49"},
+		{version: "2026.1.2.0-b49"},
+		{version: "2026.1.3.0-b69"},
 		{version: "2.31.0.0-b243", wantErr: "2.31.0.0-b244"},
 		{version: "2.31.0.0-b244"},
 		{version: "2.31.0.0-b386"},
