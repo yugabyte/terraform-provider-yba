@@ -198,7 +198,7 @@ func resourceOCIStorageConfigCustomizeDiff(
 		spec.accessKnown = false
 	}
 	if d.Id() != "" && !d.HasChange("secret_access_key") && spec.secretAccessKey == "" {
-	spec.secretKnown = false
+		spec.secretKnown = false
 	}
 	return validateOCIStorage(spec)
 }
