@@ -183,6 +183,7 @@ func New() *schema.Provider {
 			"yba_ciphertrust_ear_config":     ear.ResourceCipherTrustEARConfig(),
 			"yba_gcp_ear_config":             ear.ResourceGCPEARConfig(),
 			"yba_hashicorp_vault_ear_config": ear.ResourceHashicorpVaultEARConfig(),
+			"yba_oci_ear_config":             ear.ResourceOCIEARConfig(),
 		},
 		ConfigureContextFunc: providerConfigure,
 	}

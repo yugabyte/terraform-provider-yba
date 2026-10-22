@@ -45,6 +45,7 @@ const (
 	providerCipherTrust = "CIPHERTRUST"
 	providerGCP         = "GCP"
 	providerHashicorp   = "HASHICORP"
+	providerOCI         = "OCI"
 )
 
 // earEntityName labels errors from the shared helpers.
@@ -105,9 +106,10 @@ func parseEARConfig(raw map[string]interface{}) (earConfig, bool) {
 }
 
 // listEARConfigs returns every configuration of the customer. This is the only
-// endpoint that carries a configuration's name and provider; the by-UUID GET
-// returns the raw settings with credentials in clear, and only editSaved uses
-// it.
+// endpoint that carries a configuration's name and provider. The by-UUID GET
+// returns the raw settings with credentials in clear. editSaved uses it to
+// compare a failed edit. ociReadKey uses it when state has no key name or key
+// OCID (the read after create, and import). A later OCI refresh does not.
 func listEARConfigs(
 	ctx context.Context, c *client.APIClient, cUUID string,
 ) ([]earConfig, error) {
@@ -354,7 +356,11 @@ type earSpec struct {
 	// its provider's rule.
 	buildEdit func(d *schema.ResourceData) (map[string]interface{}, error)
 	// flatten writes the non-secret settings YBA lists into state.
-	flatten       func(d *schema.ResourceData, settings map[string]interface{}) error
+	flatten func(d *schema.ResourceData, settings map[string]interface{}) error
+	// afterRead, when set, runs after flatten. The list masks every field
+	// whose name contains KEY, including identifiers, so a provider can read
+	// those from the by-UUID GET. It must not write a secret into state.
+	afterRead     func(ctx context.Context, d *schema.ResourceData, meta interface{}) error
 	customizeDiff schema.CustomizeDiffFunc
 	// warnings, when set, returns the diagnostics that a successful Create or
 	// Update adds, such as a preview warning for the arguments in use.
@@ -521,6 +527,11 @@ func earRead(s earSpec) schema.ReadContextFunc {
 		}
 		if err := s.flatten(d, cfg.Settings); err != nil {
 			return diag.FromErr(err)
+		}
+		if s.afterRead != nil {
+			if err := s.afterRead(ctx, d, meta); err != nil {
+				return diag.FromErr(err)
+			}
 		}
 		return nil
 	}

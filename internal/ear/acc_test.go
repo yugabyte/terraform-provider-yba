@@ -791,6 +791,186 @@ resource "yba_ciphertrust_ear_config" "test" {
 `, name, auth)
 }
 
+const (
+	envOCIEARVaultID  = "TF_VAR_OCI_EAR_VAULT_ID"
+	envOCIEARKeyName  = "TF_VAR_OCI_EAR_KEY_NAME"
+	envOCITenancyID   = "TF_VAR_OCI_TENANCY_ID"
+	envOCIUserID      = "TF_VAR_OCI_USER_ID"
+	envOCIFingerprint = "TF_VAR_OCI_FINGERPRINT"
+	envOCIPrivateKey  = "TF_VAR_OCI_PRIVATE_KEY_CONTENT"
+	envOCICompartment = "TF_VAR_OCI_COMPARTMENT_ID"
+	envOCIRegion      = "TF_VAR_OCI_REGION"
+)
+
+func testAccPreCheckOCIEAR(t *testing.T, apiKey bool) {
+	acctest.TestAccPreCheckCloudYBA(t, "OCI")
+	required := []string{envOCIEARVaultID, envOCIEARKeyName, envOCICompartment, envOCIRegion}
+	if apiKey {
+		required = append(
+			required,
+			envOCITenancyID,
+			envOCIUserID,
+			envOCIFingerprint,
+			envOCIPrivateKey,
+		)
+	}
+	for _, v := range required {
+		if os.Getenv(v) == "" {
+			t.Skipf("%s not set; skipping OCI encryption at rest acceptance tests", v)
+		}
+	}
+	c, err := acctest.APIClientForCloud("OCI")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := ear.OCIRequireVersion(context.Background(), c); err != nil {
+		t.Skipf("skipping the OCI encryption at rest test: %v", err)
+	}
+}
+
+func TestAccOCIEARConfig_APIKey(t *testing.T) {
+	rName := acctest.RandomName("oci-ear")
+	res := "yba_oci_ear_config.test"
+
+	resource.ParallelTest(t, resource.TestCase{
+		PreCheck:          func() { testAccPreCheckOCIEAR(t, true) },
+		ProviderFactories: acctest.ProviderFactories,
+		CheckDestroy:      testAccCheckEARConfigDestroy("OCI"),
+		Steps: append(append([]resource.TestStep{
+			{
+				Config: testAccOCIEARConfigAPIKey(rName),
+				Check: resource.ComposeTestCheckFunc(
+					testAccCheckEARConfigExists("OCI", res),
+					resource.TestCheckResourceAttr(res, "name", rName),
+					resource.TestCheckResourceAttr(res, "use_instance_principal", "false"),
+					resource.TestCheckResourceAttr(res, "in_use", "false"),
+					resource.TestCheckResourceAttr(res, "region", os.Getenv(envOCIRegion)),
+					resource.TestCheckResourceAttr(res, "tenancy_id", os.Getenv(envOCITenancyID)),
+					resource.TestCheckResourceAttr(
+						res,
+						"fingerprint",
+						os.Getenv(envOCIFingerprint),
+					),
+					resource.TestCheckResourceAttr(
+						res,
+						"compartment_id",
+						os.Getenv(envOCICompartment),
+					),
+					resource.TestCheckResourceAttr(res, "vault_id", os.Getenv(envOCIEARVaultID)),
+					resource.TestCheckResourceAttr(res, "key_name", os.Getenv(envOCIEARKeyName)),
+					resource.TestCheckResourceAttrSet(res, "key_id"),
+					resource.TestCheckResourceAttrSet(res, "uuid"),
+				),
+			},
+		}, acctest.ImportPlanSteps(t, res, testAccOCIEARConfigAPIKey(rName),
+			acctest.ImportPlanOptions{
+				// YBA lists the private key masked (CommonUtils.isSensitiveField
+				// matches KEY in ociPrivateKeyContent; listKMSConfigs calls
+				// maskConfig). The by-UUID GET returns it in clear, and Read
+				// still does not copy it into state.
+				VerifyIgnore: []string{"private_key_content"},
+			})...),
+			resource.TestStep{
+				Config: testAccOCIEARConfigAPIKey(rName) +
+					testAccEARConfigDataSource("yba_oci_ear_config"),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttrPair(
+						"data.yba_ear_config.test", "uuid", res, "uuid"),
+					resource.TestCheckResourceAttr(
+						"data.yba_ear_config.test",
+						"key_provider",
+						"OCI",
+					),
+					resource.TestCheckResourceAttr("data.yba_ear_config.test", "in_use", "false"),
+				),
+			}),
+	})
+}
+
+// TestAccOCIEARConfig_InstancePrincipal needs a YBA host that is an OCI
+// compute instance in a dynamic group that can use the vault and the key.
+func TestAccOCIEARConfig_InstancePrincipal(t *testing.T) {
+	rName := acctest.RandomName("oci-ear-iam")
+	res := "yba_oci_ear_config.test"
+
+	resource.ParallelTest(t, resource.TestCase{
+		PreCheck:          func() { testAccPreCheckOCIEAR(t, false) },
+		ProviderFactories: acctest.ProviderFactories,
+		CheckDestroy:      testAccCheckEARConfigDestroy("OCI"),
+		Steps: append([]resource.TestStep{
+			{
+				Config: testAccOCIEARConfigInstancePrincipal(rName),
+				Check: resource.ComposeTestCheckFunc(
+					testAccCheckEARConfigExists("OCI", res),
+					resource.TestCheckResourceAttr(res, "use_instance_principal", "true"),
+					resource.TestCheckNoResourceAttr(res, "private_key_content"),
+					resource.TestCheckResourceAttr(res, "key_name", os.Getenv(envOCIEARKeyName)),
+					resource.TestCheckResourceAttrSet(res, "key_id"),
+				),
+			},
+		}, acctest.ImportPlanSteps(t, res, testAccOCIEARConfigInstancePrincipal(rName),
+			acctest.ImportPlanOptions{})...),
+	})
+}
+
+func ociEARVariables(apiKey bool) string {
+	body := `
+variable "OCI_EAR_VAULT_ID" { type = string }
+variable "OCI_EAR_KEY_NAME" { type = string }
+variable "OCI_COMPARTMENT_ID" { type = string }
+variable "OCI_REGION" { type = string }
+`
+	if !apiKey {
+		return body
+	}
+	return body + `
+variable "OCI_TENANCY_ID" { type = string }
+variable "OCI_USER_ID" { type = string }
+variable "OCI_FINGERPRINT" { type = string }
+variable "OCI_PRIVATE_KEY_CONTENT" {
+  type      = string
+  sensitive = true
+}
+`
+}
+
+func testAccOCIEARConfigAPIKey(name string) string {
+	return acctest.YBAProviderBlock("OCI") + ociEARVariables(true) + fmt.Sprintf(`
+resource "yba_oci_ear_config" "test" {
+  name                 = "%s"
+  tenancy_id           = var.OCI_TENANCY_ID
+  user_id              = var.OCI_USER_ID
+  fingerprint          = var.OCI_FINGERPRINT
+  private_key_content  = var.OCI_PRIVATE_KEY_CONTENT
+  compartment_id       = var.OCI_COMPARTMENT_ID
+  vault_id             = var.OCI_EAR_VAULT_ID
+  region               = var.OCI_REGION
+  key_name             = var.OCI_EAR_KEY_NAME
+
+  # YBA lists the private key masked (CommonUtils.isSensitiveField matches
+  # KEY in ociPrivateKeyContent; listKMSConfigs calls maskConfig). Read does
+  # not copy the clear by-UUID value into state, so an import leaves
+  # private_key_content empty and the next plan would update it.
+  lifecycle {
+    ignore_changes = [private_key_content]
+  }
+}
+`, name)
+}
+
+func testAccOCIEARConfigInstancePrincipal(name string) string {
+	return acctest.YBAProviderBlock("OCI") + ociEARVariables(false) + fmt.Sprintf(`
+resource "yba_oci_ear_config" "test" {
+  name                   = "%s"
+  use_instance_principal = true
+  compartment_id         = var.OCI_COMPARTMENT_ID
+  vault_id               = var.OCI_EAR_VAULT_ID
+  region                 = var.OCI_REGION
+  key_name               = var.OCI_EAR_KEY_NAME
+}
+`, name)
+}
+
 // testAccEARConfigRemoved removes the cloud's test configuration from state
 // and leaves it in YBA.
 func testAccEARConfigRemoved(cloud string) string {
