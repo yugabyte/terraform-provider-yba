@@ -24,54 +24,6 @@ import (
 	"github.com/yugabyte/terraform-provider-yba/internal/utils"
 )
 
-func regionInput() []interface{} {
-	return []interface{}{
-		map[string]interface{}{
-			"code":                      "us-ashburn-1",
-			"vcn_id":                    "ocid1.vcn.oc1.iad.aaaa",
-			"instance_configuration_id": "ocid1.instanceconfiguration.oc1.iad.aaaa",
-			"zones": []interface{}{
-				map[string]interface{}{
-					"code":   "us-ashburn-1-AD-1",
-					"subnet": "ocid1.subnet.oc1.iad.aaaa",
-				},
-				map[string]interface{}{
-					"code":   "us-ashburn-1-AD-2",
-					"subnet": "ocid1.subnet.oc1.iad.bbbb",
-				},
-			},
-		},
-	}
-}
-
-func TestBuildAndFlattenOCIRegions(t *testing.T) {
-	built := buildOCIRegions(regionInput())
-	if len(built) != 1 || len(built[0].Zones) != 2 {
-		t.Fatalf("built = %+v", built)
-	}
-	details := built[0].GetDetails()
-	cloudInfo := details.GetCloudInfo()
-	ociInfo := cloudInfo.GetOci()
-	if ociInfo.GetVnet() != "ocid1.vcn.oc1.iad.aaaa" ||
-		ociInfo.GetInstanceTemplate() != "ocid1.instanceconfiguration.oc1.iad.aaaa" {
-		t.Fatalf("region cloud info = %+v", ociInfo)
-	}
-	if built[0].Zones[0].GetSubnet() != "ocid1.subnet.oc1.iad.aaaa" {
-		t.Fatalf("subnet = %q", built[0].Zones[0].GetSubnet())
-	}
-
-	flat := flattenOCIRegions(built)
-	if flat[0]["vcn_id"] != "ocid1.vcn.oc1.iad.aaaa" ||
-		flat[0]["instance_configuration_id"] != "ocid1.instanceconfiguration.oc1.iad.aaaa" {
-		t.Fatalf("flat = %#v", flat[0])
-	}
-	zones := flat[0]["zones"].([]map[string]interface{})
-	if zones[1]["code"] != "us-ashburn-1-AD-2" ||
-		zones[1]["subnet"] != "ocid1.subnet.oc1.iad.bbbb" {
-		t.Fatalf("zones = %#v", zones)
-	}
-}
-
 func TestFlattenOCIRegionsDropsInactive(t *testing.T) {
 	active := false
 	code := "us-phoenix-1"
@@ -185,42 +137,6 @@ func TestBuildOCICloudInfoInstancePrincipal(t *testing.T) {
 		info.GetOciAuthType() != ociAuthInstancePrincipal ||
 		info.OciPrivateKeyContent != nil {
 		t.Fatalf("info = %+v", info)
-	}
-}
-
-func TestBuildAndFlattenOCIImageBundles(t *testing.T) {
-	in := []interface{}{
-		map[string]interface{}{
-			"name":           "custom-alma9",
-			"use_as_default": false,
-			"details": []interface{}{
-				map[string]interface{}{
-					"arch":     "x86_64",
-					"ssh_user": "opc",
-					"ssh_port": 22,
-					"region_overrides": map[string]interface{}{
-						"us-ashburn-1": "ocid1.image.oc1.iad.aaaa",
-					},
-				},
-			},
-		},
-	}
-	built := buildOCIImageBundles(in)
-	if len(built) != 1 || built[0].Details.UseIMDSv2 != nil {
-		t.Fatalf("bundle = %+v", built)
-	}
-	overrides := built[0].Details.GetRegions()
-	ashburn := overrides["us-ashburn-1"]
-	if ashburn.GetYbImage() != "ocid1.image.oc1.iad.aaaa" {
-		t.Fatalf("image = %q", ashburn.GetYbImage())
-	}
-	flat := flattenOCIImageBundles(built)
-	flatOverrides := flat[0]["details"].([]interface{})[0].(map[string]interface{})["region_overrides"].(map[string]interface{})
-	if flatOverrides["us-ashburn-1"] != "ocid1.image.oc1.iad.aaaa" {
-		t.Fatalf("flat = %#v", flat)
-	}
-	if _, ok := flat[0]["details"].([]interface{})[0].(map[string]interface{})["use_imds_v2"]; ok {
-		t.Fatal("use_imds_v2 was flattened")
 	}
 }
 

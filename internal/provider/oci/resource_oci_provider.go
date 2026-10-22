@@ -19,6 +19,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/hashicorp/go-cty/cty"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
@@ -377,7 +378,7 @@ func ociZonesSchema() *schema.Schema {
 }
 
 func ociCloudInputFromResource(d *schema.ResourceData) ociCloudInput {
-	return ociCloudInput{
+	in := ociCloudInput{
 		CompartmentID:        d.Get("compartment_id").(string),
 		DefaultRegion:        d.Get("default_region").(string),
 		HostedZoneID:         d.Get("hosted_zone_id").(string),
@@ -387,6 +388,41 @@ func ociCloudInputFromResource(d *schema.ResourceData) ociCloudInput {
 		Fingerprint:          d.Get("fingerprint").(string),
 		PrivateKeyContent:    d.Get("private_key_content").(string),
 		PrivateKeyFilePath:   d.Get("private_key_file_path").(string),
+	}
+	applyConfiguredOCIKey(&in, d.GetRawConfig())
+	return in
+}
+
+// stringFromRawConfig reads one configured argument. The bool is false when
+// raw config is missing or the value is still unknown. A known null is empty.
+func stringFromRawConfig(raw cty.Value, name string) (string, bool) {
+	if raw.IsNull() || !raw.IsKnown() || !raw.Type().IsObjectType() ||
+		!raw.Type().HasAttribute(name) {
+		return "", false
+	}
+	v := raw.GetAttr(name)
+	if !v.IsKnown() {
+		return "", false
+	}
+	if v.IsNull() || v.Type() != cty.String {
+		return "", true
+	}
+	return v.AsString(), true
+}
+
+// applyConfiguredOCIKey replaces the key fields with the configured values.
+// Read stores the PEM so a file-path import can plan cleanly. DiffSuppressFunc
+// then makes d.Get return that PEM, and makes a suppressed path read back as
+// empty. An update has to send the arguments the configuration set.
+func applyConfiguredOCIKey(in *ociCloudInput, raw cty.Value) {
+	if raw.IsNull() || !raw.IsKnown() {
+		return
+	}
+	if content, ok := stringFromRawConfig(raw, "private_key_content"); ok {
+		in.PrivateKeyContent = content
+	}
+	if path, ok := stringFromRawConfig(raw, "private_key_file_path"); ok {
+		in.PrivateKeyFilePath = path
 	}
 }
 

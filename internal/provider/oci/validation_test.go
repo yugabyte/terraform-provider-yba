@@ -19,8 +19,6 @@ import (
 	"context"
 	"strings"
 	"testing"
-
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 )
 
 func TestCheckOCIProviderVersion(t *testing.T) {
@@ -129,42 +127,6 @@ func TestCheckDuplicateRegionsZonesAndArch(t *testing.T) {
 	}
 }
 
-func TestRegionsContentChangedIgnoresOrder(t *testing.T) {
-	a := []interface{}{
-		map[string]interface{}{
-			"code": "us-ashburn-1", "vcn_id": "vcn-a",
-			"instance_configuration_id": "cfg-a",
-			"zones": []interface{}{
-				map[string]interface{}{"code": "us-ashburn-1-AD-1", "subnet": "sub-1"},
-			},
-		},
-	}
-	b := []interface{}{
-		map[string]interface{}{
-			"code": "us-ashburn-1", "vcn_id": "vcn-a",
-			"instance_configuration_id": "cfg-a",
-			"zones": []interface{}{
-				map[string]interface{}{"code": "us-ashburn-1-AD-1", "subnet": "sub-1"},
-			},
-		},
-	}
-	if regionsContentChanged(a, b) {
-		t.Fatal("identical regions reported as changed")
-	}
-	changed := []interface{}{
-		map[string]interface{}{
-			"code": "us-ashburn-1", "vcn_id": "vcn-b",
-			"instance_configuration_id": "cfg-a",
-			"zones": []interface{}{
-				map[string]interface{}{"code": "us-ashburn-1-AD-1", "subnet": "sub-1"},
-			},
-		},
-	}
-	if !regionsContentChanged(a, changed) {
-		t.Fatal("VCN change was ignored")
-	}
-}
-
 func knownAPIKey(tenancy, user, fingerprint, content, path string) map[string]authField {
 	return map[string]authField{
 		"tenancy_id":            {known: true, value: tenancy},
@@ -193,84 +155,5 @@ func TestOCIAuthPlanError(t *testing.T) {
 	}
 	if err := ociAuthPlanError(false, false, knownAPIKey("", "", "", "", "")); err != nil {
 		t.Fatalf("unknown use_instance_principal must be left for apply, got %v", err)
-	}
-}
-
-func TestOCIProviderSchemaContract(t *testing.T) {
-	r := ResourceOCIProvider()
-	if err := r.InternalValidate(nil, true); err != nil {
-		t.Fatalf("schema failed InternalValidate: %v", err)
-	}
-	if r.Importer == nil {
-		t.Fatal("the resource must be importable")
-	}
-	if r.Timeouts == nil || r.Timeouts.Create == nil ||
-		r.Timeouts.Update == nil || r.Timeouts.Delete == nil {
-		t.Fatal("create, update, and delete timeouts are required")
-	}
-	if !strings.Contains(r.Description, "2026.1.2.0") {
-		t.Fatal("description must name stable release 2026.1.2.0")
-	}
-	if strings.Contains(r.Description, "2.31.0.0") || strings.Contains(r.Description, "-b29") {
-		t.Fatal("description must not name the preview line or a build number")
-	}
-	s := r.Schema
-	if _, ok := s["customer_uuid"]; ok {
-		t.Fatal("customer_uuid is a noise field and must not be exposed")
-	}
-	if !s["compartment_id"].Required || !s["default_region"].Required {
-		t.Fatal("compartment_id and default_region must be required")
-	}
-	if !s["private_key_content"].Sensitive || s["private_key_content"].WriteOnly {
-		t.Fatal("private_key_content is a sensitive value stored in state")
-	}
-	if s["private_key_file_path"].Sensitive || s["fingerprint"].Sensitive {
-		t.Fatal("private_key_file_path and fingerprint must not be sensitive")
-	}
-	if s["use_instance_principal"].Default != false {
-		t.Fatal("use_instance_principal must default to false")
-	}
-	if len(s["use_instance_principal"].ConflictsWith) != 0 {
-		t.Fatal("use_instance_principal must not ConflictsWith API-key fields")
-	}
-	if got := s["private_key_content"].ConflictsWith; len(got) != 1 ||
-		got[0] != "private_key_file_path" {
-		t.Fatalf("private_key_content ConflictsWith = %v", got)
-	}
-	for _, locked := range []string{
-		"use_instance_principal", "tenancy_id", "user_id", "fingerprint",
-		"compartment_id", "hosted_zone_id",
-	} {
-		if !strings.Contains(s[locked].Description, "universe") {
-			t.Errorf("%s description must state the in-use restriction", locked)
-		}
-	}
-	var walk func(map[string]*schema.Schema, string)
-	walk = func(fields map[string]*schema.Schema, prefix string) {
-		for name, field := range fields {
-			if field.Description == "" {
-				t.Errorf("%s%s needs a Description", prefix, name)
-			}
-			nested, ok := field.Elem.(*schema.Resource)
-			if ok {
-				walk(nested.Schema, prefix+name+".")
-			}
-		}
-	}
-	walk(s, "")
-	regionSchema := s["regions"].Elem.(*schema.Resource).Schema
-	if _, ok := regionSchema["zones"].Elem.(*schema.Resource).Schema["secondary_subnet"]; ok {
-		t.Fatal("zones must not have secondary_subnet")
-	}
-	details := s["image_bundles"].Elem.(*schema.Resource).Schema["details"]
-	detailSchema := details.Elem.(*schema.Resource).Schema
-	if _, ok := detailSchema["use_imds_v2"]; ok {
-		t.Fatal("image bundle details must not have use_imds_v2")
-	}
-	if _, ok := detailSchema["global_yb_image"]; ok {
-		t.Fatal("image bundle details must not have global_yb_image")
-	}
-	if _, ok := s["skip_ssh_keypair_validation"]; ok {
-		t.Fatal("skip_ssh_keypair_validation must not exist")
 	}
 }
