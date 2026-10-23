@@ -36,10 +36,8 @@ func buildOCICloudInfo(in ociCloudInput) (*client.OCICloudInfo, error) {
 }
 
 // flattenOCICredentials returns the fields Read writes back from the provider
-// list. That list masks ociPrivateKeyContent. When state has no
-// private_key_content, Read fills it from the by-UUID GET if the response
-// is a PEM. private_key_file_path is never returned: YBA does not receive
-// the path.
+// list. Provider responses mask ociPrivateKeyContent. private_key_file_path
+// is never returned: YBA does not receive the path.
 func flattenOCICredentials(info client.OCICloudInfo) map[string]interface{} {
 	return map[string]interface{}{
 		"compartment_id":         info.GetOciCompartmentId(),

@@ -141,7 +141,7 @@ resource "yba_oci_provider" "private_key" {
 - `hosted_zone_id` (String) OCID of the OCI DNS zone used as the hosted zone. YugabyteDB Anywhere rejects changes to this field while a universe uses the provider.
 - `image_bundles` (Block List) Custom image bundles for the OCI provider. At least one image_bundles or yba_managed_image_bundles block must be specified. Every bundle must supply a non-empty image OCID in region_overrides for each configured region. (see [below for nested schema](#nestedblock--image_bundles))
 - `ntp_servers` (List of String) List of NTP servers for time synchronization.
-- `private_key_content` (String, Sensitive) OCI API private key in PEM form. Set exactly one of `private_key_content` or `private_key_file_path` for API-key authentication, including when `use_instance_principal` is explicitly false. Omit both when `use_instance_principal` is true. When state has no value, Read fills this from the provider GET if the response is a PEM. The provider list masks the key, and a masked response is left unset. Changing it updates the provider in place.
+- `private_key_content` (String, Sensitive) OCI API private key in PEM form. Set exactly one of `private_key_content` or `private_key_file_path` for API-key authentication, including when `use_instance_principal` is explicitly false. Omit both when `use_instance_principal` is true. YugabyteDB Anywhere masks this on every provider response, so Read leaves it unset. Changing it updates the provider in place.
 
 ~> **Security Note:** This value is stored in Terraform state. Use an encrypted backend.
 
@@ -268,6 +268,4 @@ terraform import yba_oci_provider.example <provider-uuid>
 
 An instance-principal provider plans cleanly after import.
 
-An API-key provider that sets `private_key_content` plans cleanly when that PEM matches the key YugabyteDB Anywhere stored. Read fills it from the provider GET when state does not yet have it. The provider list masks the key. A masked response is left unset, and the next plan sends the configured key.
-
-`private_key_file_path` is a local path. YugabyteDB Anywhere does not store it. When the file body matches the PEM Read stored, that path is not planned as a change. Otherwise the next plan reads the file and sends the key. To keep later plans empty, add `private_key_file_path` to `lifecycle.ignore_changes`.
+Provider responses mask `ociPrivateKeyContent` (`Provider.getMaskProviderDetails`), so Read does not store the API key. `private_key_file_path` is a local path and is not stored either. An import plans that path and sends the key. To keep the plan empty, add `private_key_file_path` to `lifecycle.ignore_changes`.

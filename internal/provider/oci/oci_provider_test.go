@@ -48,7 +48,8 @@ func TestAccOCIProvider_APIKey(t *testing.T) {
 					"yba_oci_provider.test", "use_instance_principal", "false"),
 			),
 		}}, acctest.ImportPlanSteps(t, "yba_oci_provider.test", config, acctest.ImportPlanOptions{
-			// YBA does not receive the local path. Read stores the PEM instead.
+			// Provider.getMaskProviderDetails masks ociPrivateKeyContent on every
+			// provider response, and YBA does not store the local path.
 			VerifyIgnore: []string{"private_key_file_path"},
 		})...),
 	})
@@ -120,6 +121,11 @@ resource "yba_oci_provider" "test" {
     }
   }
   yba_managed_image_bundles { arch = "x86_64" }
+  # Provider.getMaskProviderDetails masks ociPrivateKeyContent, and YBA does
+  # not store this path, so an import plans it unless it is ignored.
+  lifecycle {
+    ignore_changes = [private_key_file_path]
+  }
 }
 `, name, keyPath)
 }
