@@ -113,8 +113,7 @@ func ociProviderSchema() map[string]*schema.Schema {
 			"or `private_key_file_path` for API-key authentication, including when " +
 			"`use_instance_principal` is explicitly false. Omit both when " +
 			"`use_instance_principal` is true. " +
-			"When state has no value, Read fills this from the provider GET if the response is a PEM. " +
-			"The provider list masks the key, and a masked response is left unset. " +
+			"YugabyteDB Anywhere masks this on every provider response, so Read leaves it unset. " +
 			"Changing it updates the provider in place.\n\n" +
 			"~> **Security Note:** This value is stored in Terraform state. Use an encrypted backend.",
 	}
@@ -493,8 +492,9 @@ func resourceOCIProviderCreate(
 	return resourceOCIProviderRead(ctx, d, meta)
 }
 
-// readClearOCIPrivateKey calls the by-UUID GET. The list used by Read masks
-// the key. A failure here leaves state unchanged; it does not drop the provider.
+// readClearOCIPrivateKey calls the by-UUID GET. Provider JSON serializes
+// details through getMaskProviderDetails, so this route masks the key too.
+// A masked or failed read leaves state unchanged; it does not drop the provider.
 func readClearOCIPrivateKey(
 	ctx context.Context, c *client.APIClient, cUUID, pUUID string,
 ) (string, error) {

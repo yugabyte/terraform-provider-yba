@@ -280,8 +280,12 @@ var ociAPIKeyFieldNames = []string{
 // An unknown value is not treated as empty. Apply calls
 // validateOCIAuthInput from setOCIAuthForCreate and from the API-key
 // branch of setOCIAuthForUpdate. An explicit use_instance_principal = false
-// is API-key auth.
-func ociAuthPlanError(principalKnown, principal bool, fields map[string]authField) error {
+// is API-key auth. requireKey is false when an existing provider's plan
+// does not change either key: ignore_changes keeps the empty imported
+// state, and that empty pair is not a missing key.
+func ociAuthPlanError(
+	principalKnown, principal bool, fields map[string]authField, requireKey bool,
+) error {
 	if !principalKnown {
 		return nil
 	}
@@ -310,7 +314,7 @@ func ociAuthPlanError(principalKnown, principal bool, fields map[string]authFiel
 	}
 	content, contentOK := fields["private_key_content"]
 	path, pathOK := fields["private_key_file_path"]
-	if contentOK && content.known && pathOK && path.known {
+	if requireKey && contentOK && content.known && pathOK && path.known {
 		if (content.value == "") == (path.value == "") {
 			return fmt.Errorf(
 				"private_key_content and private_key_file_path: set exactly one")
@@ -332,7 +336,10 @@ func ociAuthPlanErrorFromDiff(d *schema.ResourceDiff) error {
 	if d.NewValueKnown("use_instance_principal") {
 		principal, _ = d.Get("use_instance_principal").(bool)
 	}
-	return ociAuthPlanError(d.NewValueKnown("use_instance_principal"), principal, fields)
+	// Create, or a plan that sets or clears a key, must name exactly one.
+	requireKey := d.Id() == "" || d.HasChanges("private_key_content", "private_key_file_path")
+	return ociAuthPlanError(
+		d.NewValueKnown("use_instance_principal"), principal, fields, requireKey)
 }
 
 func validatePrivateKeyFile(d *schema.ResourceDiff) error {

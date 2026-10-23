@@ -140,20 +140,30 @@ func knownAPIKey(tenancy, user, fingerprint, content, path string) map[string]au
 func TestOCIAuthPlanError(t *testing.T) {
 	// An explicit false next to the API-key fields is API-key auth.
 	fields := knownAPIKey("t", "u", "f", "", "/tmp/k.pem")
-	if err := ociAuthPlanError(true, false, fields); err != nil {
+	if err := ociAuthPlanError(true, false, fields, true); err != nil {
 		t.Fatal(err)
 	}
 	mixed := knownAPIKey("t", "", "", "", "")
-	if err := ociAuthPlanError(true, true, mixed); err == nil {
+	if err := ociAuthPlanError(true, true, mixed, true); err == nil {
 		t.Fatal("instance principal with a known tenancy_id must fail")
 	}
 	// A value still unknown at plan time is not an empty value.
 	unknownTenancy := knownAPIKey("", "u", "f", "pem", "")
 	unknownTenancy["tenancy_id"] = authField{known: false}
-	if err := ociAuthPlanError(true, false, unknownTenancy); err != nil {
+	if err := ociAuthPlanError(true, false, unknownTenancy, true); err != nil {
 		t.Fatalf("unknown tenancy_id must be left for apply, got %v", err)
 	}
-	if err := ociAuthPlanError(false, false, knownAPIKey("", "", "", "", "")); err != nil {
+	if err := ociAuthPlanError(false, false, knownAPIKey("", "", "", "", ""), true); err != nil {
 		t.Fatalf("unknown use_instance_principal must be left for apply, got %v", err)
+	}
+	// ignore_changes keeps the empty imported key. A new config, or a plan
+	// that clears the key, still requires exactly one.
+	imported := knownAPIKey("t", "u", "f", "", "")
+	if err := ociAuthPlanError(true, false, imported, false); err != nil {
+		t.Fatalf("unchanged imported key must plan, got %v", err)
+	}
+	if err := ociAuthPlanError(true, false, imported, true); err == nil ||
+		!strings.Contains(err.Error(), "set exactly one") {
+		t.Fatalf("missing key err = %v", err)
 	}
 }

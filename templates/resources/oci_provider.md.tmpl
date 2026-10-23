@@ -34,6 +34,4 @@ terraform import yba_oci_provider.example <provider-uuid>
 
 An instance-principal provider plans cleanly after import.
 
-An API-key provider that sets `private_key_content` plans cleanly when that PEM matches the key YugabyteDB Anywhere stored. Read fills it from the provider GET when state does not yet have it. The provider list masks the key. A masked response is left unset, and the next plan sends the configured key.
-
-`private_key_file_path` is a local path. YugabyteDB Anywhere does not store it. When the file body matches the PEM Read stored, that path is not planned as a change. Otherwise the next plan reads the file and sends the key. To keep later plans empty, add `private_key_file_path` to `lifecycle.ignore_changes`.
+Provider responses mask `ociPrivateKeyContent` (`Provider.getMaskProviderDetails`), so Read does not store the API key. `private_key_file_path` is a local path and is not stored either. An import plans that path and sends the key. To keep the plan empty, add `private_key_file_path` to `lifecycle.ignore_changes`.
