@@ -19,7 +19,7 @@ This release adds resources for encryption in transit and certificate rotation, 
 - `yba_runtime_config` - a runtime configuration key on the global, customer, provider, or universe scope. Set a secret key with `sensitive_value`, which hides the value in plan output.
 - `yba_perf_advisor_endpoint` - an external Perf Advisor that receives universe data in `ONLINE` mode. Uses a preview YugabyteDB Anywhere API.
 - `yba_universe_perf_advisor_registration` - register a universe with a Perf Advisor collector. Uses a preview YugabyteDB Anywhere API.
-- yba_oci_storage_config - an OCI Object Storage backup configuration, using a Customer Secret Key or instance principal. Requires YugabyteDB Anywhere 2026.1.2.0 or later.
+- `yba_oci_storage_config` - an OCI Object Storage backup configuration, using a Customer Secret Key or instance principal. Requires YugabyteDB Anywhere 2026.1.2.0 or later.
 
 YugabyteDB Anywhere marks the APIs of telemetry export, `yba_ybdb_release`, and `yba_universe_load_balancer_config` as preview. A later YugabyteDB Anywhere release can change them in ways that are not backward compatible.
 
