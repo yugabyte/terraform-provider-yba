@@ -94,8 +94,8 @@ func RegionsSchema() *schema.Schema {
 					Type:     schema.TypeString,
 					Optional: true,
 					Computed: true,
-					Description: "Name of the virtual network/VPC ID to use for this region." +
-						" Only set for AWS/Azure providers.",
+					Description: "Name of the virtual network or VPC for this region. " +
+						"Set for AWS, Azure, and OCI providers. For OCI this is the VCN OCID.",
 				},
 				"yb_image": {
 					Type:     schema.TypeString,
@@ -111,9 +111,9 @@ func RegionsSchema() *schema.Schema {
 					Type:     schema.TypeString,
 					Optional: true,
 					Computed: true,
-					Description: "Instance template to be used in this region." +
-						" Only set for GCP provider. Allowed in YugabyteDB Anywhere versions above" +
-						" 2.18.0.0-b65.",
+					Description: "Instance template for this region. Set for GCP and OCI providers. " +
+						"For OCI this is the instance configuration OCID. " +
+						"Allowed in YugabyteDB Anywhere versions above 2.18.0.0-b65.",
 				},
 				"zones": {
 					Type:        schema.TypeList,
@@ -292,6 +292,12 @@ func flattenRegions(regions []client.Region, cloudCode string) (res []map[string
 			r["vnet_name"] = azure.GetVnet()
 			r["yb_image"] = azure.GetYbImage()
 			r["security_group_id"] = azure.GetSecurityGroupId()
+		case "oci":
+			details := region.GetDetails()
+			cloudInfo := details.GetCloudInfo()
+			oci := cloudInfo.GetOci()
+			r["vnet_name"] = oci.GetVnet()
+			r["instance_template"] = oci.GetInstanceTemplate()
 		}
 		res = append(res, r)
 	}

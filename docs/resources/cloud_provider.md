@@ -294,12 +294,12 @@ The details for configuration are available in the [YugabyteDB Anywhere Configur
 Optional:
 
 - `code` (String) Region code. Varies by cloud provider.
-- `instance_template` (String) Instance template to be used in this region. Only set for GCP provider. Allowed in YugabyteDB Anywhere versions above 2.18.0.0-b65.
+- `instance_template` (String) Instance template for this region. Set for GCP and OCI providers. For OCI this is the instance configuration OCID. Allowed in YugabyteDB Anywhere versions above 2.18.0.0-b65.
 - `latitude` (Number) Latitude of the region.
 - `longitude` (Number) Longitude of the region.
 - `name` (String) Name of the region. Varies by cloud provider.
 - `security_group_id` (String) Security group ID to use for this region. Only set for AWS/Azure providers.
-- `vnet_name` (String) Name of the virtual network/VPC ID to use for this region. Only set for AWS/Azure providers.
+- `vnet_name` (String) Name of the virtual network or VPC for this region. Set for AWS, Azure, and OCI providers. For OCI this is the VCN OCID.
 - `yb_image` (String, Deprecated) AMI to be used in this region. Deprecated since YugabyteDB Anywhere 2.20.3.0. Please use image_bundles block instead.
 - `zones` (Block List) Zones associated with the region. (see [below for nested schema](#nestedblock--regions--zones))
 

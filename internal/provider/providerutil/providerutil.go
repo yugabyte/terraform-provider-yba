@@ -35,6 +35,7 @@ const (
 	AWSProviderCode    = "aws"
 	GCPProviderCode    = "gcp"
 	AzureProviderCode  = "azu"
+	OCIProviderCode    = "oci"
 	OnPremProviderCode = "onprem"
 	K8sProviderCode    = "kubernetes"
 )
