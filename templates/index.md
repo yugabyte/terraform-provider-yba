@@ -43,6 +43,7 @@ The YugabyteDB Anywhere Provider currently supports the following YugabyteDB Any
   - Encryption at Rest Configuration - CipherTrust Manager (yba_ciphertrust_ear_config)
   - Encryption at Rest Configuration - Google Cloud KMS (yba_gcp_ear_config)
   - Encryption at Rest Configuration - HashiCorp Vault (yba_hashicorp_vault_ear_config)
+  - Encryption at Rest Configuration - OCI KMS (yba_oci_ear_config)
   - Encryption in Transit Certificate - Custom Server Certificate (yba_custom_server_certificate)
   - Encryption in Transit Certificate - Self-Signed (yba_self_signed_certificate)
   - YugabyteDB Anywhere Installation via YBA Installer (yba_installer)

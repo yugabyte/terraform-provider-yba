@@ -18,3 +18,7 @@ package ear
 // GCPRequireHostIdentity exposes the plan-time version gate of use_gcp_iam and
 // project_id to the acceptance tests in package ear_test.
 var GCPRequireHostIdentity = gcpRequireHostIdentity
+
+// OCIRequireVersion exposes the plan-time version gate of yba_oci_ear_config
+// to the acceptance tests in package ear_test.
+var OCIRequireVersion = ociRequireVersion
