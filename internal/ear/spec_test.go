@@ -38,6 +38,7 @@ var earResources = map[string]struct {
 	"yba_hashicorp_vault_ear_config": {
 		hashicorpVaultEARSpec, []string{"token", "secret_id"},
 	},
+	"yba_oci_ear_config": {ociEARSpec, []string{"private_key_content"}},
 }
 
 // Shared guardrails for every EAR resource. The shared docs note says that
