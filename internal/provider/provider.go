@@ -145,6 +145,7 @@ func New() *schema.Provider {
 			"yba_gcs_storage_config":   storageconfig.ResourceGCSStorageConfig(),
 			"yba_azure_storage_config": storageconfig.ResourceAzureStorageConfig(),
 			"yba_nfs_storage_config":   storageconfig.ResourceNFSStorageConfig(),
+			"yba_oci_storage_config":   storageconfig.ResourceOCIStorageConfig(),
 
 			// Runtime configuration: set individual YBA runtime config keys (e.g. feature flags).
 			"yba_runtime_config": runtimeconfig.ResourceRuntimeConfig(),

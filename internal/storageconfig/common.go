@@ -15,7 +15,7 @@
 
 // Package storageconfig provides per-cloud storage configuration resources
 // (yba_s3_storage_config, yba_gcs_storage_config, yba_azure_storage_config,
-// yba_nfs_storage_config) used for backups and restores.
+// yba_nfs_storage_config, yba_oci_storage_config) used for backups and restores.
 package storageconfig
 
 import (
