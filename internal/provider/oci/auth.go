@@ -185,13 +185,3 @@ func setOCIAuthForUpdate(info *client.OCICloudInfo, in ociCloudInput, keyChanged
 	info.SetOciPrivateKeyContent(key)
 	return nil
 }
-
-// storeableOCIPrivateKey reports a PEM from the by-UUID provider GET.
-// The list route masks the key as the first character, '*', and the last
-// character. A masked value must not be written into state.
-func storeableOCIPrivateKey(key string) (string, bool) {
-	if key == "" || strings.Contains(key, "*") || !strings.Contains(key, "PRIVATE KEY") {
-		return "", false
-	}
-	return key, true
-}

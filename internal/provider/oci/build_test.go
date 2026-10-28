@@ -18,6 +18,7 @@ package oci
 import (
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	client "github.com/yugabyte/platform-go-client"
 
 	"github.com/yugabyte/terraform-provider-yba/internal/provider/providerutil"
@@ -94,34 +95,41 @@ func TestMergeRegionUUIDsDeactivatesRemoved(t *testing.T) {
 	}
 }
 
-func TestFlattenOCICredentialsOmitsPrivateKey(t *testing.T) {
-	info := client.OCICloudInfo{}
-	info.SetOciCompartmentId("ocid1.compartment.oc1..c")
-	info.SetOciRegion("us-ashburn-1")
-	info.SetOciHostedZoneId("ocid1.dns-zone.oc1..z")
-	info.SetOciTenancyId("ocid1.tenancy.oc1..t")
-	info.SetOciUserId("ocid1.user.oc1..u")
-	info.SetOciFingerprint("ab:cd")
-	info.SetOciPrivateKeyContent("p***m")
-	info.SetVpcType("EXISTING")
-
-	got := flattenOCICredentials(info)
-	if _, ok := got["private_key_content"]; ok {
-		t.Fatal("private key was returned")
+// TestOCIProviderGuardrails pins the schema contract: these properties ship
+// into customer state files.
+func TestOCIProviderGuardrails(t *testing.T) {
+	res := ResourceOCIProvider()
+	if err := res.InternalValidate(nil, true); err != nil {
+		t.Fatalf("schema failed InternalValidate: %v", err)
 	}
-	if _, ok := got["private_key_file_path"]; ok {
-		t.Fatal("key path was returned")
+	if res.Description == "" {
+		t.Error("resource description is required")
 	}
-
-	principal := client.OCICloudInfo{}
-	principal.SetOciAuthType(ociAuthInstancePrincipal)
-	if flattenOCICredentials(principal)["use_instance_principal"] != true {
-		t.Fatal("instance principal was not derived")
+	if res.Importer == nil {
+		t.Error("the resource must be importable")
 	}
-	blank := client.OCICloudInfo{}
-	if flattenOCICredentials(blank)["use_instance_principal"] != false {
-		t.Fatal("blank auth type must be API-key auth")
+	if res.Timeouts != providerutil.DefaultTimeouts {
+		t.Error("timeouts must come from providerutil.DefaultTimeouts")
 	}
+	if _, ok := res.Schema["customer_uuid"]; ok {
+		t.Error("customer_uuid is a noise field and must not be exposed")
+	}
+	secrets := map[string]bool{"private_key_content": true, "ssh_private_key_content": true}
+	var walk func(prefix string, s map[string]*schema.Schema)
+	walk = func(prefix string, s map[string]*schema.Schema) {
+		for name, f := range s {
+			if f.Description == "" {
+				t.Errorf("%s%s needs a Description: it renders into the docs", prefix, name)
+			}
+			if prefix == "" && f.Sensitive != secrets[name] {
+				t.Errorf("%s: Sensitive = %t, want %t", name, f.Sensitive, secrets[name])
+			}
+			if elem, ok := f.Elem.(*schema.Resource); ok {
+				walk(prefix+name+".", elem.Schema)
+			}
+		}
+	}
+	walk("", res.Schema)
 }
 
 func TestBuildOCICloudInfoInstancePrincipal(t *testing.T) {

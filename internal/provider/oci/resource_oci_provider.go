@@ -104,24 +104,22 @@ func ociProviderSchema() map[string]*schema.Schema {
 			"Omit it when `use_instance_principal` is true. " + inUseRestriction,
 	}
 	s["private_key_content"] = &schema.Schema{
-		Type:             schema.TypeString,
-		Optional:         true,
-		Sensitive:        true,
-		ConflictsWith:    []string{"private_key_file_path"},
-		DiffSuppressFunc: suppressOCIPrivateKeyContent,
+		Type:          schema.TypeString,
+		Optional:      true,
+		Sensitive:     true,
+		ConflictsWith: []string{"private_key_file_path"},
 		Description: "OCI API private key in PEM form. Set exactly one of `private_key_content` " +
 			"or `private_key_file_path` for API-key authentication, including when " +
 			"`use_instance_principal` is explicitly false. Omit both when " +
 			"`use_instance_principal` is true. " +
-			"YugabyteDB Anywhere masks this on every provider response, so Read leaves it unset. " +
-			"Changing it updates the provider in place.\n\n" +
+			"YugabyteDB Anywhere masks this on every provider response, so Terraform keeps " +
+			"the configured value. Changing it updates the provider in place.\n\n" +
 			"~> **Security Note:** This value is stored in Terraform state. Use an encrypted backend.",
 	}
 	s["private_key_file_path"] = &schema.Schema{
-		Type:             schema.TypeString,
-		Optional:         true,
-		ConflictsWith:    []string{"private_key_content"},
-		DiffSuppressFunc: suppressOCIPrivateKeyFilePath,
+		Type:          schema.TypeString,
+		Optional:      true,
+		ConflictsWith: []string{"private_key_content"},
 		Description: "Path of an OCI API private key PEM file. The provider reads the file " +
 			"when the plan is applied and sends the contents as the API key. A leading `~` " +
 			"is expanded to the home directory. Set exactly one of `private_key_content` or " +
@@ -131,7 +129,8 @@ func ociProviderSchema() map[string]*schema.Schema {
 			"and is not read back. Overwriting the file at the same path plans an update " +
 			"only when another auth field changes in that apply, because Terraform diffs " +
 			"the path and not the file body. To rotate the key by itself, change the path " +
-			"or set `private_key_content`.",
+			"or set `private_key_content`, after removing the key argument from any " +
+			"`lifecycle.ignore_changes`.",
 	}
 	s["hosted_zone_id"] = &schema.Schema{
 		Type:     schema.TypeString,
@@ -410,9 +409,8 @@ func stringFromRawConfig(raw cty.Value, name string) (string, bool) {
 }
 
 // applyConfiguredOCIKey replaces the key fields with the configured values.
-// Read stores the PEM so a file-path import can plan cleanly. DiffSuppressFunc
-// then makes d.Get return that PEM, and makes a suppressed path read back as
-// empty. An update has to send the arguments the configuration set.
+// After an import, ignore_changes keeps the empty key fields in the plan, so
+// d.Get is empty there; an auth update still has to send the configured key.
 func applyConfiguredOCIKey(in *ociCloudInput, raw cty.Value) {
 	if raw.IsNull() || !raw.IsKnown() {
 		return
@@ -423,20 +421,6 @@ func applyConfiguredOCIKey(in *ociCloudInput, raw cty.Value) {
 	if path, ok := stringFromRawConfig(raw, "private_key_file_path"); ok {
 		in.PrivateKeyFilePath = path
 	}
-}
-
-func configuredRegionCodes(regionsRaw []interface{}) []string {
-	codes := make([]string, 0, len(regionsRaw))
-	for _, r := range regionsRaw {
-		regionMap, ok := r.(map[string]interface{})
-		if !ok {
-			continue
-		}
-		if code, ok := regionMap["code"].(string); ok && code != "" {
-			codes = append(codes, code)
-		}
-	}
-	return codes
 }
 
 func resourceOCIProviderCreate(
@@ -459,7 +443,7 @@ func resourceOCIProviderCreate(
 			providerutil.BuildYBADefaultImageBundles(v.([]interface{}), "oci")...)
 	}
 	imageBundles = providerutil.EnsureImageBundleDefaults(imageBundles)
-	imageBundles = ensureOCIRegionEntries(imageBundles, configuredRegionCodes(regionsRaw))
+	imageBundles = ensureOCIRegionEntries(imageBundles, collectRegionCodes(regionsRaw))
 
 	req := client.Provider{
 		Code: utils.GetStringPointer(providerutil.OCIProviderCode),
@@ -481,7 +465,6 @@ func resourceOCIProviderCreate(
 		return diag.FromErr(utils.ErrorFromHTTPResponse(
 			response, err, utils.ResourceEntity, "OCI Provider", "Create"))
 	}
-	d.SetId(*r.ResourceUUID)
 	if r.TaskUUID != nil {
 		err = providerutil.WaitForProviderTask(ctx, *r.TaskUUID, providerName, "created",
 			c, cUUID, d.Timeout(schema.TimeoutCreate))
@@ -489,54 +472,8 @@ func resourceOCIProviderCreate(
 			return diag.FromErr(err)
 		}
 	}
+	d.SetId(*r.ResourceUUID)
 	return resourceOCIProviderRead(ctx, d, meta)
-}
-
-// readClearOCIPrivateKey calls the by-UUID GET. Provider JSON serializes
-// details through getMaskProviderDetails, so this route masks the key too.
-// A masked or failed read leaves state unchanged; it does not drop the provider.
-func readClearOCIPrivateKey(
-	ctx context.Context, c *client.APIClient, cUUID, pUUID string,
-) (string, error) {
-	p, response, err := c.CloudProvidersAPI.GetProvider(ctx, cUUID, pUUID).Execute()
-	if err != nil {
-		return "", utils.ErrorFromHTTPResponse(
-			response, err, utils.ResourceEntity, "OCI Provider", "Read")
-	}
-	details := p.GetDetails()
-	cloudInfo := details.GetCloudInfo()
-	ociInfo := cloudInfo.GetOci()
-	return ociInfo.GetOciPrivateKeyContent(), nil
-}
-
-// suppressOCIPrivateKeyContent keeps a PEM that Read stored when the
-// configuration uses private_key_file_path instead of the PEM argument.
-func suppressOCIPrivateKeyContent(k, old, new string, d *schema.ResourceData) bool {
-	path, _ := d.Get("private_key_file_path").(string)
-	return ociContentKeptForFilePath(old, new, path)
-}
-
-func ociContentKeptForFilePath(old, new, path string) bool {
-	return new == "" && old != "" && path != ""
-}
-
-// suppressOCIPrivateKeyFilePath ignores an import of a local path when the
-// file body matches the PEM Read stored. YBA never returns the path.
-func suppressOCIPrivateKeyFilePath(k, old, new string, d *schema.ResourceData) bool {
-	oldContent, _ := d.GetChange("private_key_content")
-	pem, _ := oldContent.(string)
-	return ociPathMatchesStoredPEM(old, new, pem)
-}
-
-func ociPathMatchesStoredPEM(oldPath, newPath, storedPEM string) bool {
-	if oldPath != "" || newPath == "" || storedPEM == "" {
-		return false
-	}
-	body, err := readPrivateKey("", newPath)
-	if err != nil {
-		return false
-	}
-	return body == storedPEM
 }
 
 func resourceOCIProviderRead(
@@ -581,18 +518,6 @@ func resourceOCIProviderRead(
 	} {
 		if err = d.Set(key, creds[key]); err != nil {
 			return diag.FromErr(err)
-		}
-	}
-	if creds["use_instance_principal"] != true &&
-		d.Get("private_key_content").(string) == "" {
-		key, keyErr := readClearOCIPrivateKey(ctx, c, cUUID, d.Id())
-		if keyErr != nil {
-			tflog.Warn(ctx, fmt.Sprintf(
-				"OCI provider %s: private key was not read back: %v", d.Id(), keyErr))
-		} else if pem, ok := storeableOCIPrivateKey(key); ok {
-			if err = d.Set("private_key_content", pem); err != nil {
-				return diag.FromErr(err)
-			}
 		}
 	}
 	stateRegions, _ := d.Get("regions").([]interface{})
@@ -716,7 +641,7 @@ func resourceOCIProviderUpdate(
 		ybaConfigRaw, d.HasChange("yba_managed_image_bundles"))
 	updateRegionsRaw, _ := d.Get("regions").([]interface{})
 	providerReq.SetImageBundles(ensureOCIRegionEntries(
-		updatedBundles, configuredRegionCodes(updateRegionsRaw)))
+		updatedBundles, collectRegionCodes(updateRegionsRaw)))
 
 	r, response, err := c.CloudProvidersAPI.EditProvider(ctx, cUUID, d.Id()).
 		EditProviderRequest(providerReq).Execute()
@@ -748,6 +673,12 @@ func resourceOCIProviderDelete(
 	providerName := d.Get("name").(string)
 	r, response, err := c.CloudProvidersAPI.Delete(ctx, cUUID, d.Id()).Execute()
 	if err != nil {
+		// YBA answers a missing provider UUID with a 400, so confirm through the list.
+		if _, getErr := providerutil.GetProvider(ctx, c, cUUID, d.Id()); providerutil.
+			IsProviderNotFoundError(getErr) {
+			d.SetId("")
+			return diags
+		}
 		return diag.FromErr(utils.ErrorFromHTTPResponse(
 			response, err, utils.ResourceEntity, "OCI Provider", "Delete"))
 	}

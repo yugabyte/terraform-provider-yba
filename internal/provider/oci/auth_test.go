@@ -17,9 +17,6 @@ package oci
 
 import (
 	"context"
-	"fmt"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -141,67 +138,11 @@ func TestSetOCIAuthForUpdateClearsAPIKeyOnInstancePrincipal(t *testing.T) {
 	}
 }
 
-func TestOCIContentKeptForFilePath(t *testing.T) {
-	if !ociContentKeptForFilePath("pem", "", "/tmp/k.pem") {
-		t.Fatal("file-path config must keep the PEM Read stored")
-	}
-	if ociContentKeptForFilePath("pem", "other", "/tmp/k.pem") {
-		t.Fatal("a configured PEM must not be suppressed")
-	}
-	if ociContentKeptForFilePath("", "pem", "") {
-		t.Fatal("empty state must not be suppressed")
-	}
-	if ociContentKeptForFilePath("pem", "", "") {
-		t.Fatal("content removal without a path must not be suppressed")
-	}
-}
-
-func TestSuppressOCIPrivateKeyFilePathMatchesBody(t *testing.T) {
+// An imported provider has empty key fields in state, and ignore_changes keeps
+// them empty in the plan. An auth update still sends the configured key.
+func TestOCIUpdateUsesConfiguredKeyAfterImport(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "api.pem")
-	pem := "-----BEGIN PRIVATE KEY-----\nYQ==\n-----END PRIVATE KEY-----\n"
-	if err := os.WriteFile(path, []byte(pem), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if !ociPathMatchesStoredPEM("", path, pem) {
-		t.Fatal("matching file must suppress the path")
-	}
-	if ociPathMatchesStoredPEM("", path, pem+"x") {
-		t.Fatal("different PEM must not suppress the path")
-	}
-	if ociPathMatchesStoredPEM(path, path, pem) {
-		t.Fatal("a path already in state must not be suppressed")
-	}
-}
-
-func TestReadClearOCIPrivateKey(t *testing.T) {
-	pem := "-----BEGIN PRIVATE KEY-----\nYQ==\n-----END PRIVATE KEY-----\n"
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/v1/customers/cust/providers/prov" {
-			http.NotFound(w, r)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = fmt.Fprintf(w, `{"details":{"cloudInfo":{"oci":{"ociPrivateKeyContent":%q}}}}`, pem)
-	}))
-	defer srv.Close()
-	cfg := client.NewConfiguration()
-	cfg.Servers = client.ServerConfigurations{{URL: srv.URL}}
-	cfg.HTTPClient = srv.Client()
-	got, err := readClearOCIPrivateKey(
-		context.Background(), client.NewAPIClient(cfg), "cust", "prov")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got != pem {
-		t.Fatalf("key = %q", got)
-	}
-}
-
-func TestOCIUpdateUsesConfiguredKeyWhenStateHoldsPEM(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "api.pem")
-	pem := "-----BEGIN PRIVATE KEY-----\nYQ==\n-----END PRIVATE KEY-----\n"
 	if err := os.WriteFile(path, []byte("new-pem\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -217,7 +158,6 @@ func TestOCIUpdateUsesConfiguredKeyWhenStateHoldsPEM(t *testing.T) {
 		ID: "prov",
 		Attributes: map[string]string{
 			"id":                     "prov",
-			"private_key_content":    pem,
 			"tenancy_id":             "t",
 			"user_id":                "u",
 			"fingerprint":            "new:fp",
@@ -236,6 +176,68 @@ func TestOCIUpdateUsesConfiguredKeyWhenStateHoldsPEM(t *testing.T) {
 	}
 	if info.GetOciPrivateKeyContent() != "new-pem\n" || info.GetOciFingerprint() != "new:fp" {
 		t.Fatalf("info = %+v", info)
+	}
+}
+
+// The plan checks see the configured key arguments, not the key in state, and
+// need the key file only when the apply reads it.
+func TestOCIPlanKeyChecks(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "api.pem")
+	if err := os.WriteFile(path, []byte("pem"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	attrs := map[string]string{
+		"id": "prov", "name": "oci", "compartment_id": "c", "default_region": "r",
+		"use_instance_principal": "false", "tenancy_id": "t", "user_id": "u",
+		"fingerprint": "f", "regions.#": "1", "regions.0.code": "r",
+		"regions.0.vcn_id": "v", "regions.0.zones.#": "1", "regions.0.zones.0.code": "r-AD-1",
+		"regions.0.zones.0.subnet": "s", "yba_managed_image_bundles.#": "1",
+		"yba_managed_image_bundles.0.arch": "x86_64",
+	}
+	config := func(key string, value string) *terraform.ResourceConfig {
+		raw := map[string]interface{}{
+			"name": "oci", "compartment_id": "c", "default_region": "r",
+			"use_instance_principal": false, "tenancy_id": "t", "user_id": "u",
+			"fingerprint": "f",
+			"regions": []interface{}{map[string]interface{}{
+				"code": "r", "vcn_id": "v",
+				"zones": []interface{}{map[string]interface{}{"code": "r-AD-1", "subnet": "s"}},
+			}},
+			"yba_managed_image_bundles": []interface{}{map[string]interface{}{"arch": "x86_64"}},
+		}
+		if key != "" {
+			raw[key] = value
+		}
+		return terraform.NewResourceConfigRaw(raw)
+	}
+	diff := func(stateKey, stateValue string, c *terraform.ResourceConfig) error {
+		s := map[string]string{stateKey: stateValue}
+		for k, v := range attrs {
+			s[k] = v
+		}
+		_, err := ResourceOCIProvider().Diff(context.Background(),
+			&terraform.InstanceState{ID: "prov", Attributes: s}, c, nil)
+		return err
+	}
+	if err := diff("private_key_content", "pem",
+		config("private_key_file_path", path)); err != nil {
+		t.Fatalf("content to path: %v", err)
+	}
+	if err := diff("private_key_file_path", path,
+		config("private_key_content", "pem")); err != nil {
+		t.Fatalf("path to content: %v", err)
+	}
+	if err := diff("private_key_content", "pem", config("", "")); err == nil {
+		t.Fatal("a plan that clears the key must fail")
+	}
+	missing := filepath.Join(t.TempDir(), "missing.pem")
+	if err := diff("private_key_file_path", missing,
+		config("private_key_file_path", missing)); err != nil {
+		t.Fatalf("a plan that leaves auth alone needs no key file: %v", err)
+	}
+	if err := diff("private_key_content", "pem",
+		config("private_key_file_path", missing)); err == nil {
+		t.Fatal("a plan that sends the key must find the file")
 	}
 }
 
@@ -265,19 +267,6 @@ func TestValidateOCIAuthInput(t *testing.T) {
 	both.PrivateKeyFilePath = "/tmp/k.pem"
 	if err := validateOCIAuthInput(both); err == nil {
 		t.Fatal("expected exactly-one key error")
-	}
-}
-
-func TestStoreableOCIPrivateKey(t *testing.T) {
-	pem := "-----BEGIN PRIVATE KEY-----\nYQ==\n-----END PRIVATE KEY-----"
-	if got, ok := storeableOCIPrivateKey(pem); !ok || got != pem {
-		t.Fatalf("pem ok=%v got=%q", ok, got)
-	}
-	if _, ok := storeableOCIPrivateKey("p***m"); ok {
-		t.Fatal("masked key was stored")
-	}
-	if _, ok := storeableOCIPrivateKey(""); ok {
-		t.Fatal("empty key was stored")
 	}
 }
 

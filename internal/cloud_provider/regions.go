@@ -94,8 +94,9 @@ func RegionsSchema() *schema.Schema {
 					Type:     schema.TypeString,
 					Optional: true,
 					Computed: true,
-					Description: "Name of the virtual network or VPC for this region. " +
-						"Set for AWS, Azure, and OCI providers. For OCI this is the VCN OCID.",
+					Description: "Name of the virtual network/VPC ID to use for this region." +
+						" Only set for AWS/Azure providers. The `yba_provider_regions` data source" +
+						" also returns the VCN OCID of an OCI provider here.",
 				},
 				"yb_image": {
 					Type:     schema.TypeString,
@@ -111,9 +112,10 @@ func RegionsSchema() *schema.Schema {
 					Type:     schema.TypeString,
 					Optional: true,
 					Computed: true,
-					Description: "Instance template for this region. Set for GCP and OCI providers. " +
-						"For OCI this is the instance configuration OCID. " +
-						"Allowed in YugabyteDB Anywhere versions above 2.18.0.0-b65.",
+					Description: "Instance template to be used in this region." +
+						" Only set for GCP provider. Allowed in YugabyteDB Anywhere versions above" +
+						" 2.18.0.0-b65. The `yba_provider_regions` data source also returns the" +
+						" instance configuration OCID of an OCI provider here.",
 				},
 				"zones": {
 					Type:        schema.TypeList,

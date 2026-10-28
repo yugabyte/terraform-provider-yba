@@ -342,8 +342,15 @@ func ociAuthPlanErrorFromDiff(d *schema.ResourceDiff) error {
 		d.NewValueKnown("use_instance_principal"), principal, fields, requireKey)
 }
 
+// validatePrivateKeyFile checks the file only when the apply reads it: on
+// create, or when an auth field changes (setOCIAuthForUpdate re-reads the path).
+// A plan that leaves auth alone works without the key file.
 func validatePrivateKeyFile(d *schema.ResourceDiff) error {
 	if !d.NewValueKnown("private_key_file_path") {
+		return nil
+	}
+	if d.Id() != "" && !d.HasChanges("use_instance_principal", "tenancy_id", "user_id",
+		"fingerprint", "private_key_content", "private_key_file_path") {
 		return nil
 	}
 	if !d.NewValueKnown("use_instance_principal") {

@@ -36,21 +36,36 @@ func TestAccOCIProvider_APIKey(t *testing.T) {
 	acctest.TestAccPreCheckOCI(t)
 	keyPath := writeOCIKeyFile(t)
 	rName := acctest.RandomName("oci")
-	config := ociProviderConfigAPIKey(rName, keyPath)
+	pathKey := fmt.Sprintf("private_key_file_path = %q", keyPath)
+	// Provider.getMaskProviderDetails masks ociPrivateKeyContent on every
+	// provider response, and YBA does not store the local path, so the
+	// imported state has no key and the plan after import ignores it.
+	imported := ociProviderConfigAPIKey(rName, pathKey+`
+  lifecycle {
+    ignore_changes = [private_key_file_path]
+  }`)
 	resource.ParallelTest(t, resource.TestCase{
 		ProviderFactories: acctest.ProviderFactories,
 		CheckDestroy:      testAccCheckDestroyOCIProvider,
-		Steps: append([]resource.TestStep{{
-			Config: config,
-			Check: resource.ComposeTestCheckFunc(
-				resource.TestCheckResourceAttr("yba_oci_provider.test", "name", rName),
-				resource.TestCheckResourceAttr(
-					"yba_oci_provider.test", "use_instance_principal", "false"),
-			),
-		}}, acctest.ImportPlanSteps(t, "yba_oci_provider.test", config, acctest.ImportPlanOptions{
-			// Provider.getMaskProviderDetails masks ociPrivateKeyContent on every
-			// provider response, and YBA does not store the local path.
-			VerifyIgnore: []string{"private_key_file_path"},
+		Steps: append([]resource.TestStep{
+			{
+				Config: ociProviderConfigAPIKey(rName,
+					"private_key_content = base64decode(var.OCI_PRIVATE_KEY_B64)"),
+				Check: resource.ComposeTestCheckFunc(
+					resource.TestCheckResourceAttr("yba_oci_provider.test", "name", rName),
+					resource.TestCheckResourceAttr(
+						"yba_oci_provider.test", "use_instance_principal", "false"),
+				),
+			},
+			{
+				Config: ociProviderConfigAPIKey(rName, pathKey),
+				Check: resource.TestCheckResourceAttr(
+					"yba_oci_provider.test", "private_key_file_path", keyPath),
+			},
+		}, acctest.ImportPlanSteps(t, "yba_oci_provider.test", imported, acctest.ImportPlanOptions{
+			// The move to the path leaves private_key_content "" in state; import
+			// never sets it, because OCICloudInfo.withSensitiveDataMasked masks it.
+			VerifyIgnore: []string{"private_key_content", "private_key_file_path"},
 		})...),
 	})
 }
@@ -93,11 +108,17 @@ func testAccCheckDestroyOCIProvider(s *terraform.State) error {
 	return nil
 }
 
-func ociProviderConfigAPIKey(name, keyPath string) string {
+// ociProviderConfigAPIKey is an API-key provider; key sets the private key
+// argument and any lifecycle block.
+func ociProviderConfigAPIKey(name, key string) string {
 	return acctest.YBAProviderBlock("OCI") + fmt.Sprintf(`
 variable "OCI_TENANCY_ID" { type = string }
 variable "OCI_USER_ID" { type = string }
 variable "OCI_FINGERPRINT" { type = string }
+variable "OCI_PRIVATE_KEY_B64" {
+  type      = string
+  sensitive = true
+}
 variable "OCI_COMPARTMENT_ID" { type = string }
 variable "OCI_REGION" { type = string }
 variable "OCI_VCN_ID" { type = string }
@@ -111,7 +132,7 @@ resource "yba_oci_provider" "test" {
   tenancy_id             = var.OCI_TENANCY_ID
   user_id                = var.OCI_USER_ID
   fingerprint            = var.OCI_FINGERPRINT
-  private_key_file_path  = %q
+  %s
   regions {
     code   = var.OCI_REGION
     vcn_id = var.OCI_VCN_ID
@@ -121,11 +142,6 @@ resource "yba_oci_provider" "test" {
     }
   }
   yba_managed_image_bundles { arch = "x86_64" }
-  # Provider.getMaskProviderDetails masks ociPrivateKeyContent, and YBA does
-  # not store this path, so an import plans it unless it is ignored.
-  lifecycle {
-    ignore_changes = [private_key_file_path]
-  }
 }
-`, name, keyPath)
+`, name, key)
 }
