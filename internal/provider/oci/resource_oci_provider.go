@@ -546,13 +546,18 @@ func resourceOCIProviderRead(
 	return diags
 }
 
-// sshNameConflict rejects a rename onto a name that YBA already stores. A
-// content change under the same name is not a conflict: YBA versions that key.
-// An empty old name is an import (Read does not set the name), so the name in
-// YBA is this provider's own key.
+// sshNameConflict rejects a new name that YBA already stores, which YBA would
+// silently rename. A content change under the same name is not a conflict, and
+// neither is the provider's latest key: after an import, Read leaves the name
+// empty in state. YBA keeps every older key, so an older name still conflicts.
 func sshNameConflict(oldName, newName string, existing []client.AccessKey) error {
-	if oldName == "" || oldName == newName || newName == "" {
+	if oldName == newName || newName == "" {
 		return nil
+	}
+	if latest := providerutil.LatestAccessKey(existing); latest != nil {
+		if info := latest.GetKeyInfo(); info.GetKeyPairName() == newName {
+			return nil
+		}
 	}
 	return providerutil.ValidateSSHKeypairNameUnique(existing, newName)
 }

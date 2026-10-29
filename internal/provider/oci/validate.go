@@ -65,10 +65,18 @@ func validateOCIVersion(ctx context.Context, meta interface{}) error {
 	return checkOCIProviderVersion(ctx, version)
 }
 
-func checkImageBundleRegionCoverage(bundlesRaw []interface{}, regionCodes []string) error {
-	for _, b := range bundlesRaw {
+// checkImageBundleRegionCoverage requires an image per configured region.
+// known reports whether a plan path is known; an unknown image is left to YBA.
+func checkImageBundleRegionCoverage(
+	bundlesRaw []interface{}, regionCodes []string, known func(path string) bool,
+) error {
+	for i, b := range bundlesRaw {
 		bundleMap, ok := b.(map[string]interface{})
 		if !ok {
+			continue
+		}
+		overridesPath := fmt.Sprintf("image_bundles.%d.details.0.region_overrides", i)
+		if !known(overridesPath) {
 			continue
 		}
 		name, _ := bundleMap["name"].(string)
@@ -82,6 +90,10 @@ func checkImageBundleRegionCoverage(bundlesRaw []interface{}, regionCodes []stri
 		}
 		overrides, _ := det["region_overrides"].(map[string]interface{})
 		for _, regionCode := range regionCodes {
+			// The SDK drops an unknown map value from d.Get.
+			if !known(overridesPath + "." + regionCode) {
+				continue
+			}
 			image, exists := overrides[regionCode]
 			imageStr, _ := image.(string)
 			if !exists || imageStr == "" {
@@ -278,10 +290,12 @@ var ociAPIKeyFieldNames = []string{
 
 // ociAuthPlanError rejects a known-invalid auth combination.
 // An unknown value is not treated as empty. Apply calls
-// validateOCIAuthInput from setOCIAuthForCreate and from the API-key
-// branch of setOCIAuthForUpdate. An explicit use_instance_principal = false
-// is API-key auth. requireKey matches when the apply sends the key: on create
-// or when any auth field changes.
+// validateOCIAuthInput from setOCIAuthForCreate and at the top of
+// setOCIAuthForUpdate, in both modes. An explicit use_instance_principal =
+// false is API-key auth. requireKey is false when an existing provider's plan
+// does not change either key: Terraform sends the plan its configuration after
+// ignore_changes, so an imported key under ignore_changes and a configuration
+// with no key both arrive empty, and only the apply can tell them apart.
 func ociAuthPlanError(
 	principalKnown, principal bool, fields map[string]authField, requireKey bool,
 ) error {
@@ -322,15 +336,7 @@ func ociAuthPlanError(
 	return nil
 }
 
-// planAuthField reads an API-key argument the way the apply does: the key
-// arguments come from configuration (applyConfiguredOCIKey), because after an
-// import ignore_changes keeps them empty in the plan.
 func planAuthField(d *schema.ResourceDiff, name string) authField {
-	if name == "private_key_content" || name == "private_key_file_path" {
-		if v, ok := stringFromRawConfig(d.GetRawConfig(), name); ok {
-			return authField{known: true, value: v}
-		}
-	}
 	if !d.NewValueKnown(name) {
 		return authField{}
 	}
@@ -354,8 +360,9 @@ func ociAuthPlanErrorFromDiff(d *schema.ResourceDiff) error {
 	if d.NewValueKnown("use_instance_principal") {
 		principal, _ = d.Get("use_instance_principal").(bool)
 	}
+	requireKey := d.Id() == "" || d.HasChanges("private_key_content", "private_key_file_path")
 	return ociAuthPlanError(
-		d.NewValueKnown("use_instance_principal"), principal, fields, ociAuthChanged(d))
+		d.NewValueKnown("use_instance_principal"), principal, fields, requireKey)
 }
 
 // validatePrivateKeyFile checks the file only when the apply reads it.
@@ -433,5 +440,6 @@ func validateOCIProvider(ctx context.Context, d *schema.ResourceDiff, meta inter
 	if len(bundlesRaw) == 0 {
 		return nil
 	}
-	return checkImageBundleRegionCoverage(bundlesRaw, collectRegionCodes(regionsRaw))
+	return checkImageBundleRegionCoverage(
+		bundlesRaw, collectRegionCodes(regionsRaw), d.NewValueKnown)
 }

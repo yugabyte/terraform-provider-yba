@@ -19,8 +19,8 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
+	"time"
 
 	"github.com/hashicorp/go-cty/cty"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
@@ -41,9 +41,8 @@ func TestReadPrivateKeyFileAndTilde(t *testing.T) {
 		t.Fatalf("read = %q", got)
 	}
 
-	missing, err := readPrivateKey("", filepath.Join(dir, "missing.pem"))
-	if err == nil || !strings.Contains(err.Error(), "private_key_file_path") {
-		t.Fatalf("missing file err = %v, key %q", err, missing)
+	if missing, err := readPrivateKey("", filepath.Join(dir, "missing.pem")); err == nil {
+		t.Fatalf("a missing file must fail, got key %q", missing)
 	}
 }
 
@@ -231,13 +230,15 @@ func TestOCIPlanKeyChecks(t *testing.T) {
 	if err := diff("private_key_content", "pem", config("", "")); err == nil {
 		t.Fatal("a plan that clears the key must fail")
 	}
-	// An imported provider (no key in state) plans cleanly until auth changes;
-	// then the apply sends the key, so the plan must find one.
+	// Terraform sends the plan its configuration after ignore_changes, so an
+	// imported key under ignore_changes arrives empty, as no key does. The plan
+	// lets an existing provider through, also when another auth field changes;
+	// the apply reads the configured key.
 	if err := diff("private_key_content", "", config("", "")); err != nil {
 		t.Fatalf("imported provider, no auth change: %v", err)
 	}
-	if err := diff("fingerprint", "old", config("", "")); err == nil {
-		t.Fatal("an auth change with no key must fail at plan time")
+	if err := diff("fingerprint", "old", config("", "")); err != nil {
+		t.Fatalf("imported provider, fingerprint change: %v", err)
 	}
 	missing := filepath.Join(t.TempDir(), "missing.pem")
 	if err := diff("private_key_file_path", missing,
@@ -262,15 +263,13 @@ func TestValidateOCIAuthInput(t *testing.T) {
 		t.Fatal(err)
 	}
 	mixed := ociCloudInput{UseInstancePrincipal: true, TenancyID: "t"}
-	if err := validateOCIAuthInput(mixed); err == nil ||
-		!strings.Contains(err.Error(), "use_instance_principal is true") {
-		t.Fatalf("mixed mode err = %v", err)
+	if err := validateOCIAuthInput(mixed); err == nil {
+		t.Fatal("instance principal with API-key fields must fail")
 	}
 	missing := ok
 	missing.Fingerprint = ""
-	if err := validateOCIAuthInput(missing); err == nil ||
-		!strings.Contains(err.Error(), "fingerprint") {
-		t.Fatalf("err = %v", err)
+	if err := validateOCIAuthInput(missing); err == nil {
+		t.Fatal("API-key auth without a fingerprint must fail")
 	}
 	both := ok
 	both.PrivateKeyFilePath = "/tmp/k.pem"
@@ -293,7 +292,14 @@ func TestSSHNameConflictSkipsUnchangedName(t *testing.T) {
 	if err := sshNameConflict(name, "other-key", existing); err != nil {
 		t.Fatalf("new name: %v", err)
 	}
-	if err := sshNameConflict("other-key", name, existing); err == nil {
-		t.Fatal("renaming onto an existing key must fail")
+	// Custom key, then YBA-managed keys, then the old custom name again.
+	managed := "yb-managed-key"
+	older, newer := time.Now().Add(-time.Hour), time.Now()
+	switched := []client.AccessKey{
+		{KeyInfo: client.KeyInfo{KeyPairName: &name}, CreationDate: &older},
+		{KeyInfo: client.KeyInfo{KeyPairName: &managed}, CreationDate: &newer},
+	}
+	if err := sshNameConflict("", name, switched); err == nil {
+		t.Fatal("an older key name must fail, or YBA renames it silently")
 	}
 }

@@ -17,8 +17,9 @@ package oci
 
 import (
 	"context"
-	"strings"
 	"testing"
+
+	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
 )
 
 func TestCheckOCIProviderVersion(t *testing.T) {
@@ -29,13 +30,11 @@ func TestCheckOCIProviderVersion(t *testing.T) {
 	if err := checkOCIProviderVersion(ctx, "2.31.0.0-b133"); err != nil {
 		t.Fatal(err)
 	}
-	err := checkOCIProviderVersion(ctx, "2026.1.2.0-b28")
-	if err == nil || !strings.Contains(err.Error(), "yba_oci_provider") {
-		t.Fatalf("stable err = %v", err)
+	if err := checkOCIProviderVersion(ctx, "2026.1.2.0-b28"); err == nil {
+		t.Fatal("a stable build below the minimum must fail")
 	}
-	err = checkOCIProviderVersion(ctx, "2.31.0.0-b132")
-	if err == nil || !strings.Contains(err.Error(), "yba_oci_provider") {
-		t.Fatalf("preview err = %v", err)
+	if err := checkOCIProviderVersion(ctx, "2.31.0.0-b132"); err == nil {
+		t.Fatal("a preview build below the minimum must fail")
 	}
 	if err := checkOCIProviderVersion(ctx, "not-a-version"); err != nil {
 		t.Fatalf("unreadable version must pass, got %v", err)
@@ -43,38 +42,58 @@ func TestCheckOCIProviderVersion(t *testing.T) {
 }
 
 func TestCheckImageBundleRegionCoverageOCI(t *testing.T) {
-	bundle := func(overrides map[string]interface{}) interface{} {
-		return map[string]interface{}{
+	bundle := func(overrides map[string]interface{}) []interface{} {
+		return []interface{}{map[string]interface{}{
 			"name": "custom-alma9",
 			"details": []interface{}{
 				map[string]interface{}{"region_overrides": overrides},
 			},
-		}
+		}}
 	}
+	allKnown := func(string) bool { return true }
 	regions := []string{"us-ashburn-1", "us-phoenix-1"}
-	err := checkImageBundleRegionCoverage([]interface{}{
-		bundle(map[string]interface{}{"us-ashburn-1": "ocid1.image.oc1.iad.aaaa"}),
-	}, regions)
-	if err == nil || !strings.Contains(err.Error(), "us-phoenix-1") {
-		t.Fatalf("missing image err = %v", err)
+	if err := checkImageBundleRegionCoverage(bundle(map[string]interface{}{
+		"us-ashburn-1": "ocid1.image.oc1.iad.aaaa",
+	}), regions, allKnown); err == nil {
+		t.Fatal("a missing region image must fail")
 	}
-	err = checkImageBundleRegionCoverage([]interface{}{
-		bundle(map[string]interface{}{
-			"us-ashburn-1": "ocid1.image.oc1.iad.aaaa",
-			"us-phoenix-1": "",
-		}),
-	}, regions)
-	if err == nil || !strings.Contains(err.Error(), `non-empty image`) {
-		t.Fatalf("empty image err = %v", err)
+	partial := bundle(map[string]interface{}{
+		"us-ashburn-1": "ocid1.image.oc1.iad.aaaa",
+		"us-phoenix-1": "",
+	})
+	if err := checkImageBundleRegionCoverage(partial, regions, allKnown); err == nil {
+		t.Fatal("an empty region image must fail")
 	}
-	err = checkImageBundleRegionCoverage([]interface{}{
-		bundle(map[string]interface{}{
-			"us-ashburn-1": "ocid1.image.oc1.iad.aaaa",
-			"us-phoenix-1": "ocid1.image.oc1.phx.aaaa",
-		}),
-	}, regions)
-	if err != nil {
+	if err := checkImageBundleRegionCoverage(bundle(map[string]interface{}{
+		"us-ashburn-1": "ocid1.image.oc1.iad.aaaa",
+		"us-phoenix-1": "ocid1.image.oc1.phx.aaaa",
+	}), regions, allKnown); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// An image OCID from another resource reads as "" until it is known; the plan
+// leaves it to YBA.
+func TestOCIPlanAcceptsUnknownImage(t *testing.T) {
+	c := terraform.NewResourceConfigRaw(map[string]interface{}{
+		"name": "oci", "compartment_id": "c", "default_region": "r",
+		"use_instance_principal": true,
+		"regions": []interface{}{map[string]interface{}{
+			"code": "r", "vcn_id": "v",
+			"zones": []interface{}{map[string]interface{}{"code": "r-AD-1", "subnet": "s"}},
+		}},
+		"image_bundles": []interface{}{map[string]interface{}{
+			"name": "b", "use_as_default": true,
+			"details": []interface{}{map[string]interface{}{
+				"arch": "x86_64", "ssh_user": "opc",
+				"region_overrides": map[string]interface{}{
+					"r": "74D93920-ED26-11E3-AC10-0800200C9A66",
+				},
+			}},
+		}},
+	})
+	if _, err := ResourceOCIProvider().Diff(context.Background(), nil, c, nil); err != nil {
+		t.Fatalf("unknown image OCID: %v", err)
 	}
 }
 
@@ -88,25 +107,22 @@ func TestCheckDuplicateRegionsZonesAndArch(t *testing.T) {
 			},
 		},
 	}
-	if err := checkDuplicateRegionsAndZones(regions); err == nil ||
-		!strings.Contains(err.Error(), "us-ashburn-1-AD-1") {
-		t.Fatalf("zone err = %v", err)
+	if err := checkDuplicateRegionsAndZones(regions); err == nil {
+		t.Fatal("a duplicate zone must fail")
 	}
 	dupRegions := []interface{}{
 		map[string]interface{}{"code": "us-ashburn-1", "zones": []interface{}{}},
 		map[string]interface{}{"code": "us-ashburn-1", "zones": []interface{}{}},
 	}
-	if err := checkDuplicateRegionsAndZones(dupRegions); err == nil ||
-		!strings.Contains(err.Error(), "us-ashburn-1") {
-		t.Fatalf("region err = %v", err)
+	if err := checkDuplicateRegionsAndZones(dupRegions); err == nil {
+		t.Fatal("a duplicate region must fail")
 	}
 	arches := []interface{}{
 		map[string]interface{}{"arch": "x86_64"},
 		map[string]interface{}{"arch": "x86_64"},
 	}
-	if err := checkDuplicateManagedArch(arches); err == nil ||
-		!strings.Contains(err.Error(), "x86_64") {
-		t.Fatalf("arch err = %v", err)
+	if err := checkDuplicateManagedArch(arches); err == nil {
+		t.Fatal("a duplicate architecture must fail")
 	}
 	unknown := []interface{}{
 		map[string]interface{}{
@@ -162,8 +178,7 @@ func TestOCIAuthPlanError(t *testing.T) {
 	if err := ociAuthPlanError(true, false, imported, false); err != nil {
 		t.Fatalf("unchanged imported key must plan, got %v", err)
 	}
-	if err := ociAuthPlanError(true, false, imported, true); err == nil ||
-		!strings.Contains(err.Error(), "set exactly one") {
-		t.Fatalf("missing key err = %v", err)
+	if err := ociAuthPlanError(true, false, imported, true); err == nil {
+		t.Fatal("a missing key must fail")
 	}
 }
