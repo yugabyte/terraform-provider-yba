@@ -151,21 +151,16 @@ func setOCIAuthForCreate(info *client.OCICloudInfo, in ociCloudInput) error {
 // its stored key when the incoming value contains '*'. A set path is read
 // and stored even when keyChanged is false.
 func setOCIAuthForUpdate(info *client.OCICloudInfo, in ociCloudInput, keyChanged bool) error {
+	if err := validateOCIAuthInput(in); err != nil {
+		return err
+	}
 	if in.UseInstancePrincipal {
-		if apiKeyFieldsSet(in) {
-			return fmt.Errorf(
-				"tenancy_id, user_id, fingerprint, private_key_content, and " +
-					"private_key_file_path must be omitted when use_instance_principal is true")
-		}
 		info.SetOciAuthType(ociAuthInstancePrincipal)
 		info.SetOciTenancyId("")
 		info.SetOciUserId("")
 		info.SetOciFingerprint("")
 		info.SetOciPrivateKeyContent("")
 		return nil
-	}
-	if err := validateOCIAuthInput(in); err != nil {
-		return err
 	}
 	info.SetOciAuthType(ociAuthAPIKey)
 	info.SetOciTenancyId(in.TenancyID)

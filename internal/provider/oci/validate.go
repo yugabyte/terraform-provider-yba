@@ -280,9 +280,8 @@ var ociAPIKeyFieldNames = []string{
 // An unknown value is not treated as empty. Apply calls
 // validateOCIAuthInput from setOCIAuthForCreate and from the API-key
 // branch of setOCIAuthForUpdate. An explicit use_instance_principal = false
-// is API-key auth. requireKey is false when an existing provider's plan
-// does not change either key: ignore_changes keeps the empty imported
-// state, and that empty pair is not a missing key.
+// is API-key auth. requireKey matches when the apply sends the key: on create
+// or when any auth field changes.
 func ociAuthPlanError(
 	principalKnown, principal bool, fields map[string]authField, requireKey bool,
 ) error {
@@ -323,34 +322,47 @@ func ociAuthPlanError(
 	return nil
 }
 
+// planAuthField reads an API-key argument the way the apply does: the key
+// arguments come from configuration (applyConfiguredOCIKey), because after an
+// import ignore_changes keeps them empty in the plan.
+func planAuthField(d *schema.ResourceDiff, name string) authField {
+	if name == "private_key_content" || name == "private_key_file_path" {
+		if v, ok := stringFromRawConfig(d.GetRawConfig(), name); ok {
+			return authField{known: true, value: v}
+		}
+	}
+	if !d.NewValueKnown(name) {
+		return authField{}
+	}
+	value, _ := d.Get(name).(string)
+	return authField{known: true, value: value}
+}
+
+// ociAuthChanged is the condition under which the apply sends auth, and so
+// reads and validates the key.
+func ociAuthChanged(d *schema.ResourceDiff) bool {
+	return d.Id() == "" || d.HasChange("use_instance_principal") ||
+		d.HasChanges(ociAPIKeyFieldNames...)
+}
+
 func ociAuthPlanErrorFromDiff(d *schema.ResourceDiff) error {
 	fields := make(map[string]authField, len(ociAPIKeyFieldNames))
 	for _, name := range ociAPIKeyFieldNames {
-		value := ""
-		if d.NewValueKnown(name) {
-			value, _ = d.Get(name).(string)
-		}
-		fields[name] = authField{known: d.NewValueKnown(name), value: value}
+		fields[name] = planAuthField(d, name)
 	}
 	principal := false
 	if d.NewValueKnown("use_instance_principal") {
 		principal, _ = d.Get("use_instance_principal").(bool)
 	}
-	// Create, or a plan that sets or clears a key, must name exactly one.
-	requireKey := d.Id() == "" || d.HasChanges("private_key_content", "private_key_file_path")
 	return ociAuthPlanError(
-		d.NewValueKnown("use_instance_principal"), principal, fields, requireKey)
+		d.NewValueKnown("use_instance_principal"), principal, fields, ociAuthChanged(d))
 }
 
-// validatePrivateKeyFile checks the file only when the apply reads it: on
-// create, or when an auth field changes (setOCIAuthForUpdate re-reads the path).
+// validatePrivateKeyFile checks the file only when the apply reads it.
 // A plan that leaves auth alone works without the key file.
 func validatePrivateKeyFile(d *schema.ResourceDiff) error {
-	if !d.NewValueKnown("private_key_file_path") {
-		return nil
-	}
-	if d.Id() != "" && !d.HasChanges("use_instance_principal", "tenancy_id", "user_id",
-		"fingerprint", "private_key_content", "private_key_file_path") {
+	path := planAuthField(d, "private_key_file_path")
+	if !path.known || !ociAuthChanged(d) {
 		return nil
 	}
 	if !d.NewValueKnown("use_instance_principal") {
@@ -359,11 +371,10 @@ func validatePrivateKeyFile(d *schema.ResourceDiff) error {
 	if d.Get("use_instance_principal").(bool) {
 		return nil
 	}
-	path := d.Get("private_key_file_path").(string)
-	if path == "" {
+	if path.value == "" {
 		return nil
 	}
-	expanded, err := expandHome(path)
+	expanded, err := expandHome(path.value)
 	if err != nil {
 		return err
 	}

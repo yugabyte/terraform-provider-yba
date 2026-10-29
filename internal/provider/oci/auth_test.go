@@ -211,10 +211,11 @@ func TestOCIPlanKeyChecks(t *testing.T) {
 		return terraform.NewResourceConfigRaw(raw)
 	}
 	diff := func(stateKey, stateValue string, c *terraform.ResourceConfig) error {
-		s := map[string]string{stateKey: stateValue}
+		s := map[string]string{}
 		for k, v := range attrs {
 			s[k] = v
 		}
+		s[stateKey] = stateValue
 		_, err := ResourceOCIProvider().Diff(context.Background(),
 			&terraform.InstanceState{ID: "prov", Attributes: s}, c, nil)
 		return err
@@ -229,6 +230,14 @@ func TestOCIPlanKeyChecks(t *testing.T) {
 	}
 	if err := diff("private_key_content", "pem", config("", "")); err == nil {
 		t.Fatal("a plan that clears the key must fail")
+	}
+	// An imported provider (no key in state) plans cleanly until auth changes;
+	// then the apply sends the key, so the plan must find one.
+	if err := diff("private_key_content", "", config("", "")); err != nil {
+		t.Fatalf("imported provider, no auth change: %v", err)
+	}
+	if err := diff("fingerprint", "old", config("", "")); err == nil {
+		t.Fatal("an auth change with no key must fail at plan time")
 	}
 	missing := filepath.Join(t.TempDir(), "missing.pem")
 	if err := diff("private_key_file_path", missing,
@@ -275,13 +284,16 @@ func TestSSHNameConflictSkipsUnchangedName(t *testing.T) {
 	existing := []client.AccessKey{{
 		KeyInfo: client.KeyInfo{KeyPairName: &name},
 	}}
-	if err := sshNameConflict(false, name, existing); err != nil {
+	if err := sshNameConflict(name, name, existing); err != nil {
 		t.Fatalf("content rotation: %v", err)
 	}
-	if err := sshNameConflict(true, "other-key", existing); err != nil {
+	if err := sshNameConflict("", name, existing); err != nil {
+		t.Fatalf("first apply after import: %v", err)
+	}
+	if err := sshNameConflict(name, "other-key", existing); err != nil {
 		t.Fatalf("new name: %v", err)
 	}
-	if err := sshNameConflict(true, name, existing); err == nil {
+	if err := sshNameConflict("other-key", name, existing); err == nil {
 		t.Fatal("renaming onto an existing key must fail")
 	}
 }

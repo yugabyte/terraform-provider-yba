@@ -160,6 +160,26 @@ func TestFlattenOCIImageBundlesSkipsYBAManaged(t *testing.T) {
 	}
 }
 
+// Create picks defaults on custom and YBA-managed bundles together, so a
+// YBA-managed default survives a non-default custom bundle of the same arch.
+func TestOCICreateKeepsYBAManagedDefault(t *testing.T) {
+	bundles := append(buildOCIImageBundles([]interface{}{
+		map[string]interface{}{
+			"name": "custom-alma9", "use_as_default": false,
+			"details": []interface{}{
+				map[string]interface{}{"arch": "x86_64", "ssh_user": "opc", "ssh_port": 22},
+			},
+		},
+	}), providerutil.BuildYBADefaultImageBundles([]interface{}{
+		map[string]interface{}{"arch": "x86_64", "use_as_default": true},
+	}, "oci")...)
+	bundles = providerutil.EnsureImageBundleDefaults(bundles)
+	if bundles[0].GetUseAsDefault() || !bundles[1].GetUseAsDefault() {
+		t.Fatalf("custom default = %t, YBA-managed default = %t",
+			bundles[0].GetUseAsDefault(), bundles[1].GetUseAsDefault())
+	}
+}
+
 func TestEnsureOCIRegionEntries(t *testing.T) {
 	bundles := buildOCIImageBundles([]interface{}{
 		map[string]interface{}{

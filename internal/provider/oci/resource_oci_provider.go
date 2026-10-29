@@ -546,10 +546,12 @@ func resourceOCIProviderRead(
 	return diags
 }
 
-// sshNameConflict rejects a new name that YBA already stores. A content
-// change under the same name is not a conflict: YBA versions that key.
-func sshNameConflict(nameChanged bool, newName string, existing []client.AccessKey) error {
-	if !nameChanged || newName == "" {
+// sshNameConflict rejects a rename onto a name that YBA already stores. A
+// content change under the same name is not a conflict: YBA versions that key.
+// An empty old name is an import (Read does not set the name), so the name in
+// YBA is this provider's own key.
+func sshNameConflict(oldName, newName string, existing []client.AccessKey) error {
+	if oldName == "" || oldName == newName || newName == "" {
 		return nil
 	}
 	return providerutil.ValidateSSHKeypairNameUnique(existing, newName)
@@ -623,9 +625,10 @@ func resourceOCIProviderUpdate(
 	}
 
 	if d.HasChange("ssh_keypair_name") || d.HasChange("ssh_private_key_content") {
-		newName := d.Get("ssh_keypair_name").(string)
+		oldName, newNameRaw := d.GetChange("ssh_keypair_name")
+		newName := newNameRaw.(string)
 		if vErr := sshNameConflict(
-			d.HasChange("ssh_keypair_name"), newName, p.GetAllAccessKeys(),
+			oldName.(string), newName, p.GetAllAccessKeys(),
 		); vErr != nil {
 			utils.RevertFields(d, writeOnlyOCIFields...)
 			return diag.FromErr(vErr)

@@ -188,7 +188,7 @@ func buildOCIImageBundles(imageBundles []interface{}) []client.ImageBundle {
 			Details:      &details,
 		})
 	}
-	return providerutil.EnsureImageBundleDefaults(result)
+	return result
 }
 
 func flattenOCIImageBundles(imageBundles []client.ImageBundle) []map[string]interface{} {

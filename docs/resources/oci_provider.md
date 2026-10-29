@@ -269,3 +269,5 @@ terraform import yba_oci_provider.example <provider-uuid>
 An instance-principal provider plans cleanly after import.
 
 YugabyteDB Anywhere masks the API private key in every provider response and never receives `private_key_file_path`, so an imported API-key provider has neither argument in state. To keep the plan empty, add the argument your configuration sets (`private_key_content` or `private_key_file_path`) to `lifecycle.ignore_changes`. Remove it from `ignore_changes` before you rotate the key: while it is ignored, a key change plans nothing.
+
+`ssh_keypair_name` and `ssh_private_key_content` are not read back either, because YugabyteDB Anywhere renames the key pair when it rotates it. For a provider with a custom SSH key, add both to `lifecycle.ignore_changes` as well. Without that, the first apply after the import uploads the configured SSH key again.

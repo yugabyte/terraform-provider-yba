@@ -38,11 +38,12 @@ func TestAccOCIProvider_APIKey(t *testing.T) {
 	rName := acctest.RandomName("oci")
 	pathKey := fmt.Sprintf("private_key_file_path = %q", keyPath)
 	// Provider.getMaskProviderDetails masks ociPrivateKeyContent on every
-	// provider response, and YBA does not store the local path, so the
-	// imported state has no key and the plan after import ignores it.
+	// provider response, and YBA does not store the local path. Read does not
+	// set the SSH fields: YBA renames the key with a timestamp on rotation
+	// (AccessKey.getNewKeyCode). The plan after import ignores all four.
 	imported := ociProviderConfigAPIKey(rName, pathKey+`
   lifecycle {
-    ignore_changes = [private_key_file_path]
+    ignore_changes = [private_key_file_path, ssh_keypair_name, ssh_private_key_content]
   }`)
 	resource.ParallelTest(t, resource.TestCase{
 		ProviderFactories: acctest.ProviderFactories,
@@ -65,7 +66,10 @@ func TestAccOCIProvider_APIKey(t *testing.T) {
 		}, acctest.ImportPlanSteps(t, "yba_oci_provider.test", imported, acctest.ImportPlanOptions{
 			// The move to the path leaves private_key_content "" in state; import
 			// never sets it, because OCICloudInfo.withSensitiveDataMasked masks it.
-			VerifyIgnore: []string{"private_key_content", "private_key_file_path"},
+			VerifyIgnore: []string{
+				"private_key_content", "private_key_file_path",
+				"ssh_keypair_name", "ssh_private_key_content",
+			},
 		})...),
 	})
 }
@@ -125,14 +129,17 @@ variable "OCI_VCN_ID" { type = string }
 variable "OCI_SUBNET_ID" { type = string }
 
 resource "yba_oci_provider" "test" {
-  name                   = "%s"
+  name                   = "%[1]s"
   compartment_id         = var.OCI_COMPARTMENT_ID
   default_region         = var.OCI_REGION
   use_instance_principal = false
   tenancy_id             = var.OCI_TENANCY_ID
   user_id                = var.OCI_USER_ID
   fingerprint            = var.OCI_FINGERPRINT
-  %s
+  # A custom SSH key: the fixture's RSA API key PEM, reused.
+  ssh_keypair_name        = "%[1]s-key"
+  ssh_private_key_content = base64decode(var.OCI_PRIVATE_KEY_B64)
+  %[2]s
   regions {
     code   = var.OCI_REGION
     vcn_id = var.OCI_VCN_ID
