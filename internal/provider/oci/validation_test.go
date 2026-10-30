@@ -87,6 +87,7 @@ func TestOCIPlanAcceptsUnknownImage(t *testing.T) {
 			"details": []interface{}{map[string]interface{}{
 				"arch": "x86_64", "ssh_user": "opc",
 				"region_overrides": map[string]interface{}{
+					// hcl2shim.UnknownVariableValue (internal to the SDK): an unknown value.
 					"r": "74D93920-ED26-11E3-AC10-0800200C9A66",
 				},
 			}},

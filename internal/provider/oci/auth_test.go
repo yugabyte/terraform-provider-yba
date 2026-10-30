@@ -20,7 +20,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/hashicorp/go-cty/cty"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
@@ -85,27 +84,12 @@ func TestSetOCIAuthForCreateInstancePrincipalOmitsAPIKey(t *testing.T) {
 	}
 }
 
-func TestSetOCIAuthForUpdateKeepsMaskedKey(t *testing.T) {
-	info := &client.OCICloudInfo{}
-	info.SetOciPrivateKeyContent("p***m")
-	in := ociCloudInput{
-		TenancyID: "ocid1.tenancy.oc1..t", UserID: "ocid1.user.oc1..u",
-		Fingerprint: "ab:cd", PrivateKeyContent: "pem",
-	}
-	if err := setOCIAuthForUpdate(info, in, false); err != nil {
-		t.Fatal(err)
-	}
-	if info.GetOciPrivateKeyContent() != "p***m" {
-		t.Fatalf("stored key replaced with %q", info.GetOciPrivateKeyContent())
-	}
-}
-
 func TestSetOCIAuthForUpdateRejectsEmptyIdentity(t *testing.T) {
 	info := &client.OCICloudInfo{}
 	info.SetOciPrivateKeyContent("p***m")
 	err := setOCIAuthForUpdate(info, ociCloudInput{
 		Fingerprint: "ab:cd", PrivateKeyContent: "pem",
-	}, true)
+	})
 	if err == nil {
 		t.Fatal("empty tenancy and user were accepted")
 	}
@@ -125,7 +109,7 @@ func TestSetOCIAuthForUpdateRereadsFileWhenPathUnchanged(t *testing.T) {
 	err := setOCIAuthForUpdate(info, ociCloudInput{
 		TenancyID: "t", UserID: "u", Fingerprint: "new:fp",
 		PrivateKeyFilePath: path,
-	}, false)
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -138,7 +122,7 @@ func TestSetOCIAuthForUpdateClearsAPIKeyOnInstancePrincipal(t *testing.T) {
 	info := &client.OCICloudInfo{}
 	info.SetOciTenancyId("ocid1.tenancy.oc1..t")
 	info.SetOciPrivateKeyContent("p***m")
-	err := setOCIAuthForUpdate(info, ociCloudInput{UseInstancePrincipal: true}, false)
+	err := setOCIAuthForUpdate(info, ociCloudInput{UseInstancePrincipal: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -151,14 +135,9 @@ func TestSetOCIAuthForUpdateClearsAPIKeyOnInstancePrincipal(t *testing.T) {
 // An imported provider has empty key fields in state, and ignore_changes keeps
 // them empty in the plan. An auth update still sends the configured key.
 func TestOCIUpdateUsesConfiguredKeyAfterImport(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "api.pem")
-	if err := os.WriteFile(path, []byte("new-pem\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
 	raw := cty.ObjectVal(map[string]cty.Value{
-		"private_key_content":    cty.NullVal(cty.String),
-		"private_key_file_path":  cty.StringVal(path),
+		"private_key_content":    cty.StringVal("new-pem\n"),
+		"private_key_file_path":  cty.NullVal(cty.String),
 		"tenancy_id":             cty.StringVal("t"),
 		"user_id":                cty.StringVal("u"),
 		"fingerprint":            cty.StringVal("new:fp"),
@@ -176,12 +155,9 @@ func TestOCIUpdateUsesConfiguredKeyAfterImport(t *testing.T) {
 		RawConfig: raw,
 	}
 	in := ociCloudInputFromResource(ResourceOCIProvider().Data(state))
-	if in.PrivateKeyContent != "" || in.PrivateKeyFilePath != path {
-		t.Fatalf("config input = content %q path %q", in.PrivateKeyContent, in.PrivateKeyFilePath)
-	}
 	info := &client.OCICloudInfo{}
 	info.SetOciPrivateKeyContent("p***m")
-	if err := setOCIAuthForUpdate(info, in, false); err != nil {
+	if err := setOCIAuthForUpdate(info, in); err != nil {
 		t.Fatal(err)
 	}
 	if info.GetOciPrivateKeyContent() != "new-pem\n" || info.GetOciFingerprint() != "new:fp" {
@@ -289,32 +265,5 @@ func TestValidateOCIAuthInput(t *testing.T) {
 	both.PrivateKeyFilePath = "/tmp/k.pem"
 	if err := validateOCIAuthInput(both); err == nil {
 		t.Fatal("expected exactly-one key error")
-	}
-}
-
-func TestSSHNameConflict(t *testing.T) {
-	name := "my-key"
-	existing := []client.AccessKey{{
-		KeyInfo: client.KeyInfo{KeyPairName: &name},
-	}}
-	// YBA would store the rotated key as my-key-<timestamp>.
-	if err := sshNameConflict(name, name, existing); err == nil {
-		t.Fatal("a content rotation under a stored name must fail")
-	}
-	if err := sshNameConflict("", name, existing); err != nil {
-		t.Fatalf("first apply after import: %v", err)
-	}
-	if err := sshNameConflict(name, "other-key", existing); err != nil {
-		t.Fatalf("new name: %v", err)
-	}
-	// Custom key, then YBA-managed keys, then the old custom name again.
-	managed := "yb-managed-key"
-	older, newer := time.Now().Add(-time.Hour), time.Now()
-	switched := []client.AccessKey{
-		{KeyInfo: client.KeyInfo{KeyPairName: &name}, CreationDate: &older},
-		{KeyInfo: client.KeyInfo{KeyPairName: &managed}, CreationDate: &newer},
-	}
-	if err := sshNameConflict("", name, switched); err == nil {
-		t.Fatal("an older key name must fail, or YBA renames it silently")
 	}
 }

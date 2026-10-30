@@ -146,11 +146,9 @@ func setOCIAuthForCreate(info *client.OCICloudInfo, in ociCloudInput) error {
 }
 
 // setOCIAuthForUpdate writes auth onto an edit. Switching to instance
-// principal clears the API-key fields. When keyChanged is false and no
-// private_key_file_path is set, the key already on info stays: YBA restores
-// its stored key when the incoming value contains '*'. A set path is read
-// and stored even when keyChanged is false.
-func setOCIAuthForUpdate(info *client.OCICloudInfo, in ociCloudInput, keyChanged bool) error {
+// principal clears the API-key fields. An API-key update always sends the
+// configured key, so a new fingerprint is never stored with the previous PEM.
+func setOCIAuthForUpdate(info *client.OCICloudInfo, in ociCloudInput) error {
 	if err := validateOCIAuthInput(in); err != nil {
 		return err
 	}
@@ -166,13 +164,6 @@ func setOCIAuthForUpdate(info *client.OCICloudInfo, in ociCloudInput, keyChanged
 	info.SetOciTenancyId(in.TenancyID)
 	info.SetOciUserId(in.UserID)
 	info.SetOciFingerprint(in.Fingerprint)
-	// A path has no content diff. Re-read it on every auth update so a new
-	// fingerprint is not stored with the previous PEM. Content is re-sent
-	// only when keyChanged is true; otherwise YBA still holds the key and
-	// restores it when the request contains '*'.
-	if !keyChanged && in.PrivateKeyFilePath == "" {
-		return nil
-	}
 	key, err := readPrivateKey(in.PrivateKeyContent, in.PrivateKeyFilePath)
 	if err != nil {
 		return err

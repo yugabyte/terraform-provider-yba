@@ -546,25 +546,15 @@ func resourceOCIProviderRead(
 	return diags
 }
 
-// sshNameConflict rejects a name that YBA already stores, on a name or content
-// change, because YBA would silently store the key as <name>-<timestamp>. The
-// one exception is the first apply after an import (Read leaves the name empty
-// in state) when the name is the provider's latest key.
-func sshNameConflict(oldName, newName string, existing []client.AccessKey) error {
-	if newName == "" {
-		return nil
-	}
-	if latest := providerutil.LatestAccessKey(existing); oldName == "" && latest != nil {
-		if info := latest.GetKeyInfo(); info.GetKeyPairName() == newName {
-			return nil
-		}
-	}
-	return providerutil.ValidateSSHKeypairNameUnique(existing, newName)
-}
-
 func resourceOCIProviderUpdate(
 	ctx context.Context, d *schema.ResourceData, meta interface{},
 ) (diags diag.Diagnostics) {
+	// Read cannot restore these fields, so a failed update must not save them.
+	defer func() {
+		if diags.HasError() {
+			utils.RevertFields(d, writeOnlyOCIFields...)
+		}
+	}()
 	c, cUUID := providerutil.GetAPIClient(meta)
 	p, err := providerutil.GetProvider(ctx, c, cUUID, d.Id())
 	if err != nil {
@@ -614,13 +604,7 @@ func resourceOCIProviderUpdate(
 			ociInfo.SetOciHostedZoneId(d.Get("hosted_zone_id").(string))
 		}
 		if authChanged {
-			keyChanged := d.HasChange("private_key_content") || d.HasChange("private_key_file_path")
-			if err = setOCIAuthForUpdate(
-				&ociInfo,
-				ociCloudInputFromResource(d),
-				keyChanged,
-			); err != nil {
-				utils.RevertFields(d, writeOnlyOCIFields...)
+			if err = setOCIAuthForUpdate(&ociInfo, ociCloudInputFromResource(d)); err != nil {
 				return diag.FromErr(err)
 			}
 		}
@@ -630,13 +614,13 @@ func resourceOCIProviderUpdate(
 	}
 
 	if d.HasChange("ssh_keypair_name") || d.HasChange("ssh_private_key_content") {
-		oldName, newNameRaw := d.GetChange("ssh_keypair_name")
-		newName := newNameRaw.(string)
-		if vErr := sshNameConflict(
-			oldName.(string), newName, p.GetAllAccessKeys(),
-		); vErr != nil {
-			utils.RevertFields(d, writeOnlyOCIFields...)
-			return diag.FromErr(vErr)
+		newName := d.Get("ssh_keypair_name").(string)
+		if newName != "" {
+			if vErr := providerutil.ValidateSSHKeypairNameUnique(
+				p.GetAllAccessKeys(), newName,
+			); vErr != nil {
+				return diag.FromErr(vErr)
+			}
 		}
 		providerReq.SetAllAccessKeys(buildOCIAccessKeys(
 			newName, d.Get("ssh_private_key_content").(string)))
@@ -654,7 +638,6 @@ func resourceOCIProviderUpdate(
 	r, response, err := c.CloudProvidersAPI.EditProvider(ctx, cUUID, d.Id()).
 		EditProviderRequest(providerReq).Execute()
 	if err != nil {
-		utils.RevertFields(d, writeOnlyOCIFields...)
 		return diag.FromErr(utils.ErrorFromHTTPResponse(
 			response, err, utils.ResourceEntity, "OCI Provider", "Update"))
 	}
