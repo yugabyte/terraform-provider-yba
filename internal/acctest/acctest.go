@@ -344,6 +344,21 @@ func TestAccPreCheckAzure(t *testing.T) {
 	}
 }
 
+// TestAccPreCheckOCI skips when the OCI acceptance stand is not configured.
+func TestAccPreCheckOCI(t *testing.T) {
+	t.Helper()
+	for _, v := range []string{
+		"TF_VAR_OCI_TENANCY_ID", "TF_VAR_OCI_USER_ID", "TF_VAR_OCI_FINGERPRINT",
+		"TF_VAR_OCI_PRIVATE_KEY_B64", "TF_VAR_OCI_COMPARTMENT_ID", "TF_VAR_OCI_REGION",
+		"TF_VAR_OCI_VCN_ID", "TF_VAR_OCI_SUBNET_ID",
+		"TF_VAR_OCI_YBA_HOST", "TF_VAR_OCI_YBA_API_KEY",
+	} {
+		if os.Getenv(v) == "" {
+			t.Skipf("%s not set; skipping OCI acceptance tests", v)
+		}
+	}
+}
+
 // TestAccPreCheck Preflight checks for all acceptance tests (YBA connection)
 func TestAccPreCheck(t *testing.T) {
 	if TestHost() == "" {

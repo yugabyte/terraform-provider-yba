@@ -1,0 +1,39 @@
+---
+page_title: "{{.Name}} {{.Type}} - {{.RenderedProviderName}}"
+description: |-
+{{ index (split (trimspace .Description) "\n\n") 0 | plainmarkdown | trimspace | prefixlines "  " }}
+---
+
+# {{.Name}} ({{.Type}})
+
+{{ .Description | trimspace }}
+
+## Credentials
+
+API-key authentication is the default. Set `tenancy_id`, `user_id`, `fingerprint`, and exactly one of `private_key_content` or `private_key_file_path`. An explicit `use_instance_principal = false` is the same mode and is set together with those fields. The file is read when an apply creates the provider or updates any auth field. Overwriting the file without changing the path or another auth field does not plan an update. A leading `~` is expanded to the home directory.
+
+Set `use_instance_principal = true` to authenticate as the instance principal of the YugabyteDB Anywhere host, and omit the API-key fields. The provider rejects the API-key fields only when that value is true.
+
+`compartment_id`, `tenancy_id`, `user_id`, `fingerprint`, `hosted_zone_id`, and `use_instance_principal` cannot be changed while a universe uses the provider. YugabyteDB Anywhere rejects the edit. `default_region` and the API private key can be changed.
+
+`private_key_content` and `ssh_private_key_content` are stored in Terraform state. Changing `private_key_content` updates the provider in place.
+
+## Example Usage
+
+{{ tffile "examples/resources/yba_oci_provider/resource.tf" }}
+
+{{ .SchemaMarkdown | trimspace }}
+
+## Import
+
+OCI providers can be imported using the provider UUID:
+
+```sh
+terraform import yba_oci_provider.example <provider-uuid>
+```
+
+An instance-principal provider plans cleanly after import.
+
+YugabyteDB Anywhere masks the API private key in every provider response and never receives `private_key_file_path`, so an imported API-key provider has neither argument in state. To keep the plan empty, add the argument your configuration sets (`private_key_content` or `private_key_file_path`) to `lifecycle.ignore_changes`. Remove it from `ignore_changes` before you rotate the key: while it is ignored, a key change plans nothing.
+
+`ssh_keypair_name` and `ssh_private_key_content` are not read back either, because YugabyteDB Anywhere renames the key pair when it rotates it. For a provider with a custom SSH key, add both to `lifecycle.ignore_changes` as well. Without that, the first apply after the import fails, because the key pair name already exists on the provider.
