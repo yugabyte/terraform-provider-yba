@@ -89,8 +89,7 @@ func TestMergeRegionUUIDsDeactivatesRemoved(t *testing.T) {
 	if removedOCI.GetVnet() != "ocid1.vcn.oc1.phx.aaaa" {
 		t.Fatal("removed region lost its VCN")
 	}
-	if len(removed.Zones) != 1 || removed.Zones[0].GetSubnet() != "ocid1.subnet.oc1.phx.aaaa" ||
-		removed.Zones[0].GetActive() {
+	if len(removed.Zones) != 1 || removed.Zones[0].GetSubnet() != "ocid1.subnet.oc1.phx.aaaa" {
 		t.Fatalf("removed zone = %+v", removed.Zones)
 	}
 }

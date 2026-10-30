@@ -293,7 +293,7 @@ var ociAPIKeyFieldNames = []string{
 // validateOCIAuthInput from setOCIAuthForCreate and at the top of
 // setOCIAuthForUpdate, in both modes. An explicit use_instance_principal =
 // false is API-key auth. requireKey is false when an existing provider's plan
-// does not change either key: Terraform sends the plan its configuration after
+// changes neither key nor the auth mode: Terraform sends the plan its configuration after
 // ignore_changes, so an imported key under ignore_changes and a configuration
 // with no key both arrive empty, and only the apply can tell them apart.
 func ociAuthPlanError(
@@ -360,7 +360,8 @@ func ociAuthPlanErrorFromDiff(d *schema.ResourceDiff) error {
 	if d.NewValueKnown("use_instance_principal") {
 		principal, _ = d.Get("use_instance_principal").(bool)
 	}
-	requireKey := d.Id() == "" || d.HasChanges("private_key_content", "private_key_file_path")
+	requireKey := d.Id() == "" || d.HasChanges(
+		"use_instance_principal", "private_key_content", "private_key_file_path")
 	return ociAuthPlanError(
 		d.NewValueKnown("use_instance_principal"), principal, fields, requireKey)
 }

@@ -240,6 +240,9 @@ func TestOCIPlanKeyChecks(t *testing.T) {
 	if err := diff("fingerprint", "old", config("", "")); err != nil {
 		t.Fatalf("imported provider, fingerprint change: %v", err)
 	}
+	if err := diff("use_instance_principal", "true", config("", "")); err == nil {
+		t.Fatal("a switch to API-key auth with no key must fail")
+	}
 	missing := filepath.Join(t.TempDir(), "missing.pem")
 	if err := diff("private_key_file_path", missing,
 		config("private_key_file_path", missing)); err != nil {
