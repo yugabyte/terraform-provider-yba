@@ -44,6 +44,17 @@ func TestReadPrivateKeyFileAndTilde(t *testing.T) {
 	if missing, err := readPrivateKey("", filepath.Join(dir, "missing.pem")); err == nil {
 		t.Fatalf("a missing file must fail, got key %q", missing)
 	}
+
+	t.Setenv("HOME", dir)
+	if got, err := readPrivateKey("", "~/api.pem"); err != nil || got != "pem-body" {
+		t.Fatalf("~/api.pem: read = %q, err = %v", got, err)
+	}
+	if got, _ := expandHome("~"); got != dir {
+		t.Fatalf("~ = %q, want %q", got, dir)
+	}
+	if got, _ := expandHome("~user/k.pem"); got != "~user/k.pem" {
+		t.Fatalf("~user must not expand, got %q", got)
+	}
 }
 
 func TestReadPrivateKeyExactlyOne(t *testing.T) {
@@ -281,13 +292,14 @@ func TestValidateOCIAuthInput(t *testing.T) {
 	}
 }
 
-func TestSSHNameConflictSkipsUnchangedName(t *testing.T) {
+func TestSSHNameConflict(t *testing.T) {
 	name := "my-key"
 	existing := []client.AccessKey{{
 		KeyInfo: client.KeyInfo{KeyPairName: &name},
 	}}
-	if err := sshNameConflict(name, name, existing); err != nil {
-		t.Fatalf("content rotation: %v", err)
+	// YBA would store the rotated key as my-key-<timestamp>.
+	if err := sshNameConflict(name, name, existing); err == nil {
+		t.Fatal("a content rotation under a stored name must fail")
 	}
 	if err := sshNameConflict("", name, existing); err != nil {
 		t.Fatalf("first apply after import: %v", err)
