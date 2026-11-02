@@ -549,9 +549,11 @@ func resourceOCIProviderRead(
 func resourceOCIProviderUpdate(
 	ctx context.Context, d *schema.ResourceData, meta interface{},
 ) (diags diag.Diagnostics) {
-	// Read cannot restore these fields, so a failed update must not save them.
+	// Read cannot restore these fields. Until YBA accepts the edit, a failure
+	// reverts them all; a failed task reverts only what YBA did not save.
+	edited := false
 	defer func() {
-		if diags.HasError() {
+		if diags.HasError() && !edited {
 			utils.RevertFields(d, writeOnlyOCIFields...)
 		}
 	}()
@@ -641,10 +643,18 @@ func resourceOCIProviderUpdate(
 		return diag.FromErr(utils.ErrorFromHTTPResponse(
 			response, err, utils.ResourceEntity, "OCI Provider", "Update"))
 	}
+	edited = true
 	if r.TaskUUID != nil {
 		err = providerutil.WaitForProviderTask(ctx, *r.TaskUUID, providerName, "updated",
 			c, cUUID, d.Timeout(schema.TimeoutUpdate))
 		if err != nil {
+			// CloudProviderEdit saves the access keys before the steps that can fail.
+			var keys []client.AccessKey
+			if saved, getErr := providerutil.GetProvider(ctx, c, cUUID, d.Id()); getErr == nil {
+				keys = saved.GetAllAccessKeys()
+			}
+			utils.RevertFields(d, ociFieldsUnsavedAfterEdit(
+				d.Get("ssh_keypair_name").(string), keys)...)
 			return diag.FromErr(err)
 		}
 	}
@@ -654,6 +664,18 @@ func resourceOCIProviderUpdate(
 var writeOnlyOCIFields = []string{
 	"private_key_content", "private_key_file_path",
 	"ssh_keypair_name", "ssh_private_key_content",
+}
+
+// ociFieldsUnsavedAfterEdit lists the fields to revert after a failed edit
+// task. YBA masks the API key, so it is always reverted; resending it is
+// harmless. The SSH fields stay only when YBA lists the new key name.
+func ociFieldsUnsavedAfterEdit(newName string, keys []client.AccessKey) []string {
+	for _, k := range keys {
+		if info := k.GetKeyInfo(); newName != "" && info.GetKeyPairName() == newName {
+			return []string{"private_key_content", "private_key_file_path"}
+		}
+	}
+	return writeOnlyOCIFields
 }
 
 func resourceOCIProviderDelete(
