@@ -149,9 +149,8 @@ func ociProviderSchema() map[string]*schema.Schema {
 		Description: "Custom SSH key pair name to access YugabyteDB nodes. " +
 			"Must be set together with ssh_private_key_content. " +
 			"If both are omitted, YugabyteDB Anywhere generates and manages the key pair. " +
-			"YBA versions keys on every update: if a key with this name already exists " +
-			"it appends a timestamp. Use access_key_code to read the versioned name that was stored. " +
-			"This value is not read back.",
+			"A name that the provider already stores fails the apply, so rotating the key " +
+			"needs a new name. This value is not read back.",
 	}
 	s["ssh_private_key_content"] = &schema.Schema{
 		Type:         schema.TypeString,
@@ -550,7 +549,7 @@ func resourceOCIProviderUpdate(
 	ctx context.Context, d *schema.ResourceData, meta interface{},
 ) (diags diag.Diagnostics) {
 	// Read cannot restore these fields. Until YBA accepts the edit, a failure
-	// reverts them all; a failed task reverts only what YBA did not save.
+	// reverts them all; a failed task wait reverts only the API key.
 	edited := false
 	defer func() {
 		if diags.HasError() && !edited {
@@ -648,13 +647,11 @@ func resourceOCIProviderUpdate(
 		err = providerutil.WaitForProviderTask(ctx, *r.TaskUUID, providerName, "updated",
 			c, cUUID, d.Timeout(schema.TimeoutUpdate))
 		if err != nil {
-			// CloudProviderEdit saves the access keys before the steps that can fail.
-			var keys []client.AccessKey
-			if saved, getErr := providerutil.GetProvider(ctx, c, cUUID, d.Id()); getErr == nil {
-				keys = saved.GetAllAccessKeys()
-			}
-			utils.RevertFields(d, ociFieldsUnsavedAfterEdit(
-				d.Get("ssh_keypair_name").(string), keys)...)
+			// CloudProviderEdit saves the access keys before the steps that can
+			// fail, and a timed-out task may still save them, so the SSH fields
+			// stay: a reverted name that YBA stores fails every later apply.
+			// Resending the API key is harmless.
+			utils.RevertFields(d, "private_key_content", "private_key_file_path")
 			return diag.FromErr(err)
 		}
 	}
@@ -664,18 +661,6 @@ func resourceOCIProviderUpdate(
 var writeOnlyOCIFields = []string{
 	"private_key_content", "private_key_file_path",
 	"ssh_keypair_name", "ssh_private_key_content",
-}
-
-// ociFieldsUnsavedAfterEdit lists the fields to revert after a failed edit
-// task. YBA masks the API key, so it is always reverted; resending it is
-// harmless. The SSH fields stay only when YBA lists the new key name.
-func ociFieldsUnsavedAfterEdit(newName string, keys []client.AccessKey) []string {
-	for _, k := range keys {
-		if info := k.GetKeyInfo(); newName != "" && info.GetKeyPairName() == newName {
-			return []string{"private_key_content", "private_key_file_path"}
-		}
-	}
-	return writeOnlyOCIFields
 }
 
 func resourceOCIProviderDelete(

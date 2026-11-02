@@ -39,9 +39,12 @@ func TestAccOCIProvider_APIKey(t *testing.T) {
 	pathKey := fmt.Sprintf("private_key_file_path = %q", keyPath)
 	// Provider.getMaskProviderDetails masks ociPrivateKeyContent on every
 	// provider response, and YBA does not store the local path. Read does not
-	// set the SSH fields: YBA renames the key with a timestamp on rotation
-	// (AccessKey.getNewKeyCode). The import check skips all four; the plan
-	// after import ignores the three that this config sets.
+	// set the SSH fields: API responses redact sshPrivateKeyContent
+	// (RedactingService.SECRET_PATHS_FOR_APIS), and keyPairName is YBA's key
+	// code, which AccessKeyHandler.doEdit renames with a timestamp
+	// (AccessKey.getNewKeyCode), so it need not be the configured name. The
+	// import check skips all four; the plan after import ignores the three
+	// that this config sets.
 	imported := ociProviderConfigAPIKey(rName, pathKey+`
   lifecycle {
     ignore_changes = [private_key_file_path, ssh_keypair_name, ssh_private_key_content]

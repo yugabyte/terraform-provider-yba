@@ -19,7 +19,6 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"reflect"
 	"testing"
 
 	"github.com/hashicorp/go-cty/cty"
@@ -163,28 +162,6 @@ func TestOCIUpdateUsesConfiguredKeyAfterImport(t *testing.T) {
 	}
 	if info.GetOciPrivateKeyContent() != "new-pem\n" || info.GetOciFingerprint() != "new:fp" {
 		t.Fatalf("info = %+v", info)
-	}
-}
-
-// After a failed edit task, state keeps only what YBA saved: a reverted SSH
-// name that YBA stores would fail every later apply as a duplicate.
-func TestOCIFieldsUnsavedAfterEdit(t *testing.T) {
-	keyFields := []string{"private_key_content", "private_key_file_path"}
-	name := "my-key"
-	saved := []client.AccessKey{{KeyInfo: client.KeyInfo{KeyPairName: &name}}}
-	for _, tc := range []struct {
-		desc    string
-		newName string
-		keys    []client.AccessKey
-		want    []string
-	}{
-		{"YBA stores the new SSH key", name, saved, keyFields},
-		{"YBA has not stored it", name, nil, writeOnlyOCIFields},
-		{"SSH key removed", "", saved, writeOnlyOCIFields},
-	} {
-		if got := ociFieldsUnsavedAfterEdit(tc.newName, tc.keys); !reflect.DeepEqual(got, tc.want) {
-			t.Errorf("%s: got %v, want %v", tc.desc, got, tc.want)
-		}
 	}
 }
 
