@@ -259,9 +259,6 @@ func suppressInactiveRegionOverride(k, old, new string, d *schema.ResourceData) 
 		return false
 	}
 	parts := strings.Split(k, ".")
-	if len(parts) == 0 {
-		return false
-	}
 	regionCode := parts[len(parts)-1]
 	regionsRaw, _ := d.Get("regions").([]interface{})
 	for _, r := range regionsRaw {
