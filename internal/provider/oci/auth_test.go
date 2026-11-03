@@ -219,13 +219,13 @@ func TestOCIPlanKeyChecks(t *testing.T) {
 	}
 	// Terraform sends the plan its configuration after ignore_changes, so an
 	// imported key under ignore_changes arrives empty, as no key does. The plan
-	// lets an existing provider through, also when another auth field changes;
-	// the apply reads the configured key.
+	// lets an existing provider through until an auth field changes; then the
+	// apply sends the key, so the plan must find one.
 	if err := diff("private_key_content", "", config("", "")); err != nil {
 		t.Fatalf("imported provider, no auth change: %v", err)
 	}
-	if err := diff("fingerprint", "old", config("", "")); err != nil {
-		t.Fatalf("imported provider, fingerprint change: %v", err)
+	if err := diff("fingerprint", "old", config("", "")); err == nil {
+		t.Fatal("an auth change with no key must fail at plan time")
 	}
 	if err := diff("use_instance_principal", "true", config("", "")); err == nil {
 		t.Fatal("a switch to API-key auth with no key must fail")
