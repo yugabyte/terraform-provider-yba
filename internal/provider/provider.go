@@ -38,6 +38,7 @@ import (
 	awsProvider "github.com/yugabyte/terraform-provider-yba/internal/provider/aws"
 	azureProvider "github.com/yugabyte/terraform-provider-yba/internal/provider/azure"
 	gcpProvider "github.com/yugabyte/terraform-provider-yba/internal/provider/gcp"
+	ociProvider "github.com/yugabyte/terraform-provider-yba/internal/provider/oci"
 	"github.com/yugabyte/terraform-provider-yba/internal/releases"
 	"github.com/yugabyte/terraform-provider-yba/internal/runtimeconfig"
 	"github.com/yugabyte/terraform-provider-yba/internal/storageconfig"
@@ -139,6 +140,7 @@ func New() *schema.Provider {
 			"yba_aws_provider":   awsProvider.ResourceAWSProvider(),
 			"yba_gcp_provider":   gcpProvider.ResourceGCPProvider(),
 			"yba_azure_provider": azureProvider.ResourceAzureProvider(),
+			"yba_oci_provider":   ociProvider.ResourceOCIProvider(),
 
 			// New storage configuration resources (cleaner alternative to yba_storage_config_resource)
 			"yba_s3_storage_config":    storageconfig.ResourceS3StorageConfig(),
