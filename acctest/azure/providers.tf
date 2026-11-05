@@ -66,6 +66,8 @@ provider "azuread" {
 provider "yba" {
   alias = "bootstrap"
   host  = azurerm_public_ip.yba.ip_address
+  # Empty, so a YBA_API_KEY in the shell is not used.
+  api_token = ""
 }
 
 # Authenticated provider for post-install settings on the standing YBA (the

@@ -359,6 +359,22 @@ func TestAccPreCheckOCI(t *testing.T) {
 	}
 }
 
+// TestAccPreCheckOCIMultiRegion skips when the OCI stand lacks the second
+// availability domain, the second region, or the custom images.
+func TestAccPreCheckOCIMultiRegion(t *testing.T) {
+	t.Helper()
+	TestAccPreCheckOCI(t)
+	for _, v := range []string{
+		"TF_VAR_OCI_SUBNET_ID_2", "TF_VAR_OCI_IMAGE_ID",
+		"TF_VAR_OCI_INSTANCE_CONFIGURATION_ID", "TF_VAR_OCI_REGION_2",
+		"TF_VAR_OCI_VCN_ID_2", "TF_VAR_OCI_SUBNET_REGION_2", "TF_VAR_OCI_IMAGE_ID_2",
+	} {
+		if os.Getenv(v) == "" {
+			t.Skipf("%s not set; skipping multi-region OCI acceptance tests", v)
+		}
+	}
+}
+
 // TestAccPreCheck Preflight checks for all acceptance tests (YBA connection)
 func TestAccPreCheck(t *testing.T) {
 	if TestHost() == "" {

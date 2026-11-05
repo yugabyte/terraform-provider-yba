@@ -116,6 +116,26 @@ out of the repo). Obtain it out of band and drop it there before `apply-gcp`;
 This file is only needed to deploy YBA — CI never uses it, since the suite runs
 against the already-installed standing YBA.
 
+The OCI fixture runs its own YBA and authenticates with your `~/.oci/config`.
+`home_region` must be the tenancy's home region: it holds the IAM resources,
+the YBA VM, and the single-zone second test region. `test_region` is the
+two-zone test region and needs at least two availability domains.
+The test API-key user, its group and the instance-principal dynamic group live
+in `identity_domain`, an identity domain inside `compartment_ocid`, and the
+policies attach to that compartment, so no tenancy-level IAM rights are needed.
+OCI authenticates a domain's users and dynamic groups only in its home region
+and its replica regions, so the domain must be replicated to `test_region`
+(`oci iam domain enable-replication-to-region`); the plan fails otherwise.
+Check `tenancy_ocid`, `compartment_ocid` and `identity_domain` in
+`oci/terraform.tfvars`, run
+`make -C acctest apply-oci`, then regenerate the env before running the OCI
+tests (they skip while the `TF_VAR_OCI_*` variables are unset). Once
+`apply-oci` has succeeded, `make -C acctest env` includes its output:
+
+```bash
+rm -f acctest/env && make -C acctest env
+```
+
 ### Cleaning up after aborted runs
 
 A test that is killed mid-run (Ctrl-C, a `go test` timeout, a cancelled job)
@@ -129,8 +149,8 @@ acctest/clean-stand.sh --delete   # print it again, confirm, then delete it
 ```
 
 The script finds objects by their test name (see
-[Resource naming](#resource-naming)), on all three fixture YBAs and in the
-clouds. It does not check their age. Run it only when no acceptance run is in
+[Resource naming](#resource-naming)), on each fixture YBA (the OCI one when
+its env is present) and in the clouds. It does not check their age. Run it only when no acceptance run is in
 progress on any branch, or it also deletes that run's resources.
 
 ## CI
@@ -152,6 +172,7 @@ make -C acctest push-github-secrets
 | `gcp/`               | GCP fixture: VPC, IAM, a YBA VM + install, a backups bucket, a Cloud KMS key and a dev-mode HashiCorp Vault VM for encryption at rest. |
 | `azure/`             | Azure fixture: RG, VNet, service principal, a YBA VM with a managed identity + install, a backups account, a key vault key for encryption at rest. |
 | `aws/`               | AWS fixture: VPC, IAM (key user + instance role), a YBA VM + install, a backups bucket, a KMS key for encryption at rest. |
+| `oci/`               | OCI fixture: two VCNs in two regions, an API-key user and an instance-principal dynamic group in an identity domain, an instance configuration, and its own YBA VM + install. In `make env` once applied; see above. |
 | `resources/`         | Shared install assets (`yba-ctl.yml`, VM startup scripts).    |
 | `auth.sh`            | Logs in to GCP, Azure and AWS for byoc-dev.                   |
 | `clean-stand.sh`     | Lists, then on `--delete` removes, what aborted test runs left behind. |

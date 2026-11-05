@@ -61,12 +61,13 @@ destroy-gcp: auth init-gcp
 # Write the test env (TF_VAR_*, plus YBA_HOST/YBA_API_KEY for the shared client)
 # into the gitignored, 0600 `env` file. Concatenates each fixture's test_env
 # output: gcp supplies the standing YBA endpoint and TF_VAR_GCP_*; azure supplies
-# TF_VAR_AZURE_*; aws supplies TF_VAR_AWS_*/TF_VAR_S3_*. The whole suite runs
-# against the single gcp-hosted YBA.
-env: auth init-gcp init-azure init-aws
+# TF_VAR_AZURE_*; aws supplies TF_VAR_AWS_*/TF_VAR_S3_*. Each also exports the
+# endpoint of its own YBA. oci (TF_VAR_OCI_*) is optional: it is included only
+# once `make apply-oci` has produced its test_env output.
+env: auth init-gcp init-azure init-aws init-oci
 	@echo "Generating '$@' file from the Terraform state"
 	@umask 077; : > $@; \
-	for c in gcp azure aws; do \
+	for c in gcp azure aws $$(terraform -chdir=oci output -raw test_env >/dev/null 2>&1 && echo oci); do \
 		terraform -chdir=$$c output -raw test_env >> $@; \
 		printf '\n' >> $@; \
 	done
