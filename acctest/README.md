@@ -116,6 +116,16 @@ out of the repo). Obtain it out of band and drop it there before `apply-gcp`;
 This file is only needed to deploy YBA — CI never uses it, since the suite runs
 against the already-installed standing YBA.
 
+The OCI fixture runs its own YBA and authenticates with your `~/.oci/config`.
+Set `tenancy_ocid` and `compartment_ocid` in `oci/terraform.tfvars`, run
+`make -C acctest apply-oci`, then regenerate the env before running the OCI
+tests (they skip while the `TF_VAR_OCI_*` variables are unset). Once the oci
+working directory is initialized, `make -C acctest env` includes its output:
+
+```bash
+rm -f acctest/env && make -C acctest env
+```
+
 ### Cleaning up after aborted runs
 
 A test that is killed mid-run (Ctrl-C, a `go test` timeout, a cancelled job)
@@ -152,6 +162,7 @@ make -C acctest push-github-secrets
 | `gcp/`               | GCP fixture: VPC, IAM, a YBA VM + install, a backups bucket, a Cloud KMS key and a dev-mode HashiCorp Vault VM for encryption at rest. |
 | `azure/`             | Azure fixture: RG, VNet, service principal, a YBA VM with a managed identity + install, a backups account, a key vault key for encryption at rest. |
 | `aws/`               | AWS fixture: VPC, IAM (key user + instance role), a YBA VM + install, a backups bucket, a KMS key for encryption at rest. |
+| `oci/`               | OCI fixture: two VCNs in two regions, an API-key user, a dynamic group for instance principal, an instance configuration, and its own YBA VM + install. In `make env` once initialized; see below. |
 | `resources/`         | Shared install assets (`yba-ctl.yml`, VM startup scripts).    |
 | `auth.sh`            | Logs in to GCP, Azure and AWS for byoc-dev.                   |
 | `clean-stand.sh`     | Lists, then on `--delete` removes, what aborted test runs left behind. |

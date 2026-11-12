@@ -54,6 +54,8 @@ provider "google" {
 provider "yba" {
   alias = "bootstrap"
   host  = local.yba_api_host
+  # Set, so a YBA_API_KEY in the shell cannot leave unauthenticated mode.
+  api_token = ""
 }
 
 # Authenticated provider for post-install settings on the standing YBA (the

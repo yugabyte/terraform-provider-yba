@@ -60,6 +60,8 @@ provider "aws" {
 provider "yba" {
   alias = "bootstrap"
   host  = aws_eip.yba.public_ip
+  # Set, so a YBA_API_KEY in the shell cannot leave unauthenticated mode.
+  api_token = ""
 }
 
 # Authenticated provider for post-install settings on the standing YBA (the
