@@ -67,6 +67,40 @@ func TestAccUser_ReadOnly(t *testing.T) {
 	})
 }
 
+func TestAccUser_DeletedOutsideTerraform(t *testing.T) {
+	var user client.UserWithFeatures
+
+	rName := acctest.RandomName("gone-user")
+	resource.ParallelTest(t, resource.TestCase{
+		PreCheck:          func() { acctest.TestAccPreCheck(t) },
+		ProviderFactories: acctest.ProviderFactories,
+		CheckDestroy:      testAccCheckDestroyUser,
+		Steps: []resource.TestStep{
+			{
+				Config: userConfigWithRole("ReadOnly", rName),
+				Check: resource.ComposeTestCheckFunc(
+					testAccCheckUserExists("yba_user.user", &user),
+					testAccDeleteUserOutOfBand(&user),
+				),
+				ExpectNonEmptyPlan: true,
+			},
+		},
+	})
+}
+
+func testAccDeleteUserOutOfBand(user *client.UserWithFeatures) resource.TestCheckFunc {
+	return func(_ *terraform.State) error {
+		conn := acctest.APIClient.YugawareClient
+		cUUID := acctest.APIClient.CustomerID
+		_, response, err := conn.UserManagementAPI.DeleteUser(context.Background(), cUUID,
+			user.GetUuid()).Execute()
+		if err != nil {
+			return utils.ErrorFromHTTPResponse(response, err, utils.TestEntity, "User", "Delete")
+		}
+		return nil
+	}
+}
+
 func testAccCheckDestroyUser(s *terraform.State) error {
 	conn := acctest.APIClient.YugawareClient
 
