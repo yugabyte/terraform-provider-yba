@@ -175,7 +175,7 @@ func dataSourceUniverseSchemaRead(
 	// because the universe is paused.
 	uni, uniResp, err := c.UniverseManagementAPI.GetUniverse(ctx, cUUID, uUUID).Execute()
 	if err != nil {
-		if utils.IsHTTPNotFound(uniResp) || utils.IsHTTPBadRequestNotFound(uniResp) {
+		if utils.IsResourceGone(uniResp, err, uUUID) {
 			return diag.Errorf("universe %s not found: verify that the universe_uuid is correct",
 				uUUID)
 		}
