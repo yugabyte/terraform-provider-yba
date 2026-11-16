@@ -14,7 +14,6 @@ tenancy_ocid     = "ocid1.tenancy.oc1..aaaaaaaa6w2zfjmzecayfzpuwufo5jsiedlap7hce
 compartment_ocid = "ocid1.compartment.oc1..aaaaaaaaebaxkyhmnbwgmj2zgovsax6vseien7w62tgohejnwg4ydyiqhybq"
 identity_domain  = "itest"
 
-# A preview build: downloads.yugabyte.com has no 2026.1.2.0 build yet, and the
 # OCI storage gate needs 2026.1.2.0-b137 / 2.31.0.0-b386.
 yba_version = "2.31.0.0-b395"
 

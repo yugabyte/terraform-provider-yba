@@ -172,7 +172,7 @@ make -C acctest push-github-secrets
 | `gcp/`               | GCP fixture: VPC, IAM, a YBA VM + install, a backups bucket, a Cloud KMS key and a dev-mode HashiCorp Vault VM for encryption at rest. |
 | `azure/`             | Azure fixture: RG, VNet, service principal, a YBA VM with a managed identity + install, a backups account, a key vault key for encryption at rest. |
 | `aws/`               | AWS fixture: VPC, IAM (key user + instance role), a YBA VM + install, a backups bucket, a KMS key for encryption at rest. |
-| `oci/`               | OCI fixture: two VCNs in two regions, an API-key user and an instance-principal dynamic group in an identity domain, an instance configuration, and its own YBA VM + install. In `make env` once applied; see above. |
+| `oci/`               | OCI fixture: two VCNs in two regions, an API-key user and an instance-principal dynamic group in an identity domain, an instance configuration, a backups bucket per region with a customer secret key, a vault key for encryption at rest, and its own YBA VM + install. In `make env` once applied; see above. |
 | `resources/`         | Shared install assets (`yba-ctl.yml`, VM startup scripts).    |
 | `auth.sh`            | Logs in to GCP, Azure and AWS for byoc-dev.                   |
 | `clean-stand.sh`     | Lists, then on `--delete` removes, what aborted test runs left behind. |
