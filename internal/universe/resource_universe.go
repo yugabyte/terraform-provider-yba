@@ -3601,12 +3601,8 @@ func resourceUniverseUpdate(
 			}
 
 			if editAllowed || editZoneAllowed {
-				effectiveCommPorts := preflightUni.UniverseDetails.CommunicationPorts
-				if d.HasChange("communication_ports") {
-					effectiveCommPorts = buildCommunicationPorts(
-						utils.MapFromSingletonList(d.Get("communication_ports").([]interface{})),
-					)
-				}
+				effectiveCommPorts := effectiveCommunicationPorts(
+					d, preflightUni.UniverseDetails.CommunicationPorts)
 
 				configureTaskParams := client.UniverseConfigureTaskParams{
 					UniverseUUID:       utils.GetStringPointer(d.Id()),
@@ -4205,12 +4201,8 @@ func resourceUniverseUpdate(
 				}
 
 				if editAllowed || editZoneAllowed {
-					effectiveCommPorts := updateUni.UniverseDetails.CommunicationPorts
-					if d.HasChange("communication_ports") {
-						effectiveCommPorts = buildCommunicationPorts(
-							utils.MapFromSingletonList(
-								d.Get("communication_ports").([]interface{})))
-					}
+					effectiveCommPorts := effectiveCommunicationPorts(
+						d, updateUni.UniverseDetails.CommunicationPorts)
 
 					// Retrieve the cached options from our pre-flight check! No API call needed.
 					opts := clusterUpdateOpts[i]
@@ -4519,12 +4511,8 @@ func resourceUniverseUpdate(
 				}
 
 				if editAllowed || editZoneAllowed {
-					effectiveCommPorts := updateUni.UniverseDetails.CommunicationPorts
-					if d.HasChange("communication_ports") {
-						effectiveCommPorts = buildCommunicationPorts(
-							utils.MapFromSingletonList(
-								d.Get("communication_ports").([]interface{})))
-					}
+					effectiveCommPorts := effectiveCommunicationPorts(
+						d, updateUni.UniverseDetails.CommunicationPorts)
 
 					// Retrieve the cached options from our pre-flight check! No API call needed.
 					opts := clusterUpdateOpts[i]
@@ -4752,8 +4740,8 @@ func resourceUniverseUpdate(
 				"Universe", "Update - Fetch universe for port update")
 			return diag.FromErr(errMessage)
 		}
-		newCommPorts := buildCommunicationPorts(
-			utils.MapFromSingletonList(d.Get("communication_ports").([]interface{})))
+		newCommPorts := effectiveCommunicationPorts(
+			d, fetchedUni.UniverseDetails.CommunicationPorts)
 
 		// Communication port changes trigger shouldReplaceNode=true on the YBA side,
 		// which marks all current nodes ToBeRemoved and does a FULL_MOVE. When the
