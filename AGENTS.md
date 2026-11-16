@@ -136,17 +136,21 @@ than leaving the build red.
   roll your own status helper.
 - **critical: a 404 means "gone" only on a route that every supported
   YBA has.** YBA's router answers a route that its build lacks with a
-  404 too (`HTTP Client Error: 404(Not Found)`), and both
-  `utils.IsHTTPNotFound` and `utils.IsUniverseMissing` read every 404 as
-  gone. A wrong "gone" drops a live resource from state. On a route newer
-  than the oldest supported YBA, or a preview route, clear state only on
-  a non-404 verdict (`!utils.IsHTTPNotFound(resp) &&
-  utils.IsUniverseMissing(resp, err)`, since YBA reports a gone universe
-  as a 400 `Cannot find universe`), or confirm through a route that every
-  YBA has (the v1 universe GET, a list) first.
+  404 too (`HTTP Client Error: 404(Not Found)`), and
+  `utils.IsHTTPNotFound`, `utils.IsResourceGone` and
+  `utils.IsUniverseMissing` read every 404 as gone. A wrong "gone" drops
+  a live resource from state. On a route newer than the oldest supported
+  YBA, or a preview route, clear state only on a non-404 verdict
+  (`!utils.IsHTTPNotFound(resp) && utils.IsUniverseMissing(resp, err)`,
+  since YBA reports a gone universe as a 400 `Cannot find universe`), or
+  confirm through a route that every YBA has (the v1 universe GET, a list)
+  first.
 - For "missing resource" conditions YBA returns through non-404 shapes
   (400/500 with body markers), prefer typed detection (a sentinel error +
   `errors.Is`) over substring-matching YBA's error body in resource code.
+  For a GET of a resource by its UUID, use `utils.IsResourceGone`; a 400
+  counts only when it names that UUID, not a parent's. Read an error body
+  from `err`, never from `resp.Body`.
 - Every universe-mutating call goes through `utils.DispatchAndWait`
   (dispatch + 409 retry + `WaitForTask`) or
   `utils.RetryOnUniverseTaskConflict` (dispatch + 409 retry only).
@@ -181,10 +185,10 @@ Almost every helper you might want already exists in `internal/utils`.
 Check before adding: pointer helpers (`GetBoolPointer`, `GetStringPointer`,
 `GetInt32Pointer`), list/map plumbing (`MapFromSingletonList`,
 `StringSlice`, `StringMap`), HTTP error helpers (`ErrorFromHTTPResponse`,
-`IsHTTPNotFound`, `IsUniverseTaskConflict`), task helpers (`WaitForTask`,
-`DispatchAndWait`, `RetryOnUniverseTaskConflict`, and `RunParallel` for
-independent per-universe work), and update-time state revert
-(`RevertFields`). If something is genuinely missing, add it to
+`IsHTTPNotFound`, `IsResourceGone`, `IsUniverseTaskConflict`), task
+helpers (`WaitForTask`, `DispatchAndWait`, `RetryOnUniverseTaskConflict`,
+and `RunParallel` for independent per-universe work), and update-time
+state revert (`RevertFields`). If something is genuinely missing, add it to
 `utils` with tests rather than inlining.
 
 ## Generated Client

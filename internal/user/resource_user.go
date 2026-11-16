@@ -124,7 +124,7 @@ func resourceUserRead(
 	if err != nil {
 		// If the user was deleted outside of Terraform, remove it from state
 		// so that Terraform can recreate it on the next apply.
-		if utils.IsHTTPNotFound(response) || utils.IsHTTPBadRequestNotFound(response) {
+		if utils.IsResourceGone(response, err, d.Id()) {
 			tflog.Warn(ctx, fmt.Sprintf("User %s not found, removing from state: %v", d.Id(), err))
 			d.SetId("")
 			return diags

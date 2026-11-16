@@ -338,7 +338,7 @@ func resourceOnPremNodeRead(
 	if err != nil {
 		// If the node was deleted outside of Terraform, remove it from state
 		// so that Terraform can recreate it on the next apply.
-		if utils.IsHTTPNotFound(response) || utils.IsHTTPBadRequestNotFound(response) {
+		if utils.IsResourceGone(response, err, nUUID) {
 			tflog.Warn(
 				ctx,
 				fmt.Sprintf("OnPrem Node %s not found, removing from state: %v", nUUID, err),
@@ -451,7 +451,7 @@ func resourceOnPremNodeDelete(
 	node, response, err := nodeInstanceGet(ctx, c, cUUID, nUUID)
 	if err != nil {
 		// If the node was already deleted outside of Terraform, consider delete successful
-		if utils.IsHTTPNotFound(response) || utils.IsHTTPBadRequestNotFound(response) {
+		if utils.IsResourceGone(response, err, nUUID) {
 			tflog.Warn(
 				ctx,
 				fmt.Sprintf(

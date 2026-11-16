@@ -587,19 +587,21 @@ func IsHTTPNotFound(resp *http.Response) bool {
 	return resp != nil && resp.StatusCode == http.StatusNotFound
 }
 
-// IsHTTPBadRequestNotFound checks if the HTTP response is a 400 Bad Request
-// with a "Cannot find" error message. YBA sometimes returns 400 instead of 404
-// for resources that don't exist.
-func IsHTTPBadRequestNotFound(resp *http.Response) bool {
-	if resp == nil || resp.StatusCode != http.StatusBadRequest {
+// badRequestMissingPattern matches the 400 body of YBA's getOrBadRequest lookups.
+var badRequestMissingPattern = regexp.MustCompile(`Cannot find|Invalid [A-Za-z ]+ UUID`)
+
+// IsResourceGone reports whether a failed GET of the resource with UUID id means it is gone.
+// A 400 counts only when it names id, so a bad parent UUID (customer) does not.
+// It reads the body from err, so resp.Body stays intact for ErrorFromHTTPResponse.
+func IsResourceGone(resp *http.Response, err error, id string) bool {
+	if IsHTTPNotFound(resp) {
+		return true
+	}
+	if resp == nil || resp.StatusCode != http.StatusBadRequest || id == "" {
 		return false
 	}
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return false
-	}
-	bodyStr := string(body)
-	return strings.Contains(bodyStr, "Cannot find")
+	body := OpenAPIErrorBody(err)
+	return strings.Contains(body, id) && badRequestMissingPattern.MatchString(body)
 }
 
 // IsReleaseNotFound reports whether a /ybdb_release response means the release

@@ -189,7 +189,7 @@ func resourceCustomerRead(
 	if err != nil {
 		// If the customer was deleted outside of Terraform, remove it from state
 		// so that Terraform can recreate it on the next apply.
-		if utils.IsHTTPNotFound(response) || utils.IsHTTPBadRequestNotFound(response) {
+		if utils.IsHTTPNotFound(response) {
 			tflog.Warn(
 				ctx,
 				fmt.Sprintf("Customer %s not found, removing from state: %v", d.Id(), err),
