@@ -9,7 +9,8 @@
 #
 # Everything with a test name is in scope (acc-*, plus tf-acctest-* storage
 # configs from the tests that still use that prefix):
-#   - on each fixture YBA (GCP through the IAP tunnel, AWS, Azure): universes
+#   - on each fixture YBA (GCP through the IAP tunnel, AWS, Azure, and OCI
+#     when its env is present): universes
 #     (force delete), telemetry providers, cloud providers (YBA deletes their
 #     hooks with them), certificates, storage configs, KMS configs, hooks and
 #     users;
@@ -235,7 +236,7 @@ delete_aws() {
 	done < <(planned aws lb)
 }
 
-for cloud in GCP AWS AZURE; do
+for cloud in GCP AWS AZURE OCI; do
 	if has_yba "$cloud"; then
 		plan_yba "$cloud" || {
 			echo "clean-stand: could not list the $cloud YBA" >&2
@@ -278,7 +279,7 @@ if [ "$answer" != delete ]; then
 	exit 1
 fi
 
-for cloud in GCP AWS AZURE; do
+for cloud in GCP AWS AZURE OCI; do
 	if has_yba "$cloud" 2>/dev/null; then
 		delete_yba "$cloud" || failed=1
 	fi

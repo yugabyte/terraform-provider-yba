@@ -1,0 +1,40 @@
+# Copyright 2026 YugabyteDB, Inc.
+# SPDX-License-Identifier: MPL-2.0
+
+locals {
+  test_env = <<-EOT
+    TF_VAR_OCI_TENANCY_ID='${var.tenancy_ocid}'
+    TF_VAR_OCI_USER_ID='${oci_identity_domains_user.yba.ocid}'
+    TF_VAR_OCI_FINGERPRINT='${oci_identity_domains_api_key.yba.fingerprint}'
+    TF_VAR_OCI_PRIVATE_KEY_B64='${base64encode(tls_private_key.api.private_key_pem)}'
+    TF_VAR_OCI_PRIVATE_KEY_CONTENT='${tls_private_key.api.private_key_pem}'
+    TF_VAR_OCI_COMPARTMENT_ID='${var.compartment_ocid}'
+    TF_VAR_OCI_REGION='${var.test_region}'
+    TF_VAR_OCI_REGION_2='${var.home_region}'
+    TF_VAR_OCI_VCN_ID='${oci_core_vcn.test.id}'
+    TF_VAR_OCI_VCN_ID_2='${oci_core_vcn.main.id}'
+    TF_VAR_OCI_SUBNET_ID='${oci_core_subnet.ybdb[0].id}'
+    TF_VAR_OCI_SUBNET_ID_2='${oci_core_subnet.ybdb[1].id}'
+    TF_VAR_OCI_SUBNET_REGION_2='${oci_core_subnet.home_ybdb.id}'
+    TF_VAR_OCI_IMAGE_ID='${data.oci_core_images.test.images[0].id}'
+    TF_VAR_OCI_IMAGE_ID_2='${data.oci_core_images.ol9.images[0].id}'
+    TF_VAR_OCI_INSTANCE_CONFIGURATION_ID='${oci_core_instance_configuration.ybdb.id}'
+    TF_VAR_OCI_EAR_VAULT_ID='${oci_kms_vault.ear.id}'
+    TF_VAR_OCI_EAR_KEY_NAME='${oci_kms_key.ear.display_name}'
+    TF_VAR_OCI_NAMESPACE='${local.namespace}'
+    TF_VAR_OCI_ACCESS_KEY_ID='${oci_identity_domains_customer_secret_key.yba.access_key}'
+    TF_VAR_OCI_SECRET_ACCESS_KEY='${oci_identity_domains_customer_secret_key.yba.secret_key}'
+    TF_VAR_OCI_BACKUP_LOCATION='s3://${oci_objectstorage_bucket.backups.name}'
+    TF_VAR_OCI_HOST_BASE='${local.namespace}.compat.objectstorage.${var.test_region}.oraclecloud.com'
+    TF_VAR_OCI_BACKUP_LOCATION_2='s3://${oci_objectstorage_bucket.backups_2.name}'
+    TF_VAR_OCI_HOST_BASE_2='${local.namespace}.compat.objectstorage.${var.home_region}.oraclecloud.com'
+    TF_VAR_OCI_YBA_HOST='${oci_core_instance.yba.public_ip}'
+    TF_VAR_OCI_YBA_API_KEY='${yba_customer_resource.customer.api_token}'
+  EOT
+}
+
+output "test_env" {
+  description = "Acceptance-test env (TF_VAR_OCI_*) as KEY='value' lines."
+  value       = local.test_env
+  sensitive   = true
+}

@@ -183,3 +183,26 @@ func TestOCIAuthPlanError(t *testing.T) {
 		t.Fatal("a missing key must fail")
 	}
 }
+
+// A reordered region or zone list plans nothing; a changed subnet does.
+func TestRegionsContentChangedIgnoresOrder(t *testing.T) {
+	region := func(code, subnet string, zones ...string) map[string]interface{} {
+		zs := make([]interface{}, 0, len(zones))
+		for _, z := range zones {
+			zs = append(zs, map[string]interface{}{"code": z, "subnet": subnet + z})
+		}
+		return map[string]interface{}{
+			"code": code, "vcn_id": "vcn-" + code, "instance_configuration_id": "cfg",
+			"zones": zs,
+		}
+	}
+	old := []interface{}{region("r1", "s", "AD-1", "AD-2"), region("r2", "s", "AD-1")}
+	reordered := []interface{}{region("r2", "s", "AD-1"), region("r1", "s", "AD-2", "AD-1")}
+	if regionsContentChanged(old, reordered) {
+		t.Fatal("a reorder must not count as a change")
+	}
+	moved := []interface{}{region("r2", "s", "AD-1"), region("r1", "t", "AD-2", "AD-1")}
+	if !regionsContentChanged(old, moved) {
+		t.Fatal("a subnet change must count as a change")
+	}
+}
