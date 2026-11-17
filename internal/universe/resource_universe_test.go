@@ -68,3 +68,38 @@ func TestValidateOnPremUserIntent(t *testing.T) {
 		})
 	}
 }
+
+// An edit of communication_ports keeps the ports that the block does not set: YBA resets a
+// port that the request leaves out. A create (no current ports) sends only the set ports.
+func TestBuildCommunicationPortsKeepsUnmodeledPorts(t *testing.T) {
+	block := map[string]interface{}{
+		"master_http_port": 7011, "master_rpc_port": 7100, "node_exporter_port": 9300,
+		"redis_server_http_port": 11000, "redis_server_rpc_port": 6379,
+		"tserver_http_port": 9000, "tserver_rpc_port": 9100,
+		"yql_server_http_port": 12000, "yql_server_rpc_port": 9042,
+		"ysql_server_http_port": 13000, "ysql_server_rpc_port": 5433,
+		"yb_controller_rpc_port": 0,
+	}
+	current := &client.CommunicationPorts{
+		MasterHttpPort:            utils.GetInt32Pointer(7000),
+		OtelCollectorMetricsPort:  utils.GetInt32Pointer(8899),
+		YbControllerHttpPort:      utils.GetInt32Pointer(14010),
+		YbControllerrRpcPort:      utils.GetInt32Pointer(18010),
+		InternalYsqlServerRpcPort: utils.GetInt32Pointer(6440),
+	}
+
+	got := buildCommunicationPorts(current, block)
+	if got.GetMasterHttpPort() != 7011 || got.GetOtelCollectorMetricsPort() != 8899 ||
+		got.GetYbControllerHttpPort() != 14010 || got.GetYbControllerrRpcPort() != 18010 ||
+		got.GetInternalYsqlServerRpcPort() != 6440 {
+		t.Errorf("edit ports = %+v", got)
+	}
+	if current.GetMasterHttpPort() != 7000 {
+		t.Error("buildCommunicationPorts changed the current ports")
+	}
+	// A port the block leaves out (0) is not sent on create, so YBA uses its default.
+	if got := buildCommunicationPorts(nil, block); got.OtelCollectorMetricsPort != nil ||
+		got.YbControllerrRpcPort != nil || got.GetMasterHttpPort() != 7011 {
+		t.Errorf("create ports = %+v", got)
+	}
+}

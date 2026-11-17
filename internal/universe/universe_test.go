@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -114,6 +115,81 @@ func TestAccLong_Universe_GCP_UpdatePrimaryNodes(t *testing.T) {
 			},
 		},
 	})
+}
+
+// A communication_ports edit keeps the ports that the block does not set. The provider's
+// runtime config gives the universe a non-default OTel collector port (8899) at create.
+// The edit then changes only master_http_port (a FULL_MOVE); YBA resets every port that the
+// request leaves out, so the OTel port stays 8899 only if the provider sends it.
+func TestAccLong_Universe_GCP_PortEditKeepsUnmodeledPorts(t *testing.T) {
+	var universe client.UniverseResp
+
+	rName := acctest.RandomName("gcp-ports")
+	resource.ParallelTest(t, resource.TestCase{
+		PreCheck: func() {
+			acctest.TestAccPreCheckGCP(t)
+			acctest.TestAccPreCheckCloudYBA(t, "GCP")
+		},
+		ProviderFactories: acctest.ProviderFactories,
+		CheckDestroy:      testAccCheckDestroyProviderAndUniverse("GCP"),
+		Steps: []resource.TestStep{
+			{
+				Config: universeGcpPortsConfig(rName, ""),
+				Check: resource.ComposeTestCheckFunc(
+					testAccCheckUniverseExists("GCP", "yba_universe.gcp", &universe),
+					testAccCheckUniversePorts(&universe, 7000, 8899),
+				),
+			},
+			{
+				Config: universeGcpPortsConfig(rName, "master_http_port = 7011"),
+				Check: resource.ComposeTestCheckFunc(
+					testAccCheckUniverseExists("GCP", "yba_universe.gcp", &universe),
+					testAccCheckUniversePorts(&universe, 7011, 8899),
+				),
+			},
+		},
+	})
+}
+
+// universeGcpPortsConfig is the GCP universe with a provider-scoped OTel collector port and
+// ports set in the communication_ports block.
+func universeGcpPortsConfig(name, ports string) string {
+	universe := universeConfigWithProviderWithNodesAndExtra("gcp", name, 3,
+		"full_move {\n\t\tallow = true\n\t}")
+	universe = strings.Replace(universe,
+		"depends_on = [yba_hook.gcp_post_provision]",
+		"depends_on = [yba_hook.gcp_post_provision, yba_runtime_config.otel_port]", 1)
+	universe = strings.Replace(universe, "communication_ports {}",
+		"communication_ports {\n\t\t"+ports+"\n\t}", 1)
+	return acctest.YBAProviderBlock("GCP") + cloudProviderGCPConfig(name+"-provider") + `
+	resource "yba_runtime_config" "otel_port" {
+		scope = yba_cloud_provider.gcp.id
+		key   = "yb.universe.otel_collector_metrics_port"
+		value = "8899"
+	}
+` + universe
+}
+
+// testAccCheckUniversePorts checks the master HTTP port, the OTel collector port, and that
+// the YB Controller HTTP and internal YSQL RPC ports keep YBA's defaults.
+func testAccCheckUniversePorts(
+	universe *client.UniverseResp, masterHTTP, otel int32,
+) resource.TestCheckFunc {
+	return func(_ *terraform.State) error {
+		cp := universe.UniverseDetails.GetCommunicationPorts()
+		got := []int32{
+			cp.GetMasterHttpPort(), cp.GetOtelCollectorMetricsPort(),
+			cp.GetYbControllerHttpPort(), cp.GetInternalYsqlServerRpcPort(),
+		}
+		want := []int32{masterHTTP, otel, 14000, 6433}
+		for i := range want {
+			if got[i] != want[i] {
+				return fmt.Errorf("ports (master HTTP, OTel, YBC HTTP, internal YSQL RPC) = "+
+					"%v, want %v", got, want)
+			}
+		}
+		return nil
+	}
 }
 
 func TestAccLong_Universe_AWS_UpdatePrimaryNodes(t *testing.T) {

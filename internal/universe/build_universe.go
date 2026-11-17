@@ -63,7 +63,7 @@ func buildUniverse(d *schema.ResourceData) client.UniverseConfigureTaskParams {
 		Arch:                    utils.GetStringPointer(d.Get("arch").(string)),
 		Clusters:                clusters,
 		CommunicationPorts: buildCommunicationPorts(
-			utils.MapFromSingletonList(d.Get("communication_ports").([]interface{}))),
+			nil, utils.MapFromSingletonList(d.Get("communication_ports").([]interface{}))),
 		EnableYbc:      utils.GetBoolPointer(enableYbc),
 		UserAZSelected: utils.GetBoolPointer(hasExplicitCloudList(clusters)),
 	}
@@ -613,27 +613,52 @@ func fetchProviderZoneFallback(
 	return byRegionCode, byAZCode, byAZAttrs
 }
 
-func buildCommunicationPorts(cp map[string]interface{}) *client.CommunicationPorts {
-	if len(cp) == 0 {
-		return &client.CommunicationPorts{}
+// buildCommunicationPorts returns current with the ports that the communication_ports block
+// sets. A port the block leaves out (0) or does not model (OTel collector metrics, YB
+// Controller HTTP, internal YSQL RPC) keeps current's value, or YBA's default on create
+// (current is nil): YBA resets a port that a request leaves out.
+func buildCommunicationPorts(
+	current *client.CommunicationPorts,
+	cp map[string]interface{},
+) *client.CommunicationPorts {
+	ports := &client.CommunicationPorts{}
+	if current != nil {
+		copied := *current
+		ports = &copied
 	}
-	ports := &client.CommunicationPorts{
-		MasterHttpPort:      utils.GetInt32Pointer(int32(cp["master_http_port"].(int))),
-		MasterRpcPort:       utils.GetInt32Pointer(int32(cp["master_rpc_port"].(int))),
-		NodeExporterPort:    utils.GetInt32Pointer(int32(cp["node_exporter_port"].(int))),
-		RedisServerHttpPort: utils.GetInt32Pointer(int32(cp["redis_server_http_port"].(int))),
-		RedisServerRpcPort:  utils.GetInt32Pointer(int32(cp["redis_server_rpc_port"].(int))),
-		TserverHttpPort:     utils.GetInt32Pointer(int32(cp["tserver_http_port"].(int))),
-		TserverRpcPort:      utils.GetInt32Pointer(int32(cp["tserver_rpc_port"].(int))),
-		YqlServerHttpPort:   utils.GetInt32Pointer(int32(cp["yql_server_http_port"].(int))),
-		YqlServerRpcPort:    utils.GetInt32Pointer(int32(cp["yql_server_rpc_port"].(int))),
-		YsqlServerHttpPort:  utils.GetInt32Pointer(int32(cp["ysql_server_http_port"].(int))),
-		YsqlServerRpcPort:   utils.GetInt32Pointer(int32(cp["ysql_server_rpc_port"].(int))),
+	fields := map[string]**int32{
+		"master_http_port":       &ports.MasterHttpPort,
+		"master_rpc_port":        &ports.MasterRpcPort,
+		"node_exporter_port":     &ports.NodeExporterPort,
+		"redis_server_http_port": &ports.RedisServerHttpPort,
+		"redis_server_rpc_port":  &ports.RedisServerRpcPort,
+		"tserver_http_port":      &ports.TserverHttpPort,
+		"tserver_rpc_port":       &ports.TserverRpcPort,
+		"yql_server_http_port":   &ports.YqlServerHttpPort,
+		"yql_server_rpc_port":    &ports.YqlServerRpcPort,
+		"ysql_server_http_port":  &ports.YsqlServerHttpPort,
+		"ysql_server_rpc_port":   &ports.YsqlServerRpcPort,
+		"yb_controller_rpc_port": &ports.YbControllerrRpcPort,
 	}
-	if v, ok := cp["yb_controller_rpc_port"].(int); ok && v != 0 {
-		ports.YbControllerrRpcPort = utils.GetInt32Pointer(int32(v))
+	for key, field := range fields {
+		if v, ok := cp[key].(int); ok && v != 0 {
+			*field = utils.GetInt32Pointer(int32(v))
+		}
 	}
 	return ports
+}
+
+// effectiveCommunicationPorts returns the ports an edit sends: current, with the
+// communication_ports block applied when it changed.
+func effectiveCommunicationPorts(
+	d *schema.ResourceData,
+	current *client.CommunicationPorts,
+) *client.CommunicationPorts {
+	if !d.HasChange("communication_ports") {
+		return current
+	}
+	return buildCommunicationPorts(
+		current, utils.MapFromSingletonList(d.Get("communication_ports").([]interface{})))
 }
 
 // alignSpecificGFlagsWithHCL reconciles each cluster's UserIntent with the
