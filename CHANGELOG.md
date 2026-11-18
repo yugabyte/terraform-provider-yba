@@ -1,6 +1,6 @@
 ## v1.1.0 (October 2026)
 
-This release adds resources for encryption in transit and certificate rotation, encryption at rest, log and metric export, YugabyteDB releases, custom hooks, runtime configuration, load balancers, and Perf Advisor. It also adds inline inputs and a custom SSH port to `yba_installer`. The provider still requires YugabyteDB Anywhere 2024.2.0.0 or later. Some new resources need a later release; each page gives its minimum.
+This release adds resources for encryption in transit and certificate rotation, encryption at rest, log and metric export, YugabyteDB releases, custom hooks, runtime configuration, load balancers, Perf Advisor, and Oracle Cloud Infrastructure (OCI) providers and backup storage. It also adds inline inputs and a custom SSH port to `yba_installer`. The provider still requires YugabyteDB Anywhere 2024.2.0.0 or later. Some new resources need a later release; each page gives its minimum.
 
 ### New resources
 
@@ -20,6 +20,7 @@ This release adds resources for encryption in transit and certificate rotation, 
 - `yba_runtime_config` - a runtime configuration key on the global, customer, provider, or universe scope. Set a secret key with `sensitive_value`, which hides the value in plan output.
 - `yba_perf_advisor_endpoint` - an external Perf Advisor that receives universe data in `ONLINE` mode. Uses a preview YugabyteDB Anywhere API.
 - `yba_universe_perf_advisor_registration` - register a universe with a Perf Advisor collector. Uses a preview YugabyteDB Anywhere API.
+- `yba_oci_provider` - an OCI cloud provider, using an API signing key or the instance principal of the YugabyteDB Anywhere host. Requires YugabyteDB Anywhere 2026.1.2.0 or later.
 - `yba_oci_storage_config` - an OCI Object Storage backup configuration, using a Customer Secret Key or instance principal. Requires YugabyteDB Anywhere 2026.1.2.0 or later.
 
 YugabyteDB Anywhere marks the APIs of telemetry export, `yba_ybdb_release`, and `yba_universe_load_balancer_config` as preview. A later YugabyteDB Anywhere release can change them in ways that are not backward compatible.
@@ -39,12 +40,14 @@ YugabyteDB Anywhere marks the APIs of telemetry export, `yba_ybdb_release`, and 
 - `yba_universe`: new `encryption_at_rest` block. Enable encryption at rest when you create the universe or later, rotate the master key or the universe key, and disable encryption.
 - `yba_universe`: `node_restart_settings` also controls how a certificate rotation restarts the nodes.
 - `yba_release_version`: new `deployment_type` filter (`x86_64`, `aarch64`, or `kubernetes`).
+- `yba_provider_regions`: returns the regions of an OCI provider, with the VCN OCID in `vnet_name` and the instance configuration OCID in `instance_template`.
 - `yba_installer`: new `ssh_port` argument, for a custom SSH port or an SSH tunnel.
 - `yba_installer`: new inline arguments `ssh_private_key`, `yba_license`, `application_settings`, `tls_certificate`, and `tls_key`, as alternatives to the file path arguments. Terraform tracks the content of an inline argument, so a change to `application_settings`, `tls_certificate`, or `tls_key` reconfigures YugabyteDB Anywhere on the next apply without `reconfigure = true`.
 - `yba_installer`: installs on a host whose `/opt/yugabyte/data` already holds YugabyteDB Anywhere data, for example on a persistent data disk, and starts YugabyteDB Anywhere on that data.
 - `yba_installer`: a downgrade of `yba_version` fails at plan time.
 - `yba_installer`: when an update fails, the state keeps the earlier values, so the next apply runs the update again.
 - Provider: with `enable_https = true` (the default), connections to YugabyteDB Anywhere time out when the server does not answer, so a plan or apply no longer waits forever on a dead connection.
+- Provider: updated the Go dependencies, among them the Terraform plugin SDK, `golang.org/x/crypto`, `golang.org/x/net`, and `google.golang.org/grpc`. The new versions contain the security fixes that these modules published after v1.0.0.
 
 ### Behavior changes
 
@@ -62,6 +65,8 @@ YugabyteDB Anywhere marks the APIs of telemetry export, `yba_ybdb_release`, and 
 - `yba_universe`: `specific_gflags` no longer shows a diff when YugabyteDB Anywhere holds the same flags in another form: a `per_process` block or a `per_az` entry that sets no flags, or `per_az` entries in another order. If the state already holds `per_az` in another form, the next plan shows the diff once more, and an apply clears it without a YugabyteDB Anywhere task. After `terraform import`, the first plan can show the same `per_az` diff once; see the Import section of the `yba_universe` page.
 - `yba_universe`: `sleep_after_master_restart_millis = 0` and `sleep_after_tserver_restart_millis = 0` now wait 0 milliseconds. Before, the provider sent 180000 for an explicit `0`.
 - `yba_universe`: `node_details_set` lists the nodes by `node_idx`. Before, the order changed on every refresh, so a reference such as `node_details_set[0]` could name a different node each time.
+- `yba_universe`: a `communication_ports` change keeps the ports that the block has no argument for: the OpenTelemetry collector metrics port, the YB Controller HTTP port, and the internal YSQL RPC port. Before, the change reset these ports to their defaults.
+- `yba_user`, `yba_onprem_node_instance`: a refresh no longer fails with `400 Bad Request` when the resource was deleted outside Terraform. The provider removes the resource from state, and the next plan creates it again.
 - `yba_cloud_provider` (deprecated): Azure regions now send and read `vnet_name`, `yb_image`, and `security_group_id`.
 - `yba_cloud_provider` (deprecated): create no longer sends an empty access key, so YugabyteDB Anywhere generates a key pair when you give none.
 - `yba_cloud_provider` (deprecated): GCP create no longer crashes when optional `gcp_config_settings` fields are not set.
