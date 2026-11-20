@@ -54,10 +54,11 @@ linters:
       # platform-go-client (YBA SDK) is OpenAPI-generated and reads + closes the
       # response body inside Execute(). The returned *http.Response is retained
       # only for status codes / headers; the body is already drained.
-      # RetryOnUniverseTaskConflict and DispatchAndWait wrap Execute() calls.
+      # RetryOnUniverseTaskConflict, DispatchAndWait and dispatchGFlagsUpgrade
+      # wrap Execute() calls.
       - linters:
           - bodyclose
-        source: "Execute\\(\\)|RetryOnUniverseTaskConflict|DispatchAndWait|\\w+API\\.|nodeInstanceGet"
+        source: "Execute\\(\\)|RetryOnUniverseTaskConflict|DispatchAndWait|dispatchGFlagsUpgrade|\\w+API\\.|nodeInstanceGet"
     paths:
       - docs
       - examples

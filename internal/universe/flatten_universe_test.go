@@ -174,8 +174,9 @@ func TestReadSpecificGFlagsPlansClean(t *testing.T) {
 // YBA returns the secrets in LDAP gflags as REDACTED. Read must write the state
 // value that YBA's value stands for, so the config plans clean, and Update must
 // send a GFlags upgrade only when the config changes the secret or YBA's value
-// changed outside Terraform: YBA rejects an upgrade that changes nothing. After
-// an import, state holds REDACTED, and the first apply only records the config.
+// changed outside Terraform: YBA rejects an upgrade that changes nothing. Where
+// state holds REDACTED (after an import, or from an earlier release), Update
+// must send the config, which may hold a new secret.
 func TestRedactedGFlagsPlanAndUpgrade(t *testing.T) {
 	const bind = "dummy-bind-pw"
 	const hba = `"host all all 0.0.0.0/0 ldap ldapserver=ldap.example.com ` +
@@ -268,9 +269,9 @@ func TestRedactedGFlagsPlanAndUpgrade(t *testing.T) {
 			apiPerProcess("ysql_hba_conf_csv", hbaMovedRedacted), true, true,
 		},
 		{
-			"imported",
+			"imported, or state from an earlier release",
 			perProcess("ysql_hba_conf_csv", hba), nil,
-			apiPerProcess("ysql_hba_conf_csv", hbaRedacted), true, false,
+			apiPerProcess("ysql_hba_conf_csv", hbaRedacted), true, true,
 		},
 	}
 
@@ -320,19 +321,18 @@ func TestRedactedGFlagsPlanAndUpgrade(t *testing.T) {
 				"tserver_gflags":  d.Get("tserver_gflags"),
 				"specific_gflags": d.Get("specific_gflags"),
 			})
-			config := cluster(tc.config)
-			api = restoreClustersRedactedGFlags(apiClusters(tc.api()),
-				[]interface{}{state}, []interface{}{config})
-			if got := gflagsChanged(api[0].UserIntent, gflagsOf(config)); got != tc.wantUpgrade {
+			api = restoreClustersRedactedGFlags(apiClusters(tc.api()), []interface{}{state})
+			got := gflagsChanged(api[0].UserIntent, gflagsOf(cluster(tc.config)))
+			if got != tc.wantUpgrade {
 				t.Errorf("upgrade = %v, want %v", got, tc.wantUpgrade)
 			}
 		})
 	}
 }
 
-// Update builds the GFlags upgrade payload from YBA's clusters. Flags that the
-// upgrade does not change must still go back as REDACTED, so that YBA keeps the
-// secret it stores rather than the one in state.
+// Update builds the GFlags upgrade payload from YBA's clusters. A cluster that
+// the upgrade does not change must still go back with REDACTED, so that YBA
+// keeps the secret it stores rather than the one in state.
 func TestRestoreRedactedGFlagsKeepsYBAClusters(t *testing.T) {
 	const k = "ycql_ldap_bind_passwd"
 	procs := func(v string) map[string]map[string]string {
@@ -378,6 +378,43 @@ func TestRestoreRedactedGFlagsKeepsYBAClusters(t *testing.T) {
 		if v != ybaRedacted {
 			t.Errorf("YBA's value %d = %q, want %q", i, v, ybaRedacted)
 		}
+	}
+}
+
+// The Read after Update writes the configured secret to state only for a
+// cluster whose gflags YBA got or confirmed. A secret that never reached YBA
+// keeps the prior value, so the next plan still shows the change.
+func TestRedactedGFlagsAfterUpdate(t *testing.T) {
+	const k = "ycql_ldap_bind_passwd"
+	cluster := func(pw string) map[string]interface{} {
+		return map[string]interface{}{"uuid": "c1", "user_intent": []interface{}{
+			map[string]interface{}{"tserver_gflags": map[string]interface{}{k: pw}},
+		}}
+	}
+	prior := []interface{}{cluster("dummy-old-pw")}
+	planned := []interface{}{cluster("dummy-new-pw")}
+	cases := []struct {
+		name string
+		sent map[int]bool
+		want string
+	}{
+		{"YBA got or confirmed the gflags", map[int]bool{0: true}, "dummy-new-pw"},
+		{"apply failed first, or Update does not send them", map[int]bool{}, "dummy-old-pw"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			api := []client.Cluster{{
+				Uuid:       utils.GetStringPointer("c1"),
+				UserIntent: client.UserIntent{TserverGFlags: &map[string]string{k: ybaRedacted}},
+			}}
+
+			got := restoreClustersRedactedGFlags(
+				api, gflagsKnownAfterUpdate(prior, planned, tc.sent))
+
+			if v := got[0].UserIntent.GetTserverGFlags()[k]; v != tc.want {
+				t.Errorf("state value = %q, want %q", v, tc.want)
+			}
+		})
 	}
 }
 

@@ -681,7 +681,7 @@ Choose one of the following to resolve this:
 
 ### LDAP secrets in gflags are not imported
 
-YugabyteDB Anywhere can return `REDACTED` in place of the LDAP secrets in gflags: the value of `ycql_ldap_bind_passwd`, and each `ldapbindpasswd` value in `ysql_hba_conf_csv`. When it does, state holds `REDACTED` for them after an import or after a refresh with an earlier provider release, and the first plan shows them changing to the values in your configuration. That apply records your values in state without sending them to the universe. To change one of these secrets, apply once first, and then change it.
+YugabyteDB Anywhere can return `REDACTED` in place of the LDAP secrets in gflags: the value of `ycql_ldap_bind_passwd`, and each `ldapbindpasswd` value in `ysql_hba_conf_csv`. When it does, state holds `REDACTED` for them after an import or after a refresh with an earlier provider release, and the first plan shows them changing to the values in your configuration. That apply sends the gflags in your configuration to the universe: if the universe already has them, nothing changes on its nodes; otherwise, the apply runs a GFlags upgrade to set them.
 
 ### Rotation triggers are not imported
 

@@ -193,8 +193,9 @@ const ybaRedacted = "REDACTED"
 // restoreRedactedGFlags has run on each cluster with the gflags of the
 // matching cluster in each of known, which hold state or config clusters.
 // Cluster matching mirrors restoreRedactedPasswords: UUID-first, then index.
-// clusters keeps YBA's values: an upgrade payload built from it must send
-// REDACTED for the flags it does not change, so YBA keeps its stored secret.
+// clusters keeps YBA's values: a GFlags upgrade request is built from it, and
+// a cluster that the upgrade does not change must go back with REDACTED, so
+// that YBA keeps the secret it stores. A changed cluster carries the config.
 func restoreClustersRedactedGFlags(
 	clusters []client.Cluster,
 	known ...[]interface{},
@@ -210,6 +211,48 @@ func restoreClustersRedactedGFlags(
 		out[i] = cl
 	}
 	return out
+}
+
+// gflagsKnownAfterUpdate returns the clusters whose gflags stand in for YBA's
+// REDACTED values in the Read after Update: the planned cluster where YBA got
+// or confirmed its gflags (sent), the prior one elsewhere. A secret that did
+// not reach YBA, because the apply failed first or Update does not send it,
+// then keeps the prior value in state and still plans as a change.
+func gflagsKnownAfterUpdate(prior, planned []interface{}, sent map[int]bool) []interface{} {
+	out := make([]interface{}, len(planned))
+	for i := range planned {
+		if sent[i] || i >= len(prior) {
+			out[i] = planned[i]
+		} else {
+			out[i] = prior[i]
+		}
+	}
+	return out
+}
+
+// hasRedactedGFlags reports whether any gflag value of ui holds REDACTED.
+func hasRedactedGFlags(ui client.UserIntent) bool {
+	all := []map[string]string{ui.GetMasterGFlags(), ui.GetTserverGFlags()}
+	if sg := ui.SpecificGFlags; sg != nil {
+		if sg.PerProcessFlags != nil {
+			for _, m := range sg.PerProcessFlags.Value {
+				all = append(all, m)
+			}
+		}
+		for _, f := range sg.GetPerAZ() {
+			for _, m := range f.Value {
+				all = append(all, m)
+			}
+		}
+	}
+	for _, m := range all {
+		for _, v := range m {
+			if strings.Contains(v, ybaRedacted) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // copyGFlags returns ui with its gflag maps copied.
