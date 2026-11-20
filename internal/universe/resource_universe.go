@@ -3013,12 +3013,13 @@ func resourceUniverseRead(
 		flattenEncryptionAtRest(d, u.EncryptionAtRestConfig)); err != nil {
 		return diag.FromErr(err)
 	}
-	newClusters := flattenClusters(u.Clusters)
 	oldClusters := d.Get("clusters").([]interface{})
+	apiClusters := restoreClustersRedactedGFlags(u.Clusters, oldClusters)
+	newClusters := flattenClusters(apiClusters)
 	diags = append(diags, restoreRedactedPasswords(ctx, newClusters, oldClusters)...)
 	alignClustersCloudList(newClusters, oldClusters)
 	restoreDedicatedMasterFields(newClusters, oldClusters, u.Clusters, d.GetRawConfig())
-	keepEquivalentSpecificGFlags(newClusters, oldClusters, u.Clusters)
+	keepEquivalentSpecificGFlags(newClusters, oldClusters, apiClusters)
 	pruneSpecificGFlagsByConfig(newClusters, d.GetRawConfig())
 	if err = d.Set("clusters", newClusters); err != nil {
 		return diag.FromErr(err)
@@ -3745,6 +3746,16 @@ func resourceUniverseUpdate(
 	portsBundledInClusterEdit := false
 	if d.HasChange("clusters") {
 		clusters := d.Get("clusters").([]interface{})
+		priorRaw, _ := d.GetChange("clusters")
+		priorClusters, _ := priorRaw.([]interface{})
+		// Gflag values that YBA returns with REDACTED compare as the state value
+		// they stand for, so that a changed secret in the config still sends an
+		// upgrade. After an import, state holds REDACTED too, so they compare as
+		// the config value: the first apply only records it.
+		restoredGFlags := func(u *client.UniverseResp) []client.Cluster {
+			return restoreClustersRedactedGFlags(
+				u.UniverseDetails.Clusters, priorClusters, clusters)
+		}
 		updateUni, response, err := c.UniverseManagementAPI.GetUniverse(ctx, cUUID, d.Id()).
 			Execute()
 		if err != nil {
@@ -3936,7 +3947,7 @@ func resourceUniverseUpdate(
 						"Universe", "Update - Fetch universe")
 					return diag.FromErr(errMessage)
 				}
-				oldUserIntent = updateUni.UniverseDetails.Clusters[i].UserIntent
+				oldUserIntent = restoredGFlags(updateUni)[i].UserIntent
 
 				// Legacy flat-only gflag dispatch. specific_gflags path is
 				// handled by performGFlagsUpgrade after the loop.
@@ -4691,7 +4702,7 @@ func resourceUniverseUpdate(
 			}
 			newUni = buildUniverse(d)
 			gflagChanges := map[int]client.UserIntent{}
-			for j, cl := range updateUni.UniverseDetails.Clusters {
+			for j, cl := range restoredGFlags(updateUni) {
 				if j >= len(newUni.Clusters) {
 					continue
 				}

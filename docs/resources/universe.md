@@ -679,6 +679,10 @@ Choose one of the following to resolve this:
 
 2. **Patch the state with the real secret value** so Terraform sees it as unchanged. This requires the current password and direct state edits (`terraform state pull` / `terraform state push`, or `terraform state rm` plus re-import after manual seeding); only use it when you intend to keep managing the password through Terraform.
 
+### LDAP secrets in gflags are not imported
+
+YugabyteDB Anywhere can return `REDACTED` in place of the LDAP secrets in gflags: the value of `ycql_ldap_bind_passwd`, and each `ldapbindpasswd` value in `ysql_hba_conf_csv`. When it does, state holds `REDACTED` for them after an import or after a refresh with an earlier provider release, and the first plan shows them changing to the values in your configuration. That apply records your values in state without sending them to the universe. To change one of these secrets, apply once first, and then change it.
+
 ### Rotation triggers are not imported
 
 YugabyteDB Anywhere does not store the `cert_rotation` triggers or

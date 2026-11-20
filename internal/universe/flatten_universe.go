@@ -182,6 +182,188 @@ func restoreRedactedPasswords(
 	return diags
 }
 
+// ybaRedacted is what YBA returns in place of a secret in a gflag value when
+// its runtime config yb.api.enable_gflags_sensitive_data_redaction is on: the
+// whole value of ycql_ldap_bind_passwd, and each ldapbindpasswd value inside
+// ysql_hba_conf_csv (RedactingService.filterSecretFields for API responses).
+// On writes YBA takes the token back and keeps the secret it stores.
+const ybaRedacted = "REDACTED"
+
+// restoreClustersRedactedGFlags returns a copy of clusters in which
+// restoreRedactedGFlags has run on each cluster with the gflags of the
+// matching cluster in each of known, which hold state or config clusters.
+// Cluster matching mirrors restoreRedactedPasswords: UUID-first, then index.
+// clusters keeps YBA's values: an upgrade payload built from it must send
+// REDACTED for the flags it does not change, so YBA keeps its stored secret.
+func restoreClustersRedactedGFlags(
+	clusters []client.Cluster,
+	known ...[]interface{},
+) []client.Cluster {
+	out := make([]client.Cluster, len(clusters))
+	for i, cl := range clusters {
+		cl.UserIntent = copyGFlags(cl.UserIntent)
+		var candidates []client.UserIntent
+		for _, k := range known {
+			candidates = append(candidates, gflagsOf(matchCluster(k, cl.GetUuid(), i)))
+		}
+		restoreRedactedGFlags(&cl.UserIntent, candidates...)
+		out[i] = cl
+	}
+	return out
+}
+
+// copyGFlags returns ui with its gflag maps copied.
+func copyGFlags(ui client.UserIntent) client.UserIntent {
+	cloneProcs := func(m map[string]map[string]string) map[string]map[string]string {
+		out := make(map[string]map[string]string, len(m))
+		for proc, flags := range m {
+			out[proc] = maps.Clone(flags)
+		}
+		return out
+	}
+	if ui.MasterGFlags != nil {
+		m := maps.Clone(*ui.MasterGFlags)
+		ui.MasterGFlags = &m
+	}
+	if ui.TserverGFlags != nil {
+		m := maps.Clone(*ui.TserverGFlags)
+		ui.TserverGFlags = &m
+	}
+	if ui.SpecificGFlags != nil {
+		sg := *ui.SpecificGFlags
+		if sg.PerProcessFlags != nil {
+			sg.PerProcessFlags = &client.PerProcessFlags{
+				Value: cloneProcs(sg.PerProcessFlags.Value),
+			}
+		}
+		if sg.PerAZ != nil {
+			perAZ := make(map[string]client.PerProcessFlags, len(*sg.PerAZ))
+			for az, f := range *sg.PerAZ {
+				perAZ[az] = client.PerProcessFlags{Value: cloneProcs(f.Value)}
+			}
+			sg.PerAZ = &perAZ
+		}
+		ui.SpecificGFlags = &sg
+	}
+	return ui
+}
+
+// restoreRedactedGFlags puts back each gflag value of ui that holds REDACTED
+// with the value of the same flag in the first of known that the redacted
+// value can stand for and that holds no REDACTED itself. A value with no such
+// match keeps YBA's form, so a change made outside Terraform still shows.
+func restoreRedactedGFlags(ui *client.UserIntent, known ...client.UserIntent) {
+	restore := func(m map[string]string, lookup func(client.UserIntent, string) string) {
+		for k, v := range m {
+			if !strings.Contains(v, ybaRedacted) {
+				continue
+			}
+			for _, kn := range known {
+				p := lookup(kn, k)
+				if p != "" && !strings.Contains(p, ybaRedacted) && redactedGFlagMatches(v, p) {
+					m[k] = p
+					break
+				}
+			}
+		}
+	}
+	for _, proc := range []string{"MASTER", "TSERVER"} {
+		processFlag := func(kn client.UserIntent, k string) string {
+			if kn.SpecificGFlags != nil && kn.SpecificGFlags.PerProcessFlags != nil {
+				if v, ok := kn.SpecificGFlags.PerProcessFlags.Value[proc][k]; ok {
+					return v
+				}
+			}
+			return flatGFlags(kn, proc)[k]
+		}
+		if sg := ui.SpecificGFlags; sg != nil {
+			if sg.PerProcessFlags != nil {
+				restore(sg.PerProcessFlags.Value[proc], processFlag)
+			}
+			for az, f := range sg.GetPerAZ() {
+				restore(f.Value[proc], func(kn client.UserIntent, k string) string {
+					if kn.SpecificGFlags == nil {
+						return ""
+					}
+					return kn.SpecificGFlags.GetPerAZ()[az].Value[proc][k]
+				})
+			}
+		}
+		restore(flatGFlags(*ui, proc), processFlag)
+	}
+}
+
+func flatGFlags(ui client.UserIntent, proc string) map[string]string {
+	if proc == "MASTER" {
+		return ui.GetMasterGFlags()
+	}
+	return ui.GetTserverGFlags()
+}
+
+// redactedGFlagMatches reports whether value can be the gflag value that YBA
+// returned as redacted. Each REDACTED in redacted, with the quotes and
+// backslashes next to it, stands for any text: YBA's HbaConfRedactor can quote
+// the token differently from the secret it replaces.
+func redactedGFlagMatches(redacted, value string) bool {
+	parts := strings.Split(redacted, ybaRedacted)
+	if len(parts) == 1 {
+		return redacted == value
+	}
+	const quotes = `"'\`
+	for i := range parts {
+		if i > 0 {
+			parts[i] = strings.TrimLeft(parts[i], quotes)
+		}
+		if i < len(parts)-1 {
+			parts[i] = strings.TrimRight(parts[i], quotes)
+		}
+	}
+	first, last := parts[0], parts[len(parts)-1]
+	if len(first)+len(last) > len(value) ||
+		!strings.HasPrefix(value, first) || !strings.HasSuffix(value, last) {
+		return false
+	}
+	rest := value[len(first) : len(value)-len(last)]
+	for _, p := range parts[1 : len(parts)-1] {
+		i := strings.Index(rest, p)
+		if i < 0 {
+			return false
+		}
+		rest = rest[i+len(p):]
+	}
+	return true
+}
+
+// gflagsOf returns the gflags that a cluster in state or config sets.
+func gflagsOf(cluster map[string]interface{}) client.UserIntent {
+	ui := userIntentMap(cluster)
+	var out client.UserIntent
+	if m, ok := ui["master_gflags"].(map[string]interface{}); ok {
+		out.MasterGFlags = utils.StringMap(m)
+	}
+	if m, ok := ui["tserver_gflags"].(map[string]interface{}); ok {
+		out.TserverGFlags = utils.StringMap(m)
+	}
+	sg, _ := ui["specific_gflags"].([]interface{})
+	out.SpecificGFlags = buildSpecificGFlags(sg)
+	return out
+}
+
+// matchCluster returns the cluster in clusters with the given UUID, else the
+// one at index i.
+func matchCluster(clusters []interface{}, uuid string, i int) map[string]interface{} {
+	for _, c := range clusters {
+		if m, ok := c.(map[string]interface{}); ok && uuid != "" && m["uuid"] == uuid {
+			return m
+		}
+	}
+	if i < len(clusters) {
+		m, _ := clusters[i].(map[string]interface{})
+		return m
+	}
+	return nil
+}
+
 // flattenCloudList converts the API placement cloud list to schema format,
 // aligning region and AZ order to match the prior state so that TypeList
 // index-based comparisons stay stable across reads.
