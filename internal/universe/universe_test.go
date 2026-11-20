@@ -196,8 +196,7 @@ func testAccCheckUniversePorts(
 // (RedactingService.filterSecretFields): the whole ycql_ldap_bind_passwd, and
 // the ldapbindpasswd value in ysql_hba_conf_csv, quoted around a space and a
 // comma. The plan after each apply checks that Read keeps the configured
-// values, and the scale step that Update sends no GFlags upgrade: YBA rejects
-// one that changes nothing.
+// values.
 func TestAccLong_Universe_AWS_UpdatePrimaryNodes(t *testing.T) {
 	var universe client.UniverseResp
 
