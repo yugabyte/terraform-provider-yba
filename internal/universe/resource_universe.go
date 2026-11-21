@@ -2976,6 +2976,17 @@ func resourceUniverseRead(
 	ctx context.Context,
 	d *schema.ResourceData,
 	meta interface{}) diag.Diagnostics {
+	return readUniverse(ctx, d, meta, d.Get("clusters").([]interface{}))
+}
+
+// readUniverse is resourceUniverseRead with knownGFlags, the clusters whose
+// gflags stand in for the values that YBA returns as REDACTED.
+func readUniverse(
+	ctx context.Context,
+	d *schema.ResourceData,
+	meta interface{},
+	knownGFlags []interface{},
+) diag.Diagnostics {
 	var diags diag.Diagnostics
 
 	c := meta.(*api.APIClient).YugawareClient
@@ -3013,12 +3024,13 @@ func resourceUniverseRead(
 		flattenEncryptionAtRest(d, u.EncryptionAtRestConfig)); err != nil {
 		return diag.FromErr(err)
 	}
-	newClusters := flattenClusters(u.Clusters)
 	oldClusters := d.Get("clusters").([]interface{})
+	apiClusters := restoreClustersRedactedGFlags(u.Clusters, knownGFlags)
+	newClusters := flattenClusters(apiClusters)
 	diags = append(diags, restoreRedactedPasswords(ctx, newClusters, oldClusters)...)
 	alignClustersCloudList(newClusters, oldClusters)
 	restoreDedicatedMasterFields(newClusters, oldClusters, u.Clusters, d.GetRawConfig())
-	keepEquivalentSpecificGFlags(newClusters, oldClusters, u.Clusters)
+	keepEquivalentSpecificGFlags(newClusters, oldClusters, apiClusters)
 	pruneSpecificGFlagsByConfig(newClusters, d.GetRawConfig())
 	if err = d.Set("clusters", newClusters); err != nil {
 		return diag.FromErr(err)
@@ -3433,6 +3445,9 @@ func resourceUniverseUpdate(
 	// revertCertRotation and revertEncryptionAtRest).
 	certsRotated := false
 	earApplied := false
+	// gflagsSent holds the index of each cluster whose planned gflags YBA has
+	// applied or confirmed unchanged.
+	gflagsSent := map[int]bool{}
 	defer func() {
 		if !certsRotated {
 			revertCertRotation(d)
@@ -3440,7 +3455,10 @@ func resourceUniverseUpdate(
 		if !earApplied {
 			revertEncryptionAtRest(d)
 		}
-		diags = append(resourceUniverseRead(ctx, d, meta), diags...)
+		prior, planned := d.GetChange("clusters")
+		known := gflagsKnownAfterUpdate(
+			prior.([]interface{}), planned.([]interface{}), gflagsSent)
+		diags = append(readUniverse(ctx, d, meta, known), diags...)
 	}()
 
 	// Reject any attempt to change ports that are immutable after universe creation.
@@ -3745,6 +3763,16 @@ func resourceUniverseUpdate(
 	portsBundledInClusterEdit := false
 	if d.HasChange("clusters") {
 		clusters := d.Get("clusters").([]interface{})
+		priorRaw, _ := d.GetChange("clusters")
+		priorClusters, _ := priorRaw.([]interface{})
+		// Gflag values that YBA returns with REDACTED compare as the state value
+		// they stand for, so that a secret changed in the config sends an
+		// upgrade. Where state holds REDACTED too (after an import, or from an
+		// earlier release), they stay REDACTED, and the upgrade sends the
+		// configured value (see dispatchGFlagsUpgrade).
+		restoredGFlags := func(u *client.UniverseResp) []client.Cluster {
+			return restoreClustersRedactedGFlags(u.UniverseDetails.Clusters, priorClusters)
+		}
 		updateUni, response, err := c.UniverseManagementAPI.GetUniverse(ctx, cUUID, d.Id()).
 			Execute()
 		if err != nil {
@@ -3936,11 +3964,12 @@ func resourceUniverseUpdate(
 						"Universe", "Update - Fetch universe")
 					return diag.FromErr(errMessage)
 				}
-				oldUserIntent = updateUni.UniverseDetails.Clusters[i].UserIntent
+				oldUserIntent = restoredGFlags(updateUni)[i].UserIntent
 
 				// Legacy flat-only gflag dispatch. specific_gflags path is
 				// handled by performGFlagsUpgrade after the loop.
 				if !usingSpecificGFlags && gflagsChanged(oldUserIntent, newUserIntent) {
+					redacted := hasRedactedGFlags(updateUni.UniverseDetails.Clusters[i].UserIntent)
 					applyGFlagsOnto(
 						&updateUni.UniverseDetails.Clusters[i].UserIntent,
 						newUserIntent,
@@ -3956,17 +3985,11 @@ func resourceUniverseUpdate(
 					if diags := utils.DispatchAndWait(ctx, "GFlags Upgrade", cUUID, c,
 						d.Timeout(schema.TimeoutUpdate),
 						utils.ResourceEntity, "Universe", "Update - GFlags",
-						func() (string, *http.Response, error) {
-							r, resp, e := c.UniverseUpgradesManagementAPI.UpgradeGFlags(
-								ctx, cUUID, d.Id()).GflagsUpgradeParams(req).Execute()
-							if e != nil {
-								return "", resp, e
-							}
-							return r.GetTaskUUID(), resp, nil
-						},
+						dispatchGFlagsUpgrade(ctx, c, cUUID, d.Id(), req, redacted),
 					); diags != nil {
 						return diags
 					}
+					gflagsSent[i] = true
 				}
 
 				updateUni, response, err = c.UniverseManagementAPI.GetUniverse(ctx, cUUID,
@@ -4691,7 +4714,7 @@ func resourceUniverseUpdate(
 			}
 			newUni = buildUniverse(d)
 			gflagChanges := map[int]client.UserIntent{}
-			for j, cl := range updateUni.UniverseDetails.Clusters {
+			for j, cl := range restoredGFlags(updateUni) {
 				if j >= len(newUni.Clusters) {
 					continue
 				}
@@ -4705,6 +4728,9 @@ func resourceUniverseUpdate(
 					upgradeOption, sleepAfterMasterMs, sleepAfterTServerMs,
 				); diagErr != nil {
 					return diagErr
+				}
+				for j := range gflagChanges {
+					gflagsSent[j] = true
 				}
 			}
 		}
@@ -4877,7 +4903,10 @@ func performGFlagsUpgrade(
 	if len(changedByIdx) == 0 {
 		return nil
 	}
+	redacted := false
 	for idx, newUI := range changedByIdx {
+		redacted = redacted ||
+			hasRedactedGFlags(updateUni.UniverseDetails.Clusters[idx].UserIntent)
 		applyGFlagsOnto(
 			&updateUni.UniverseDetails.Clusters[idx].UserIntent,
 			newUI,
@@ -4902,15 +4931,40 @@ func performGFlagsUpgrade(
 	return utils.DispatchAndWait(ctx, "GFlags Upgrade", cUUID, c,
 		d.Timeout(schema.TimeoutUpdate),
 		utils.ResourceEntity, "Universe", "Update - GFlags",
-		func() (string, *http.Response, error) {
-			r, resp, err := c.UniverseUpgradesManagementAPI.UpgradeGFlags(
-				ctx, cUUID, d.Id()).GflagsUpgradeParams(req).Execute()
-			if err != nil {
-				return "", resp, err
-			}
-			return r.GetTaskUUID(), resp, nil
-		},
+		dispatchGFlagsUpgrade(ctx, c, cUUID, d.Id(), req, redacted),
 	)
+}
+
+// ybaNoGFlagChanges starts YBA's 400 message for a GFlags upgrade that changes
+// nothing (GFlagsUpgradeParams.verifyParams). YBA merges the secrets it stores
+// into the request before that check (UpgradeUniverseHandler.upgradeGFlags).
+const ybaNoGFlagChanges = "No changes in gflags"
+
+// dispatchGFlagsUpgrade is the DispatchAndWait call for a GFlags upgrade.
+// redacted reports whether YBA returned a gflag of a cluster that req changes
+// as REDACTED. Terraform cannot compare such a flag with the config, so it
+// sends the configured value, and YBA's rejection of an upgrade that changes
+// nothing means YBA already holds it: the dispatch then completes with no task.
+func dispatchGFlagsUpgrade(
+	ctx context.Context,
+	c *client.APIClient,
+	cUUID, uUUID string,
+	req client.GFlagsUpgradeParams,
+	redacted bool,
+) func() (string, *http.Response, error) {
+	return func() (string, *http.Response, error) {
+		r, resp, err := c.UniverseUpgradesManagementAPI.UpgradeGFlags(
+			ctx, cUUID, uUUID).GflagsUpgradeParams(req).Execute()
+		if err != nil {
+			if redacted && resp != nil && resp.StatusCode == http.StatusBadRequest &&
+				strings.Contains(utils.OpenAPIErrorBody(err), ybaNoGFlagChanges) {
+				tflog.Info(ctx, "GFlags Upgrade: YBA already holds the configured gflags")
+				return "", resp, nil
+			}
+			return "", resp, err
+		}
+		return r.GetTaskUUID(), resp, nil
+	}
 }
 
 // unrecoverableFailedTasks are the YBA task names where a failed task leaves the

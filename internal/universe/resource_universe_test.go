@@ -16,12 +16,63 @@
 package universe
 
 import (
+	"context"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	client "github.com/yugabyte/platform-go-client"
 
 	"github.com/yugabyte/terraform-provider-yba/internal/utils"
 )
+
+// YBA rejects a GFlags upgrade that changes nothing. Only when the request
+// changes a cluster that YBA returned with REDACTED gflags does that rejection
+// confirm that YBA holds the configured values, and the dispatch complete.
+func TestDispatchGFlagsUpgradeNoChanges(t *testing.T) {
+	const noChanges = `{"success":false,` +
+		`"error":"No changes in gflags (modify specificGflags in cluster)"}`
+	cases := []struct {
+		name     string
+		status   int
+		body     string
+		redacted bool
+		wantErr  bool
+	}{
+		{"no changes, REDACTED gflags", http.StatusBadRequest, noChanges, true, false},
+		{"no changes, nothing redacted", http.StatusBadRequest, noChanges, false, true},
+		{
+			"another 400", http.StatusBadRequest,
+			`{"success":false,"error":"Cannot delete gFlags through non-restart upgrade option."}`,
+			true, true,
+		},
+		{"marker on a 500", http.StatusInternalServerError, noChanges, true, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(
+				http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(tc.status)
+					_, _ = w.Write([]byte(tc.body))
+				}),
+			)
+			defer srv.Close()
+			cfg := client.NewConfiguration()
+			cfg.Scheme = "http"
+			cfg.Host = srv.Listener.Addr().String()
+
+			c := client.NewAPIClient(cfg)
+			ctx, req := context.Background(), client.GFlagsUpgradeParams{}
+
+			taskUUID, _, err := dispatchGFlagsUpgrade(ctx, c, "c", "u", req, tc.redacted)()
+
+			if (err != nil) != tc.wantErr || taskUUID != "" {
+				t.Errorf("task %q, err %v; want error %v and no task", taskUUID, err, tc.wantErr)
+			}
+		})
+	}
+}
 
 // A valid on-prem cluster must pass: a check that always fails blocks every
 // plan for an on-prem universe. Each on-prem rule fails on its own, and other

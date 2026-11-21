@@ -192,6 +192,11 @@ func testAccCheckUniversePorts(
 	}
 }
 
+// The universe sets LDAP secrets in its gflags, which YBA returns as REDACTED
+// (RedactingService.filterSecretFields): the whole ycql_ldap_bind_passwd, and
+// the ldapbindpasswd value in ysql_hba_conf_csv, quoted around a space and a
+// comma. The plan after each apply checks that Read keeps the configured
+// values.
 func TestAccLong_Universe_AWS_UpdatePrimaryNodes(t *testing.T) {
 	var universe client.UniverseResp
 
@@ -205,7 +210,7 @@ func TestAccLong_Universe_AWS_UpdatePrimaryNodes(t *testing.T) {
 		CheckDestroy:      testAccCheckDestroyProviderAndUniverse("AWS"),
 		Steps: []resource.TestStep{
 			{
-				Config: universeAwsConfigWithNodes(rName, 3),
+				Config: universeAwsConfigWithLDAPGFlags(rName, 3),
 				Check: resource.ComposeTestCheckFunc(
 					testAccCheckUniverseExists("AWS", "yba_universe.aws", &universe),
 					testAccCheckNumNodes(&universe, 3),
@@ -213,7 +218,7 @@ func TestAccLong_Universe_AWS_UpdatePrimaryNodes(t *testing.T) {
 				),
 			},
 			{
-				Config: universeAwsConfigWithNodes(rName, 4),
+				Config: universeAwsConfigWithLDAPGFlags(rName, 4),
 				Check: resource.ComposeTestCheckFunc(
 					testAccCheckUniverseExists("AWS", "yba_universe.aws", &universe),
 					testAccCheckNumNodes(&universe, 4),
@@ -433,6 +438,26 @@ func universeGcpConfigWithNodes(name string, nodes int) string {
 func universeAwsConfigWithNodes(name string, nodes int) string {
 	return acctest.YBAProviderBlock("AWS") + cloudProviderAWSConfig(name+"-provider") +
 		universeConfigWithProviderWithNodes("aws", name, nodes)
+}
+
+// ldapProbeHBA is a ysql_hba_conf_csv value whose LDAP rule matches only a role
+// that nothing connects as. YugabyteDB appends its own rules after it.
+const ldapProbeHBA = `"host all tf_ldap_probe 0.0.0.0/0 ldap ldapserver=ldap.example.com ` +
+	`ldapbasedn=""dc=example,dc=com"" ldapbindpasswd=""dummy pw,x"" ldapsearchattribute=uid"`
+
+// universeAwsConfigWithLDAPGFlags is universeAwsConfigWithNodes with LDAP secrets
+// in the TServer gflags.
+func universeAwsConfigWithLDAPGFlags(name string, nodes int) string {
+	return acctest.YBAProviderBlock("AWS") + cloudProviderAWSConfig(name+"-provider") +
+		universeConfigWithSoftwareVersion("aws", name, nodes, "", fmt.Sprintf(`
+				specific_gflags {
+					per_process {
+						tserver_gflags = {
+							ycql_ldap_bind_passwd = "dummy-bind-pw"
+							ysql_hba_conf_csv     = %q
+						}
+					}
+				}`, ldapProbeHBA), "data.yba_release_version.release_version.id")
 }
 
 func universeAzureConfigWithNodes(name string, nodes int) string {
