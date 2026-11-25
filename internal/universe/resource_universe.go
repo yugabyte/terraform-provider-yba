@@ -3415,8 +3415,8 @@ func runFinalizeUpgrade(
 		Clusters:                       clusters,
 		UpgradeOption:                  upgradeOption,
 		UpgradeSystemCatalog:           true,
-		SleepAfterMasterRestartMillis:  sleepAfterMasterMs,
-		SleepAfterTServerRestartMillis: sleepAfterTServerMs,
+		SleepAfterMasterRestartMillis:  &sleepAfterMasterMs,
+		SleepAfterTServerRestartMillis: &sleepAfterTServerMs,
 	}
 	return utils.DispatchAndWait(ctx, "Finalize Upgrade", cUUID, c, timeout,
 		utils.ResourceEntity, "Universe", "Update - Finalize Upgrade",
@@ -3693,8 +3693,8 @@ func resourceUniverseUpdate(
 			rollbackReq := client.RollbackUpgradeParams{
 				Clusters:                       currentUni.UniverseDetails.Clusters,
 				UpgradeOption:                  upgradeOption,
-				SleepAfterMasterRestartMillis:  sleepAfterMasterMs,
-				SleepAfterTServerRestartMillis: sleepAfterTServerMs,
+				SleepAfterMasterRestartMillis:  &sleepAfterMasterMs,
+				SleepAfterTServerRestartMillis: &sleepAfterTServerMs,
 			}
 			if diags := utils.DispatchAndWait(ctx, "Rollback Upgrade", cUUID, c,
 				d.Timeout(schema.TimeoutUpdate),
@@ -3909,8 +3909,8 @@ func resourceUniverseUpdate(
 						Clusters:                       updateUni.UniverseDetails.Clusters,
 						UpgradeOption:                  upgradeOption,
 						UpgradeSystemCatalog:           true,
-						SleepAfterMasterRestartMillis:  sleepAfterMasterMs,
-						SleepAfterTServerRestartMillis: sleepAfterTServerMs,
+						SleepAfterMasterRestartMillis:  &sleepAfterMasterMs,
+						SleepAfterTServerRestartMillis: &sleepAfterTServerMs,
 					}
 
 					if diags := utils.DispatchAndWait(ctx, "DB Version Upgrade", cUUID, c,
@@ -3979,8 +3979,8 @@ func resourceUniverseUpdate(
 						TserverGFlags:                  tserverFromIntent(newUserIntent),
 						Clusters:                       updateUni.UniverseDetails.Clusters,
 						UpgradeOption:                  upgradeOption,
-						SleepAfterMasterRestartMillis:  sleepAfterMasterMs,
-						SleepAfterTServerRestartMillis: sleepAfterTServerMs,
+						SleepAfterMasterRestartMillis:  &sleepAfterMasterMs,
+						SleepAfterTServerRestartMillis: &sleepAfterTServerMs,
 					}
 					if diags := utils.DispatchAndWait(ctx, "GFlags Upgrade", cUUID, c,
 						d.Timeout(schema.TimeoutUpdate),
@@ -4047,8 +4047,8 @@ func resourceUniverseUpdate(
 						EnableNodeToNodeEncrypt:        newUserIntent.GetEnableNodeToNodeEncrypt(),
 						Clusters:                       updateUni.UniverseDetails.Clusters,
 						UpgradeOption:                  "Non-Rolling",
-						SleepAfterMasterRestartMillis:  sleepAfterMasterMs,
-						SleepAfterTServerRestartMillis: sleepAfterTServerMs,
+						SleepAfterMasterRestartMillis:  &sleepAfterMasterMs,
+						SleepAfterTServerRestartMillis: &sleepAfterTServerMs,
 						RootAndClientRootCASame:        tlsRootAndClientSame,
 					}
 					if tlsRootCA != "" {
@@ -4091,8 +4091,8 @@ func resourceUniverseUpdate(
 					req := client.SystemdUpgradeParams{
 						Clusters:                       updateUni.UniverseDetails.Clusters,
 						UpgradeOption:                  upgradeOption,
-						SleepAfterMasterRestartMillis:  sleepAfterMasterMs,
-						SleepAfterTServerRestartMillis: sleepAfterTServerMs,
+						SleepAfterMasterRestartMillis:  &sleepAfterMasterMs,
+						SleepAfterTServerRestartMillis: &sleepAfterTServerMs,
 					}
 					if diags := utils.DispatchAndWait(ctx, "Systemd Upgrade", cUUID, c,
 						d.Timeout(schema.TimeoutUpdate),
@@ -4270,8 +4270,8 @@ func resourceUniverseUpdate(
 							Clusters:      updateUni.UniverseDetails.Clusters,
 							NodeDetailsSet: buildNodeDetailsRespArrayToNodeDetailsArray(
 								updateUni.UniverseDetails.NodeDetailsSet),
-							SleepAfterMasterRestartMillis:  sleepAfterMasterMs,
-							SleepAfterTServerRestartMillis: sleepAfterTServerMs,
+							SleepAfterMasterRestartMillis:  &sleepAfterMasterMs,
+							SleepAfterTServerRestartMillis: &sleepAfterTServerMs,
 						}
 						if diags := utils.DispatchAndWait(ctx, "Resize Nodes", cUUID, c,
 							d.Timeout(schema.TimeoutUpdate),
@@ -4580,8 +4580,8 @@ func resourceUniverseUpdate(
 							Clusters:      updateUni.UniverseDetails.Clusters,
 							NodeDetailsSet: buildNodeDetailsRespArrayToNodeDetailsArray(
 								updateUni.UniverseDetails.NodeDetailsSet),
-							SleepAfterMasterRestartMillis:  sleepAfterMasterMs,
-							SleepAfterTServerRestartMillis: sleepAfterTServerMs,
+							SleepAfterMasterRestartMillis:  &sleepAfterMasterMs,
+							SleepAfterTServerRestartMillis: &sleepAfterTServerMs,
 						}
 						if diags := utils.DispatchAndWait(
 							ctx,
@@ -4870,8 +4870,8 @@ func performVMImageUpgrade(
 		Clusters:                       updateUni.UniverseDetails.Clusters,
 		UpgradeOption:                  "Rolling",
 		ImageBundles:                   imageBundleUpgrades,
-		SleepAfterMasterRestartMillis:  sleepAfterMasterMs,
-		SleepAfterTServerRestartMillis: sleepAfterTServerMs,
+		SleepAfterMasterRestartMillis:  &sleepAfterMasterMs,
+		SleepAfterTServerRestartMillis: &sleepAfterTServerMs,
 	}
 	return utils.DispatchAndWait(ctx, "VM Image Upgrade", cUUID, c,
 		d.Timeout(schema.TimeoutUpdate),
@@ -4925,8 +4925,8 @@ func performGFlagsUpgrade(
 		TserverGFlags:                  tserverFromIntent(primaryUI),
 		Clusters:                       updateUni.UniverseDetails.Clusters,
 		UpgradeOption:                  upgradeOption,
-		SleepAfterMasterRestartMillis:  sleepAfterMasterMs,
-		SleepAfterTServerRestartMillis: sleepAfterTServerMs,
+		SleepAfterMasterRestartMillis:  &sleepAfterMasterMs,
+		SleepAfterTServerRestartMillis: &sleepAfterTServerMs,
 	}
 	return utils.DispatchAndWait(ctx, "GFlags Upgrade", cUUID, c,
 		d.Timeout(schema.TimeoutUpdate),

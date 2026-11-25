@@ -533,8 +533,8 @@ func upgradeUniverseOutOfBand(t *testing.T, cloud string, universe *client.Unive
 		Clusters:                       clusters,
 		UpgradeOption:                  "Rolling",
 		UpgradeSystemCatalog:           true,
-		SleepAfterMasterRestartMillis:  30000,
-		SleepAfterTServerRestartMillis: 30000,
+		SleepAfterMasterRestartMillis:  utils.GetInt32Pointer(30000),
+		SleepAfterTServerRestartMillis: utils.GetInt32Pointer(30000),
 	}
 	if diags := utils.DispatchAndWait(ctx, "DB Version Upgrade", cUUID, c, time.Hour,
 		utils.TestEntity, "Universe", "Upgrade out of band",
