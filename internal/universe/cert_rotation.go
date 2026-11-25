@@ -294,8 +294,8 @@ func newCertsRotateParams(
 	return client.CertsRotateParams{
 		Clusters:                       clusters,
 		UpgradeOption:                  upgradeOption,
-		SleepAfterMasterRestartMillis:  sleepAfterMasterMs,
-		SleepAfterTServerRestartMillis: sleepAfterTServerMs,
+		SleepAfterMasterRestartMillis:  &sleepAfterMasterMs,
+		SleepAfterTServerRestartMillis: &sleepAfterTServerMs,
 	}
 }
 
